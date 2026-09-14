@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Regenerate the reference files in `data/` from the macros in `gen/cases/`.
 
 Each case directory holds a `gen.C` defining `void gen(const char *out)` and a

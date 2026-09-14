@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Assert that zensical.toml cites the commit the root/ submodule is pinned to.
 
 The citation links in the built site are only trustworthy if the commit they point

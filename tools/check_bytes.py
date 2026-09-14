@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Verify the byte-level assertions in a fixture's `case.toml`.
 
 Each `[[bytes]]` entry names an absolute file offset, a type, and the expected

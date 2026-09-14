@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Timestamp- and UUID-masked digests for reference files.
 
 ROOT files cannot be reproduced byte-for-byte: every `TKey` records the wall

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Verify every source citation in `spec/` against the pinned ROOT submodule.
 
 `spec/00-conventions.md` §7 promises that citations refer to the pinned commit.
