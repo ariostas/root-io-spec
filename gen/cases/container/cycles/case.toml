@@ -1,0 +1,102 @@
+id   = "container/cycles"
+file = "data/container/cycles.root"
+size = 1361
+
+description = """
+The same key name written three times. Each write appends a new record with the
+next cycle number; earlier cycles remain in the file and remain readable as
+"str;1" and "str;2".
+"""
+
+spec = ["spec/01-container/Record.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 182
+class  = "TFile"
+name   = "data/container/cycles.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 282
+nbytes = 93
+class  = "TObjString"
+name   = "str"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 375
+nbytes = 93
+class  = "TObjString"
+name   = "str"
+cycle  = 2
+seek_pdir = 100
+
+[[records]]
+offset = 468
+nbytes = 93
+class  = "TObjString"
+name   = "str"
+cycle  = 3
+seek_pdir = 100
+
+[[records]]
+offset = 561
+nbytes = 434
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 995
+nbytes = 279
+class  = "TFile"
+name   = "data/container/cycles.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1274
+nbytes = 87
+class  = "TFile"
+name   = "data/container/cycles.root"
+cycle  = 1
+seek_pdir = 100
+
+# --- Three records, same name, ascending cycles --------------------------
+[[bytes]]
+name = "str cycle 1: fCycle"
+offset = 298
+type = "i16"
+value = 1
+[[bytes]]
+name = "str cycle 1: fName"
+offset = 319
+type = "string"
+value = "str"
+[[bytes]]
+name = "str cycle 2: fCycle"
+offset = 391
+type = "i16"
+value = 2
+[[bytes]]
+name = "str cycle 2: fName"
+offset = 412
+type = "string"
+value = "str"
+[[bytes]]
+name = "str cycle 3: fCycle"
+offset = 484
+type = "i16"
+value = 3
+[[bytes]]
+name = "str cycle 3: fName"
+offset = 505
+type = "string"
+value = "str"

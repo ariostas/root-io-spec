@@ -1,0 +1,84 @@
+id   = "container/gap"
+file = "data/container/gap.root"
+size = 1449
+
+description = """
+A record deleted from the middle of the file. The reclaimed span is marked in
+place with a negative fNbytes whose magnitude is the span length, and it also
+appears as an interior entry in the free-segment list.
+"""
+
+spec = ["spec/01-container/FreeSegments.md", "spec/01-container/Record.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 186
+class  = "TFile"
+name   = "data/container/gap.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 286
+nbytes = 106
+class  = "TObjString"
+name   = "keep_me"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 392
+nbytes = 227
+class  = "TFile"
+name   = "data/container/gap.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 619
+nbytes = 99
+class  = "TFile"
+name   = "data/container/gap.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 718
+nbytes = -187
+role   = "free segment, 187 bytes reclaimed"
+
+[[records]]
+offset = 905
+nbytes = 110
+class  = "TObjString"
+name   = "keep_me_too"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1015
+nbytes = 434
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+# --- The gap left in place, spec/01-container/FreeSegments.md ------------
+# A reader walking the record chain sees a negative fNbytes and must advance by
+# its magnitude rather than trying to parse a key there.
+[[bytes]]
+name = "gap fNbytes, negative"
+offset = 718
+type = "i32"
+value = -187
+
+# The same span appears in the free list. fLast is inclusive: 718..904
+# is 187 bytes, matching the magnitude above.
+[[bytes]]
+name = "nfree, two entries: the gap and the trailing sentinel"
+offset = 24
+type = "i32"
+value = 2

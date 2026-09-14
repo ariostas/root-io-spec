@@ -1,0 +1,149 @@
+id   = "container/directories"
+file = "data/container/directories.root"
+size = 1854
+
+description = """
+Two nested subdirectories, each holding one object. Exercises the subdirectory
+form of the TDirectoryFile record, the per-directory keys list, and the parent
+chain built from TKey::fSeekPdir.
+"""
+
+spec = ["spec/01-container/Directory.md", "spec/01-container/Record.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+# Directory keys carry the class name "TDirectory", never "TDirectoryFile".
+# Each directory also gets its own keys-list record; unlike the root directory's,
+# a subdirectory's keys list is named after the directory.
+[[records]]
+offset = 100
+nbytes = 206
+class  = "TFile"
+name   = "data/container/directories.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 306
+nbytes = 95
+class  = "TObjString"
+name   = "top"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 401
+nbytes = 109
+class  = "TDirectory"
+name   = "alpha"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 510
+nbytes = 100
+class  = "TObjString"
+name   = "in_alpha"
+cycle  = 1
+seek_pdir = 401
+
+[[records]]
+offset = 610
+nbytes = 107
+class  = "TDirectory"
+name   = "beta"
+cycle  = 1
+seek_pdir = 401
+
+[[records]]
+offset = 717
+nbytes = 104
+class  = "TObjString"
+name   = "in_beta"
+cycle  = 1
+seek_pdir = 610
+
+[[records]]
+offset = 821
+nbytes = 434
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1255
+nbytes = 208
+class  = "TFile"
+name   = "data/container/directories.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1463
+nbytes = 171
+class  = "TDirectory"
+name   = "alpha"
+cycle  = 1
+seek_pdir = 401
+
+[[records]]
+offset = 1634
+nbytes = 121
+class  = "TDirectory"
+name   = "beta"
+cycle  = 1
+seek_pdir = 610
+
+[[records]]
+offset = 1755
+nbytes = 99
+class  = "TFile"
+name   = "data/container/directories.root"
+cycle  = 1
+seek_pdir = 100
+
+# --- A directory key, spec/01-container/Record.md -------------------------
+[[bytes]]
+name = "alpha key fNbytes"
+offset = 401
+type = "i32"
+value = 109
+[[bytes]]
+name = "alpha key fKeyLen"
+offset = 415
+type = "i16"
+value = 49
+[[bytes]]
+name = "alpha key fSeekKey"
+offset = 419
+type = "i32"
+value = 401
+[[bytes]]
+name = "alpha key fSeekPdir, the root directory"
+offset = 423
+type = "i32"
+value = 100
+[[bytes]]
+name = "alpha key fClassName"
+offset = 427
+type = "string"
+value = "TDirectory"
+[[bytes]]
+name = "alpha key fName"
+offset = 438
+type = "string"
+value = "alpha"
+
+# beta is nested inside alpha, so its parent is alpha's record, not the root.
+[[bytes]]
+name = "beta key fSeekPdir, alpha's record"
+offset = 632
+type = "i32"
+value = 401
+[[bytes]]
+name = "in_beta key fSeekPdir, beta's record"
+offset = 739
+type = "i32"
+value = 610
