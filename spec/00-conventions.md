@@ -68,10 +68,26 @@ width, that is called out — this is a live source of bugs.
 | `Int_t`, `UInt_t` | 4 | |
 | `Long_t`, `ULong_t` | **8** | **4 bytes in memory on some platforms; always 8 on disk**, sign-extended |
 | `Long64_t`, `ULong64_t` | 8 | |
-| `Float_t` | 4 | IEEE 754 binary32, big-endian |
-| `Double_t` | 8 | IEEE 754 binary64, big-endian |
+| `Float_t` | 4 | binary32 bit pattern, big-endian — see note |
+| `Double_t` | 8 | binary64 bit pattern, big-endian — see note |
 | `Version_t` | 2 | signed |
 | `Seek_t` / file offsets | 4 or 8 | width depends on the large-file flag; see `01-container/FileHeader.md` |
+
+Floating-point values are written as the **host's bit pattern with the bytes
+reversed**; there is no conversion step and no assertion of a format anywhere in
+`root/core/base/inc/Bytes.h`. On every platform ROOT supports that pattern is IEEE
+754, so the on-disk form is IEEE 754 big-endian in practice — but it is an implicit
+property of the host, not something the format enforces.
+
+Two traps around `Long_t`:
+
+- Scalar `ULong_t` is written through the **signed** helper
+  (`root/io/io/inc/TBufferFile.h:339`), so on a platform where `long` is 4 bytes a
+  value ≥ 2³¹ is written with `0xFFFFFFFF` in the high four bytes rather than
+  zeros. Arrays of `ULong_t` zero-extend instead. On 64-bit hosts the two agree.
+- Files written by ROOT older than 3.00/06 stored `Long_t` at the host's `sizeof(long)`
+  rather than always 8. Readers handling such files must branch on the file version
+  (`root/io/io/src/TBufferFile.cxx:173-181`).
 
 `Double32_t` and `Float16_t` are **not** primitive types with fixed widths. They are
 `Double_t`/`Float_t` in memory and a configurable number of bits on disk, controlled
@@ -92,12 +108,21 @@ short form (n <= 254):   n:u8   payload:n bytes
 long form  (n >= 255):   255:u8   n:u32   payload:n bytes
 ```
 
-An empty string is a single `0x00` byte. Encoding is uninterpreted bytes, not
-Unicode: a reader SHOULD NOT assume UTF-8.
+The escape triggers at length **> 254**, so a leading `0xFF` never means "255
+characters" — a 255-character string is always written in the long form. An empty
+string is a single `0x00` byte. Encoding is uninterpreted bytes, not Unicode: a
+reader SHOULD NOT assume UTF-8.
 
-Used by `TString` and by the `TKey` name, title and class-name fields. In a `TKey`
-the counted string appears **bare**, with no preceding byte count or version word;
-when `TString` is a data member it is preceded by the usual byte count and version.
+Used by `TString` and by the `TKey` name, title and class-name fields.
+
+The counted string appears **bare** — with no preceding byte count and no version
+word — both in a `TKey` and when a `TString` is a data member. A byte count and a
+class record appear only when a `TString` is written as a standalone object through
+a pointer, not by value.
+
+> Demonstrated by `container/file-minimal`: the `TObjString` payload ends at offset
+> 392 with `05 68 65 6c 6c 6f`, the bare counted string for `hello`, immediately
+> after the base `TObject` and with nothing in between.
 
 ### 5.2 Null-terminated string
 
@@ -106,13 +131,33 @@ Bytes up to and including a `0x00` terminator. Used **only** for the class name 
 
 ### 5.3 `std::string`
 
-Its own encoding, described in `02-serialization/Collections.md`. Not the same as
-either of the above.
+A counted string (§5.1) **wrapped in a byte count and a version word**, unlike a
+`TString` member, which has neither:
+
+```
+byteCount:u32 (| 0x40000000)   version:i16   counted string
+```
+
+An empty `std::string` member is therefore 7 bytes, not 1. Details, including which
+class the version word actually refers to, are in
+`02-serialization/Collections.md`.
 
 ### 5.4 `char*` members
 
-Described in `02-serialization/ElementTypes.md` under type code 7 (`kCharStar`).
-Not the same as a counted string.
+A 4-byte signed length, then exactly that many bytes, with **no terminator and no
+255 escape**:
+
+```
+n:i32   payload:n bytes
+```
+
+This is not the counted string of §5.1, and the difference is a live source of
+bugs. A null pointer and an empty string are indistinguishable: both are four zero
+bytes. See `02-serialization/ElementTypes.md`, type code 7 (`kCharStar`).
+
+Note the related trap on the writing side: a hand-written streamer using
+`buf << someCharPointer` produces the **null-terminated** form of §5.2, not this
+one.
 
 ## 6. Notation
 

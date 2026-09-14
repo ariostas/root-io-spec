@@ -123,7 +123,11 @@ def read_header(buf: bytes) -> FileHeader:
     if buf[:4] != MAGIC:
         raise FormatError(f"not a ROOT file: magic is {buf[:4]!r}, expected {MAGIC!r}")
     version = _i32(buf, 4)
-    large = version > LARGE_FILE_VERSION_FLAG
+    # ROOT's own test is `fVersion < 1000000` for the small-file layout
+    # (root/io/io/src/TFile.cxx:738), so the large-file predicate is >=.
+    large = version >= LARGE_FILE_VERSION_FLAG
+    # fBEGIN is written as a 32-bit int even in the large-file layout
+    # (root/io/io/src/TFile.cxx:2681), so it never widens.
     begin = _i32(buf, 8)
     o = 12
     if large:
