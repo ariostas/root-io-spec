@@ -1,0 +1,139 @@
+id   = "serialization/basic-types"
+file = "data/serialization/basic-types.root"
+size = 2011
+
+description = """
+One object of an interpreted class with a member of every fixed-width scalar
+type. The payload is a byte count, a version word, a checksum and then the
+members back to back with no padding and no per-member framing of any kind.
+
+The class is written by the interpreter and so has no ClassDef. That makes it
+*foreign*, which is why the version word is 0 and a 4-byte checksum follows it.
+Compare serialization/version-zero, where the version word is also 0 but no
+checksum follows.
+"""
+
+spec = [
+  "spec/02-serialization/Buffer.md",
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 206
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 306
+nbytes = 109
+class  = "BasicTypes"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 415
+nbytes = 1364
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1779
+nbytes = 133
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1912
+nbytes = 99
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 306, fKeyLen 40, so the payload starts at 346.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 65"
+offset = 346
+type = "u32"
+value = 1073741889
+[[bytes]]
+name = "version word: 0, because the class is foreign"
+offset = 350
+type = "i16"
+value = 0
+[[bytes]]
+name = "checksum, present only because the version word is 0 and the class is foreign"
+offset = 352
+type = "u32"
+value = 1115136251
+
+# --- The members, in declaration order, with no framing between them -------
+[[bytes]]
+name = "fChar, kChar (1)"
+offset = 356
+type = "i8"
+value = 65
+[[bytes]]
+name = "fShort, kShort (2)"
+offset = 357
+type = "i16"
+value = 258
+[[bytes]]
+name = "fInt, kInt (3)"
+offset = 359
+type = "i32"
+value = 16909060
+[[bytes]]
+name = "fLong, kLong (4), 8 bytes on disk"
+offset = 363
+type = "i64"
+value = 72623859790382856
+[[bytes]]
+name = "fFloat, kFloat (5)"
+offset = 371
+type = "f32"
+value = 1.5
+[[bytes]]
+name = "fDouble, kDouble (8)"
+offset = 375
+type = "f64"
+value = -2.5
+[[bytes]]
+name = "fUChar, kUChar (11)"
+offset = 383
+type = "u8"
+value = 254
+[[bytes]]
+name = "fUShort, kUShort (12)"
+offset = 384
+type = "u16"
+value = 65534
+[[bytes]]
+name = "fUInt, kUInt (13)"
+offset = 386
+type = "u32"
+value = 4294967294
+[[bytes]]
+name = "fULong, kULong (14), 8 bytes on disk"
+offset = 390
+type = "u64"
+value = 72623859790382856
+[[bytes]]
+name = "fLong64, kLong64 (16)"
+offset = 398
+type = "i64"
+value = -2
+[[bytes]]
+name = "fULong64, kULong64 (17)"
+offset = 406
+type = "u64"
+value = 18446744073709551614
+[[bytes]]
+name = "fBool, kBool (18), one byte"
+offset = 414
+type = "u8"
+value = 1

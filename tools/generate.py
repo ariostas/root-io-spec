@@ -79,10 +79,16 @@ def main(argv: list[str]) -> int:
         print(f"DRIFT {message}", file=sys.stderr)
 
     if not check_only and not drift:
+        # Merge rather than replace: running on a subset of the cases must not
+        # drop the digests of the cases it was not asked about.
+        merged = dict(known)
+        for line in lines:
+            d, p_ = line.split(None, 1)
+            merged[p_] = d
         manifest.write_text(
             "# Normalized SHA-256 digests of the reference files.\n"
             "# Timestamps and UUIDs are masked first; see tools/normalize.py.\n"
-            + "".join(f"{line}\n" for line in sorted(lines))
+            + "".join(f"{d}  {p_}\n" for p_, d in sorted(merged.items()))
         )
 
     rc = check_bytes.main([str(d) for d in dirs])

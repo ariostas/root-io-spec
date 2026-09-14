@@ -127,7 +127,7 @@ a pointer, not by value.
 ### 5.2 Null-terminated string
 
 Bytes up to and including a `0x00` terminator. Used **only** for the class name in a
-`kNewClassTag` record. See `02-serialization/Buffer.md`.
+`kNewClassTag` record. See [Buffer framing](02-serialization/Buffer.md#51-a-new-class).
 
 ### 5.3 `std::string`
 
@@ -220,7 +220,7 @@ A reference to a document that has **not been written yet** is written as inline
 code instead, because the site build treats a link to a missing page as an error:
 
 ```markdown
-See `02-serialization/Buffer.md` for the byte-count encoding.
+See [Buffer framing](02-serialization/Buffer.md) for the byte-count encoding.
 ```
 
 Such a reference MUST be converted to a link when its target is written. Forward

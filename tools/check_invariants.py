@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the `Invariants` sections of spec/01-container/ against every fixture.
+"""Check the `Invariants` sections of spec/ against every fixture.
 
 Each layer document ends with a list of properties a conforming file satisfies
 (see PLAN.md 2.8). This makes those lists executable, which serves two purposes:
@@ -138,6 +138,108 @@ class Checker:
 
         if cursor != self.header.end:
             self.bad("Record 8.8", f"chain ends at {cursor}, fEND is {self.header.end}")
+
+    # -- Buffer.md 9 --------------------------------------------------------
+    # Records whose class is TFile or TDirectory are the container's own
+    # bookkeeping (root directory, key list, free list, subdirectory records).
+    # They are not streamed objects and carry no frame.
+    UNFRAMED = {"TFile", "TDirectory"}
+
+    def check_buffer_framing(self) -> None:
+        for rec in self.records:
+            if rec.free or rec.class_name in self.UNFRAMED:
+                continue
+            if rootfile.is_compressed(rec):
+                continue  # this checker does not decompress
+            start, end = rootfile.payload_range(rec)
+            if rec.obj_len < 6:
+                self.bad("Buffer 9.2", f"payload of {rec.obj_len} bytes at {rec.offset} "
+                                       f"is too short for a byte count and a version")
+                continue
+
+            frame = rootfile.read_frame(self.buf, start)
+
+            # 9.9 and 9.2 at the outermost level: the leading byte count spans
+            # the payload exactly.
+            if frame.byte_count is None:
+                self.bad("Buffer 9.9",
+                         f"{rec.class_name} at {rec.offset} has no leading byte count")
+                continue
+            if start + 4 + frame.byte_count != end:
+                self.bad("Buffer 9.9",
+                         f"{rec.class_name} at {rec.offset}: byte count {frame.byte_count} "
+                         f"ends at {start + 4 + frame.byte_count}, payload ends at {end}")
+            # 9.1
+            if frame.byte_count > rootfile.MAX_MAP_COUNT:
+                self.bad("Buffer 9.1",
+                         f"byte count {frame.byte_count} at {start} exceeds kMaxMapCount")
+            # 9.4
+            if not 0 <= frame.version <= rootfile.MAX_VERSION:
+                self.bad("Buffer 9.4",
+                         f"{rec.class_name} at {rec.offset}: class version {frame.version} "
+                         f"outside [0, kMaxVersion]")
+
+            if rec.class_name == "TList":
+                self.check_tlist_references(rec)
+
+    def check_tlist_references(self, rec) -> None:
+        """Buffer.md 9.5 to 9.8, over the object slots of one TList."""
+        try:
+            slots = rootfile.read_tlist(self.buf, rec)
+        except rootfile.FormatError as exc:
+            self.bad("Buffer 9.3", f"TList at {rec.offset}: {exc}")
+            return
+
+        objects: set[int] = set()   # map positions an object was recorded at
+        classes: set[int] = set()   # map positions a class tag was recorded at
+        spans: list[tuple[int, int]] = []  # earlier slot interiors, as map positions
+
+        for slot in slots:
+            here = slot.offset - rec.offset + rootfile.MAP_OFFSET
+            for kind, ref in (("object", slot.reference),
+                              ("class", slot.class_reference)):
+                if ref is None:
+                    continue
+                # 9.7: a reference of 1 is the record's own top-level object,
+                # which is legitimate and is not a buffer position.
+                if kind == "object" and ref == rootfile.SELF_POSITION:
+                    continue
+                if ref < rootfile.MAP_OFFSET:
+                    self.bad("Buffer 9.7",
+                             f"TList at {rec.offset}: {kind} reference {ref} is below the "
+                             f"first real map position")
+                    continue
+                # 9.8: a reference above 1 always points backwards.
+                if ref >= here:
+                    self.bad("Buffer 9.8",
+                             f"TList at {rec.offset}: {kind} reference {ref} at map "
+                             f"position {here} does not point backwards")
+                    continue
+                # 9.5 and 9.6: it names something recorded earlier. A reference
+                # may name an object nested inside an earlier slot, which this
+                # walker does not descend into; such a position must at least
+                # fall inside that slot.
+                known = objects if kind == "object" else classes
+                if ref in known:
+                    continue
+                if any(lo < ref < hi for lo, hi in spans):
+                    continue
+                other = classes if kind == "object" else objects
+                if ref in other:
+                    self.bad("Buffer 9.5" if kind == "class" else "Buffer 9.6",
+                             f"TList at {rec.offset}: {kind} reference {ref} names a "
+                             f"position recorded for the other kind")
+                else:
+                    self.bad("Buffer 9.5" if kind == "class" else "Buffer 9.6",
+                             f"TList at {rec.offset}: {kind} reference {ref} names no "
+                             f"position recorded earlier in this buffer")
+            if slot.object_position is not None:
+                objects.add(slot.object_position)
+            if slot.class_position is not None:
+                classes.add(slot.class_position)
+            if slot.kind == "object":
+                spans.append((slot.offset - rec.offset + rootfile.MAP_OFFSET,
+                              slot.end - rec.offset + rootfile.MAP_OFFSET))
 
     # -- Compression.md 9 ---------------------------------------------------
     def check_compression(self) -> None:
@@ -312,6 +414,7 @@ class Checker:
         self.check_compression()
         self.check_directories()
         self.check_free_list()
+        self.check_buffer_framing()
         return self.failures
 
 

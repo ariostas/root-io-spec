@@ -243,10 +243,17 @@ The rule for when something gets its own file:
 > implies. Otherwise it is a row in its family's variants table.
 
 `TH1L`'s class version `0` is exactly the kind of thing this table surfaces
-immediately: a version-0 class is written with a **checksum instead of a version
-number**, so a reader that assumes "version word is a version" breaks on `TH1L`
-and not on `TH1D`. That rule is stated once in `SchemaEvolution.md` and cross-
-referenced from every family table that has a version-0 row.
+immediately: it writes a version **word** of 0, so a reader that assumes "version
+word is a version" has nothing to look the layout up by, and breaks on `TH1L` and
+not on `TH1D`.
+
+Note that an earlier draft of this plan said such a class is written with a
+"checksum instead of a version number". That is **wrong**, and the fixture
+`serialization/version-zero` disproves it: no checksum follows. The checksum form
+belongs to *foreign* classes — those with no `ClassDef` — which is a different set.
+The distinction, and the rule a reader must use to tell them apart, is specified in
+[Buffer framing](spec/02-serialization/Buffer.md) §4, and is cross-referenced from
+every family table that has a version-0 row.
 
 Families slated for **hand-written review** (the generated tables cover everything
 persistable regardless), from the `ClassDef` inventory of the pinned submodule:

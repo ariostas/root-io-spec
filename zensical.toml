@@ -24,6 +24,9 @@ nav = [
       { "Free segments" = "01-container/FreeSegments.md" },
       { "Compression" = "01-container/Compression.md" },
   ] },
+  { "Serialization" = [
+      { "Buffer framing" = "02-serialization/Buffer.md" },
+  ] },
 ]
 
 [project.theme]

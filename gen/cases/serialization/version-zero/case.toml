@@ -1,0 +1,140 @@
+id   = "serialization/version-zero"
+file = "data/serialization/version-zero.root"
+size = 10557
+
+description = """
+TH1L is declared ClassDefOverride(TH1L,0), so its class version really is zero.
+
+This is the case a reader cannot resolve from the bytes alone. A version word of
+0 is followed by a 4-byte checksum when the class is foreign, as in
+serialization/basic-types -- but TH1L is not foreign, so nothing follows. The
+four bytes after the version word here are the byte count of the embedded TH1
+base class, and a reader that consumed them as a checksum would be lost.
+
+The disambiguator is the file's own streamer info: the TStreamerInfo for TH1L in
+this file has fClassVersion 0, whereas a foreign class is recorded with
+fClassVersion 1. See spec/02-serialization/Buffer.md section 4.
+
+Assertions stop after the first few nested bases; the point of the case is the
+framing, not TH1's member layout.
+"""
+
+spec = [
+  "spec/02-serialization/Buffer.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 222
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 322
+nbytes = 593
+class  = "TH1L"
+role   = "the histogram; the record this case is about"
+
+[[records]]
+offset = 915
+nbytes = 9399
+class  = "TList"
+role   = "StreamerInfo; large because TH1L drags in TH1, TAxis and the TAtt* classes"
+
+[[records]]
+offset = 10314
+nbytes = 136
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 10450
+nbytes = 107
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 322, fKeyLen 35, so the payload starts at 357.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "TH1L byte count, kByteCountMask | 554"
+offset = 357
+type = "u32"
+value = 1073742378
+[[bytes]]
+name = "TH1L version word: 0, the declared class version"
+offset = 361
+type = "i16"
+value = 0
+
+# The next four bytes are the evidence. If a checksum followed the zero version
+# word, this would be it; instead it carries kByteCountMask, which a checksum
+# would not, and it is the byte count of the TH1 base.
+[[bytes]]
+name = "no checksum: this is the TH1 base byte count, kByteCountMask | 512"
+offset = 363
+type = "u32"
+value = 1073742336
+[[bytes]]
+name = "TH1 base class version"
+offset = 367
+type = "i16"
+value = 8
+
+# --- TH1's own first base, TNamed ------------------------------------------
+[[bytes]]
+name = "TNamed base byte count, kByteCountMask | 16"
+offset = 369
+type = "u32"
+value = 1073741840
+[[bytes]]
+name = "TNamed class version"
+offset = 373
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject base version word, with no byte count of its own"
+offset = 375
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject::fUniqueID"
+offset = 377
+type = "u32"
+value = 0
+[[bytes]]
+name = "TObject::fBits, kMustCleanup set by TH1"
+offset = 381
+type = "u32"
+value = 8
+[[bytes]]
+name = "TNamed::fName"
+offset = 385
+type = "string"
+value = "h"
+[[bytes]]
+name = "TNamed::fTitle"
+offset = 387
+type = "string"
+value = "t"
+
+# --- TAttLine, the next base ----------------------------------------------
+[[bytes]]
+name = "TAttLine base byte count, kByteCountMask | 8"
+offset = 389
+type = "u32"
+value = 1073741832
+[[bytes]]
+name = "TAttLine class version"
+offset = 393
+type = "i16"
+value = 2
+[[bytes]]
+name = "TAttLine::fLineColor"
+offset = 395
+type = "i16"
+value = 602

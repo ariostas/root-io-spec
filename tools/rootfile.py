@@ -370,3 +370,169 @@ def _read_key_at(buf: bytes, off: int) -> tuple[Record, int]:
     rec.name, p = _counted_string(buf, p)
     rec.title, p = _counted_string(buf, p)
     return rec, p
+
+
+# ---------------------------------------------------------------------------
+# The buffer framing layer, spec/02-serialization/Buffer.md.
+#
+# This is deliberately an independent implementation of what that document
+# specifies, written from the document rather than from ROOT's code, so that the
+# two disagreeing is a detectable event.
+#
+# Buffer positions are measured from the start of the *record*, key included, so
+# a position p in the file is at buffer offset p - record.offset. See Buffer.md
+# section 1.
+# ---------------------------------------------------------------------------
+
+BYTE_COUNT_MASK = 0x40000000
+MAX_MAP_COUNT = 0x3FFFFFFE
+MAX_VERSION = 0x3FFF
+NEW_CLASS_TAG = 0xFFFFFFFF
+CLASS_MASK = 0x80000000
+MAP_OFFSET = 2
+# Map position 1 is the record's own top-level object, not a buffer offset.
+SELF_POSITION = 1
+STREAMED_MEMBER_WISE = 0x4000
+
+# TObject::kIsReferenced, which adds a trailing u16 to the TObject base.
+IS_REFERENCED = 0x10
+
+
+@dataclass
+class Frame:
+    """A `byteCount? version` object header (Buffer.md section 3)."""
+
+    offset: int                  # position of the byte count, else of the version
+    byte_count: int | None
+    version: int
+    member_wise: bool
+    body: int                    # first content byte
+    end: int | None              # one past the object, when a byte count is present
+
+
+def read_frame(buf: bytes, offset: int) -> Frame:
+    """Read a version word and the byte count that may precede it."""
+    word = _u32(buf, offset)
+    if word & BYTE_COUNT_MASK:
+        byte_count = word & ~BYTE_COUNT_MASK
+        version_at = offset + 4
+        end = offset + 4 + byte_count
+    else:
+        byte_count = None
+        version_at = offset
+        end = None
+    raw = _i16(buf, version_at)
+    return Frame(
+        offset=offset,
+        byte_count=byte_count,
+        version=raw & ~STREAMED_MEMBER_WISE,
+        member_wise=bool(raw & STREAMED_MEMBER_WISE),
+        body=version_at + 2,
+        end=end,
+    )
+
+
+def is_compressed(rec: Record) -> bool:
+    return rec.nbytes - rec.key_len != rec.obj_len
+
+
+def payload_range(rec: Record) -> tuple[int, int]:
+    """File offsets of the payload of an uncompressed record."""
+    start = rec.offset + rec.key_len
+    return start, start + rec.obj_len
+
+
+def skip_tobject(buf: bytes, offset: int) -> int:
+    """Skip a TObject base: version, fUniqueID, fBits, and a pidf if referenced.
+
+    Buffer.md section 7. There is no byte count.
+    """
+    bits = _u32(buf, offset + 6)
+    return offset + 10 + (2 if bits & IS_REFERENCED else 0)
+
+
+@dataclass
+class Slot:
+    """One object slot and how it was encoded (Buffer.md section 6)."""
+
+    offset: int                  # position of the first word
+    kind: str                    # "null" | "reference" | "object"
+    end: int                     # one past the slot
+    reference: int | None = None  # map position, for "reference"
+    class_name: str | None = None
+    class_reference: int | None = None  # map position, for a class back-reference
+    object_position: int | None = None  # map position this object was recorded at
+    class_position: int | None = None   # map position its class tag was recorded at
+
+
+def read_slot(buf: bytes, offset: int, base: int) -> Slot:
+    """Read one object slot. `base` is the record start, i.e. buffer position 0.
+
+    Raises FormatError when the slot cannot be skipped, which happens only for a
+    new-class record with no byte count -- a form no fixture contains.
+    """
+    word = _u32(buf, offset)
+    if word == 0:
+        return Slot(offset=offset, kind="null", end=offset + 4)
+    if not (word & BYTE_COUNT_MASK) and word != NEW_CLASS_TAG:
+        return Slot(offset=offset, kind="reference", end=offset + 4, reference=word)
+
+    if word == NEW_CLASS_TAG:
+        raise FormatError(f"new-class record with no byte count at {offset}")
+    byte_count = word & ~BYTE_COUNT_MASK
+    if byte_count > MAX_MAP_COUNT:
+        raise FormatError(f"byte count {byte_count} at {offset} exceeds kMaxMapCount")
+    end = offset + 4 + byte_count
+    tag = _u32(buf, offset + 4)
+    slot = Slot(offset=offset, kind="object", end=end,
+                object_position=offset - base + MAP_OFFSET)
+    if tag == NEW_CLASS_TAG:
+        name, _ = _counted_string_c(buf, offset + 8)
+        slot.class_name = name
+        slot.class_position = offset + 4 - base + MAP_OFFSET
+    elif tag & CLASS_MASK:
+        slot.class_reference = tag & ~CLASS_MASK
+    else:
+        raise FormatError(f"object slot at {offset} has a byte count but tag {tag:#x}")
+    return slot
+
+
+def _counted_string_c(buf: bytes, offset: int) -> tuple[str, int]:
+    """A null-terminated class name (Conventions 5.2). Returns (name, next)."""
+    end = buf.index(b"\x00", offset)
+    return buf[offset:end].decode("latin-1"), end + 1
+
+
+def read_tlist(buf: bytes, rec: Record) -> list[Slot]:
+    """Walk a TList record and return its object slots.
+
+    TList's layout is version dependent (root/core/cont/src/TList.cxx:1323): the
+    option string per entry exists only for version > 3, and its 255 escape only
+    for version > 4.
+    """
+    base = rec.offset
+    start, end = payload_range(rec)
+    frame = read_frame(buf, start)
+    if frame.version < 1 or frame.version > 5:
+        raise FormatError(f"unexpected TList version {frame.version}")
+    o = frame.body
+    if frame.version > 2:
+        o = skip_tobject(buf, o)
+    if frame.version > 1:
+        o = _counted_string(buf, o)[1]   # returns the next offset, not a length
+    count = _i32(buf, o)
+    o += 4
+    slots = []
+    for _ in range(count):
+        slot = read_slot(buf, o, base)
+        slots.append(slot)
+        o = slot.end
+        if frame.version > 3:
+            n = buf[o]
+            if n == 255 and frame.version > 4:
+                o += 5 + _i32(buf, o + 1)
+            else:
+                o += 1 + n
+    if o != end:
+        raise FormatError(f"TList at {rec.offset} ends at {o}, payload ends at {end}")
+    return slots

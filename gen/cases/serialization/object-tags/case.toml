@@ -1,0 +1,230 @@
+id   = "serialization/object-tags"
+file = "data/serialization/object-tags.root"
+size = 1579
+
+description = """
+A TList holding four entries but only three objects: the first TObjString is
+added twice. The record therefore contains one new-class record per distinct
+class, one class back-reference (the second TObjString), and one object
+back-reference (the repeated pointer), which is every form an object slot can
+take apart from a null.
+
+The two back-reference values are the evidence that buffer map positions are
+measured from the start of the *record*, key included, and not from the start of
+the payload: the class reference is 85 while the kNewClassTag word it names sits
+83 bytes into the record, and kMapOffset is 2.
+"""
+
+spec = [
+  "spec/02-serialization/Buffer.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 208
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 308
+nbytes = 197
+class  = "TList"
+role   = "the list; the record this case is about"
+
+[[records]]
+offset = 505
+nbytes = 825
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1330
+nbytes = 149
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1479
+nbytes = 100
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# The TList record. Key at 308, fKeyLen 55, so the payload starts at 363 and
+# buffer position 0 is file offset 308.
+# ---------------------------------------------------------------------------
+
+# --- The list itself -------------------------------------------------------
+[[bytes]]
+name = "TList byte count, kByteCountMask | 138"
+offset = 363
+type = "u32"
+value = 1073741962
+[[bytes]]
+name = "TList class version"
+offset = 367
+type = "i16"
+value = 5
+[[bytes]]
+name = "TObject base version"
+offset = 369
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject::fUniqueID"
+offset = 371
+type = "u32"
+value = 0
+[[bytes]]
+name = "TObject::fBits, with kIsOnHeap and kNotDeleted masked off"
+offset = 375
+type = "u32"
+value = 0
+[[bytes]]
+name = "TList::fName"
+offset = 379
+type = "string"
+value = "lst"
+[[bytes]]
+name = "TList entry count"
+offset = 383
+type = "i32"
+value = 4
+
+# --- Entry 1: a new-class record for TObjString ----------------------------
+[[bytes]]
+name = "entry 1 byte count, kByteCountMask | 37"
+offset = 387
+type = "u32"
+value = 1073741861
+[[bytes]]
+name = "entry 1 kNewClassTag"
+offset = 391
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "entry 1 class name, null-terminated not counted"
+offset = 395
+type = "bytes"
+value = "TObjString"
+[[bytes]]
+name = "entry 1 class name terminator"
+offset = 405
+type = "u8"
+value = 0
+[[bytes]]
+name = "entry 1 object byte count, kByteCountMask | 18"
+offset = 406
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "entry 1 TObjString class version"
+offset = 410
+type = "i16"
+value = 1
+[[bytes]]
+name = "entry 1 TObject base version"
+offset = 412
+type = "i16"
+value = 1
+[[bytes]]
+name = "entry 1 TString payload, a bare counted string"
+offset = 422
+type = "string"
+value = "alpha"
+[[bytes]]
+name = "entry 1 option string, empty, outside the byte count"
+offset = 428
+type = "u8"
+value = 0
+
+# --- Entry 2: a second new-class record, for TNamed ------------------------
+[[bytes]]
+name = "entry 2 byte count, kByteCountMask | 33"
+offset = 429
+type = "u32"
+value = 1073741857
+[[bytes]]
+name = "entry 2 kNewClassTag"
+offset = 433
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "entry 2 class name"
+offset = 437
+type = "bytes"
+value = "TNamed"
+[[bytes]]
+name = "entry 2 class name terminator"
+offset = 443
+type = "u8"
+value = 0
+[[bytes]]
+name = "entry 2 object byte count, kByteCountMask | 18"
+offset = 444
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "entry 2 TNamed class version"
+offset = 448
+type = "i16"
+value = 1
+[[bytes]]
+name = "entry 2 TNamed::fName"
+offset = 460
+type = "string"
+value = "nm"
+[[bytes]]
+name = "entry 2 TNamed::fTitle"
+offset = 463
+type = "string"
+value = "ti"
+
+# --- Entry 3: TObjString again, by class back-reference --------------------
+[[bytes]]
+name = "entry 3 byte count, kByteCountMask | 25"
+offset = 467
+type = "u32"
+value = 1073741849
+[[bytes]]
+name = "entry 3 class back-reference, kClassMask | 85"
+offset = 471
+type = "u32"
+value = 2147483733
+[[bytes]]
+name = "entry 3 object byte count, kByteCountMask | 17"
+offset = 475
+type = "u32"
+value = 1073741841
+[[bytes]]
+name = "entry 3 TObjString class version"
+offset = 479
+type = "i16"
+value = 1
+[[bytes]]
+name = "entry 3 TString payload"
+offset = 491
+type = "string"
+value = "beta"
+[[bytes]]
+name = "entry 3 option string"
+offset = 496
+type = "string"
+value = "opt"
+
+# --- Entry 4: the first TObjString again, by object back-reference ---------
+# A bare buffer position: no kByteCountMask, no kClassMask, no class record and
+# no second copy of the object.
+[[bytes]]
+name = "entry 4 object back-reference to entry 1, == 387 - 308 + kMapOffset"
+offset = 500
+type = "u32"
+value = 81
+[[bytes]]
+name = "entry 4 option string, empty"
+offset = 504
+type = "u8"
+value = 0

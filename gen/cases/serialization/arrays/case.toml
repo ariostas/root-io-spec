@@ -1,0 +1,152 @@
+id   = "serialization/arrays"
+file = "data/serialization/arrays.root"
+size = 1428
+
+description = """
+Fixed-size, multidimensional and variable-length array members.
+
+A fixed-size C array (kOffsetL, 20 + the basic type) is written as its elements
+back to back with no count and no prefix of any kind; a two-dimensional array is
+indistinguishable on disk from a flat one of the same total length, and only the
+streamer info's fArrayDim and fMaxIndex recover the shape.
+
+A variable-length array (kOffsetP, 40 + the basic type) is preceded by a single
+byte saying whether the pointer was null. fVar is present, so its flag byte is 1
+and three Int_t follow; fMissing is null, so its flag byte is 0 and nothing
+follows it at all -- not even a length. Both take their length from fN, which is
+an ordinary Int_t marked kCounter (6) in the streamer info.
+"""
+
+spec = [
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 194
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 294
+nbytes = 108
+class  = "Arrays"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 402
+nbytes = 810
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1212
+nbytes = 123
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1335
+nbytes = 93
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 294, fKeyLen 36, so the payload starts at 330.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 68"
+offset = 330
+type = "u32"
+value = 1073741892
+[[bytes]]
+name = "version word: 0, foreign class"
+offset = 334
+type = "i16"
+value = 0
+[[bytes]]
+name = "checksum"
+offset = 336
+type = "u32"
+value = 1443552324
+
+# --- fN, the counter: an ordinary Int_t ------------------------------------
+[[bytes]]
+name = "fN, kCounter (6): an Int_t like any other"
+offset = 340
+type = "i32"
+value = 3
+
+# --- fFixed[3], kOffsetL + kInt (23): no prefix ----------------------------
+[[bytes]]
+name = "fFixed[0]"
+offset = 344
+type = "i32"
+value = 286331153
+[[bytes]]
+name = "fFixed[1]"
+offset = 348
+type = "i32"
+value = 572662306
+[[bytes]]
+name = "fFixed[2]"
+offset = 352
+type = "i32"
+value = 858993459
+
+# --- fGrid[2][2], kOffsetL + kDouble (28): flattened, row-major ------------
+[[bytes]]
+name = "fGrid[0][0]"
+offset = 356
+type = "f64"
+value = 1.0
+[[bytes]]
+name = "fGrid[0][1]"
+offset = 364
+type = "f64"
+value = 2.0
+[[bytes]]
+name = "fGrid[1][0], showing row-major order"
+offset = 372
+type = "f64"
+value = 3.0
+[[bytes]]
+name = "fGrid[1][1]"
+offset = 380
+type = "f64"
+value = 4.0
+
+# --- fVar, kOffsetP + kInt (43), present -----------------------------------
+[[bytes]]
+name = "fVar is-present byte: 1"
+offset = 388
+type = "u8"
+value = 1
+[[bytes]]
+name = "fVar[0]"
+offset = 389
+type = "i32"
+value = 168496141
+[[bytes]]
+name = "fVar[1]"
+offset = 393
+type = "i32"
+value = 437984285
+[[bytes]]
+name = "fVar[2]"
+offset = 397
+type = "i32"
+value = 707472429
+
+# --- fMissing, kOffsetP + kShort (42), null --------------------------------
+# The flag byte is the whole member: the record ends here, at payload offset
+# 330 + 72 = 402.
+[[bytes]]
+name = "fMissing is-present byte: 0, and nothing follows"
+offset = 401
+type = "u8"
+value = 0

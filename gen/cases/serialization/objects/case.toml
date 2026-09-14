@@ -1,0 +1,214 @@
+id   = "serialization/objects"
+file = "data/serialization/objects.root"
+size = 2141
+
+description = """
+Object-valued members: a TString, a class embedded by value, two pointers to
+that class (one set, one null) and a pointer to a TObject-derived class.
+
+The three distinctions this case pins down:
+
+- An embedded object (kAny, 62) gets a byte count and a version word but *no*
+  class record: the class is known from the streamer info.
+- A pointer (kAnyP, 69 / kObjectP, 64) gets a byte count and a class record,
+  because a pointer may refer to a derived class. A null pointer is four zero
+  bytes and nothing else.
+- kTString (65) has neither byte count nor version word: fStr is a bare counted
+  string sitting directly in the member sequence.
+
+fPtr and fNamed differ only in that Inner does not derive from TObject and
+TNamed does, which is what selects kAnyP over kObjectP.
+"""
+
+spec = [
+  "spec/02-serialization/Buffer.md",
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 198
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 298
+nbytes = 150
+class  = "Objects"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 448
+nbytes = 1472
+class  = "TList"
+role   = "StreamerInfo; carries Objects, Inner and TNamed"
+
+[[records]]
+offset = 1920
+nbytes = 126
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 2046
+nbytes = 95
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 298, fKeyLen 37, so the payload starts at 335.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 109"
+offset = 335
+type = "u32"
+value = 1073741933
+[[bytes]]
+name = "version word: 0, foreign class"
+offset = 339
+type = "i16"
+value = 0
+[[bytes]]
+name = "Objects checksum"
+offset = 341
+type = "u32"
+value = 2869241285
+
+# --- fStr, kTString (65): a bare counted string, no framing ----------------
+[[bytes]]
+name = "fStr, kTString: no byte count and no version word"
+offset = 345
+type = "string"
+value = "str"
+
+# --- fInner, kAny (62): byte count and version, but no class record --------
+[[bytes]]
+name = "fInner byte count, kByteCountMask | 18"
+offset = 349
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "fInner version word: 0, Inner is foreign too"
+offset = 353
+type = "i16"
+value = 0
+[[bytes]]
+name = "fInner checksum"
+offset = 355
+type = "u32"
+value = 3837658653
+[[bytes]]
+name = "fInner.fValue"
+offset = 359
+type = "i32"
+value = 16909060
+[[bytes]]
+name = "fInner.fWeight"
+offset = 363
+type = "f64"
+value = 1.5
+
+# --- fPtr, kAnyP (69), set: byte count, class record, then the object ------
+[[bytes]]
+name = "fPtr byte count, kByteCountMask | 32"
+offset = 371
+type = "u32"
+value = 1073741856
+[[bytes]]
+name = "fPtr kNewClassTag"
+offset = 375
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "fPtr class name"
+offset = 379
+type = "bytes"
+value = "Inner"
+[[bytes]]
+name = "fPtr class name terminator"
+offset = 384
+type = "u8"
+value = 0
+[[bytes]]
+name = "fPtr object byte count, kByteCountMask | 18"
+offset = 385
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "fPtr version word"
+offset = 389
+type = "i16"
+value = 0
+[[bytes]]
+name = "fPtr checksum, the same Inner checksum as the embedded copy"
+offset = 391
+type = "u32"
+value = 3837658653
+[[bytes]]
+name = "fPtr->fValue"
+offset = 395
+type = "i32"
+value = 168496141
+[[bytes]]
+name = "fPtr->fWeight"
+offset = 399
+type = "f64"
+value = -2.5
+
+# --- fNullPtr: four zero bytes, nothing else -------------------------------
+[[bytes]]
+name = "fNullPtr: a null pointer is four zero bytes, with no class record"
+offset = 407
+type = "u32"
+value = 0
+
+# --- fNamed, kObjectP (64) -------------------------------------------------
+[[bytes]]
+name = "fNamed byte count, kByteCountMask | 33"
+offset = 411
+type = "u32"
+value = 1073741857
+[[bytes]]
+name = "fNamed kNewClassTag"
+offset = 415
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "fNamed class name"
+offset = 419
+type = "bytes"
+value = "TNamed"
+[[bytes]]
+name = "fNamed class name terminator"
+offset = 425
+type = "u8"
+value = 0
+[[bytes]]
+name = "fNamed object byte count, kByteCountMask | 18"
+offset = 426
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "fNamed TNamed class version, a real version: TNamed is not foreign"
+offset = 430
+type = "i16"
+value = 1
+[[bytes]]
+name = "fNamed TObject base version"
+offset = 432
+type = "i16"
+value = 1
+[[bytes]]
+name = "fNamed->fName"
+offset = 442
+type = "string"
+value = "nm"
+[[bytes]]
+name = "fNamed->fTitle"
+offset = 445
+type = "string"
+value = "ti"
