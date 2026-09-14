@@ -16,6 +16,12 @@ from dataclasses import dataclass
 MAGIC = b"root"
 LARGE_FILE_VERSION_FLAG = 1000000
 
+#: A key whose fVersion exceeds this stores 8-byte offsets.
+LARGE_KEY_VERSION = 1000
+#: fPidOffset occupies the top 16 bits of a large key's fSeekPdir word.
+PID_OFFSET_SHIFT = 48
+PID_OFFSET_MASK = 0xFFFFFFFFFFFF
+
 
 class FormatError(Exception):
     pass
@@ -62,6 +68,8 @@ class Record:
     nbytes: int          # as stored: negative marks a free/unused segment
     key_version: int | None = None
     obj_len: int | None = None
+    pid_offset: int = 0
+    keep: bool = False
     datime: int | None = None
     datime_offset: int | None = None
     key_len: int | None = None
@@ -175,10 +183,19 @@ def read_records(buf: bytes, header: FileHeader) -> list[Record]:
         rec.datime = _u32(buf, off + 10)
         rec.datime_offset = off + 10
         rec.key_len = _i16(buf, off + 14)
-        rec.cycle = _i16(buf, off + 16)
+        # fCycle is negative when the key is marked "keep"; the cycle is its
+        # magnitude (root/io/io/src/TKey.cxx:623-626, :731-734).
+        raw_cycle = _i16(buf, off + 16)
+        rec.keep = raw_cycle < 0
+        rec.cycle = abs(raw_cycle)
         p = off + 18
-        if rec.key_version > 1000:      # large-file key: 8-byte seeks
-            rec.seek_key, rec.seek_pdir = _i64(buf, p), _i64(buf, p + 8)
+        if rec.key_version > LARGE_KEY_VERSION:  # large key: 8-byte seeks
+            rec.seek_key = _i64(buf, p)
+            # In a large key the top 16 bits of the fSeekPdir word hold
+            # fPidOffset, not address bits (root/io/io/src/TKey.cxx:670, :1281).
+            pdir = _i64(buf, p + 8)
+            rec.pid_offset = (pdir >> PID_OFFSET_SHIFT) & 0xFFFF
+            rec.seek_pdir = pdir & PID_OFFSET_MASK
             p += 16
         else:
             rec.seek_key, rec.seek_pdir = _i32(buf, p), _i32(buf, p + 4)

@@ -12,8 +12,8 @@ Prerequisites: [Conventions](../00-conventions.md).
 
 ## 1. Deciding whether a payload is compressed
 
-There is **no flag**. A reader determines it arithmetically, from three `TKey`
-fields:
+There is **no flag**. A reader determines it arithmetically, from three
+[key](Record.md) fields:
 
 ```
 payload length = fNbytes - fKeyLen
