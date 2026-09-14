@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Checks that need neither ROOT nor the submodule. Fast, and they are the ones
+  # a third party re-runs to confirm the fixtures match the specification.
+  fixtures:
+    name: fixture assertions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify byte assertions against the committed fixtures
+        run: tools/generate.py --check
+
+  # Checks that compare spec/ against the pinned ROOT source.
+  spec:
+    name: spec vs. pinned submodule
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: RNTuple specification has not drifted from upstream
+        run: tools/sync_rntuple.py --check
+        if: hashFiles('tools/sync_rntuple.py') != ''
+      - name: Class version matrices match ClassDef in the submodule
+        run: tools/check_versions.py
+        if: hashFiles('tools/check_versions.py') != ''
+
+  # Regeneration needs ROOT, so it is a separate job.
+  regenerate:
+    name: regenerate fixtures with ROOT
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+      - name: Install ROOT
+        run: |
+          # Must match the pinned submodule; see spec/00-conventions.md §1.
+          conda install -y -c conda-forge root=6.40.04
+      - name: Regenerate and compare normalized digests
+        run: tools/generate.py
+      - name: Fail if any fixture changed
+        run: git diff --exit-code -- data/
