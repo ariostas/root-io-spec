@@ -10,15 +10,16 @@ Masking strategy (deliberately blunt, and stated here because it is a tradeoff):
 
   * the file header's 16 UUID bytes, located by parsing the header;
   * every record's `fDatime`, located by walking the record chain;
-  * every further occurrence, anywhere in the file, of the UUID byte string or
-    of any `fDatime` value observed in a key.
+  * every directory record's own UUID and its `fDatimeC`/`fDatimeM`, located by
+    parsing the directory structure -- each directory carries a *distinct* UUID,
+    so the file-level one is not enough;
+  * every further occurrence, anywhere in the file, of any UUID or `fDatime`
+    value found above.
 
-The last rule catches the copies that `TDirectory` keeps in its own record
-(`fDatimeC`, `fDatimeM`, and the directory UUID) without this tool having to
-parse directory payloads. It can in principle mask a coincidentally equal run
-of payload bytes; for the small, hand-authored fixtures in `data/` that is
-acceptable, and a spurious mask is stable across runs so it cannot cause a
-false digest mismatch.
+The last rule catches further copies without this tool having to chase them. It
+can in principle mask a coincidentally equal run of payload bytes; for the small,
+hand-authored fixtures in `data/` that is acceptable, and a spurious mask is
+stable across runs so it cannot cause a false digest mismatch.
 """
 
 from __future__ import annotations
@@ -45,6 +46,18 @@ def normalize(buf: bytes) -> bytes:
         out[rec.datime_offset : rec.datime_offset + 4] = b"\0" * 4
         if rec.datime:
             volatile.append(struct.pack(">I", rec.datime))
+
+        directory = rootfile.read_directory(buf, rec)
+        if directory is None:
+            continue
+        if directory.uuid:
+            out[directory.uuid_offset : directory.uuid_offset + 16] = b"\0" * 16
+            if any(directory.uuid):
+                volatile.append(directory.uuid)
+        out[directory.datime_offset : directory.datime_offset + 8] = b"\0" * 8
+        for value in (directory.datime_c, directory.datime_m):
+            if value:
+                volatile.append(struct.pack(">I", value))
 
     for pattern in volatile:
         start = 0

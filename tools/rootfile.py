@@ -215,3 +215,75 @@ def load(path) -> tuple[bytes, FileHeader, list[Record]]:
         buf = fh.read()
     header = read_header(buf)
     return buf, header, read_records(buf, header)
+
+
+@dataclass
+class Directory:
+    """The TDirectoryFile structure inside a directory record's payload."""
+
+    version: int
+    datime_c: int
+    datime_m: int
+    datime_offset: int
+    nbytes_keys: int
+    nbytes_name: int
+    seek_dir: int
+    seek_parent: int
+    seek_keys: int
+    uuid: bytes
+    uuid_offset: int
+    fields_offset: int
+
+
+def read_directory(buf: bytes, rec: Record) -> Directory | None:
+    """Parse a record's payload as a TDirectoryFile, or return None.
+
+    The root directory's record repeats the name and title before the directory
+    fields, while a subdirectory's record does not. Rather than special-case the
+    two, both candidate offsets are tried and accepted only if `fSeekDir` equals
+    the record's own offset -- a self-check ROOT itself relies on.
+
+    Equivalently: the fields always begin at `rec.offset + fNbytesName`, which is
+    why `fNbytesName` differs between the root directory and a subdirectory.
+    """
+    if rec.free or rec.class_name not in ("TFile", "TDirectory"):
+        return None
+    candidates = [rec.payload_offset]
+    o = rec.payload_offset
+    for _ in range(2):                      # skip the duplicated name and title
+        o += 1 + buf[o]
+    candidates.append(o)
+
+    for start in candidates:
+        try:
+            version = _i16(buf, start)
+            p = start + 2
+            datime_offset = p
+            datime_c, datime_m = _u32(buf, p), _u32(buf, p + 4)
+            p += 8
+            nbytes_keys, nbytes_name = _i32(buf, p), _i32(buf, p + 4)
+            p += 8
+            if version > 1000:              # large-file directory
+                seek_dir, seek_parent, seek_keys = (
+                    _i64(buf, p), _i64(buf, p + 8), _i64(buf, p + 16))
+                p += 24
+            else:
+                seek_dir, seek_parent, seek_keys = (
+                    _i32(buf, p), _i32(buf, p + 4), _i32(buf, p + 8))
+                p += 12
+        except Exception:
+            continue
+        if seek_dir != rec.offset:
+            continue
+        uuid, uuid_offset = b"", p
+        if version > 1:                     # a UUID is present from version 2
+            uuid_offset = p + 2             # after the TUUID version word
+            uuid = buf[uuid_offset : uuid_offset + 16]
+        return Directory(
+            version=version, datime_c=datime_c, datime_m=datime_m,
+            datime_offset=datime_offset, nbytes_keys=nbytes_keys,
+            nbytes_name=nbytes_name, seek_dir=seek_dir, seek_parent=seek_parent,
+            seek_keys=seek_keys, uuid=uuid, uuid_offset=uuid_offset,
+            fields_offset=start,
+        )
+    return None
