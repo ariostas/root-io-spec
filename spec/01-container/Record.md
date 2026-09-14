@@ -12,7 +12,7 @@ All integers are big-endian.
 Records begin at `fBEGIN` and run to `fEND`. They are contiguous but not
 ordered: a record's position carries no meaning, and the only way to find a
 specific object is through a directory's key list
-(`spec/01-container/Directory.md`) or through an offset in the file header.
+([Directory](Directory.md)) or through an offset in the file header.
 
 To walk the chain, read a 4-byte signed integer at the current offset:
 
@@ -25,7 +25,7 @@ To walk the chain, read a 4-byte signed integer at the current offset:
 > **A negative value is not an error condition.** It marks a span that has been
 > freed — most often by deleting or overwriting an object — and a reader walking
 > the chain MUST skip it rather than attempt to parse a key there. See
-> `01-container/FreeSegments.md`. Demonstrated by `container/gap`, which has a
+> [Free segments](FreeSegments.md). Demonstrated by `container/gap`, which has a
 > `-187` span at offset 718 where a deleted record used to be.
 
 ## 2. Key layout
@@ -232,7 +232,7 @@ For a key-list or free-list record, `fClassName` is the *containing directory's*
 class. That is `"TFile"` for the root directory — or the name of a `TFile`
 subclass such as `TMemFile` — and `"TDirectory"` for a subdirectory. It is
 therefore not a reliable way to identify those records; see
-`01-container/Directory.md`.
+[Directories and key lists](Directory.md).
 
 > Demonstrated by `container/directories`: `alpha`'s directory key carries
 > class name `"TDirectory"` with length byte 10, and three distinct records carry

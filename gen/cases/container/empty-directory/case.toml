@@ -1,0 +1,70 @@
+id   = "container/empty-directory"
+file = "data/container/empty-directory.root"
+size = 972
+
+description = """
+Two empty subdirectories, one saved and one not. The saved one has a key-list
+record whose payload is the 4-byte count zero; the unsaved one has fSeekKeys == 0
+and no key-list record.
+"""
+
+spec = ["spec/01-container/Directory.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+# --- The saved directory has a key list holding zero keys ------------------
+[[bytes]]
+name = "saved: TDirectoryFile class version"
+offset = 361
+type = "i16"
+value = 5
+[[bytes]]
+name = "saved: fNbytesKeys, the whole key-list record"
+offset = 371
+type = "i32"
+value = 53
+[[bytes]]
+name = "saved: fNbytesName, == its fKeylen for a subdirectory"
+offset = 375
+type = "i32"
+value = 49
+[[bytes]]
+name = "saved: fSeekDir, its own record offset"
+offset = 379
+type = "i32"
+value = 312
+[[bytes]]
+name = "saved: fSeekParent, the mother directory"
+offset = 383
+type = "i32"
+value = 100
+[[bytes]]
+name = "saved: fSeekKeys"
+offset = 387
+type = "i32"
+value = 421
+
+# The key-list payload is the count alone: four zero bytes.
+[[bytes]]
+name = "key-list record fObjlen, just the 4-byte count"
+offset = 427
+type = "i32"
+value = 4
+[[bytes]]
+name = "key-list count, zero keys"
+offset = 470
+type = "i32"
+value = 0
+
+# --- The unsaved directory has no key list --------------------------------
+[[bytes]]
+name = "unsaved: fNbytesKeys is 0"
+offset = 537
+type = "i32"
+value = 0
+[[bytes]]
+name = "unsaved: fSeekKeys is 0"
+offset = 553
+type = "i32"
+value = 0

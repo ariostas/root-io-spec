@@ -314,3 +314,59 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
             fields_offset=start,
         )
     return None
+
+
+def read_key_list(buf: bytes, directory: Directory) -> list[Record]:
+    """Parse a directory's key list: a count, then that many key images.
+
+    The list is located only via `Directory.seek_keys`; its own record's key is
+    indistinguishable from the directory record's. `fSeekKeys == 0` means the
+    directory was never saved and has no list, which is not an error.
+
+    The count is authoritative. The record may be allocated up to 8 bytes larger
+    than the entries occupy, and that slack is uninitialized, so a parse driven by
+    the payload length rather than the count can yield a bogus trailing entry.
+    """
+    if not directory.seek_keys:
+        return []
+    header = read_header(buf)
+    record = next((r for r in read_records(buf, header)
+                   if r.offset == directory.seek_keys and not r.free), None)
+    if record is None:
+        raise FormatError(f"no record at fSeekKeys {directory.seek_keys}")
+
+    o = record.payload_offset
+    count = _i32(buf, o)
+    o += 4
+    entries = []
+    for _ in range(count):
+        entry, o = _read_key_at(buf, o)
+        entries.append(entry)
+    return entries
+
+
+def _read_key_at(buf: bytes, off: int) -> tuple[Record, int]:
+    """Read one key image, returning it and the offset just past it."""
+    rec = Record(offset=off, nbytes=_i32(buf, off))
+    rec.key_version = _i16(buf, off + 4)
+    rec.obj_len = _i32(buf, off + 6)
+    rec.datime = _u32(buf, off + 10)
+    rec.datime_offset = off + 10
+    rec.key_len = _i16(buf, off + 14)
+    raw_cycle = _i16(buf, off + 16)
+    rec.keep = raw_cycle < 0
+    rec.cycle = abs(raw_cycle)
+    p = off + 18
+    if rec.key_version > LARGE_KEY_VERSION:
+        rec.seek_key = _i64(buf, p)
+        pdir = _i64(buf, p + 8)
+        rec.pid_offset = (pdir >> PID_OFFSET_SHIFT) & 0xFFFF
+        rec.seek_pdir = pdir & PID_OFFSET_MASK
+        p += 16
+    else:
+        rec.seek_key, rec.seek_pdir = _i32(buf, p), _i32(buf, p + 4)
+        p += 8
+    rec.class_name, p = _counted_string(buf, p)
+    rec.name, p = _counted_string(buf, p)
+    rec.title, p = _counted_string(buf, p)
+    return rec, p

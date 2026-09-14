@@ -20,6 +20,8 @@ nav = [
   { "Container" = [
       { "File header" = "01-container/FileHeader.md" },
       { "Records and keys" = "01-container/Record.md" },
+      { "Directories and key lists" = "01-container/Directory.md" },
+      { "Free segments" = "01-container/FreeSegments.md" },
       { "Compression" = "01-container/Compression.md" },
   ] },
 ]

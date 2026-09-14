@@ -204,7 +204,7 @@ ROOT does not write streamer info for, and abnormal otherwise.
 
 The header does **not** contain the offset of the keys list. That offset,
 `fSeekKeys`, lives in the root directory record; see
-`spec/01-container/Directory.md`.
+[Directories and key lists](Directory.md).
 
 > **The keys-list and free-segment records cannot be identified from their keys.**
 > Both carry `fClassName = "TFile"` and the file's own name and title, exactly like
@@ -326,7 +326,7 @@ A conforming reader performs the following steps.
 6. The root directory record's key begins at `fBEGIN`. Its payload begins at
    `fBEGIN + fKeyLen` with a duplicated name and title; the `TDirectoryFile` fields
    begin at `fBEGIN + fNbytesName` (§5.3). Continue with
-   `spec/01-container/Directory.md`.
+   [Directories and key lists](Directory.md).
 
 Everything else — the record chain, the keys list, the streamer info — is reached
 from there or from `fSeekFree` / `fSeekInfo`.

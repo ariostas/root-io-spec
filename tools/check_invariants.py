@@ -190,17 +190,114 @@ class Checker:
                     self.bad("Compression 9.5",
                              f"{blocks} blocks for fObjlen {rec.obj_len}, expected {expected}")
 
-    # -- free list vs. the chain -------------------------------------------
+    # -- Directory.md 9 -----------------------------------------------------
+    def check_directories(self) -> None:
+        seen_subdirs: dict[int, int] = {}
+        for rec in self.records:
+            d = rootfile.read_directory(self.buf, rec)
+            if d is None:
+                continue
+            # 9.1 is what read_directory validates to identify the record at all.
+            if d.fields_offset != rec.offset + d.nbytes_name:
+                self.bad("Directory 9.2",
+                         f"fields at {d.fields_offset}, but fSeekDir + fNbytesName "
+                         f"is {rec.offset + d.nbytes_name}")
+            if rec.offset != self.header.begin and d.nbytes_name != rec.key_len:
+                self.bad("Directory 9.3",
+                         f"subdirectory {rec.name!r}: fNbytesName {d.nbytes_name} "
+                         f"!= fKeylen {rec.key_len}")
+            if not 10 <= d.nbytes_name <= 10000:
+                self.bad("Directory 9.4", f"fNbytesName {d.nbytes_name} outside [10, 10000]")
+            if not 1 <= d.version % 1000 <= 5:
+                self.bad("Directory 9.9", f"directory version {d.version}")
+            if d.datime_c > d.datime_m:
+                self.bad("Directory 9.10",
+                         f"fDatimeC {d.datime_c} > fDatimeM {d.datime_m}")
+
+            if not d.seek_keys:
+                if d.nbytes_keys:
+                    self.bad("Directory 9.5",
+                             f"fSeekKeys is 0 but fNbytesKeys is {d.nbytes_keys}")
+                continue
+            klist = self.at(d.seek_keys)
+            if klist is None or klist.nbytes != d.nbytes_keys:
+                got = "no record" if klist is None else klist.nbytes
+                self.bad("Directory 9.5",
+                         f"fNbytesKeys {d.nbytes_keys} != fNbytes at fSeekKeys ({got})")
+                continue
+            try:
+                entries = rootfile.read_key_list(self.buf, d)
+            except rootfile.FormatError as exc:
+                self.bad("Directory 9.6", str(exc))
+                continue
+            consumed = 4 + sum(e.key_len for e in entries)
+            if consumed > klist.obj_len:
+                self.bad("Directory 9.6",
+                         f"key list needs {consumed} bytes, fObjlen is {klist.obj_len}")
+            elif klist.obj_len - consumed > 8:
+                self.bad("Directory 9.6",
+                         f"key list leaves {klist.obj_len - consumed} unused bytes, at most 8 expected")
+            for e in entries:
+                if self.at(e.seek_key) is None:
+                    self.bad("Directory 9.7",
+                             f"key list entry {e.name!r} points at {e.seek_key}, not a record")
+                if e.seek_pdir != d.seek_dir:
+                    self.bad("Directory 9.7",
+                             f"entry {e.name!r} fSeekPdir {e.seek_pdir} != "
+                             f"containing fSeekDir {d.seek_dir}")
+                if e.class_name in ("TDirectory", "TDirectoryFile"):
+                    if e.seek_key in seen_subdirs:
+                        self.bad("Directory 9.8",
+                                 f"subdirectory at {e.seek_key} listed in two parents")
+                    seen_subdirs[e.seek_key] = d.seek_dir
+
+    # -- FreeSegments.md 8 --------------------------------------------------
     def check_free_list(self) -> None:
         if not self.header.seek_free:
             return
-        listed = {(f, l) for f, l in rootfile.read_free_segments(self.buf, self.header)}
+        segments = rootfile.read_free_segments(self.buf, self.header)
+        if not segments:
+            self.bad("FreeSegments 8.1", "the free list is empty")
+            return
+
+        first, last = segments[-1]
+        if first != self.header.end:
+            self.bad("FreeSegments 8.1",
+                     f"last entry starts at {first}, fEND is {self.header.end}")
+        if last <= self.header.end:
+            self.bad("FreeSegments 8.2", f"last entry fLast {last} does not exceed fEND")
+        if last < KSTART_BIG_FILE:
+            self.bad("FreeSegments 8.2", f"last entry fLast {last} below {KSTART_BIG_FILE}")
+        if last > KSTART_BIG_FILE and last % 1000000000 != 0:
+            self.bad("FreeSegments 8.2",
+                     f"last entry fLast {last} is not a multiple of 1e9 above {KSTART_BIG_FILE}")
+
+        previous_last = None
+        for f, l in segments:
+            if f > l:
+                self.bad("FreeSegments 8.5", f"entry ({f}, {l}) is inverted")
+            if previous_last is not None and f <= previous_last + 1:
+                self.bad("FreeSegments 8.5",
+                         f"entry starting {f} overlaps or abuts the previous ending {previous_last}")
+            previous_last = l
+
+        interior = [(f, l) for f, l in segments if l < self.header.end]
+        for f, l in interior:
+            marker = struct.unpack_from(">i", self.buf, f)[0]
+            expected = -min(l - f + 1, KSTART_BIG_FILE)
+            if marker != expected:
+                self.bad("FreeSegments 8.6",
+                         f"marker at {f} is {marker}, expected {expected}")
+
         walked = {(r.offset, r.offset - r.nbytes - 1) for r in self.records if r.free}
-        interior = {(f, l) for f, l in listed if l < self.header.end}
-        if interior != walked:
-            self.bad("FreeSegments",
-                     f"interior free entries {sorted(interior)} do not match the spans "
-                     f"found in the chain {sorted(walked)}")
+        if set(interior) != walked:
+            self.bad("FreeSegments 8.7",
+                     f"interior entries {sorted(interior)} do not match the spans "
+                     f"walked in the chain {sorted(walked)}")
+
+        if self.header.end > len(self.buf):
+            self.bad("FreeSegments 8.9",
+                     f"fEND {self.header.end} exceeds the file size {len(self.buf)}")
 
     def run(self) -> list[str]:
         if self.records is None:
@@ -213,6 +310,7 @@ class Checker:
         self.check_header()
         self.check_records()
         self.check_compression()
+        self.check_directories()
         self.check_free_list()
         return self.failures
 
