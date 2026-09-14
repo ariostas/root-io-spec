@@ -51,7 +51,7 @@ checkers in `tools/` run against.
 ## 2. Repository layout
 
 ```
-root-io-specifications/
+root-io-spec/
 ├── README.md
 ├── PLAN.md                       ← this file
 ├── LICENSE                       ← CC-BY-4.0 for spec/, BSD-3 for tools/ + gen/

@@ -8,9 +8,9 @@
 [project]
 site_name = "ROOT I/O Specifications"
 site_description = "A specification of the ROOT on-disk binary formats"
-site_url = "https://ariostas.github.io/root-io-specifications/"
-repo_url = "https://github.com/ariostas/root-io-specifications"
-repo_name = "ariostas/root-io-specifications"
+site_url = "https://ariostas.github.io/root-io-spec/"
+repo_url = "https://github.com/ariostas/root-io-spec"
+repo_name = "ariostas/root-io-spec"
 edit_uri = "edit/main/spec/"
 docs_dir = "spec"
 
