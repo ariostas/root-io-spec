@@ -31,7 +31,15 @@ Regenerating fixtures needs ROOT on PATH, matching the pinned submodule:
 ```sh
 tools/generate.py                                      # all cases
 tools/generate.py gen/cases/container/file-minimal     # one case
+tools/generate.py --accept <case-dir>                  # after editing a case on purpose
 ```
+
+A digest differing from `data/MANIFEST.sha256` is an error: either the format
+changed or a fixture stopped being reproducible. `--accept` re-records it, and is
+the right move only when you changed the case yourself.
+
+Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
+`| tail` will hide it along with the non-zero status.
 
 Docs toolchain is separate from the checks and is not needed for any fixture
 check. `.venv/` is gitignored, so create it there:

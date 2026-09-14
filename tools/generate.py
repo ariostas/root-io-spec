@@ -7,7 +7,13 @@ requires ROOT on PATH; checking the result afterwards does not.
 
   tools/generate.py              regenerate everything, then verify
   tools/generate.py --check      verify only, without regenerating
+  tools/generate.py --accept     record digests that changed on purpose
   tools/generate.py <case-dir>   act on one case
+
+A digest that differs from data/MANIFEST.sha256 is an error, because it means
+either the format changed or a fixture stopped being reproducible. When the change
+is intentional -- a case.toml or gen.C was edited -- re-record it with --accept,
+which prints what changed and then writes the manifest.
 """
 
 from __future__ import annotations
@@ -50,6 +56,12 @@ def run(case_dir: Path) -> Path:
 
 def main(argv: list[str]) -> int:
     check_only = "--check" in argv
+    accept = "--accept" in argv
+    unknown = [a for a in argv if a.startswith("--") and a not in ("--check", "--accept")]
+    if unknown:
+        raise SystemExit(f"unknown option(s): {' '.join(unknown)}")
+    if check_only and accept:
+        raise SystemExit("--check and --accept are mutually exclusive")
     selected = [a for a in argv if not a.startswith("--")]
     dirs = cases(selected)
 
@@ -76,9 +88,10 @@ def main(argv: list[str]) -> int:
             drift.append(f"{rel}: normalized digest changed\n  was {known[rel]}\n  now {d}")
 
     for message in drift:
-        print(f"DRIFT {message}", file=sys.stderr)
+        label = "ACCEPTED" if accept else "DRIFT"
+        print(f"{label} {message}", file=sys.stderr)
 
-    if not check_only and not drift:
+    if not check_only and (accept or not drift):
         # Merge rather than replace: running on a subset of the cases must not
         # drop the digests of the cases it was not asked about.
         merged = dict(known)
@@ -92,7 +105,7 @@ def main(argv: list[str]) -> int:
         )
 
     rc = check_bytes.main([str(d) for d in dirs])
-    return 1 if (drift or rc) else 0
+    return 1 if ((drift and not accept) or rc) else 0
 
 
 if __name__ == "__main__":
