@@ -1,4 +1,4 @@
-# PLAN — ROOT I/O Specifications
+# PLAN — ROOT I/O Specification
 
 Status: **draft for discussion**. Nothing below is implemented yet except the repo
 skeleton and the pinned ROOT submodule.

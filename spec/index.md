@@ -1,4 +1,4 @@
-# ROOT I/O Specifications
+# ROOT I/O Specification
 
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.

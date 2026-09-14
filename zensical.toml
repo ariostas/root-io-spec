@@ -6,7 +6,7 @@
 # on GitHub and portable to another Python-Markdown renderer.
 
 [project]
-site_name = "ROOT I/O Specifications"
+site_name = "ROOT I/O Specification"
 site_description = "A specification of the ROOT on-disk binary formats"
 site_url = "https://ariostas.github.io/root-io-spec/"
 repo_url = "https://github.com/ariostas/root-io-spec"
