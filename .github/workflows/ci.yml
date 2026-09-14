@@ -18,6 +18,8 @@ jobs:
           python-version: "3.12"
       - name: Verify byte assertions against the committed fixtures
         run: tools/generate.py --check
+      - name: Verify the spec's Invariants sections hold for every fixture
+        run: tools/check_invariants.py
 
   # Checks that compare spec/ against the pinned ROOT source.
   spec:

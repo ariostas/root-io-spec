@@ -516,7 +516,7 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 | `tools/check_versions.py` | Fail if a class document's version matrix disagrees with the submodule's `ClassDef`. This is what keeps the spec from rotting. |
 | `tools/dump_streamerinfo.C` | ROOT macro wrapping `TFile::ShowStreamerInfo()` + `TClass::GetCheckSum()` into machine-readable JSON, used to generate and verify the member tables. |
 | `tools/gen_tables.py` | Fill the `<!-- BEGIN GENERATED -->` blocks in `spec/03-classes/` from `dump_streamerinfo.C` output + `git log -L` release ranges + the `.notes.yaml` sidecars. CI fails on stale blocks. |
-| `tools/check_invariants.py` | Verify the §2.8 invariants hold for every fixture. Doubles as a test that the invariants are stated correctly. |
+| `tools/check_invariants.py` | Verify the §2.8 invariants hold for every fixture. Doubles as a test that the invariants are stated correctly. **Implemented.** |
 | `tools/sync_rntuple.py` | Re-copy the upstream RNTuple spec; fail on drift. |
 | `tools/normalize.py` | Timestamp/UUID-masked digests for fixtures. |
 | `tools/generate.py` | Run every `gen.C`, produce `data/`, validate against `case.yaml`. |

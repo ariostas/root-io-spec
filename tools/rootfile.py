@@ -167,9 +167,19 @@ def read_header(buf: bytes) -> FileHeader:
 
 
 def read_records(buf: bytes, header: FileHeader) -> list[Record]:
-    """Walk the record chain from `header.begin` to `header.end`."""
+    """Walk the record chain from `header.begin` to `header.end`.
+
+    Raises FormatError, never a struct error, when the chain runs past the end of
+    the buffer -- which is what a file truncated after `fEND` was written looks
+    like.
+    """
+    if header.end > len(buf):
+        raise FormatError(
+            f"fEND is {header.end} but the file is {len(buf)} bytes: truncated")
     records, off = [], header.begin
     while off < header.end:
+        if off + 4 > len(buf):
+            raise FormatError(f"record header at {off} runs past the end of the file")
         nbytes = _i32(buf, off)
         if nbytes == 0:
             raise FormatError(f"zero-length record at {off}")
