@@ -1,0 +1,168 @@
+id   = "serialization/pointer-forms"
+file = "data/serialization/pointer-forms.root"
+size = 1656
+
+description = """
+Two framing distinctions that a member's declared C++ type does not reveal.
+
+fArrow and fPlainP are both In2*. fArrow carries the `->` annotation, promising
+the pointer is never null, so ROOT writes the pointee bare: byte count, version,
+and the object, with no class record. fPlainP gets the full object-reference
+protocol including a kNewClassTag record. The element types differ accordingly,
+68 (kAnyp) and 69 (kAnyP), and the only thing that selected them is the comment.
+
+fS1 and fS2 are both TString. The scalar has neither byte count nor version word
+and is a bare counted string. The two-element array gets both -- and the version
+word is 10, which is TStreamerInfo's own class version and has nothing to do with
+TString. A reader that treats 65 and 85 as "the same but repeated" desynchronises
+by six bytes.
+
+The trailing Int_t sentinel pins the end of fS2.
+"""
+
+spec = [
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 220
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 320
+nbytes = 101
+class  = "Arrow"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 421
+nbytes = 994
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1415
+nbytes = 135
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1550
+nbytes = 106
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 320, fKeyLen 35, so the payload starts at 355.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 62"
+offset = 355
+type = "u32"
+value = 1073741886
+[[bytes]]
+name = "version word: 0, foreign class"
+offset = 359
+type = "i16"
+value = 0
+[[bytes]]
+name = "Arrow checksum"
+offset = 361
+type = "u32"
+value = 681733017
+
+# --- fArrow, kAnyp (68): byte count and version, but NO class record -------
+[[bytes]]
+name = "fArrow byte count, kByteCountMask | 10"
+offset = 365
+type = "u32"
+value = 1073741834
+[[bytes]]
+name = "fArrow version word: the object begins immediately, with no class record"
+offset = 369
+type = "i16"
+value = 0
+[[bytes]]
+name = "fArrow In2 checksum"
+offset = 371
+type = "u32"
+value = 263966
+[[bytes]]
+name = "fArrow->fV"
+offset = 375
+type = "i32"
+value = 286331153
+
+# --- fPlainP, kAnyP (69): the same type, but with a class record -----------
+[[bytes]]
+name = "fPlainP byte count, kByteCountMask | 22, twelve more than fArrow"
+offset = 379
+type = "u32"
+value = 1073741846
+[[bytes]]
+name = "fPlainP kNewClassTag, which fArrow does not have"
+offset = 383
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "fPlainP class name"
+offset = 387
+type = "bytes"
+value = "In2"
+[[bytes]]
+name = "fPlainP class name terminator"
+offset = 390
+type = "u8"
+value = 0
+[[bytes]]
+name = "fPlainP object byte count, kByteCountMask | 10, same as fArrow's"
+offset = 391
+type = "u32"
+value = 1073741834
+[[bytes]]
+name = "fPlainP->fV"
+offset = 401
+type = "i32"
+value = 572662306
+
+# --- fS1, kTString (65): a bare counted string ----------------------------
+[[bytes]]
+name = "fS1: no byte count, no version word"
+offset = 405
+type = "string"
+value = "a"
+
+# --- fS2, kTString + kOffsetL (85): byte count and version ----------------
+[[bytes]]
+name = "fS2 byte count, kByteCountMask | 6: the array form is framed"
+offset = 407
+type = "u32"
+value = 1073741830
+[[bytes]]
+name = "fS2 version word: 10, TStreamerInfo's class version, not TString's"
+offset = 411
+type = "i16"
+value = 10
+[[bytes]]
+name = "fS2[0]"
+offset = 413
+type = "string"
+value = "b"
+[[bytes]]
+name = "fS2[1]"
+offset = 415
+type = "string"
+value = "c"
+
+# --- The sentinel ---------------------------------------------------------
+[[bytes]]
+name = "fEnd: proves fS2 consumed exactly the six framed bytes"
+offset = 417
+type = "i32"
+value = 2122219134

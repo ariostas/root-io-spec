@@ -1,0 +1,142 @@
+id   = "serialization/double32"
+file = "data/serialization/double32.root"
+size = 1545
+
+description = """
+Double32_t and Float16_t members, whose on-disk width is decided by the element's
+comment string rather than by its declared type.
+
+All six members hold 1.5 except fRange, which holds 0.5. The widths are 4, 4, 3,
+3, 4 and 3 bytes, so fBits15 is wider than fBits14: GetRange records a bit count
+only when it is below 15, and above that the member degrades to a plain 4-byte
+float and the element does not even carry the kHasRange bit. The trailing Int_t
+sentinel pins the last width.
+
+The assertions cover the raw encodings rather than the decoded values, since the
+point is the byte layout. The exponent/mantissa pairs are what the nbits path
+produces for 1.5, whose float32 pattern is 0x3fc00000: the exponent byte is 0x7f
+throughout and the mantissa is 1 << (nbits - 1).
+"""
+
+spec = [
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 208
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 308
+nbytes = 74
+class  = "Quantised"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 382
+nbytes = 930
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1312
+nbytes = 133
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1445
+nbytes = 100
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 308, fKeyLen 39, so the payload starts at 347. Members start at 353,
+# after the version word and the foreign-class checksum.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 31"
+offset = 347
+type = "u32"
+value = 1073741855
+[[bytes]]
+name = "version word: 0, foreign class"
+offset = 351
+type = "i16"
+value = 0
+[[bytes]]
+name = "checksum"
+offset = 353
+type = "u32"
+value = 220158953
+
+# --- fPlain: no annotation, so a plain 4-byte float ------------------------
+[[bytes]]
+name = "fPlain: kDouble32 with no range is a plain binary32, 4 bytes"
+offset = 357
+type = "f32"
+value = 1.5
+
+# --- fRange: [0,1], the factor path, a 4-byte UInt_t ----------------------
+# factor = 0xffffffff / (1 - 0); aint = round(factor * (0.5 - 0)) = 0x80000000
+[[bytes]]
+name = "fRange: the factor path stores a UInt_t, 4 bytes whatever nbits says"
+offset = 361
+type = "u32"
+value = 2147483648
+
+# --- fBits8: [0,0,8], the nbits path, 3 bytes ------------------------------
+[[bytes]]
+name = "fBits8 exponent byte"
+offset = 365
+type = "u8"
+value = 127
+[[bytes]]
+name = "fBits8 mantissa, 1 << (8 - 1)"
+offset = 366
+type = "u16"
+value = 128
+
+# --- fBits14: [0,0,14], still 3 bytes -------------------------------------
+[[bytes]]
+name = "fBits14 exponent byte"
+offset = 368
+type = "u8"
+value = 127
+[[bytes]]
+name = "fBits14 mantissa, 1 << (14 - 1)"
+offset = 369
+type = "u16"
+value = 8192
+
+# --- fBits15: [0,0,15] degrades to a plain float, 4 bytes -----------------
+[[bytes]]
+name = "fBits15: nbits >= 15 silently becomes a plain binary32, wider than fBits14"
+offset = 371
+type = "f32"
+value = 1.5
+
+# --- fF16: Float16_t [0,0,12], 3 bytes -----------------------------------
+[[bytes]]
+name = "fF16 exponent byte"
+offset = 375
+type = "u8"
+value = 127
+[[bytes]]
+name = "fF16 mantissa, 1 << (12 - 1)"
+offset = 376
+type = "u16"
+value = 2048
+
+# --- The sentinel, which pins fF16 at three bytes -------------------------
+[[bytes]]
+name = "fEnd: proves fF16 consumed exactly 3 bytes"
+offset = 378
+type = "i32"
+value = 2139062143

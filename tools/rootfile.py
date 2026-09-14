@@ -536,3 +536,208 @@ def read_tlist(buf: bytes, rec: Record) -> list[Slot]:
     if o != end:
         raise FormatError(f"TList at {rec.offset} ends at {o}, payload ends at {end}")
     return slots
+
+
+# ---------------------------------------------------------------------------
+# The StreamerInfo record, spec/02-serialization/StreamerInfo.md.
+#
+# These classes cannot be read using streamer info, because they are what the
+# streamer info is made of, so the layout below is hardcoded -- which is exactly
+# the bootstrap problem the specification describes.
+# ---------------------------------------------------------------------------
+
+# TStreamerElement status bits that survive to disk, in the TObject base's fBits.
+ELEMENT_HAS_RANGE = 1 << 6       # kHasRange: the title carries a Double32/Float16 range
+ELEMENT_DO_NOT_DELETE = 1 << 13  # kDoNotDelete
+
+# The subclass tail after the TStreamerElement base, as (member, reader) pairs.
+# Empty for the subclasses that add nothing.
+_ELEMENT_TAILS = {
+    "TStreamerBase": [("fBaseVersion", "i32")],
+    "TStreamerBasicType": [],
+    "TStreamerBasicPointer": [("fCountVersion", "i32"),
+                              ("fCountName", "string"), ("fCountClass", "string")],
+    "TStreamerLoop": [("fCountVersion", "i32"),
+                      ("fCountName", "string"), ("fCountClass", "string")],
+    "TStreamerObject": [],
+    "TStreamerObjectAny": [],
+    "TStreamerObjectPointer": [],
+    "TStreamerObjectAnyPointer": [],
+    "TStreamerString": [],
+    "TStreamerSTL": [("fSTLtype", "i32"), ("fCtype", "i32")],
+    "TStreamerSTLstring": [],   # nests one level deeper, inside TStreamerSTL
+}
+
+
+@dataclass
+class Element:
+    """One TStreamerElement subclass instance out of a TStreamerInfo."""
+
+    cls: str                 # concrete subclass name
+    version: int             # of that subclass
+    name: str                # fName: the member or base-class name
+    title: str               # fTitle: the declaration comment
+    bits: int                # the TObject base's fBits
+    ftype: int
+    fsize: int
+    array_length: int
+    array_dim: int
+    max_index: list[int]
+    type_name: str
+    tail: dict               # subclass-specific members
+
+    @property
+    def has_range(self) -> bool:
+        return bool(self.bits & ELEMENT_HAS_RANGE)
+
+    @property
+    def base_checksum(self) -> int:
+        """For a TStreamerBase, fBaseCheckSum is an alias for fMaxIndex[1].
+
+        fMaxIndex is declared Int_t but fBaseCheckSum is a UInt_t reference onto
+        it, so a checksum with the top bit set reads back negative and must be
+        reinterpreted as unsigned.
+        """
+        return self.max_index[1] & 0xFFFFFFFF
+
+
+@dataclass
+class StreamerInfo:
+    name: str                # the described class
+    title: str
+    version: int             # of TStreamerInfo itself
+    bits: int
+    checksum: int
+    class_version: int
+    elements: list[Element]
+
+
+def _skip_named(buf: bytes, offset: int) -> tuple[str, str, int, int]:
+    """Skip a TNamed record; return (fName, fTitle, fBits, next offset)."""
+    frame = read_frame(buf, offset)
+    o = frame.body
+    bits = _u32(buf, o + 6)
+    o = skip_tobject(buf, o)
+    name, o = _counted_string(buf, o)
+    title, o = _counted_string(buf, o)
+    if frame.end is not None:
+        o = frame.end
+    return name, title, bits, o
+
+
+def resolve_class(slot: Slot, classes: dict[int, str]) -> tuple[str, int]:
+    """The slot's class name and the offset its object body starts at.
+
+    `classes` maps map positions to class names and is filled as the buffer is
+    walked, which is what lets a class back-reference be resolved (Buffer.md
+    section 5.2). It must be shared across one whole record.
+    """
+    if slot.kind != "object":
+        raise FormatError(f"slot at {slot.offset} is {slot.kind}, not an object")
+    if slot.class_name is not None:
+        classes[slot.class_position] = slot.class_name
+        # class name is NUL-terminated, starting 8 bytes into the slot
+        return slot.class_name, slot.offset + 8 + len(slot.class_name) + 1
+    ref = slot.class_reference
+    if ref not in classes:
+        raise FormatError(f"slot at {slot.offset} references class position {ref}, "
+                          f"which was not seen earlier in this buffer")
+    return classes[ref], slot.offset + 8
+
+
+def read_element(buf: bytes, offset: int, base: int,
+                 classes: dict[int, str]) -> tuple[Element, int]:
+    """Read one element slot out of a TStreamerInfo's fElements array."""
+    slot = read_slot(buf, offset, base)
+    cls, body = resolve_class(slot, classes)
+    return _read_element_body(buf, body, cls), slot.end
+
+
+def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
+    outer = read_frame(buf, offset)
+    o = outer.body
+    if cls == "TStreamerSTLstring":
+        # Nests TStreamerSTL, which itself nests TStreamerElement.
+        inner = read_frame(buf, o)
+        el = _read_element_body(buf, o, "TStreamerSTL")
+        return Element(cls=cls, version=outer.version, name=el.name, title=el.title,
+                       bits=el.bits, ftype=el.ftype, fsize=el.fsize,
+                       array_length=el.array_length, array_dim=el.array_dim,
+                       max_index=el.max_index, type_name=el.type_name, tail=el.tail)
+
+    # The TStreamerElement base.
+    elem = read_frame(buf, o)
+    eo = elem.body
+    name, title, bits, eo = _skip_named(buf, eo)
+    ftype, fsize, array_length, array_dim = struct.unpack_from(">iiii", buf, eo)
+    eo += 16
+    max_index = list(struct.unpack_from(">5i", buf, eo))
+    eo += 20
+    type_name, eo = _counted_string(buf, eo)
+    if elem.version == 3:
+        eo += 24        # fXmin, fXmax, fFactor, persisted only at version 3
+    if elem.end is not None:
+        eo = elem.end
+
+    tail = {}
+    for member, kind in _ELEMENT_TAILS.get(cls, []):
+        if kind == "i32":
+            tail[member] = _i32(buf, eo)
+            eo += 4
+        else:
+            tail[member], eo = _counted_string(buf, eo)
+
+    if ftype == 11 and type_name in ("Bool_t", "bool"):
+        ftype = 18      # read-time fixup, root/core/meta/src/TStreamerElement.cxx:566
+
+    return Element(cls=cls, version=outer.version, name=name, title=title, bits=bits,
+                   ftype=ftype, fsize=fsize, array_length=array_length,
+                   array_dim=array_dim, max_index=max_index, type_name=type_name,
+                   tail=tail)
+
+
+def read_streamer_info(buf: bytes, rec: Record, slot: Slot,
+                      classes: dict[int, str]) -> StreamerInfo:
+    """Read one TStreamerInfo out of the StreamerInfo record's list."""
+    _, o = resolve_class(slot, classes)
+    frame = read_frame(buf, o)
+    o = frame.body
+    bits = _u32(buf, read_frame(buf, o).body + 6)
+    name, title, _, o = _skip_named(buf, o)
+    checksum = _u32(buf, o)
+    class_version = _i32(buf, o + 4)
+    o += 8
+
+    # fElements: an object slot holding a TObjArray.
+    arr = read_slot(buf, o, rec.offset)
+    _, ao = resolve_class(arr, classes)
+    aframe = read_frame(buf, ao)
+    ao = aframe.body
+    if aframe.version > 2:
+        ao = skip_tobject(buf, ao)
+    if aframe.version > 1:
+        ao = _counted_string(buf, ao)[1]
+    count = _i32(buf, ao)
+    ao += 8                      # nobjects, then fLowerBound
+    elements = []
+    for _ in range(count):
+        el, ao = read_element(buf, ao, rec.offset, classes)
+        elements.append(el)
+    return StreamerInfo(name=name, title=title, version=frame.version, bits=bits,
+                        checksum=checksum, class_version=class_version,
+                        elements=elements)
+
+
+def read_streamer_infos(buf: bytes, rec: Record) -> list[StreamerInfo]:
+    """Every TStreamerInfo in the StreamerInfo record. Non-TStreamerInfo entries
+    (the optional `listOfRules`) are skipped by their byte count."""
+    infos: list[StreamerInfo] = []
+    classes: dict[int, str] = {}
+    for slot in read_tlist(buf, rec):
+        if slot.kind != "object":
+            continue
+        cls, _ = resolve_class(slot, classes)
+        if cls != "TStreamerInfo":
+            continue   # the optional listOfRules; skipped by its byte count
+        infos.append(read_streamer_info(buf, rec, slot, classes))
+    return infos

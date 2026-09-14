@@ -1,0 +1,347 @@
+id   = "serialization/streamer-info"
+file = "data/serialization/streamer-info.root"
+size = 1387
+
+description = """
+The StreamerInfo record: a TList holding one TStreamerInfo, whose fElements is a
+TObjArray holding one element per member. These are the classes a reader must
+hardcode, because they are what the streamer info is made of.
+
+Assertions cover the whole nesting chain -- TList, TStreamerInfo, TNamed,
+TObjArray, and each of five TStreamerElement subclasses -- and then the two
+things a reader is most likely to get wrong:
+
+- fType for an STL member is **500** on disk, not the 300 that
+  TFile::ShowStreamerInfo prints. TStreamerSTL::Streamer writes a scratch copy
+  with fType forced to kStreamer and recomputes the real value on read, so a
+  reader must ignore the stored 500 and derive kSTL/kSTLp from fTypeName and
+  fArrayLength.
+- A TStreamerBasicPointer carries fCountName and fCountClass but no length: the
+  array length comes from the counter member's value in the object being read.
+
+TStreamerBase is not in this file; serialization/object-tags covers it.
+"""
+
+spec = [
+  "spec/02-serialization/StreamerInfo.md",
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 216
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 316
+nbytes = 88
+class  = "Members"
+role   = "the data record; incidental to this case"
+
+[[records]]
+offset = 404
+nbytes = 744
+class  = "TList"
+role   = "StreamerInfo; the record this case is about"
+
+[[records]]
+offset = 1148
+nbytes = 135
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1283
+nbytes = 104
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 404, fKeyLen 64, so the payload starts at 468.
+# ---------------------------------------------------------------------------
+
+# --- The outer TList -------------------------------------------------------
+[[bytes]]
+name = "TList byte count, kByteCountMask | 676"
+offset = 468
+type = "u32"
+value = 1073742500
+[[bytes]]
+name = "TList class version"
+offset = 472
+type = "i16"
+value = 5
+[[bytes]]
+name = "TList::fName, empty: the StreamerInfo list is unnamed"
+offset = 484
+type = "u8"
+value = 0
+[[bytes]]
+name = "TList entry count"
+offset = 485
+type = "i32"
+value = 1
+
+# --- The TStreamerInfo -----------------------------------------------------
+[[bytes]]
+name = "entry byte count, kByteCountMask | 654"
+offset = 489
+type = "u32"
+value = 1073742478
+[[bytes]]
+name = "entry kNewClassTag"
+offset = 493
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "entry class name"
+offset = 497
+type = "bytes"
+value = "TStreamerInfo"
+[[bytes]]
+name = "TStreamerInfo byte count, kByteCountMask | 632"
+offset = 511
+type = "u32"
+value = 1073742456
+[[bytes]]
+name = "TStreamerInfo class version"
+offset = 515
+type = "i16"
+value = 10
+[[bytes]]
+name = "TNamed base byte count, kByteCountMask | 21"
+offset = 517
+type = "u32"
+value = 1073741845
+[[bytes]]
+name = "TStreamerInfo fBits: kIsCompiled, BIT(16), is persisted"
+offset = 529
+type = "u32"
+value = 65536
+[[bytes]]
+name = "fName: the class this info describes"
+offset = 533
+type = "string"
+value = "Members"
+[[bytes]]
+name = "fCheckSum"
+offset = 542
+type = "u32"
+value = 2837666843
+[[bytes]]
+name = "fClassVersion, written as its absolute value"
+offset = 546
+type = "i32"
+value = 1
+
+# --- fElements, a TObjArray ------------------------------------------------
+[[bytes]]
+name = "fElements byte count, kByteCountMask | 593"
+offset = 550
+type = "u32"
+value = 1073742417
+[[bytes]]
+name = "fElements kNewClassTag"
+offset = 554
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "fElements class name"
+offset = 558
+type = "bytes"
+value = "TObjArray"
+[[bytes]]
+name = "TObjArray class version"
+offset = 572
+type = "i16"
+value = 3
+[[bytes]]
+name = "TObjArray entry count: one element per member"
+offset = 585
+type = "i32"
+value = 5
+[[bytes]]
+name = "TObjArray::fLowerBound"
+offset = 589
+type = "i32"
+value = 0
+
+# --- Element 1: TStreamerBasicType for fN, the counter ---------------------
+[[bytes]]
+name = "element 1 byte count, kByteCountMask | 95"
+offset = 593
+type = "u32"
+value = 1073741919
+[[bytes]]
+name = "element 1 kNewClassTag"
+offset = 597
+type = "u32"
+value = 4294967295
+[[bytes]]
+name = "element 1 class name"
+offset = 601
+type = "bytes"
+value = "TStreamerBasicType"
+[[bytes]]
+name = "TStreamerBasicType class version"
+offset = 624
+type = "i16"
+value = 2
+[[bytes]]
+name = "TStreamerElement base class version"
+offset = 630
+type = "i16"
+value = 4
+[[bytes]]
+name = "element fBits: no kHasRange for an ordinary member"
+offset = 644
+type = "u32"
+value = 0
+[[bytes]]
+name = "fName"
+offset = 648
+type = "string"
+value = "fN"
+[[bytes]]
+name = "fTitle, empty"
+offset = 651
+type = "u8"
+value = 0
+[[bytes]]
+name = "fType: kCounter, because fPtr's length names fN"
+offset = 652
+type = "i32"
+value = 6
+[[bytes]]
+name = "fSize: the writer's in-memory size, not the on-disk width"
+offset = 656
+type = "i32"
+value = 4
+[[bytes]]
+name = "fArrayLength"
+offset = 660
+type = "i32"
+value = 0
+[[bytes]]
+name = "fArrayDim"
+offset = 664
+type = "i32"
+value = 0
+[[bytes]]
+name = "fTypeName"
+offset = 688
+type = "string"
+value = "int"
+
+# --- Element 2: TStreamerString for fStr ----------------------------------
+[[bytes]]
+name = "element 2 fType: kTString"
+offset = 750
+type = "i32"
+value = 65
+[[bytes]]
+name = "element 2 fSize: sizeof(TString) on the writer's platform"
+offset = 754
+type = "i32"
+value = 24
+[[bytes]]
+name = "element 2 fTypeName"
+offset = 786
+type = "string"
+value = "TString"
+
+# --- Element 3: TStreamerSTL for fVec -------------------------------------
+# The stored fType is kStreamer (500), not kSTL (300).
+[[bytes]]
+name = "element 3 fName"
+offset = 843
+type = "string"
+value = "fVec"
+[[bytes]]
+name = "element 3 fType: 500 on disk, although ShowStreamerInfo prints 300"
+offset = 849
+type = "i32"
+value = 500
+[[bytes]]
+name = "element 3 fTypeName, which is what the real type is recovered from"
+offset = 885
+type = "string"
+value = "vector<int>"
+[[bytes]]
+name = "element 3 fSTLtype: 1, kSTLvector"
+offset = 897
+type = "i32"
+value = 1
+[[bytes]]
+name = "element 3 fCtype: 3, kInt"
+offset = 901
+type = "i32"
+value = 3
+
+# --- Element 4: TStreamerSTLstring for fStd ------------------------------
+[[bytes]]
+name = "element 4 fName"
+offset = 966
+type = "string"
+value = "fStd"
+[[bytes]]
+name = "element 4 fType: also 500; kSTLstring (365) is never an fType"
+offset = 972
+type = "i32"
+value = 500
+[[bytes]]
+name = "element 4 fTypeName"
+offset = 1008
+type = "string"
+value = "string"
+[[bytes]]
+name = "element 4 fSTLtype: 365, kSTLstring"
+offset = 1015
+type = "i32"
+value = 365
+[[bytes]]
+name = "element 4 fCtype: 365"
+offset = 1019
+type = "i32"
+value = 365
+
+# --- Element 5: TStreamerBasicPointer for fPtr ---------------------------
+[[bytes]]
+name = "element 5 fName"
+offset = 1081
+type = "string"
+value = "fPtr"
+[[bytes]]
+name = "element 5 fTitle: the counter annotation, kept verbatim"
+offset = 1086
+type = "string"
+value = "[fN]"
+[[bytes]]
+name = "element 5 fType: kOffsetP + kInt = 43"
+offset = 1091
+type = "i32"
+value = 43
+[[bytes]]
+name = "element 5 fTypeName"
+offset = 1127
+type = "string"
+value = "int*"
+[[bytes]]
+name = "element 5 fCountVersion"
+offset = 1132
+type = "i32"
+value = 1
+[[bytes]]
+name = "element 5 fCountName: the member supplying the length"
+offset = 1136
+type = "string"
+value = "fN"
+[[bytes]]
+name = "element 5 fCountClass"
+offset = 1139
+type = "string"
+value = "Members"

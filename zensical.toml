@@ -26,6 +26,8 @@ nav = [
   ] },
   { "Serialization" = [
       { "Buffer framing" = "02-serialization/Buffer.md" },
+      { "Streamer information" = "02-serialization/StreamerInfo.md" },
+      { "Element types" = "02-serialization/ElementTypes.md" },
   ] },
 ]
 

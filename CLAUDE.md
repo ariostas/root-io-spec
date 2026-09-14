@@ -33,8 +33,14 @@ tools/generate.py                                      # all cases
 tools/generate.py gen/cases/container/file-minimal     # one case
 ```
 
-Docs toolchain is separate from the checks: `pip install -r requirements-docs.txt`.
-`PYTHONPATH=. zensical serve` gives a live preview.
+Docs toolchain is separate from the checks and is not needed for any fixture
+check. `.venv/` is gitignored, so create it there:
+
+```sh
+uv venv .venv && uv pip install --python .venv/bin/python -r requirements-docs.txt
+PYTHONPATH=. .venv/bin/zensical build --clean --strict
+PYTHONPATH=. .venv/bin/zensical serve      # live preview
+```
 
 ## Architecture
 
@@ -52,9 +58,11 @@ is also the site.
 **`data/`** — the generated reference files, committed, plus `MANIFEST.sha256`.
 
 **`tools/`** — checkers, and `rootfile.py`, a pure-Python reader of the header,
-record chain, directory records and key lists. It is deliberately an independent
-implementation of what `spec/01-container/` specifies, and it reproduces
-`TFile::Map()` exactly.
+record chain, directory records, key lists, the buffer framing layer and the
+StreamerInfo record. It is deliberately an independent implementation of what
+`spec/` specifies, written from the specification rather than from ROOT's code, so
+that the two disagreeing is a detectable event. It reproduces `TFile::Map()`
+exactly.
 
 ### The central discipline
 

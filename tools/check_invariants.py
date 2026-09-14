@@ -241,6 +241,131 @@ class Checker:
                 spans.append((slot.offset - rec.offset + rootfile.MAP_OFFSET,
                               slot.end - rec.offset + rootfile.MAP_OFFSET))
 
+    # -- StreamerInfo.md 13 and ElementTypes.md 11 --------------------------
+    # The element subclasses that can be written; TStreamerArtificial cannot.
+    ELEMENT_CLASSES = {
+        "TStreamerBase", "TStreamerBasicType", "TStreamerBasicPointer",
+        "TStreamerLoop", "TStreamerObject", "TStreamerObjectAny",
+        "TStreamerObjectPointer", "TStreamerObjectAnyPointer", "TStreamerString",
+        "TStreamerSTL", "TStreamerSTLstring",
+    }
+    # Codes that never reach a file, per ElementTypes.md 1.
+    FORBIDDEN_TYPES = {10, 70, 71, 300, 365, 600, 1000, 1001, 1002, 99997, 99999, -2, -3}
+
+    def _on_disk_type(self, t: int) -> bool:
+        if t == -1 or t in (500, 501):
+            return True
+        if t in self.FORBIDDEN_TYPES:
+            return False
+        # scalars and bases, plus the kOffsetL and kOffsetP families
+        if 0 <= t <= 19 or 20 <= t <= 39 or 40 <= t <= 59:
+            return True
+        return 61 <= t <= 69 or t in (81, 82, 85, 86, 87)
+
+    def check_streamer_info(self) -> None:
+        rec = next((r for r in self.records
+                    if not r.free and r.name == "StreamerInfo"), None)
+        if rec is None:
+            return
+        if rec.class_name != "TList":
+            self.bad("StreamerInfo 13.1",
+                     f"StreamerInfo key has fClassName {rec.class_name!r}, not 'TList'")
+        if self.header.seek_info != rec.offset:
+            self.bad("StreamerInfo 13.1",
+                     f"fSeekInfo {self.header.seek_info} != record offset {rec.offset}")
+        if self.header.nbytes_info != rec.nbytes:
+            self.bad("StreamerInfo 13.1",
+                     f"fNbytesInfo {self.header.nbytes_info} != fNbytes {rec.nbytes}")
+        if rootfile.is_compressed(rec):
+            return  # this checker does not decompress
+
+        try:
+            infos = rootfile.read_streamer_infos(self.buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            self.bad("StreamerInfo 13.12", f"could not parse the record: {exc}")
+            return
+
+        by_name = {i.name: i for i in infos}
+        seen: set[tuple[str, int]] = set()
+        for si in infos:
+            if not si.name:
+                self.bad("StreamerInfo 13.3", "an info has an empty fName")
+            if si.class_version < 0:
+                self.bad("StreamerInfo 13.3",
+                         f"{si.name}: fClassVersion {si.class_version} is negative")
+            # 13.4: version 1 may repeat with a different checksum; nothing else may.
+            key = (si.name, si.class_version)
+            if key in seen and si.class_version != 1:
+                self.bad("StreamerInfo 13.4",
+                         f"{si.name}: two infos share fClassVersion {si.class_version}")
+            seen.add(key)
+
+            names = {e.name for e in si.elements}
+            for e in si.elements:
+                where = f"{si.name}.{e.name}"
+                if e.cls not in self.ELEMENT_CLASSES:
+                    self.bad("StreamerInfo 13.5", f"{where}: element class {e.cls}")
+                if not self._on_disk_type(e.ftype):
+                    self.bad("ElementTypes 11.1",
+                             f"{where}: fType {e.ftype} is not an on-disk code")
+                if e.ftype in self.FORBIDDEN_TYPES:
+                    self.bad("ElementTypes 11.2",
+                             f"{where}: fType {e.ftype} cannot occur on disk")
+
+                if e.cls == "TStreamerBase":
+                    # 13.8
+                    if e.type_name != "BASE":
+                        self.bad("StreamerInfo 13.8",
+                                 f"{where}: fTypeName {e.type_name!r}, expected 'BASE'")
+                    if e.ftype not in (0, 66, 67, -1):
+                        self.bad("StreamerInfo 13.8",
+                                 f"{where}: base fType {e.ftype}")
+                    # 13.7: fBaseCheckSum, which is fMaxIndex[1], read unsigned.
+                    target = by_name.get(e.name)
+                    if target is not None and target.checksum != e.base_checksum:
+                        self.bad("StreamerInfo 13.7",
+                                 f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} != "
+                                 f"the base info's fCheckSum 0x{target.checksum:08x}")
+                    # 13.6 of ElementTypes: -1 only for a suppressed TObject base
+                    if e.ftype == -1 and e.name != "TObject":
+                        self.bad("ElementTypes 11.6",
+                                 f"{where}: fType -1 on a base named {e.name!r}")
+
+                if e.cls in ("TStreamerSTL", "TStreamerSTLstring") and e.ftype != 500:
+                    self.bad("StreamerInfo 13.9",
+                             f"{where}: STL element fType {e.ftype}, expected 500")
+
+                if e.cls in ("TStreamerBasicPointer", "TStreamerLoop"):
+                    counter = e.tail.get("fCountName", "")
+                    if not counter:
+                        self.bad("StreamerInfo 13.10", f"{where}: empty fCountName")
+                    elif counter not in names:
+                        self.bad("StreamerInfo 13.10",
+                                 f"{where}: fCountName {counter!r} names no element "
+                                 f"of {si.name}")
+
+                # 13.11
+                if not 0 <= e.array_dim <= 5:
+                    self.bad("StreamerInfo 13.11", f"{where}: fArrayDim {e.array_dim}")
+                elif e.array_dim > 0 and e.cls != "TStreamerSTL":
+                    extents = e.max_index[:e.array_dim]
+                    product = 1
+                    for x in extents:
+                        product *= x
+                    if any(x <= 0 for x in extents):
+                        self.bad("StreamerInfo 13.11",
+                                 f"{where}: fArrayDim {e.array_dim} but extents "
+                                 f"{extents} are not all positive")
+                    elif product != e.array_length:
+                        self.bad("StreamerInfo 13.11",
+                                 f"{where}: fMaxIndex product {product} != "
+                                 f"fArrayLength {e.array_length}")
+
+                # ElementTypes 11.8
+                if e.has_range and e.ftype % 20 not in (9, 19):
+                    self.bad("ElementTypes 11.8",
+                             f"{where}: kHasRange set on fType {e.ftype}")
+
     # -- Compression.md 9 ---------------------------------------------------
     def check_compression(self) -> None:
         for rec in self.records:
@@ -415,6 +540,7 @@ class Checker:
         self.check_directories()
         self.check_free_list()
         self.check_buffer_framing()
+        self.check_streamer_info()
         return self.failures
 
 
