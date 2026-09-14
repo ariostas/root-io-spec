@@ -6,12 +6,22 @@ skeleton and the pinned ROOT submodule.
 ## 1. Goal
 
 Produce a complete, versioned, machine-checkable specification of the ROOT on-disk
-formats, sufficient for a third party to implement a reader (and, where the format
-allows, a writer) **without reading ROOT's C++ source**.
+formats, sufficient for a third party to implement a reader **without reading
+ROOT's C++ source**.
+
+Reading is specified normatively. Writing is covered by **invariants** rather than
+algorithms: each layer states what a conforming file must satisfy, so that a writer
+can validate its own output without this document prescribing ROOT's particular
+free-space allocation or key-placement strategy. See §2.8.
 
 Non-goals: documenting ROOT's C++ API, its in-memory data structures, or its
 build system. We document *bytes on disk* and the *algorithms* required to turn
 those bytes into values.
+
+This specification is **descriptive of ROOT 6.40.04**, not normative for ROOT. Where
+the pinned submodule and this document disagree, the submodule wins and the
+discrepancy is a bug in this document. Where ROOT's own behaviour looks like a bug,
+it goes in an errata file and, where possible, an upstream issue or PR.
 
 ### 1.1 Why
 
@@ -154,6 +164,59 @@ The known-hard part. Must cover:
 
 ### 2.4 `spec/03-classes/` — per-class layouts
 
+#### Coverage, and how it is produced
+
+**Decision: generate broadly, hand-write narrowly.**
+
+The cost of this layer is not proportional to the number of classes. For a class
+whose layout is streamer-info driven or whose hand-coded streamer agrees with its
+streamer info, the entire document is a version matrix plus a member table — and
+both are mechanically derivable from the pinned submodule:
+
+- member tables and type codes from `TFile::ShowStreamerInfo()` / `TStreamerInfo`,
+- per-version checksums from `TClass::GetCheckSum()`,
+- version-to-release ranges from `git log -L` on the `ClassDef` line.
+
+So coverage is generous and effort tracks the genuinely hard cases:
+
+| Set | Count | Treatment |
+|---|---|---|
+| Persistable classes in core/cont/meta/hist/tree/matrix/physics/graf | 279 | Generated version matrix + member table for all |
+| `geom/` (`TGeo*`) | 88 | Generated tables only; no hand-written analysis in the initial passes |
+| `graf3d/` + `gui/` | 72 | Generated tables only; most never reach a file, but generating is cheap enough that we do not have to decide which |
+| The divergent "bootstrap" classes | ~30 | Hand-written, normative byte layouts |
+| `TTree` and friends | ~20 | Hand-written (layer 04) |
+
+Classes with `ClassDef(X, 0)` — 130 of the 409 in the core modules — are *mostly*
+transient (`TROOT`, `TClass`, `TSystem`, the iterators) and are excluded by default.
+This is a heuristic, **not** a rule: `TH1L`, `TH2L` and `TH3L` are version 0 and
+fully persistable, and are exactly the checksum-instead-of-version case. The
+inventory tool therefore flags version-0 classes for review rather than dropping
+them silently.
+
+#### Generated and hand-written content in the same file
+
+Each class document interleaves both, with explicit markers so a tool can refresh
+the generated parts without touching the prose:
+
+```markdown
+<!-- BEGIN GENERATED: members TH1 -->
+| Member | Type code | Since | Until | Notes |
+...
+<!-- END GENERATED -->
+```
+
+`tools/gen_tables.py` writes these blocks; CI fails if a block is stale with
+respect to the pinned submodule. Anything outside the markers is hand-written and
+never touched by tooling. Notes columns that need human judgement live in a
+sidecar `<class>.notes.yaml` that the generator merges in, so they survive
+regeneration.
+
+This also gives us an honest coverage signal: a class with only generated blocks is
+marked *mechanically covered*; one with hand-written analysis is marked *reviewed*.
+`tools/coverage.py` renders both states in the index, so nobody mistakes a
+generated table for a verified one.
+
 #### Answering "how do we handle TH1D vs TH1F" — class *families*
 
 One document per **streaming family**, not per class. A family is the set of
@@ -185,7 +248,8 @@ number**, so a reader that assumes "version word is a version" breaks on `TH1L`
 and not on `TH1D`. That rule is stated once in `SchemaEvolution.md` and cross-
 referenced from every family table that has a version-0 row.
 
-Planned families (initial pass, from `ClassDef` inventory of the pinned submodule):
+Families slated for **hand-written review** (the generated tables cover everything
+persistable regardless), from the `ClassDef` inventory of the pinned submodule:
 
 - **core/base**: `TObject`, `TNamed`, `TString`, `TDatime`, `TUUID`, `TAttLine`,
   `TAttFill`, `TAttMarker`, `TAttText`, `TAttAxis`, `TAttPad`, `TBits`, `TRef`,
@@ -326,6 +390,38 @@ spec/05-rntuple/
 - `Glossary.md`.
 - `Bibliography.md` — the old ROOT docs, the user's guide, prior art
   (uproot, groot, UnROOT.jl, root-io, jsroot) with links.
+- `WriterInvariants.md` — the collected index of §2.8.
+
+### 2.8 Write support: invariants, not algorithms
+
+**Decision: reading is normative; writing is specified as invariants.**
+
+Each layer document ends with an `## Invariants` section stating what a conforming
+file must satisfy. A writer can then validate its own output, and a reader knows
+which consistency checks are worth making, without this document elevating ROOT's
+incidental implementation choices to requirements. Examples of the intended shape:
+
+- **Container**: `fEND` equals the file size. Every `TKey.fSeekKey` equals the
+  offset at which that key begins. `fNbytes` spans key + payload exactly. The free
+  list plus all key records partition `[fBEGIN, fEND)` with no overlap, and the
+  final free segment extends to `kStartBigFile`. `fSeekPdir` points at the
+  containing directory's record.
+- **Serialization**: every byte count equals the number of bytes actually consumed
+  by its object, so `CheckByteCount` succeeds. Every class-tag back-reference points
+  at a `kNewClassTag` earlier *in the same buffer*, offset by `kMapOffset`. Byte
+  counts stay below `kMaxMapCount`.
+- **Streamer info**: every class appearing in any non-core record has a
+  `TStreamerInfo` in the file's `StreamerInfo` list, at the version actually used.
+  Recorded checksums match the described member list.
+- **TTree**: `fBasketSeek[i]`/`fBasketBytes[i]` agree with the keys actually
+  present; `fBasketEntry` is non-decreasing and its last element equals
+  `fEntries`; the sum of per-basket `fNevBuf` equals `fEntries`.
+
+Where a write-side rule genuinely has no freedom — the compression block header,
+the `Double32_t` factor encoding, the `fNevBufSize` sign trick — it is specified
+exactly, because there it costs nothing extra. What we deliberately do *not*
+specify: free-space allocation policy, basket sizing, key ordering, or when ROOT
+chooses to rewrite a directory.
 
 ## 3. Reference files and generator scripts
 
@@ -371,8 +467,9 @@ against the values without owning a ROOT installation.
 Byte-exact reproducibility is **not** achievable: `TKey::fDatime` records wall-clock
 time and `TFile` writes a fresh `TUUID` per file. Approach:
 
-- Commit the generated files (each is 2–20 kB; the whole corpus should stay well
-  under ~10 MB — no LFS needed).
+- Commit the core, current-version corpus (each file 2–20 kB; the whole committed
+  corpus should stay well under ~10 MB — no LFS needed), so that `git clone` is
+  enough to run a third-party test suite.
 - `tools/normalize.py` computes a digest over the file with the datime and UUID
   fields masked; CI regenerates and compares the *normalized* digest, so genuine
   format changes are caught while timestamps are not.
@@ -401,7 +498,11 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 - `gen/legacy/` holds a version matrix and per-version container recipes
   (conda-forge `root` packages back to ~6.06, and Docker images / CVMFS for ROOT 5).
   Both `docker` and `mamba` are available in this environment.
-- The generated legacy files are committed under `data/legacy/<rootversion>/`.
+- **Legacy files are published as GitHub release artifacts**, not committed — one
+  tarball per ROOT version, with a manifest mapping case IDs to files and a
+  checksum list committed in `gen/legacy/manifest.yaml`. Same for the >2 GB
+  large-file cases. This keeps the repo text-only as versions accumulate while
+  still giving third parties a stable download URL.
 - Where a version is unreachable, we say so explicitly in the class document rather
   than guessing, and fall back on the ROOT git history for the layout.
 - We should also catalogue (not vendor) the existing public corpora —
@@ -414,6 +515,8 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 | `tools/inventory.py` | Parse every `ClassDef*` in the submodule → the authoritative class/version inventory. Feeds the coverage matrix. |
 | `tools/check_versions.py` | Fail if a class document's version matrix disagrees with the submodule's `ClassDef`. This is what keeps the spec from rotting. |
 | `tools/dump_streamerinfo.C` | ROOT macro wrapping `TFile::ShowStreamerInfo()` + `TClass::GetCheckSum()` into machine-readable JSON, used to generate and verify the member tables. |
+| `tools/gen_tables.py` | Fill the `<!-- BEGIN GENERATED -->` blocks in `spec/03-classes/` from `dump_streamerinfo.C` output + `git log -L` release ranges + the `.notes.yaml` sidecars. CI fails on stale blocks. |
+| `tools/check_invariants.py` | Verify the §2.8 invariants hold for every fixture. Doubles as a test that the invariants are stated correctly. |
 | `tools/sync_rntuple.py` | Re-copy the upstream RNTuple spec; fail on drift. |
 | `tools/normalize.py` | Timestamp/UUID-masked digests for fixtures. |
 | `tools/generate.py` | Run every `gen.C`, produce `data/`, validate against `case.yaml`. |
@@ -423,9 +526,11 @@ CI (GitHub Actions, ROOT from conda-forge):
 
 1. Regenerate all fixtures, compare normalized digests.
 2. `check_versions.py` against the pinned submodule.
-3. `sync_rntuple.py` drift check.
-4. Markdown link check across `spec/`.
-5. Optionally: a minimal pure-Python reference reader in `tools/refreader/` that
+3. `gen_tables.py --check` — generated blocks must be current.
+4. `check_invariants.py` over every fixture.
+5. `sync_rntuple.py` drift check.
+6. Markdown link check across `spec/`.
+7. Optionally: a minimal pure-Python reference reader in `tools/refreader/` that
    implements only what the spec says and must read every fixture. This is the
    strongest possible check that the spec is complete — if the reference reader
    needs a fact that isn't written down, the spec has a hole. Worth doing, but
@@ -447,12 +552,17 @@ Deliverable: enough to locate and decompress any object in any ROOT file.
 and every collection shape.
 Deliverable: enough to read any user-defined class.
 
-**Phase 3 — the bootstrap classes**
-The ~30 regime-3 classes in `03-classes/`, with `check_versions.py` wired up.
+**Phase 3 — the bootstrap classes and the table generator**
+The ~30 regime-3 classes in `03-classes/`, hand-written. Plus
+`dump_streamerinfo.C`, `gen_tables.py` and `check_versions.py`, since the generator
+pays for itself from phase 4 onward.
 Deliverable: enough to read `TFile` internals and the standard containers.
 
 **Phase 4 — standard classes**
-The rest of `03-classes/` by family: hist → graf → func → math → misc.
+Run the generator over everything persistable (~440 classes) in one pass, then
+hand-review by family: hist → graf → func → math → misc. The generated pass is
+mechanical and cheap; the review is where the time goes, and it can be
+interleaved with later phases or accept contributions.
 
 **Phase 5 — TTree**
 All of `04-ttree/`, with the full split/type matrix of fixtures. Largest single
@@ -469,33 +579,44 @@ reader as the completeness check.
 Phases 1–3 are sequential. Phase 4, 5 and 6 are independent of each other once
 phase 2 is done.
 
-## 6. Open questions
+## 6. Decisions
 
-1. **Scope of "every standard class".** The `ClassDef` inventory of the modules we
-   care about is ~400 classes, but many are GUI/painter classes that never appear in
-   a file, or are transient. Proposal: define the scope as "classes reachable in a
-   `TFile` written by a non-GUI ROOT session", seed it from the inventory, and mark
-   the rest explicitly out of scope rather than silently omitting them. `TGeo*` is
-   the biggest judgement call — large, self-contained, genuinely used in files.
-2. **Normative status.** Do we claim to be normative, or descriptive-of-6.40.04?
-   Proposal: descriptive, with the pinned submodule as the tiebreaker, and an
-   explicit errata process for where ROOT's behaviour looks like a bug.
-3. **Upstreaming.** How much of this should be PRs against `root/io/doc/`? The old
-   docs are so stale that replacing them wholesale may be more welcome than
-   patching. Worth asking the ROOT I/O team early — their buy-in changes whether
-   this is *the* spec or *a* spec.
-4. **Writer support.** Do we specify enough to *write* valid files, or only to read
-   them? Writing requires the free-list algorithm, key placement, and streamer-info
-   emission. Proposal: read is the requirement, write is documented where it is
-   cheap to do so, and explicitly marked where it is not.
-5. **Fixture corpus size.** Committing binaries to a spec repo is a tradeoff. The
-   alternative is generating in CI and publishing as release artifacts. Proposal:
-   commit the small core corpus, publish the large/legacy corpus as releases.
+Settled 2026-09-14:
 
-## 7. Immediate next steps
+| # | Question | Decision | Where |
+|---|---|---|---|
+| 1 | Scope of "every standard class" | Generate broadly, hand-write narrowly. Generated version matrices and member tables for all ~440 persistable classes; hand-written prose for the ~30 divergent ones plus `TTree`. Version-0 classes excluded by default but flagged for review, never dropped silently. | §2.4 |
+| 2 | Normative status | Descriptive of 6.40.04; pinned submodule is the tiebreaker; errata process for suspected ROOT bugs. | §1 |
+| 3 | Write support | Reading normative. Writing specified as per-layer invariants, not algorithms. Free-space policy, basket sizing and key ordering deliberately unspecified. | §2.8 |
+| 4 | Upstream relationship | Standalone repo, not blocking on review. RNTuple errata go upstream as PRs immediately. Open a conversation with the ROOT I/O team early about eventually replacing `io/doc/TFile/` wholesale. | §2.6, §7 |
+| 5 | Fixture distribution | Core current-version corpus committed (<10 MB). Legacy-ROOT and >2 GB cases published as release artifacts with a committed manifest. | §3.3, §3.5 |
 
-1. Agree on the layout in §2 and the three structural decisions (families,
-   version matrices, the serialization-layer split).
-2. Resolve open questions 1 and 4 — they change the size of the project.
-3. Write `spec/00-conventions.md` and `spec/01-container/FileHeader.md` as the
-   style prototype, with one fixture, and review the format before scaling out.
+## 7. Remaining open items
+
+These do not block starting, but should be resolved before the phase they affect:
+
+1. **When to approach the ROOT I/O team** (affects phase 6, and possibly the
+   markup format if they ever want to absorb this). Proposal: after phase 1 exists,
+   so the conversation is about a concrete artifact rather than an intention.
+2. **`TGeo*` hand-review** — 88 persistable classes, self-contained, genuinely
+   present in real files (detector geometries). Generated tables are in scope by
+   decision 1; whether it earns a hand-written pass is a phase-4 judgement call.
+3. **Markup format if upstreaming happens.** `root/io/doc/` is doxygen with
+   `\page`/`\ref`. Our tables and bit diagrams are better in plain Markdown. If the
+   ROOT team wants to absorb this, we need a converter or a decision to diverge.
+4. **Reference reader.** Strongest completeness check available (if it needs a fact
+   that isn't written down, the spec has a hole), but a project in itself. Deferred
+   to phase 7; revisit once phase 2 is done and the cost is clearer.
+5. **`TTree` sub-plan.** Phase 5 is large enough that it wants its own plan document
+   with the full split/leaf-type/collection fixture matrix enumerated.
+
+## 8. Immediate next steps
+
+1. Write `spec/00-conventions.md` and `spec/01-container/FileHeader.md` as the style
+   prototype, with one fixture and one invariants section, and review the format
+   before scaling out. Getting the notation right once is worth more than getting
+   three more documents drafted.
+2. Build `tools/inventory.py` — cheap, and it turns the class-scope decision into a
+   concrete checked-in list rather than an estimate.
+3. Stand up the fixture harness (`gen/`, `data/`, `tools/generate.py`,
+   `tools/normalize.py`) with `th1-th1d-basic` as the first case.

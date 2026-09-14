@@ -14,7 +14,13 @@ This repository aims to be the shared, testable artifact those projects can rely
 
 ## Status
 
-Early. See [PLAN.md](PLAN.md) for the proposed structure, scope, and phasing.
+Early — structure and scope agreed, no specification text written yet.
+See [PLAN.md](PLAN.md) for the structure, scope, phasing, and the decisions taken.
+
+Scope in brief: reading is specified normatively; writing is covered by per-layer
+invariants a conforming file must satisfy, rather than by prescribing ROOT's
+allocation strategy. The document is descriptive of ROOT 6.40.04 — where it and the
+pinned submodule disagree, the submodule wins.
 
 ## Reference implementation
 
