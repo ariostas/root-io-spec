@@ -1,0 +1,71 @@
+# Site configuration. Zensical is pinned in requirements-docs.txt; see PLAN.md for
+# why this engine, and tools/rootcite.py for the citation linking.
+#
+# Source files under spec/ are deliberately plain CommonMark/GFM. Engine-specific
+# syntax is confined to the extensions enabled below, so the corpus stays readable
+# on GitHub and portable to another Python-Markdown renderer.
+
+[project]
+site_name = "ROOT I/O Specifications"
+site_description = "A specification of the ROOT on-disk binary formats"
+site_url = "https://ariostas.github.io/root-io-specifications/"
+repo_url = "https://github.com/ariostas/root-io-specifications"
+repo_name = "ariostas/root-io-specifications"
+edit_uri = "edit/main/spec/"
+docs_dir = "spec"
+
+nav = [
+  { "Overview" = "index.md" },
+  { "Conventions" = "00-conventions.md" },
+  { "Container" = [
+      { "File header" = "01-container/FileHeader.md" },
+  ] },
+]
+
+[project.theme]
+# No external font requests: the site should build and serve offline.
+font = false
+language = "en"
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.markdown_extensions]
+tables = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+md_in_html = {}
+toc.permalink = true
+toc.toc_depth = 3
+pymdownx.details = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+
+# Rewrites `root/...:NN` citations to links at the pinned submodule commit.
+# tools/check_pin.py asserts this matches the gitlink; tools/check_citations.py
+# asserts each cited file and line actually exists there.
+"tools.rootcite".commit = "1211eda93010f26710eafd527d1e66921bffdf8e"

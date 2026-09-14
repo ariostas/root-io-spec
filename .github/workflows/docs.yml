@@ -1,0 +1,56 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-latest
+    steps:
+      # No submodule needed: rendering citations requires only the commit hash
+      # recorded in zensical.toml. That the hash is correct, and that every cited
+      # file and line exists, is checked by the `spec` job in ci.yml.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-docs.txt
+
+      - name: Citation extension tests
+        run: PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
+
+      # --strict turns warnings into failures, including links to pages that do
+      # not exist. This is what enforces the cross-reference convention in
+      # spec/00-conventions.md 6.5.
+      - name: Build
+        run: PYTHONPATH=. zensical build --clean --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy to pages
+    # Only from main, and never from a pull request.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

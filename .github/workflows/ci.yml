@@ -34,9 +34,13 @@ jobs:
       - name: RNTuple specification has not drifted from upstream
         run: tools/sync_rntuple.py --check
         if: hashFiles('tools/sync_rntuple.py') != ''
+      - name: Citation commit matches the pinned submodule
+        run: tools/check_pin.py
       - name: Class version matrices match ClassDef in the submodule
         run: tools/check_versions.py
         if: hashFiles('tools/check_versions.py') != ''
+      - name: Cited files and line numbers exist in the submodule
+        run: tools/check_citations.py
 
   # Regeneration needs ROOT, so it is a separate job.
   regenerate:

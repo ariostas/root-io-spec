@@ -40,3 +40,18 @@ git clone --recurse-submodules <this repo>
 | `data/` | Generated reference files |
 | `tools/` | Consistency checkers and dumpers |
 | `root/` | ROOT source, pinned submodule |
+
+## Building the site
+
+The specification is published with [Zensical](https://zensical.org). Source files
+under `spec/` are plain CommonMark, so they stay readable on GitHub; the site adds
+navigation, search, and turns each `root/...:NN` source citation into a link into
+root-project/root at the pinned commit.
+
+```sh
+pip install -r requirements-docs.txt
+PYTHONPATH=. zensical serve            # live preview
+PYTHONPATH=. zensical build --strict   # as CI builds it
+```
+
+`--strict` fails on warnings, including links to pages that do not exist yet.

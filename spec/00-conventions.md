@@ -206,7 +206,28 @@ Where a layout branches, the condition is stated before the branch and each bran
 is a separate table or diagram. Layouts are never described as "the same as above
 but with X different".
 
-### 6.5 Generated content
+### 6.5 Cross-references
+
+A reference to another document in `spec/` is written as a **Markdown link** when
+that document exists, so that it is navigable in the published site and checked by
+the build:
+
+```markdown
+See [Buffer](../02-serialization/Buffer.md) for the byte-count encoding.
+```
+
+A reference to a document that has **not been written yet** is written as inline
+code instead, because the site build treats a link to a missing page as an error:
+
+```markdown
+See `02-serialization/Buffer.md` for the byte-count encoding.
+```
+
+Such a reference MUST be converted to a link when its target is written. Forward
+references in inline code are therefore also the working list of what is still
+missing.
+
+### 6.6 Generated content
 
 Blocks between these markers are produced by `tools/gen_tables.py` from the pinned
 submodule and MUST NOT be hand-edited; CI fails when they are stale:
@@ -227,8 +248,19 @@ always refer to the pinned submodule commit:
 
 > `root/io/io/src/TBufferFile.cxx:2751`
 
-Line numbers drift when the submodule is bumped. `tools/check_versions.py` does not
-validate them; treat a citation whose content has moved as a bug report.
+Citations are **checked**, not merely promised. `tools/check_citations.py` verifies
+that every cited file exists in the pinned submodule and that every cited line
+number is within that file, and CI fails otherwise. `tools/check_pin.py` separately
+asserts that the commit the published site links to is the commit the submodule is
+pinned at.
+
+What is *not* checked is whether the cited lines still contain what the citing
+sentence claims. Line numbers drift when the submodule is bumped even where the
+file and length remain valid, so treat a citation whose content has moved as a bug
+report.
+
+In the published site these citations render as links into root-project/root at the
+pinned commit, via `tools/rootcite.py`.
 
 Where a fixture demonstrates a claim, it is cited by case ID:
 
