@@ -1,0 +1,3 @@
+# Normalized SHA-256 digests of the reference files.
+# Timestamps and UUIDs are masked first; see tools/normalize.py.
+8f9485edd8e8c7f065a99028d0bba680346d79bc372b81a9edb0aeda4f59c467  data/container/file-minimal.root

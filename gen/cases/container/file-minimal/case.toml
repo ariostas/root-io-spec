@@ -1,0 +1,282 @@
+id   = "container/file-minimal"
+file = "data/container/file-minimal.root"
+size = 1094
+
+description = """
+One small object (a TObjString) in the root directory of an uncompressed file.
+The smallest file that still contains every record a ROOT file must have: the
+header, the TFile record, a data record, the StreamerInfo record, the keys list
+and the free-segment list.
+"""
+
+# Sections of the specification this case is evidence for.
+spec = [
+  "spec/01-container/FileHeader.md",
+  "spec/01-container/Record.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+# Every record in the file, as reported by TFile::Map() and reproduced by
+# tools/rootfile.py. Note that the keys-list and free-segments records carry
+# fClassName = "TFile" -- they are identified by offset, never by their key.
+[[records]]
+offset = 100
+nbytes = 210
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 310
+nbytes = 88
+class  = "TObjString"
+role   = "application data record"
+
+[[records]]
+offset = 398
+nbytes = 434
+class  = "TList"
+role   = "StreamerInfo; located via fSeekInfo"
+
+[[records]]
+offset = 832
+nbytes = 161
+class  = "TFile"
+role   = "keys list; located via the root directory's fSeekKeys"
+
+[[records]]
+offset = 993
+nbytes = 101
+class  = "TFile"
+role   = "free segments; located via fSeekFree"
+
+# ---------------------------------------------------------------------------
+# Byte-level assertions. All integers are big-endian. "string" reads a counted
+# string: one length byte followed by that many bytes.
+# ---------------------------------------------------------------------------
+
+# --- File header, spec/01-container/FileHeader.md --------------------------
+[[bytes]] # 
+name = "magic"
+offset = 0
+type = "bytes"
+value = "root"
+[[bytes]]
+name = "fVersion"
+offset = 4
+type = "i32"
+value = 64004
+[[bytes]]
+name = "fBEGIN"
+offset = 8
+type = "i32"
+value = 100
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1094
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 993
+[[bytes]]
+name = "fNbytesFree"
+offset = 20
+type = "i32"
+value = 101
+[[bytes]]
+name = "nfree"
+offset = 24
+type = "i32"
+value = 1
+[[bytes]]
+name = "fNbytesName"
+offset = 28
+type = "i32"
+value = 150
+[[bytes]]
+name = "fUnits"
+offset = 32
+type = "u8"
+value = 4
+[[bytes]]
+name = "fCompress"
+offset = 33
+type = "i32"
+value = 0
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 398
+[[bytes]]
+name = "fNbytesInfo"
+offset = 41
+type = "i32"
+value = 434
+[[bytes]]
+name = "TUUID version"
+offset = 45
+type = "i16"
+value = 1
+
+# --- TKey of the root directory record, spec/01-container/Record.md --------
+[[bytes]]
+name = "TFile key fNbytes"
+offset = 100
+type = "i32"
+value = 210
+[[bytes]]
+name = "TFile key fVersion"
+offset = 104
+type = "i16"
+value = 4
+[[bytes]]
+name = "TFile key fObjLen"
+offset = 106
+type = "i32"
+value = 119
+[[bytes]]
+name = "TFile key fKeyLen"
+offset = 114
+type = "i16"
+value = 91
+[[bytes]]
+name = "TFile key fCycle"
+offset = 116
+type = "i16"
+value = 1
+[[bytes]]
+name = "TFile key fSeekKey"
+offset = 118
+type = "i32"
+value = 100
+[[bytes]]
+name = "TFile key fSeekPdir"
+offset = 122
+type = "i32"
+value = 0
+[[bytes]]
+name = "TFile key fClassName"
+offset = 126
+type = "string"
+value = "TFile"
+[[bytes]]
+name = "TFile key fName"
+offset = 132
+type = "string"
+value = "data/container/file-minimal.root"
+[[bytes]]
+name = "TFile key fTitle"
+offset = 165
+type = "string"
+value = "minimal container fixture"
+
+# --- Root directory payload, spec/01-container/Directory.md ----------------
+[[bytes]]
+name = "TDirectoryFile class version"
+offset = 250
+type = "i16"
+value = 5
+[[bytes]]
+name = "fNbytesKeys"
+offset = 260
+type = "i32"
+value = 161
+[[bytes]]
+name = "fNbytesName"
+offset = 264
+type = "i32"
+value = 150
+[[bytes]]
+name = "fSeekDir"
+offset = 268
+type = "i32"
+value = 100
+[[bytes]]
+name = "fSeekParent"
+offset = 272
+type = "i32"
+value = 0
+[[bytes]]
+name = "fSeekKeys"
+offset = 276
+type = "i32"
+value = 832
+
+# --- The data record, spec/02-serialization/Buffer.md ----------------------
+[[bytes]]
+name = "TObjString key fNbytes"
+offset = 310
+type = "i32"
+value = 88
+[[bytes]]
+name = "TObjString key fObjLen"
+offset = 316
+type = "i32"
+value = 22
+[[bytes]]
+name = "TObjString key fKeyLen"
+offset = 324
+type = "i16"
+value = 66
+[[bytes]]
+name = "TObjString key fClassName"
+offset = 336
+type = "string"
+value = "TObjString"
+[[bytes]]
+name = "TObjString key fName"
+offset = 347
+type = "string"
+value = "str"
+[[bytes]]
+name = "byte count word, kByteCountMask | 18"
+offset = 376
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "TObjString class version"
+offset = 380
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject class version"
+offset = 382
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject::fUniqueID"
+offset = 384
+type = "u32"
+value = 0
+[[bytes]]
+name = "TObject::fBits"
+offset = 388
+type = "u32"
+value = 0
+[[bytes]]
+name = "TString payload"
+offset = 392
+type = "string"
+value = "hello"
+
+# --- Free-segment list, spec/01-container/FreeSegments.md ------------------
+[[bytes]]
+name = "TFree class version"
+offset = 1084
+type = "i16"
+value = 1
+[[bytes]]
+name = "TFree::fFirst, == fEND"
+offset = 1086
+type = "i32"
+value = 1094
+[[bytes]]
+name = "TFree::fLast, the kStartBigFile sentinel"
+offset = 1090
+type = "i32"
+value = 2000000000
