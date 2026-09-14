@@ -201,7 +201,7 @@ one — though the *class* `TObjArray` is still back-referenced after the first.
 
 Values at `root/core/meta/inc/TVirtualStreamerInfo.h:74`.
 
-> Demonstrated by `serialization/streamer-info`: `fBits` at offset 529 is
+> Demonstrated by `serialization/streamer-info`: `fBits` at offset 521 is
 > `0x00010000`, i.e. `kIsCompiled` alone.
 
 A `FIXME` in ROOT claims these bits are never saved to the file
@@ -255,6 +255,16 @@ Only these members are persistent; `fOffset`, `fNewType`, `fXmin`, `fXmax` and
 >
 > Demonstrated by `serialization/streamer-info`: `fStr` has `fType` 65 and
 > `fSize` 24, while its on-disk form is a counted string of 2 bytes.
+
+**`fSize` makes a streamer info platform dependent.** Two ROOT builds of the same
+version, on the same architecture, can write byte-different streamer info for the
+same class, because `sizeof` differs between standard libraries:
+`sizeof(std::string)` is 24 with libc++ and 32 with libstdc++. Nothing else in the
+record varies, so the difference is invisible to a reader — but it means a
+streamer info cannot be compared byte-for-byte across platforms, and a class with
+a `std::string` member cannot serve as a portable reference file. This is why
+there is no `TStreamerSTLstring` fixture here; it was removed after the digest of
+one drifted between macOS and Linux CI while all its byte assertions passed.
 
 ### 7.1 The range fields moved out of the record
 
@@ -323,9 +333,9 @@ length of a counted array comes from the value of the member named by
 `fCountName`, read out of the object itself, and never appears in the stream.
 
 > Demonstrated by `serialization/streamer-info`, which contains one each of
-> `TStreamerBasicType`, `TStreamerString`, `TStreamerSTL`,
-> `TStreamerSTLstring` and `TStreamerBasicPointer`, with `fCountName` `"fN"` and
-> `fCountClass` `"Members"` on the last.
+> `TStreamerBasicType`, `TStreamerString`, `TStreamerSTL` and
+> `TStreamerBasicPointer`, with `fCountName` `"fN"` and `fCountClass` `"Members"`
+> on the last.
 
 ## 9. `TStreamerBase`, and a checksum hidden in `fMaxIndex`
 
@@ -381,9 +391,8 @@ and `kSTLstring` (365) **never appear as an `fType` in a file**, and a reader th
 trusts the stored 500 will treat every STL member as an opaque custom streamer.
 
 > Demonstrated by `serialization/streamer-info`: `fVec`, a `std::vector<int>`, has
-> `fType` 500 at offset 849 with `fSTLtype` 1 and `fCtype` 3; `fStd`, a
-> `std::string`, has `fType` 500 at offset 972 with `fSTLtype` and `fCtype` both
-> 365. `TFile::ShowStreamerInfo` prints 300 for both.
+> `fType` 500 at offset 841, with `fSTLtype` 1 and `fCtype` 3 identifying the real
+> type. `TFile::ShowStreamerInfo` prints 300 for the same element.
 
 Because the temporary is default-constructed, **the element's status bits are
 lost**: `kHasRange` and `kDoNotDelete` never survive for an STL element.
@@ -539,9 +548,10 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 
 | Case | Exercises |
 |---|---|
-| `serialization/streamer-info` | The whole chain: `TList`, `TStreamerInfo`, `TNamed`, `TObjArray`, and five element subclasses including both STL forms |
+| `serialization/streamer-info` | The whole chain: `TList`, `TStreamerInfo`, `TNamed`, `TObjArray`, and four element subclasses including `TStreamerSTL` |
 | `serialization/object-tags` | `TStreamerBase` for a `TObject` base, and a class back-reference between two infos |
 | `serialization/version-zero` | Fourteen infos and seventy-one elements, from `TH1L`'s whole class hierarchy |
 
-No fixture covers `listOfRules`, `TStreamerLoop`, `TStreamerObjectAnyPointer`, or
-any `TStreamerElement` version below 4 — the last needs a file written by ROOT 3.
+No fixture covers `listOfRules`, `TStreamerLoop`, or any `TStreamerElement`
+version below 4 — the last needs a file written by ROOT 3. `TStreamerSTLstring`
+cannot have one, for the `fSize` reason in §7.

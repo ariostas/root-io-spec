@@ -95,6 +95,13 @@ These cost time this session. Most are not discoverable by reading the code.
   to pages that do not exist, and it checks **anchors** too. Convert to a link when
   the target is written — `spec/00-conventions.md` §6.5 has the rule, and the
   remaining inline-code references are the working list of what is missing.
+- **A fixture can pass every byte assertion and still not be portable.** An
+  element's `fSize` in a streamer info is `sizeof` on the writing machine, and
+  `sizeof(std::string)` is 24 with libc++ but 32 with libstdc++. That drifts the
+  normalized digest between macOS and Linux CI while the file size and every
+  assertion stay identical, so the only symptom is `DRIFT` in the regenerate job.
+  Avoid `std::string` members in fixtures, and assert every `fSize` so a future
+  case fails as an assertion rather than as opaque drift.
 - **Never assume `root/io/doc/TFile/*.md` is correct.** It is the 3.02.06-era
   documentation. Roughly 37 errata against it are already recorded. Treat it as a
   source of questions, not answers.

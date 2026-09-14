@@ -491,7 +491,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/objects` | 62, 64, 65, 69, and a null pointer |
 | `serialization/pointer-forms` | 68 versus 69 by comment alone, and 65 versus 85 |
 | `serialization/double32` | All three quantised encodings and the `nbits >= 15` cliff |
-| `serialization/streamer-info` | The element records that carry these codes |
+| `serialization/streamer-info` | The element records that carry these codes, and `fType` 500 on a collection |
 | `serialization/version-zero` | `kBase` with a byte count, and code 66 without one |
 
 No fixture covers `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82
