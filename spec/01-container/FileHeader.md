@@ -255,7 +255,7 @@ Typical composite values are `0`, `101` (ZLIB level 1), `207` (LZMA 7), `404`
 > carries its own compressed and uncompressed lengths, and each may use a different
 > algorithm — the algorithm of a given record is determined by the magic bytes of
 > its compression block, never by `fCompress`. See
-> `spec/01-container/Compression.md`.
+> [Compression](Compression.md).
 
 Before ROOT ~5.30, `fCompress` was a bare ZLIB level with no algorithm component.
 The modern decoding stays correct for those files: a level in 0-9 yields algorithm 0

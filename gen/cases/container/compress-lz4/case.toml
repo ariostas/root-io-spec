@@ -1,0 +1,96 @@
+id   = "container/compress-lz4"
+file = "data/container/compress-lz4.root"
+size = 1070
+
+description = """
+One object compressed with lz4. Exercises the compression block header, its
+L4 magic bytes, and how TKey::fNbytes, fKeyLen and fObjLen relate when a
+payload is stored compressed.
+"""
+
+spec = ["spec/01-container/Compression.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "lz4", setting = 404 }
+
+# The compressed payload is one block: 9 + compressed_size == fNbytes - fKeyLen,
+# and uncompressed_size == fObjLen. Both are asserted below.
+[[records]]
+offset = 306
+nbytes = 183
+class  = "TObjString"
+role   = "compressed application data record"
+
+# --- File header ----------------------------------------------------------
+[[bytes]]
+name = "fCompress"
+offset = 33
+type = "i32"
+value = 404
+
+# --- The record key, spec/01-container/Record.md --------------------------
+[[bytes]]
+name = "fNbytes"
+offset = 306
+type = "i32"
+value = 183
+[[bytes]]
+name = "fObjLen"
+offset = 312
+type = "i32"
+value = 8221
+[[bytes]]
+name = "fKeyLen"
+offset = 320
+type = "i16"
+value = 66
+
+# --- Compression block header, spec/01-container/Compression.md -----------
+[[bytes]]
+name = "block magic"
+offset = 372
+type = "bytes"
+value = "L4"
+[[bytes]]
+name = "method byte"
+offset = 374
+type = "u8"
+value = 1
+[[bytes]]
+name = "compressed size, byte 0 (bits 0-7)"
+offset = 375
+type = "u8"
+value = 108
+[[bytes]]
+name = "compressed size, byte 1 (bits 8-15)"
+offset = 376
+type = "u8"
+value = 0
+[[bytes]]
+name = "compressed size, byte 2 (bits 16-23)"
+offset = 377
+type = "u8"
+value = 0
+[[bytes]]
+name = "uncompressed size, byte 0 (bits 0-7)"
+offset = 378
+type = "u8"
+value = 29
+[[bytes]]
+name = "uncompressed size, byte 1 (bits 8-15)"
+offset = 379
+type = "u8"
+value = 32
+[[bytes]]
+name = "uncompressed size, byte 2 (bits 16-23)"
+offset = 380
+type = "u8"
+value = 0
+
+# LZ4 alone carries an XXH64 checksum of the payload, between the header
+# and the payload, and counted inside the compressed-size field.
+[[bytes]]
+name = "xxh64 checksum"
+offset = 381
+type = "bytes"
+value = [105, 249, 70, 153, 39, 189, 17, 135]

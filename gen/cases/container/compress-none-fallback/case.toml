@@ -1,0 +1,53 @@
+id   = "container/compress-none-fallback"
+file = "data/container/compress-none-fallback.root"
+size = 1511
+
+description = """
+An incompressible payload in a file that requests zlib compression. Compression
+is attempted and rejected, so the payload is stored raw with no compression
+block header at all. The only signal is fNbytes - fKeyLen == fObjLen.
+"""
+
+spec = ["spec/01-container/Compression.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "zlib", setting = 101, effective = "none" }
+
+[[records]]
+offset = 340
+nbytes = 599
+class  = "TObjString"
+role   = "record whose payload is stored uncompressed despite fCompress"
+
+# fCompress says zlib, but this record is raw. A reader MUST decide per record,
+# never from the file header.
+[[bytes]]
+name = "fCompress (requests zlib)"
+offset = 33
+type = "i32"
+value = 101
+
+[[bytes]]
+name = "fNbytes"
+offset = 340
+type = "i32"
+value = 599
+[[bytes]]
+name = "fObjLen"
+offset = 346
+type = "i32"
+value = 533
+[[bytes]]
+name = "fKeyLen"
+offset = 354
+type = "i16"
+value = 66
+
+# fNbytes - fKeyLen == fObjLen (599 - 66 == 533), so the payload is raw.
+# It therefore begins with object data, not a 9-byte block header: the first
+# four bytes are the byte-count word, kByteCountMask | 529.
+[[bytes]]
+name = "payload starts with the object byte count, not a block magic"
+offset = 406
+type = "u32"
+value = 1073742353

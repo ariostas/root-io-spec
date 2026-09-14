@@ -1,0 +1,88 @@
+id   = "container/compress-zlib"
+file = "data/container/compress-zlib.root"
+size = 1069
+
+description = """
+One object compressed with zlib. Exercises the compression block header, its
+ZL magic bytes, and how TKey::fNbytes, fKeyLen and fObjLen relate when a
+payload is stored compressed.
+"""
+
+spec = ["spec/01-container/Compression.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "zlib", setting = 101 }
+
+# The compressed payload is one block: 9 + compressed_size == fNbytes - fKeyLen,
+# and uncompressed_size == fObjLen. Both are asserted below.
+[[records]]
+offset = 310
+nbytes = 217
+class  = "TObjString"
+role   = "compressed application data record"
+
+# --- File header ----------------------------------------------------------
+[[bytes]]
+name = "fCompress"
+offset = 33
+type = "i32"
+value = 101
+
+# --- The record key, spec/01-container/Record.md --------------------------
+[[bytes]]
+name = "fNbytes"
+offset = 310
+type = "i32"
+value = 217
+[[bytes]]
+name = "fObjLen"
+offset = 316
+type = "i32"
+value = 8221
+[[bytes]]
+name = "fKeyLen"
+offset = 324
+type = "i16"
+value = 66
+
+# --- Compression block header, spec/01-container/Compression.md -----------
+[[bytes]]
+name = "block magic"
+offset = 376
+type = "bytes"
+value = "ZL"
+[[bytes]]
+name = "method byte"
+offset = 378
+type = "u8"
+value = 8
+[[bytes]]
+name = "compressed size, byte 0 (bits 0-7)"
+offset = 379
+type = "u8"
+value = 142
+[[bytes]]
+name = "compressed size, byte 1 (bits 8-15)"
+offset = 380
+type = "u8"
+value = 0
+[[bytes]]
+name = "compressed size, byte 2 (bits 16-23)"
+offset = 381
+type = "u8"
+value = 0
+[[bytes]]
+name = "uncompressed size, byte 0 (bits 0-7)"
+offset = 382
+type = "u8"
+value = 29
+[[bytes]]
+name = "uncompressed size, byte 1 (bits 8-15)"
+offset = 383
+type = "u8"
+value = 32
+[[bytes]]
+name = "uncompressed size, byte 2 (bits 16-23)"
+offset = 384
+type = "u8"
+value = 0

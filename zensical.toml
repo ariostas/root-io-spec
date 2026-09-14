@@ -19,6 +19,7 @@ nav = [
   { "Conventions" = "00-conventions.md" },
   { "Container" = [
       { "File header" = "01-container/FileHeader.md" },
+      { "Compression" = "01-container/Compression.md" },
   ] },
 ]
 

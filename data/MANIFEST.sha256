@@ -1,3 +1,8 @@
 # Normalized SHA-256 digests of the reference files.
 # Timestamps and UUIDs are masked first; see tools/normalize.py.
+0bc1633748d576602aac8b32c7f1522490bae2dbab606613b38a69c6c8cfe1a5  data/container/compress-none-fallback.root
+8d4c846bae602f2afc3ebba7f9784e69f4eabd06b4909ea57929e80e0692cae0  data/container/compress-zstd.root
 8f9485edd8e8c7f065a99028d0bba680346d79bc372b81a9edb0aeda4f59c467  data/container/file-minimal.root
+ac57eaa625eb164a923a98f7dea33534aa2fd3c89acca62a242e12d0a062db15  data/container/compress-zlib.root
+d6ab80a630fa472b038c1333a56ce7629fafd9a38d1c87419d80c7d87facdc8b  data/container/compress-lzma.root
+f4d52fe4c1dd83d740685e32f84db3a8ea57d3cb23b5e1e0dfb96a9099d588ad  data/container/compress-lz4.root

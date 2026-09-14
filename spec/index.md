@@ -22,8 +22,8 @@ written layer by layer. See the repository's `PLAN.md` for the phasing.
 | Layer | State |
 |---|---|
 | Conventions | written |
-| Container — file header | written |
-| Container — records, directories, compression, free list | not yet written |
+| Container — file header, compression | written |
+| Container — records, directories, free list | not yet written |
 | Serialization — buffers, streamer info, element types, collections | not yet written |
 | Standard classes | not yet written |
 | `TTree` | not yet written |
