@@ -58,7 +58,9 @@ jobs:
         run: |
           # Must match the pinned submodule; see spec/00-conventions.md §1.
           conda install -y -c conda-forge root=6.40.04
+      # generate.py is itself the check: it recomputes each fixture's normalized
+      # digest and fails on drift. A raw `git diff` over data/ would always
+      # differ, since every regeneration writes a fresh TKey timestamp and a
+      # fresh TUUID -- which is the reason the digests are normalized at all.
       - name: Regenerate and compare normalized digests
         run: tools/generate.py
-      - name: Fail if any fixture changed
-        run: git diff --exit-code -- data/
