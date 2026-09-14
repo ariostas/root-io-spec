@@ -155,18 +155,21 @@ validate `fEND == filesize` unconditionally.
 
 The number of bytes, starting at `fBEGIN`, occupied by the root directory record's
 key **plus a second serialized copy of its name and title** that follows the key.
-The root directory's own payload therefore begins at:
 
-```
-fBEGIN + fNbytesName
-```
+Two different offsets are in play here, and conflating them is a common error:
 
-which is how `TFile::Init()` locates it (`root/io/io/src/TFile.cxx:804`). It is the
-only way to skip the variable-length prefix.
+| Offset | What starts there |
+|---|---|
+| `fBEGIN + fKeyLen` | the record's payload, beginning with the duplicated name and title |
+| `fBEGIN + fNbytesName` | the `TDirectoryFile` fields proper, starting with its class version |
 
-In `container/file-minimal`: the root directory's key is 91 bytes, its name is 32
-bytes and its title 25, each with a 1-byte length prefix, giving
-`91 + 33 + 26 = 150`.
+`fNbytesName` exists precisely to give the second offset, since the duplicated name
+and title are variable-length. `TFile::Init()` uses it that way
+(`root/io/io/src/TFile.cxx:804`).
+
+In `container/file-minimal`: `fKeyLen` is 91, the name is 32 bytes and the title 25,
+each with a 1-byte length prefix, so `fNbytesName = 91 + 33 + 26 = 150`. The payload
+starts at 191 and the `TDirectoryFile` fields at 250.
 
 ROOT rejects a file where the copy of this value inside the directory record is
 outside `[10, 10000]` (`root/io/io/src/TFile.cxx:841-844`).
@@ -320,8 +323,10 @@ A conforming reader performs the following steps.
 3. Read `fBEGIN` at offset 8. Do not assume 100.
 4. Read the remaining fields at the offsets for the selected layout.
 5. Reject if `fBEGIN < 0` or `fBEGIN > fEND`.
-6. The root directory record's key begins at `fBEGIN`; its payload begins at
-   `fBEGIN + fNbytesName`. Continue with `spec/01-container/Directory.md`.
+6. The root directory record's key begins at `fBEGIN`. Its payload begins at
+   `fBEGIN + fKeyLen` with a duplicated name and title; the `TDirectoryFile` fields
+   begin at `fBEGIN + fNbytesName` (§5.3). Continue with
+   `spec/01-container/Directory.md`.
 
 Everything else — the record chain, the keys list, the streamer info — is reached
 from there or from `fSeekFree` / `fSeekInfo`.
