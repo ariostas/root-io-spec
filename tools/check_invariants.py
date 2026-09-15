@@ -97,6 +97,8 @@ class Checker:
     def __init__(self, path: Path):
         self.path = path
         self.failures: list[str] = []
+        self.no_codec: set[str] = set()
+        self._infos: tuple | None = None
         self.buf = path.read_bytes()
         self.header = self.records = None
         try:
@@ -109,6 +111,47 @@ class Checker:
         self.failures.append(f"{self.path.name}: {where}: {message}")
 
     # -- FileHeader.md 10 ---------------------------------------------------
+    def data(self, rec):
+        """The file buffer with `rec`'s object data uncompressed in place.
+
+        Returns None when the record's algorithm is unavailable here, which is
+        recorded as "not checked" rather than as a failure -- the invariant checks
+        deliberately depend on nothing outside the standard library, and zstd
+        needs Python 3.14 while LZ4 needs a package.
+        """
+        try:
+            return rootfile.object_data(self.buf, rec)
+        except rootfile.MissingCodec as exc:
+            self.no_codec.add(str(exc))
+            return None
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            self.bad("Compression 9", str(exc))
+            return None
+
+    def streamer_infos(self):
+        """(buffer, record, infos) for this file's StreamerInfo record.
+
+        Cached, because six checks want it and decompressing it is not free.
+        Returns (None, None, None) when there is none or it cannot be read.
+        """
+        if self._infos is None:
+            self._infos = self._read_streamer_infos()
+        return self._infos
+
+    def _read_streamer_infos(self):
+        rec = next((r for r in self.records
+                    if not r.free and r.name == "StreamerInfo"), None)
+        if rec is None or rec.class_name != "TList":
+            return (None, None, None)
+        data = self.data(rec)
+        if data is None:
+            return (None, None, None)
+        try:
+            return (data, rec, rootfile.read_streamer_infos(data, rec))
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            self.bad("StreamerInfo 13.12", f"could not parse the record: {exc}")
+            return (None, None, None)
+
     def check_header(self) -> None:
         h, size = self.header, len(self.buf)
         if self.buf[:4] != b"root":
@@ -214,15 +257,16 @@ class Checker:
         for rec in self.records:
             if rec.free or rec.class_name in self.UNFRAMED:
                 continue
-            if rootfile.is_compressed(rec):
-                continue  # this checker does not decompress
+            data = self.data(rec)
+            if data is None:
+                continue
             start, end = rootfile.payload_range(rec)
             if rec.obj_len < 6:
                 self.bad("Buffer 9.2", f"payload of {rec.obj_len} bytes at {rec.offset} "
                                        f"is too short for a byte count and a version")
                 continue
 
-            frame = rootfile.read_frame(self.buf, start)
+            frame = rootfile.read_frame(data, start)
 
             # 9.9 and 9.2 at the outermost level: the leading byte count spans
             # the payload exactly.
@@ -245,12 +289,12 @@ class Checker:
                          f"outside [0, kMaxVersion]")
 
             if rec.class_name == "TList":
-                self.check_tlist_references(rec)
+                self.check_tlist_references(data, rec)
 
-    def check_tlist_references(self, rec) -> None:
+    def check_tlist_references(self, data, rec) -> None:
         """Buffer.md 9.5 to 9.8, over the object slots of one TList."""
         try:
-            slots = rootfile.read_tlist(self.buf, rec)
+            slots = rootfile.read_tlist(data, rec)
         except rootfile.FormatError as exc:
             self.bad("Buffer 9.3", f"TList at {rec.offset}: {exc}")
             return
@@ -341,13 +385,8 @@ class Checker:
         if self.header.nbytes_info != rec.nbytes:
             self.bad("StreamerInfo 13.1",
                      f"fNbytesInfo {self.header.nbytes_info} != fNbytes {rec.nbytes}")
-        if rootfile.is_compressed(rec):
-            return  # this checker does not decompress
-
-        try:
-            infos = rootfile.read_streamer_infos(self.buf, rec)
-        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
-            self.bad("StreamerInfo 13.12", f"could not parse the record: {exc}")
+        _, _, infos = self.streamer_infos()
+        if infos is None:
             return
 
         by_name = {i.name: i for i in infos}
@@ -441,26 +480,24 @@ class Checker:
         rather than as failures -- that divergence is StreamerDriven.md section 7
         and is the subject of spec/03-classes/.
         """
-        rec = next((r for r in self.records
-                    if not r.free and r.name == "StreamerInfo"), None)
-        if rec is None or rootfile.is_compressed(rec):
+        _, _, infos = self.streamer_infos()
+        if infos is None:
             return
-        try:
-            infos = rootfile.read_streamer_infos(self.buf, rec)
-        except (rootfile.FormatError, struct.error, IndexError, ValueError):
-            return  # already reported by check_streamer_info
 
         for info in infos:
             for where, message in element_list_failures(info):
                 self.bad(where, message)
 
         for target in self.records:
-            if target.free or rootfile.is_compressed(target):
+            if target.free:
                 continue
             if target.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
                 continue
+            data = self.data(target)
+            if data is None:
+                continue
             try:
-                rootfile.decode_record(self.buf, target, infos)
+                rootfile.decode_record(data, target, infos)
             except rootfile.UnsupportedClass:
                 continue    # a hand-written Streamer; StreamerDriven.md 7
             except (rootfile.FormatError, struct.error,
@@ -484,11 +521,12 @@ class Checker:
 
         titles: dict[str, int] = {}
         for index, rec in sorted(processes.items()):
-            if rootfile.is_compressed(rec):
+            data = self.data(rec)
+            if data is None:
                 continue
             start, _ = rootfile.payload_range(rec)
-            frame = rootfile.read_frame(self.buf, start)
-            name, title, _, _ = rootfile._skip_named(self.buf, frame.body)
+            frame = rootfile.read_frame(data, start)
+            name, title, _, _ = rootfile._skip_named(data, frame.body)
             if len(title) != 36:
                 self.bad("References 8.3",
                          f"ProcessID{index} fTitle is {len(title)} characters, not 36")
@@ -505,7 +543,10 @@ class Checker:
             return (pidf + rec.pid_offset) in processes
 
         for rec in self.records:
-            if rec.free or rootfile.is_compressed(rec):
+            if rec.free:
+                continue
+            data = self.data(rec)
+            if data is None:
                 continue
 
             if rec.class_name == "TRef":
@@ -515,7 +556,7 @@ class Checker:
                              f"not 12")
                     continue
                 start, _ = rootfile.payload_range(rec)
-                ref = rootfile.read_ref(self.buf, start)
+                ref = rootfile.read_ref(data, start)
                 if not process_exists(ref.pidf, rec):
                     self.bad("References 8.2",
                              f"TRef at {rec.offset} names pidf {ref.pidf}, and no "
@@ -523,7 +564,7 @@ class Checker:
 
             if rec.class_name == "TRefArray":
                 start, end = rootfile.payload_range(rec)
-                arr = rootfile.read_ref_array(self.buf, start)
+                arr = rootfile.read_ref_array(data, start)
                 if arr.nobjects < 0:
                     self.bad("References 8.5",
                              f"TRefArray at {rec.offset} has nobjects {arr.nobjects}")
@@ -545,21 +586,19 @@ class Checker:
         # enclosing object and its byte count catches it. Confirmed by clearing
         # kIsReferenced on serialization/references, which reports
         # "TObjString v1 consumed 11 bytes, byte count says 14".
-        info_rec = next((r for r in self.records
-                         if not r.free and r.name == "StreamerInfo"), None)
-        if info_rec is None or rootfile.is_compressed(info_rec):
-            return
-        try:
-            infos = rootfile.read_streamer_infos(self.buf, info_rec)
-        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+        _, _, infos = self.streamer_infos()
+        if infos is None:
             return
         for rec in self.records:
-            if rec.free or rootfile.is_compressed(rec):
+            if rec.free:
                 continue
             if rec.class_name in ("TFile", "TDirectory", "TDirectoryFile", "TRef"):
                 continue
+            data = self.data(rec)
+            if data is None:
+                continue
             try:
-                tree = rootfile.decode_record(self.buf, rec, infos)
+                tree = rootfile.decode_record(data, rec, infos)
             except (rootfile.UnsupportedClass, rootfile.FormatError,
                     struct.error, IndexError, ValueError):
                 continue
@@ -580,12 +619,11 @@ class Checker:
 
     def check_schema_evolution(self) -> None:
         """SchemaEvolution.md invariants 1 to 5."""
-        rec = next((r for r in self.records
-                    if not r.free and r.name == "StreamerInfo"), None)
-        if rec is None or rec.class_name != "TList" or rootfile.is_compressed(rec):
+        data, rec, infos = self.streamer_infos()
+        if infos is None:
             return
         try:
-            entries = rootfile.read_streamer_info_entries(self.buf, rec)
+            entries = rootfile.read_streamer_info_entries(data, rec)
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
             self.bad("SchemaEvolution 9.3", f"could not walk the list: {exc}")
             return
@@ -600,7 +638,7 @@ class Checker:
                          f"TStreamerInfo nor a listOfRules")
                 continue
             try:
-                name, rules = rootfile.read_rule_list(self.buf, rec, slot)
+                name, rules = rootfile.read_rule_list(data, rec, slot)
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError) as exc:
                 self.bad("SchemaEvolution 9.4", f"nested TList at {slot.offset}: {exc}")
@@ -619,10 +657,6 @@ class Checker:
             self.bad("SchemaEvolution 9.4",
                      f"{rule_lists} listOfRules entries; at most one is expected")
 
-        try:
-            infos = rootfile.read_streamer_infos(self.buf, rec)
-        except (rootfile.FormatError, struct.error, IndexError, ValueError):
-            return
         for where, message in info_list_failures(infos):
             self.bad(where, message)
 
@@ -632,13 +666,8 @@ class Checker:
         Invariant 5 is StreamerDriven 10.2 applied inside a collection, and is
         checked by decode_record.
         """
-        rec = next((r for r in self.records
-                    if not r.free and r.name == "StreamerInfo"), None)
-        if rec is None or rootfile.is_compressed(rec):
-            return
-        try:
-            infos = rootfile.read_streamer_infos(self.buf, rec)
-        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+        _, _, infos = self.streamer_infos()
+        if infos is None:
             return
         known = {i.name for i in infos}
 
@@ -661,9 +690,12 @@ class Checker:
                                  f"{el.tail.get('fCtype')}, not 365 and 365")
 
         for target in self.records:
-            if target.free or rootfile.is_compressed(target):
+            if target.free:
                 continue
             if target.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
+                continue
+            data = self.data(target)
+            if data is None:
                 continue
 
             # 14.7. 14.8 -- that the body matches the encoding fBits selects --
@@ -673,13 +705,13 @@ class Checker:
             # serialization/clones-array.
             if target.class_name == "TClonesArray":
                 start, _ = rootfile.payload_range(target)
-                frame = rootfile.read_frame(self.buf, start)
+                frame = rootfile.read_frame(data, start)
                 pos = frame.body
                 if frame.version > 2:
-                    pos = rootfile.read_tobject(self.buf, pos).end
+                    pos = rootfile.read_tobject(data, pos).end
                 if frame.version > 1:
-                    _, pos = rootfile._counted_string(self.buf, pos)
-                spec, _ = rootfile._counted_string(self.buf, pos)
+                    _, pos = rootfile._counted_string(data, pos)
+                spec, _ = rootfile._counted_string(data, pos)
                 cls, _, text = spec.partition(";")
                 match = next((i for i in infos if i.name == cls), None)
                 if match is None:
@@ -693,12 +725,12 @@ class Checker:
                              f"{match.class_version}")
 
             try:
-                decoder, _ = rootfile.decode_record_verbose(self.buf, target, infos)
+                decoder, _ = rootfile.decode_record_verbose(data, target, infos)
             except (rootfile.UnsupportedClass, rootfile.FormatError,
                     struct.error, IndexError, ValueError):
                 continue
             for name, value, offset in decoder.member_wise:
-                frame = rootfile.read_frame(self.buf, offset)
+                frame = rootfile.read_frame(data, offset)
                 if frame.version > 10:
                     self.bad("Collections 14.3",
                              f"{name} has version word {frame.version}, above "
@@ -898,10 +930,18 @@ class Checker:
 def main(argv: list[str]) -> int:
     paths = [Path(a) for a in argv] or sorted((REPO / "data").rglob("*.root"))
     failures = []
+    no_codec: set[str] = set()
     for path in paths:
-        failures += Checker(path).run()
+        checker = Checker(path)
+        failures += checker.run()
+        no_codec |= checker.no_codec
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
+    # Say so out loud: a record nobody could decompress is a record nobody
+    # checked, and silence there would overstate the coverage.
+    for reason in sorted(no_codec):
+        print(f"NOT CHECKED some records were not decompressed: {reason}",
+              file=sys.stderr)
     print(f"invariants checked on {len(paths)} file(s), {len(failures)} failure(s)")
     return 1 if failures else 0
 

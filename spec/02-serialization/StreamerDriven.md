@@ -238,6 +238,18 @@ class a user defines — the streamer info is authoritative.
 > first object of the class, not corrupt values: the loop consumes the wrong
 > number of bytes and §8 catches it.
 
+**`TList` is the example to keep in mind.** Its recorded streamer info lists a
+`TSeqCollection` base, which in turn lists a `TCollection` base holding `fName`
+and `fSize`. `TList::Streamer` writes none of that: it writes a `TObject`, then
+`fName`, then a count and the entries
+([Streamer information §4](StreamerInfo.md#4-tlist)). A reader that follows the
+info reads three nested objects that are not there.
+
+> Observed in an ordinary ROOT file, not constructed: a `TGraph`'s `fFunctions`
+> member is a `TList*`, and following the recorded info for it fails on the
+> `TSeqCollection` base. `tools/coverage_probe.py` reports exactly that when the
+> hand-written reader is bypassed.
+
 ## 8. Resynchronisation
 
 Two properties make a partial reader viable, and both come from the byte count.

@@ -138,5 +138,31 @@ class InfoListInvariants(unittest.TestCase):
         self.assertEqual(self.failures([a]), ["SchemaEvolution 9.1"])
 
 
+class CountedString(unittest.TestCase):
+    """Conventions 5.1. The 255 escape is why this has its own test: no fixture
+    had a string longer than 254 bytes until the compression cases were
+    decompressed, and the reader had silently been getting it wrong."""
+
+    def test_short(self):
+        self.assertEqual(rootfile._counted_string(b"\x03abc", 0), ("abc", 4))
+
+    def test_empty(self):
+        self.assertEqual(rootfile._counted_string(b"\x00", 0), ("", 1))
+
+    def test_longest_short_form(self):
+        raw = bytes([254]) + b"x" * 254
+        self.assertEqual(rootfile._counted_string(raw, 0), ("x" * 254, 255))
+
+    def test_escape(self):
+        raw = b"\xff\x00\x00\x00\x03abc"
+        self.assertEqual(rootfile._counted_string(raw, 0), ("abc", 8))
+
+    def test_a_255_byte_string_uses_the_long_form(self):
+        # The escape triggers above 254, so 0xFF never means "255 characters".
+        raw = b"\xff\x00\x00\x00\xff" + b"y" * 255
+        text, end = rootfile._counted_string(raw, 0)
+        self.assertEqual((len(text), end), (255, 260))
+
+
 if __name__ == "__main__":
     unittest.main()

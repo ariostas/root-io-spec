@@ -38,6 +38,12 @@ A digest differing from `data/MANIFEST.sha256` is an error: either the format
 changed or a fixture stopped being reproducible. `--accept` re-records it, and is
 the right move only when you changed the case yourself.
 
+`tools/coverage_probe.py <file.root>` is not a CI check: it measures how much of a
+file the specification currently covers, and prints what blocked each record. Point
+it at a file the fixtures were not designed around — a few histograms and a
+`TTree` — to get a ranked list of what is still missing, rather than guessing from
+`PLAN.md`.
+
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
 
@@ -69,8 +75,11 @@ needed and why it has to be a separate step.
 **`data/`** — the generated reference files, committed, plus `MANIFEST.sha256`.
 
 **`tools/`** — checkers, and `rootfile.py`, a pure-Python reader of the header,
-record chain, directory records, key lists, the buffer framing layer and the
-StreamerInfo record. It is deliberately an independent implementation of what
+record chain, directory records, key lists, decompression, the buffer framing
+layer, the StreamerInfo record, the streamer-driven read, collections, references
+and `TClonesArray`. zlib and lzma come from the standard library; zstd needs Python
+3.14 and LZ4 needs a package, and a record whose codec is missing is reported as
+"NOT CHECKED" rather than passing silently. It is deliberately an independent implementation of what
 `spec/` specifies, written from the specification rather than from ROOT's code, so
 that the two disagreeing is a detectable event. It reproduces `TFile::Map()`
 exactly.

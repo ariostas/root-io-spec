@@ -122,9 +122,18 @@ def _i64(b, o):
 
 
 def _counted_string(b, o):
-    """The `TKey` string encoding: 1 length byte, then that many bytes."""
+    """A counted string: Conventions 5.1.
+
+    One length byte, then that many bytes -- except that a length byte of 255
+    escapes to a 4-byte big-endian length. The escape triggers above 254, so a
+    leading 0xFF never means "255 characters".
+    """
     n = b[o]
-    return b[o + 1 : o + 1 + n].decode("latin-1"), o + 1 + n
+    o += 1
+    if n == 255:
+        n = _i32(b, o)
+        o += 4
+    return b[o:o + n].decode("latin-1"), o + n
 
 
 def read_header(buf: bytes) -> FileHeader:
@@ -481,6 +490,142 @@ def skip_tobject(buf: bytes, offset: int) -> int:
     return read_tobject(buf, offset).end
 
 
+# ---------------------------------------------------------------------------
+# Decompression (spec/01-container/Compression.md).
+#
+# Written from that document: the 9-byte header with its two 24-bit little-endian
+# sizes, the magics, LZ4's 8-byte checksum, and the block chain of section 7.
+#
+# The codecs themselves are not reimplemented. zlib and lzma are in the standard
+# library everywhere; zstd is only from Python 3.14, and lz4 needs a package. A
+# record whose algorithm is unavailable raises MissingCodec, which callers report
+# as "not checked" rather than as a failure -- the alternative is making the
+# invariant checks depend on third-party packages, which would undermine the point
+# of the fixtures being checkable with stdlib Python alone.
+# ---------------------------------------------------------------------------
+
+KMAXZIPBUF = 0xFFFFFF          # root/core/zip/inc/RZip.h, the 24-bit size cap
+BLOCK_HEADER = 9
+LZ4_CHECKSUM = 8
+
+
+class MissingCodec(FormatError):
+    """The block's algorithm is not available in this Python."""
+
+
+def _zlib(payload: bytes, nout: int) -> bytes:
+    import zlib
+    return zlib.decompress(payload)
+
+
+def _lzma(payload: bytes, nout: int) -> bytes:
+    import lzma
+    return lzma.decompress(payload)
+
+
+def _zstd(payload: bytes, nout: int) -> bytes:
+    try:
+        from compression import zstd            # Python 3.14+
+    except ImportError:
+        try:
+            import zstandard
+        except ImportError:
+            raise MissingCodec("zstd needs Python 3.14 or the zstandard package")
+        return zstandard.ZstdDecompressor().decompress(payload, max_output_size=nout)
+    return zstd.decompress(payload)
+
+
+def _lz4(payload: bytes, nout: int) -> bytes:
+    try:
+        import lz4.block
+    except ImportError:
+        raise MissingCodec("lz4 needs the lz4 package")
+    return lz4.block.decompress(payload, uncompressed_size=nout)
+
+
+def _legacy(payload: bytes, nout: int) -> bytes:
+    raise MissingCodec("the legacy 'CS' algorithm has no Python implementation")
+
+
+# Magic -> (expected method byte, decompressor). Compression.md section 3.
+CODECS = {
+    b"ZL": (8, _zlib),
+    b"XZ": (0, _lzma),
+    b"L4": (None, _lz4),      # the method byte is the LZ4 major version
+    b"ZS": (1, _zstd),
+    b"CS": (8, _legacy),
+}
+
+
+def _u24le(b: bytes, o: int) -> int:
+    return b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)
+
+
+def decompress(buf: bytes, rec: Record) -> bytes:
+    """The object data of a compressed record. Compression.md section 7."""
+    src = rec.offset + rec.key_len
+    src_end = rec.offset + rec.nbytes
+    out = bytearray()
+    while len(out) < rec.obj_len:
+        if src + BLOCK_HEADER > src_end:
+            raise FormatError(
+                f"record at {rec.offset}: payload ends mid-block-header")
+        magic = bytes(buf[src:src + 2])
+        if magic not in CODECS:
+            raise FormatError(
+                f"record at {rec.offset}: unknown compression magic {magic!r}")
+        method, codec = CODECS[magic]
+        if method is not None and buf[src + 2] != method:
+            raise FormatError(
+                f"record at {rec.offset}: {magic.decode()} block has method byte "
+                f"{buf[src + 2]}, expected {method}")
+        nin = BLOCK_HEADER + _u24le(buf, src + 3)
+        nout = _u24le(buf, src + 6)
+        if src + nin > src_end:
+            raise FormatError(
+                f"record at {rec.offset}: block claims {nin} bytes, only "
+                f"{src_end - src} remain")
+        if len(out) + nout > rec.obj_len:
+            raise FormatError(
+                f"record at {rec.offset}: block would exceed fObjLen")
+        skip = BLOCK_HEADER + (LZ4_CHECKSUM if magic == b"L4" else 0)
+        try:
+            chunk = codec(bytes(buf[src + skip:src + nin]), nout)
+        except MissingCodec:
+            raise
+        except Exception as exc:
+            # Every codec raises its own exception type; a corrupt block is a
+            # format error here, not a crash.
+            raise FormatError(
+                f"record at {rec.offset}: {magic.decode()} block at {src} did not "
+                f"decompress: {exc}") from exc
+        if len(chunk) != nout:
+            raise FormatError(
+                f"record at {rec.offset}: block decompressed to {len(chunk)} "
+                f"bytes, header says {nout}")
+        out += chunk
+        src += nin
+    if len(out) != rec.obj_len:
+        raise FormatError(
+            f"record at {rec.offset}: decompressed {len(out)} bytes, fObjLen is "
+            f"{rec.obj_len}")
+    return bytes(out)
+
+
+def object_data(buf: bytes, rec: Record) -> bytes:
+    """A buffer in which `rec`'s object data is uncompressed and in place.
+
+    Returns `buf` unchanged when the record is stored raw. Otherwise returns the
+    file truncated after this record, with the payload replaced by the
+    decompressed bytes -- so the record still starts at `rec.offset` and every
+    offset convention in this module, which counts from the start of the record,
+    keeps working. Callers pass the result wherever they would pass the file.
+    """
+    if not is_compressed(rec):
+        return buf
+    return bytes(buf[:rec.offset + rec.key_len]) + decompress(buf, rec)
+
+
 @dataclass
 class Slot:
     """One object slot and how it was encoded (Buffer.md section 6)."""
@@ -801,15 +946,31 @@ SCALAR_WIDTH = {
 OFFSET_L = 20
 OFFSET_P = 40
 
-# Classes whose Streamer is hand-written, so that their streamer info -- which is
-# still in the file -- does not describe their bytes (StreamerDriven.md section 7).
+# Classes whose Streamer is hand-written *at the versions a current file uses*, so
+# that their streamer info -- which is still in the file -- does not describe their
+# bytes (StreamerDriven.md section 7).
+#
+# This list is deliberately short, and shorter than it first appears it should be.
+# Many ROOT classes do have a hand-written Streamer, but it is a version guard that
+# delegates to ReadClassBuffer above some threshold and keeps a legacy layout below
+# it: TH1 and TGraph above class version 2, TAxis above 5, TTree above 4, TLeaf
+# above 1, and TBranch/TBranchElement unconditionally. Those are streamer-info
+# driven for every version a modern file contains, and listing them here would
+# wrongly refuse files this specification can in fact describe.
+#
+# What remains are the classes that diverge at every version.
 CUSTOM_STREAMER = {
+    # The container's own bookkeeping, specified in spec/01-container/.
     "TFile", "TDirectory", "TDirectoryFile",
-    "TList", "TObjArray", "THashList", "TCollection", "TSeqCollection",
+    # Specified but not implemented here: an n:i32 count then n values.
     "TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL", "TArrayL64",
     "TArrayF", "TArrayD",
-    "TH1", "TAxis",
-    "TRef", "TRefArray", "TProcessID",
+    # Reachable only through TList's streamer info, which describes bases its
+    # hand-written streamer never writes. read_sequence bypasses that info, so
+    # these should never be reached at all.
+    "TCollection", "TSeqCollection",
+    # Implemented below, from spec/02-serialization/References.md.
+    "TRef", "TRefArray",
 }
 
 _PI_LITERALS = {
@@ -902,9 +1063,16 @@ class Decoder:
     `base` is the record start, which is buffer position 0 (Buffer.md section 1).
     """
 
-    def __init__(self, buf: bytes, base: int, infos: list[StreamerInfo]):
+    def __init__(self, buf: bytes, base: int, infos: list[StreamerInfo],
+                 tolerant: bool = False):
         self.buf = buf
         self.base = base
+        # In tolerant mode an object whose class cannot be read is skipped by its
+        # byte count and recorded, instead of failing the whole read. That is what
+        # StreamerDriven.md section 8 says a partial reader should do; it is off by
+        # default so that the fixture checks stay strict.
+        self.tolerant = tolerant
+        self.unread: list[tuple[str, int]] = []   # (reason, buffer offset)
         self.infos: dict[str, dict[int, StreamerInfo]] = {}
         for info in infos:
             self.infos.setdefault(info.name, {})[info.class_version] = info
@@ -930,13 +1098,22 @@ class Decoder:
 
     # -- objects ----------------------------------------------------------
 
+    # TList and THashList share a layout; TObjArray differs only in having no
+    # per-entry option string and one extra Int_t. StreamerInfo.md 4 and 5.
+    SEQUENCES = {"TList": True, "THashList": True, "TObjArray": False}
+
     def read_object(self, cls: str, offset: int) -> Value:
         """An object introduced by its own `byteCount version` (no class record)."""
         if cls == "TClonesArray":
             return self.read_clones_array(offset)
-        frame = read_frame(self.buf, offset)
-        version, body = self.resolve_version(cls, frame)
-        members = self.read_members(cls, version, body, frame.end)
+        if cls in self.SEQUENCES:
+            return self.read_sequence(cls, offset)
+        try:
+            frame = read_frame(self.buf, offset)
+            version, body = self.resolve_version(cls, frame)
+            members = self.read_members(cls, version, body, frame.end)
+        except UnsupportedClass as exc:
+            return self.skip_or_fail(cls, offset, exc)
         end = frame.end if frame.end is not None else (
             members[-1].end if members else body)
         return Value(name=cls, ftype=61, start=offset, end=end,
@@ -978,7 +1155,20 @@ class Decoder:
         pos = offset
         counters: dict[str, int] = {}
         for el in info.elements:
-            value = self.read_element_value(el, pos, counters)
+            try:
+                value = self.read_element_value(el, pos, counters)
+            except UnsupportedClass as exc:
+                # Skip just this member, by its byte count, and keep reading the
+                # rest of the object. StreamerDriven.md section 8.
+                if not self.tolerant:
+                    raise
+                frame = read_frame(self.buf, pos)
+                if frame.end is None:
+                    raise
+                self.unread.append((str(exc), pos))
+                value = Value(name=el.name, ftype=el.ftype, start=pos,
+                              end=frame.end, type_name=el.type_name,
+                              note=f"unread: {exc}")
             if el.ftype == 6:                 # kCounter: retain it for later
                 counters[el.name] = _i32(self.buf, pos)
             values.append(value)
@@ -1078,9 +1268,12 @@ class Decoder:
             if slot.kind == "reference":
                 return done(slot.end, note=f"reference to {slot.reference}")
             cls, body_at = resolve_class(slot, self.classes)
-            frame = read_frame(buf, body_at)
-            version, body = self.resolve_version(cls, frame)
-            self.read_members(cls, version, body, slot.end)
+            # Go through read_object, not read_members, so that a class with a
+            # hand-written reader here -- TList, TObjArray, TClonesArray -- gets
+            # it. Reading TList through its streamer info instead produces a
+            # TSeqCollection base that its streamer never writes: the divergence
+            # of StreamerDriven.md section 7, in a real file.
+            self.read_object(cls, body_at)
             return done(slot.end, type_name=cls)
 
         if t == 500 and el.cls in ("TStreamerSTL", "TStreamerSTLstring"):
@@ -1095,6 +1288,65 @@ class Decoder:
 
         raise UnsupportedClass(f"type code {t}")
 
+
+    def skip_or_fail(self, cls: str, offset: int, exc: Exception):
+        """Either skip an unreadable object by its byte count, or re-raise."""
+        if not self.tolerant:
+            raise exc
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise exc
+        self.unread.append((str(exc), offset))
+        return Value(name=cls, ftype=61, start=offset, end=frame.end,
+                     type_name=cls, note=f"unread: {exc}")
+
+    def read_sequence(self, cls: str, offset: int) -> Value:
+        """A TList, THashList or TObjArray. StreamerInfo.md sections 4 and 5."""
+        options = self.SEQUENCES[cls]
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"{cls} at {offset} has no byte count")
+        pos = frame.body
+        if frame.version > 2:
+            pos = read_tobject(self.buf, pos).end
+        if frame.version > 1:
+            _, pos = _counted_string(self.buf, pos)
+        count = _i32(self.buf, pos)
+        pos += 4
+        if not options:
+            pos += 4                      # fLowerBound
+        members = []
+        for _ in range(max(count, 0)):
+            slot = read_slot(self.buf, pos, self.base)
+            if slot.kind == "object":
+                name, body = resolve_class(slot, self.classes)
+                note = ""
+                try:
+                    inner = read_frame(self.buf, body)
+                    version, start = self.resolve_version(name, inner)
+                    self.read_members(name, version, start, slot.end)
+                except UnsupportedClass as exc:
+                    if not self.tolerant:
+                        raise
+                    self.unread.append((str(exc), slot.offset))
+                    note = f"unread: {exc}"
+                members.append(Value(name=name, ftype=61, start=slot.offset,
+                                     end=slot.end, type_name=name, note=note))
+            pos = slot.end
+            if options and frame.version > 3:
+                # The option string. Present after *every* entry, empty or not,
+                # and it is the commonest way to desynchronise on a TList.
+                n = self.buf[pos]
+                pos += 1
+                if n == 255 and frame.version > 4:
+                    pos += 4 + _i32(self.buf, pos)
+                else:
+                    pos += n
+        if pos != frame.end:
+            raise FormatError(
+                f"{cls} at {offset} consumed to {pos}, byte count says {frame.end}")
+        return Value(name=cls, ftype=61, start=offset, end=frame.end,
+                     type_name=cls, members=members)
 
     # -- TClonesArray -----------------------------------------------------
 
@@ -1260,15 +1512,15 @@ class Decoder:
         raise UnsupportedClass(f"member-wise column of type code {t}")
 
 
-def decode_record_verbose(buf: bytes, rec: Record,
-                          infos: list[StreamerInfo]) -> tuple[Decoder, Value | None]:
+def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
+                          tolerant: bool = False) -> tuple[Decoder, Value | None]:
     """decode_record, but hand back the Decoder even when the read fails.
 
     A checker needs what the decoder saw on the way to the failure -- notably
     which collections were member-wise, which is only in the data.
     """
     start, end = payload_range(rec)
-    decoder = Decoder(buf, rec.offset, infos)
+    decoder = Decoder(buf, rec.offset, infos, tolerant=tolerant)
     try:
         value = decoder.read_object(rec.class_name, start)
     except (FormatError, struct.error, IndexError, ValueError):

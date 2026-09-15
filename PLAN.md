@@ -593,7 +593,8 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 | ✅ `tools/check_citations.py` | Every cited `path:line` exists in the pinned submodule. Not in the original plan. |
 | ✅ `tools/check_pin.py` | `zensical.toml`'s citation commit matches the submodule pin. Not in the original plan. |
 | ✅ `tools/rootcite.py` | Markdown extension turning `path:line` into a link at the pinned commit. Not in the original plan. |
-| ◐ `tools/rootfile.py` | Independent pure-Python reader: header, record chain, directories, key lists, buffer framing, streamer info, the streamer-driven read, collections, references. This is §7 item 4's reference reader arriving early and piecemeal; it has no decompression and no `TTree`. |
+| ◐ `tools/rootfile.py` | Independent pure-Python reader: header, record chain, directories, key lists, decompression, buffer framing, streamer info, the streamer-driven read, collections, references, `TClonesArray`, `TList`/`TObjArray`. This is §7 item 4's reference reader arriving early and piecemeal; it has no `TTree` and no `TArray*`. |
+| ✅ `tools/coverage_probe.py` | Measure how much of an arbitrary ROOT file the specification covers, and rank what blocks the rest. Not a CI check; see §9.7. Not in the original plan. |
 
 CI (GitHub Actions, ROOT from conda-forge) — two workflows, `ci.yml` and
 `docs.yml`:
@@ -826,9 +827,45 @@ No external blocker; these are simply cases nobody has added yet.
 
 ### 9.6 Structural, not a missing fixture
 
-| Gap | Where |
-|---|---|
-| No checker decompresses, so nothing verifies a compressed payload's *contents* — only its block headers | `tools/rootfile.py`, `01-container/Compression.md` |
-| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 |
-| Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 |
-| Two upstream bug candidates found and banked, not yet reported | §7.1 |
+| Gap | Where | State |
+|---|---|---|
+| No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
+| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ☐ |
+| Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
+| Two upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
+
+### 9.7 What the coverage probe found
+
+`tools/coverage_probe.py` applies the specification to a file it was not designed
+around. On an ordinary file — `TH1D`, `TH2F`, `TGraph`, a `TTree` with three
+branches, a `TNamed`, default compression — 12 records come out as 3 container,
+3 decoded in full, 2 partial and 4 blocked, and the blockers rank like this:
+
+| Blocker | Records | Note |
+|---|---|---|
+| `TArray*` | 7 | Every histogram embeds two: `TH1::fContour` and `fSumw2` are `TArrayD` by value, and `TH1D` has a `TArrayD` base |
+| `TBasket` | 3 | Phase 5; a basket has no streamer info in the file at all |
+
+**`TArray*` is therefore the single highest-value thing left**, and it is small:
+`TArrayD::Streamer` writes `n:i32` then `n` values, with **no byte count and no
+version word** (`root/core/cont/src/TArrayD.cxx:148-159`). Specifying that one
+shape makes histograms readable.
+
+Two corrections the probe forced, both recorded where they belong:
+
+- **The divergent-class set is much smaller than §2.4 assumes.** Many classes have
+  a hand-written `Streamer` that is only a version guard delegating to
+  `ReadClassBuffer` above a threshold — `TH1` and `TGraph` above class version 2,
+  `TAxis` above 5, `TTree` above 4, `TLeaf` above 1, `TBranch` and
+  `TBranchElement` unconditionally. All of those are streamer-info driven at every
+  version a current file contains. The classes that diverge at *every* version are
+  `TObject`, `TString`, `TList`, `TObjArray`, `TClonesArray`, `TRef`, `TRefArray`,
+  `TCollection` and `TArray*` — and all but `TCollection` and `TArray*` are already
+  specified. **Phase 3 should be scoped from this measurement, not from the
+  estimate in §2.4.** The legacy layouts below each threshold remain, and belong
+  with §9.1.
+- **A hand-written streamer's recorded info can be pure fiction, and this is
+  observable.** `TList`'s info lists a `TSeqCollection` base which lists a
+  `TCollection` base; `TList::Streamer` writes none of them. Recorded as
+  `02-serialization/StreamerDriven.md` §7, now with a real-file example rather
+  than only the principle.
