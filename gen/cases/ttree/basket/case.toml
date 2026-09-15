@@ -16,9 +16,9 @@ The two shapes:
 
 - Branch "n" is one Int_t per entry. Every entry is the same length, so
   fLast - fKeyLen equals fObjlen exactly and there is no entry-offset array.
-- Branch "v" is a std::vector<float> whose length grows with the entry number.
-  Its basket carries an entry-offset array after the data, and fObjlen exceeds
-  fLast - fKeyLen by the size of that array.
+- Branch "a" is a counted array a[n]/F whose length is the value of n, so its
+  entries grow with the entry number. Its basket carries an entry-offset array
+  after the data, and fObjlen exceeds fLast - fKeyLen by the size of that array.
 
 What this case pins down:
 
@@ -162,7 +162,7 @@ type = "u32"
 value = 109
 
 # ---------------------------------------------------------------------------
-# Basket "v". Key at 345, fKeyLen 65, header at 391, payload at 410.
+# Basket "a". Key at 345, fKeyLen 65, header at 391, payload at 410.
 # ---------------------------------------------------------------------------
 
 [[bytes]]

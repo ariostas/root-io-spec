@@ -1,0 +1,348 @@
+id   = "ttree/branch"
+file = "data/ttree/branch.root"
+size = 15767
+
+description = """
+One branch with more than one basket, so that TBranch's three parallel arrays
+carry real values.
+
+The basket size is 100 -- TBranch's minimum, root/tree/tree/src/TBranch.cxx:202
+-- so twenty four-byte entries need three baskets of 8, 8 and 4. Compression is
+off, so the whole TTree record is readable without a codec and the branch can be
+asserted field by field.
+
+What this case pins down:
+
+- fMaxBaskets on disk is max(fWriteBasket + 1, 10). Here fWriteBasket is 3 and
+  fMaxBaskets is 10, so array slots 4 to 9 are zero padding. The writer's own
+  fMaxBaskets is never what reaches the file.
+- fBasketEntry has one more meaningful element than there are baskets:
+  fBasketEntry[fWriteBasket] is 20, the total entry count, not a basket's first
+  entry. Without it the extent of the last basket is unknown.
+- fBasketSeek[i] is the absolute file offset of basket i's key, and
+  fBasketBytes[i] is that record's fNbytes. 280 + 97 = 377 and 377 + 97 = 474,
+  which are the next two records.
+- fTotBytes and fZipBytes count whole records, keys included: 97 + 97 + 81 = 275.
+  They are equal because nothing is compressed.
+- fBaskets is on disk and is a TObjArray of fWriteBasket + 1 null references.
+- fIOFeatures is a class with no ClassDef, so its version word is 0 and a
+  four-byte checksum follows -- the foreign-class path of Buffer.md section 4,
+  which every branch of every tree exercises.
+- fEntryOffsetLen is 0: every entry of this branch is four bytes, so its baskets
+  carry no entry-offset array.
+"""
+
+spec = [
+  "spec/04-ttree/TBranch.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 180
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 280
+nbytes = 97
+class  = "TBasket"
+role   = "basket 0: entries 0 to 7"
+
+[[records]]
+offset = 377
+nbytes = 97
+class  = "TBasket"
+role   = "basket 1: entries 8 to 15"
+
+[[records]]
+offset = 474
+nbytes = 81
+class  = "TBasket"
+role   = "basket 2: entries 16 to 19"
+
+[[records]]
+offset = 555
+nbytes = 820
+class  = "TTree"
+role   = "the tree, holding the branch and its arrays"
+
+[[records]]
+offset = 1375
+nbytes = 14185
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 15560
+nbytes = 121
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 15681
+nbytes = 86
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# The TBranch. Its object slot begins at 817, inside the tree's fBranches
+# TObjArray; the class record "TBranch" ends at 833 and the byte count and
+# version word occupy 833..839.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "the branch's class record, written in full because this is its first use"
+offset = 825
+type = "bytes"
+value = "TBranch"
+[[bytes]]
+name = "TBranch class version"
+offset = 837
+type = "i16"
+value = 13
+[[bytes]]
+name = "fName"
+offset = 855
+type = "string"
+value = "x"
+[[bytes]]
+name = "fTitle: the leaflist, which is how a reader learns the leaf's type"
+offset = 857
+type = "string"
+value = "x/I"
+[[bytes]]
+name = "fCompress: 0, because the file was opened with compression off"
+offset = 871
+type = "i32"
+value = 0
+[[bytes]]
+name = "fBasketSize, as requested"
+offset = 875
+type = "i32"
+value = 100
+[[bytes]]
+name = "fEntryOffsetLen: 0, so this branch's baskets have no offset array"
+offset = 879
+type = "i32"
+value = 0
+[[bytes]]
+name = "fWriteBasket: three baskets written"
+offset = 883
+type = "i32"
+value = 3
+[[bytes]]
+name = "fEntryNumber"
+offset = 887
+type = "i64"
+value = 20
+
+# --- fIOFeatures: a class with no version -----------------------------------
+
+[[bytes]]
+name = "fIOFeatures byte count: seven bytes follow"
+offset = 895
+type = "u32"
+value = 1073741831
+[[bytes]]
+name = "its version word is 0, because ROOT::TIOFeatures has no ClassDef"
+offset = 899
+type = "i16"
+value = 0
+[[bytes]]
+name = "so a checksum stands where the version would be"
+offset = 901
+type = "u32"
+value = 446770960
+[[bytes]]
+name = "fIOBits: no IO features, so baskets carry ordinary offset arrays"
+offset = 905
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fOffset: 0 on a leaflist branch"
+offset = 906
+type = "i32"
+value = 0
+[[bytes]]
+name = "fMaxBaskets: max(fWriteBasket + 1, 10), not the writer's value"
+offset = 910
+type = "i32"
+value = 10
+[[bytes]]
+name = "fSplitLevel"
+offset = 914
+type = "i32"
+value = 0
+[[bytes]]
+name = "fEntries"
+offset = 918
+type = "i64"
+value = 20
+[[bytes]]
+name = "fFirstEntry"
+offset = 926
+type = "i64"
+value = 0
+[[bytes]]
+name = "fTotBytes: 97 + 97 + 81, so it counts keys as well as payloads"
+offset = 934
+type = "i64"
+value = 275
+[[bytes]]
+name = "fZipBytes: equal, because nothing is compressed"
+offset = 942
+type = "i64"
+value = 275
+
+# --- fBaskets: present, and all null ----------------------------------------
+
+[[bytes]]
+name = "fBaskets byte count: 37 bytes follow"
+offset = 1073
+type = "u32"
+value = 1073741861
+[[bytes]]
+name = "TObjArray class version"
+offset = 1077
+type = "i16"
+value = 3
+[[bytes]]
+name = "nobjects: fWriteBasket + 1 slots"
+offset = 1090
+type = "i32"
+value = 4
+[[bytes]]
+name = "the first slot: a null object tag, not a basket"
+offset = 1098
+type = "u32"
+value = 0
+[[bytes]]
+name = "the last slot, also null"
+offset = 1110
+type = "u32"
+value = 0
+
+# --- the three parallel arrays ----------------------------------------------
+
+[[bytes]]
+name = "fBasketBytes: the is-present flag of a counted pointer"
+offset = 1114
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketBytes[0]: the first basket record's fNbytes"
+offset = 1115
+type = "i32"
+value = 97
+[[bytes]]
+name = "fBasketBytes[2]: the last one is shorter, four entries not eight"
+offset = 1123
+type = "i32"
+value = 81
+[[bytes]]
+name = "fBasketBytes[3]: past fWriteBasket, so zero padding"
+offset = 1127
+type = "i32"
+value = 0
+[[bytes]]
+name = "fBasketBytes[9]: the array runs to fMaxBaskets whatever is in it"
+offset = 1151
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBasketEntry: its is-present flag"
+offset = 1155
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketEntry[0]: the first entry of basket 0"
+offset = 1156
+type = "i64"
+value = 0
+[[bytes]]
+name = "fBasketEntry[1]"
+offset = 1164
+type = "i64"
+value = 8
+[[bytes]]
+name = "fBasketEntry[2]"
+offset = 1172
+type = "i64"
+value = 16
+[[bytes]]
+name = "fBasketEntry[3]: index fWriteBasket, so the total count, not a basket"
+offset = 1180
+type = "i64"
+value = 20
+[[bytes]]
+name = "fBasketEntry[4]: zero padding again"
+offset = 1188
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fBasketSeek: its is-present flag"
+offset = 1236
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketSeek[0]: the offset of the first basket's key"
+offset = 1237
+type = "i64"
+value = 280
+[[bytes]]
+name = "fBasketSeek[1]: 280 + 97, where the next record begins"
+offset = 1245
+type = "i64"
+value = 377
+[[bytes]]
+name = "fBasketSeek[2]: 377 + 97"
+offset = 1253
+type = "i64"
+value = 474
+[[bytes]]
+name = "fBasketSeek[3]: no basket was ever written here"
+offset = 1261
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fFileName: empty, so fBasketSeek addresses this file"
+offset = 1317
+type = "u8"
+value = 0
+[[bytes]]
+name = "and the branch ends there: the next record begins at 1375"
+offset = 1375
+type = "u32"
+value = 14185
+
+# ---------------------------------------------------------------------------
+# The baskets the arrays point at, checked at their two ends.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "basket 0: fNevBuf, which is fBasketEntry[1] - fBasketEntry[0]"
+offset = 336
+type = "i32"
+value = 8
+[[bytes]]
+name = "basket 0, entry 0: the first value filled"
+offset = 345
+type = "i32"
+value = 100
+[[bytes]]
+name = "basket 2: fNevBuf, which is fEntryNumber - fBasketEntry[2]"
+offset = 530
+type = "i32"
+value = 4
+[[bytes]]
+name = "basket 2, entry 3: the last value filled"
+offset = 551
+type = "i32"
+value = 119

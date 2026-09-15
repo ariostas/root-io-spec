@@ -1336,18 +1336,19 @@ class Decoder:
             slot = read_slot(self.buf, pos, self.base)
             if slot.kind == "object":
                 name, body = resolve_class(slot, self.classes)
-                note = ""
+                note, inner_members = "", None
                 try:
                     inner = read_frame(self.buf, body)
                     version, start = self.resolve_version(name, inner)
-                    self.read_members(name, version, start, slot.end)
+                    inner_members = self.read_members(name, version, start, slot.end)
                 except UnsupportedClass as exc:
                     if not self.tolerant:
                         raise
                     self.unread.append((str(exc), slot.offset))
                     note = f"unread: {exc}"
                 members.append(Value(name=name, ftype=61, start=slot.offset,
-                                     end=slot.end, type_name=name, note=note))
+                                     end=slot.end, type_name=name, note=note,
+                                     members=inner_members))
             pos = slot.end
             if options and frame.version > 3:
                 # The option string. Present after *every* entry, empty or not,
@@ -1913,3 +1914,282 @@ def basket_entry_range(rec: Record, basket: Basket, index: int) -> tuple[int, in
     if index + 1 < basket.nev_buf:
         return start, rec.offset + basket.entry_offsets[index + 1]
     return start, basket.data_end
+
+
+# --- branches and leaves, spec/04-ttree/TBranch.md and TLeaf.md -------------
+
+# fLenType is the writer's sizeof and is not the on-disk width for these three;
+# TLeaf.md section 4.1. TLeafC is variable and TLeafF16/TLeafD32 depend on the
+# title, so neither appears here -- see leaf_width().
+LEAF_WIDTH = {
+    "TLeafO": 1, "TLeafB": 1, "TLeafS": 2, "TLeafI": 4,
+    "TLeafL": 8, "TLeafG": 8, "TLeafF": 4, "TLeafD": 8,
+}
+
+COUNTER_LEAVES = {"TLeafO", "TLeafB", "TLeafS", "TLeafI", "TLeafL", "TLeafG"}
+
+
+@dataclass
+class Leaf:
+    """One entry of a branch's fLeaves. TLeaf.md section 2."""
+
+    cls: str
+    slot: int             # the object slot's offset, for resolving references
+    name: str
+    title: str
+    length: int           # fLen, after the zero-to-one normalisation
+    len_type: int
+    offset: int
+    is_range: bool
+    is_unsigned: bool
+    leaf_count: int       # the raw reference tag; 0 for none
+    count_slot: int       # where that tag points, absolute; -1 for none
+
+    @property
+    def width(self) -> int | None:
+        """The on-disk width of one value, or None when it is not fixed."""
+        if self.cls in LEAF_WIDTH:
+            return LEAF_WIDTH[self.cls]
+        if self.cls in ("TLeafF16", "TLeafD32"):
+            return truncated_width(self.cls, self.title)
+        return None       # TLeafC, TLeafElement, TLeafObject
+
+
+@dataclass
+class Branch:
+    """One entry of a tree's or branch's fBranches. TBranch.md section 2."""
+
+    slot: int
+    name: str
+    title: str
+    compress: int
+    basket_size: int
+    entry_offset_len: int
+    write_basket: int
+    entry_number: int
+    io_bits: int
+    offset: int
+    max_baskets: int
+    split_level: int
+    entries: int
+    first_entry: int
+    tot_bytes: int
+    zip_bytes: int
+    basket_slots: int           # fBaskets' nobjects
+    basket_objects: int         # how many of those slots are not null
+    basket_bytes: list[int]
+    basket_entry: list[int]
+    basket_seek: list[int]
+    file_name: str
+    leaves: list[Leaf]
+    branches: list["Branch"]
+
+
+def truncated_width(cls: str, title: str) -> int:
+    """Bytes per value of a TLeafF16 or TLeafD32. TLeaf.md section 7.
+
+    The packing is decided by the annotation in the title and nothing else.
+    """
+    marker = "/f[" if cls == "TLeafF16" else "/d["
+    at = title.find(marker)
+    if at < 0:
+        # No annotation. The two classes disagree: Float16_t falls back to a
+        # 12-bit mantissa, Double32_t to a plain Float_t.
+        return 3 if cls == "TLeafF16" else 4
+    spec = title[at + 2:]
+    inner = spec[spec.find("[") + 1:spec.find("]")]
+    parts = [p.strip() for p in inner.split(",")]
+    xmin = _range_literal(parts[0]) if parts[0] else 0.0
+    xmax = _range_literal(parts[1]) if len(parts) > 1 and parts[1] else 0.0
+    nbits = 32
+    if len(parts) > 2:
+        try:
+            nbits = int(parts[2])
+        except ValueError:
+            nbits = 32
+        if nbits < 2 or nbits > 32:
+            nbits = 32
+    if xmin < xmax:
+        return 4                      # a factor: a scaled UInt_t
+    if nbits < 15:
+        return 3                      # nbits smuggled through fXmin
+    return 3 if cls == "TLeafF16" else 4
+
+
+def _named(buf: bytes, values: list[Value]) -> dict[str, Value]:
+    """Flatten a member list, keyed by name, bases included."""
+    out: dict[str, Value] = {}
+
+    def walk_members(vs):
+        for v in vs:
+            out.setdefault(v.name, v)
+            if v.members:
+                walk_members(v.members)
+    walk_members(values)
+    return out
+
+
+def _string_at(buf: bytes, value: Value) -> str:
+    return _counted_string(buf, value.start)[0]
+
+
+def _counted_pointer(buf: bytes, value: Value, width: int,
+                     count: int) -> list[int]:
+    """The values of a kOffsetP member: a flag byte then `count` of them."""
+    if not buf[value.start]:
+        return []
+    fmt = {4: _i32, 8: _i64}[width]
+    base = value.start + 1
+    return [fmt(buf, base + i * width) for i in range(count)]
+
+
+def _sequence_count(buf: bytes, value: Value) -> int:
+    """The nobjects field of a TObjArray member, null slots included."""
+    frame = read_frame(buf, value.start)
+    pos = frame.body
+    if frame.version > 2:
+        pos = read_tobject(buf, pos).end
+    if frame.version > 1:
+        _, pos = _counted_string(buf, pos)
+    return _i32(buf, pos)
+
+
+def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
+    m = _named(buf, entry.members or [])
+    length = _i32(buf, m["fLen"].start)
+    tag = _u32(buf, m["fLeafCount"].start)
+    return Leaf(
+        cls=entry.type_name, slot=entry.start,
+        name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
+        length=length or 1,          # TLeaf.cxx:499, a stored 0 means 1
+        len_type=_i32(buf, m["fLenType"].start),
+        offset=_i32(buf, m["fOffset"].start),
+        is_range=bool(buf[m["fIsRange"].start]),
+        is_unsigned=bool(buf[m["fIsUnsigned"].start]),
+        leaf_count=tag,
+        count_slot=(base + tag - MAP_OFFSET) if tag else -1)
+
+
+def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
+    m = _named(buf, entry.members or [])
+    n = _i32(buf, m["fMaxBaskets"].start)
+    return Branch(
+        slot=entry.start,
+        name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
+        compress=_i32(buf, m["fCompress"].start),
+        basket_size=_i32(buf, m["fBasketSize"].start),
+        entry_offset_len=_i32(buf, m["fEntryOffsetLen"].start),
+        write_basket=_i32(buf, m["fWriteBasket"].start),
+        entry_number=_i64(buf, m["fEntryNumber"].start),
+        io_bits=buf[m["fIOBits"].start] if "fIOBits" in m else 0,
+        offset=_i32(buf, m["fOffset"].start),
+        max_baskets=n,
+        split_level=_i32(buf, m["fSplitLevel"].start),
+        entries=_i64(buf, m["fEntries"].start),
+        first_entry=_i64(buf, m["fFirstEntry"].start),
+        tot_bytes=_i64(buf, m["fTotBytes"].start),
+        zip_bytes=_i64(buf, m["fZipBytes"].start),
+        basket_slots=_sequence_count(buf, m["fBaskets"]),
+        basket_objects=len(m["fBaskets"].members or []),
+        basket_bytes=_counted_pointer(buf, m["fBasketBytes"], 4, n),
+        basket_entry=_counted_pointer(buf, m["fBasketEntry"], 8, n),
+        basket_seek=_counted_pointer(buf, m["fBasketSeek"], 8, n),
+        file_name=_string_at(buf, m["fFileName"]),
+        leaves=[_read_leaf(buf, e, base) for e in (m["fLeaves"].members or [])],
+        branches=[_read_branch(buf, e, base)
+                  for e in (m["fBranches"].members or [])])
+
+
+def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:
+    """Every top-level branch of a decoded TTree record, sub-branches nested.
+
+    `base` is the TTree record's offset, i.e. buffer position 0, which is what
+    fLeafCount's reference tags are relative to.
+    """
+    members = _named(buf, tree.members or [])
+    if "fBranches" not in members:
+        raise FormatError("no fBranches member")
+    return [_read_branch(buf, e, base)
+            for e in (members["fBranches"].members or [])]
+
+
+def walk_branches(branches: list[Branch]):
+    """Every branch, depth first."""
+    for b in branches:
+        yield b
+        yield from walk_branches(b.branches)
+
+
+def find_basket(branch: Branch, entry: int) -> int:
+    """The basket index holding `entry`. TBranch.md section 10."""
+    if not branch.first_entry <= entry < branch.entry_number:
+        raise FormatError(
+            f"entry {entry} outside [{branch.first_entry}, {branch.entry_number})")
+    found = -1
+    for i in range(min(branch.write_basket + 1, len(branch.basket_entry))):
+        if branch.basket_entry[i] <= entry:
+            found = i
+    if found < 0:
+        raise FormatError(f"no basket holds entry {entry}")
+    return found
+
+
+def resolve_leaf_count(leaf: Leaf, leaves: list[Leaf]) -> Leaf:
+    """The counter leaf `leaf.fLeafCount` refers to. TLeaf.md section 3.1.
+
+    The stored value is a buffer map position; `Leaf.count_slot` has already
+    converted it to an absolute offset.
+    """
+    for other in leaves:
+        if other.slot == leaf.count_slot:
+            return other
+    raise FormatError(
+        f"leaf {leaf.name!r} has fLeafCount {leaf.leaf_count}, which is no leaf "
+        f"in this record")
+
+
+def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
+                index: int, counts: dict[int, int] | None = None,
+                leaves: list[Leaf] | None = None
+                ) -> list[tuple[Leaf, int, int]]:
+    """The byte span of each leaf's data within one entry. TLeaf.md section 5.
+
+    `counts` maps a counter leaf's slot offset to its value for this entry;
+    it is required for every leaf of this branch whose fLeafCount is set.
+    `leaves` is every leaf of the tree, because a counter usually lives in a
+    different branch; it defaults to this branch's own.
+    Raises FormatError when the leaves do not account for the entry exactly,
+    which is TLeaf.md invariant 7.
+    """
+    counts = counts or {}
+    leaves = leaves if leaves is not None else branch.leaves
+    start, end = basket_entry_range(rec, basket, index)
+    pos = start
+    spans: list[tuple[Leaf, int, int]] = []
+    for leaf in branch.leaves:
+        width = leaf.width
+        if width is None:
+            if leaf.cls != "TLeafC":
+                raise UnsupportedClass(f"{leaf.cls} has no fixed element width")
+            if pos == end:
+                # The empty string: zero bytes, not even a length. TLeaf.md 9.
+                spans.append((leaf, pos, pos))
+                continue
+            _, after = _counted_string(buf, pos)
+            spans.append((leaf, pos, after))
+            pos = after
+            continue
+        n = leaf.length
+        if leaf.leaf_count:
+            counter = resolve_leaf_count(leaf, leaves)
+            if counter.slot not in counts:
+                raise FormatError(
+                    f"no count for leaf {leaf.name!r} from {counter.name!r}")
+            n = counts[counter.slot] * leaf.length
+        spans.append((leaf, pos, pos + n * width))
+        pos += n * width
+    if pos != end:
+        raise FormatError(
+            f"branch {branch.name!r} entry {index}: leaves account for "
+            f"{pos - start} bytes of {end - start}")
+    return spans

@@ -18,7 +18,8 @@ This is intended to be the shared, testable artifact those projects can rely on.
 
 The container and object serialization layers are written and checked — enough to
 locate any object in a ROOT file and decode any user-defined class from the file's
-own streamer info. The remaining layers are not started. See the repository's
+own streamer info. On top of them, `TArray` and the unsplit `TTree` reading path —
+branches, leaves and baskets — are written and checked. See the repository's
 `PLAN.md` for the phasing, and its §9 for every known gap.
 
 | Layer | State |
@@ -29,7 +30,7 @@ own streamer info. The remaining layers are not started. See the repository's
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
 | Standard classes — everything else | not yet written |
-| `TTree` — `TBasket` | written |
+| `TTree` — `TBranch`, `TLeaf`, `TBasket` | written |
 | `TTree` — everything else | not yet written |
 | RNTuple | not yet imported |
 

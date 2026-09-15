@@ -20,8 +20,11 @@ keeps a legacy layout below it:
 | `TAxis` | 6 | 6 and above |
 | `TAttAxis` | 4 | 4 and above |
 | `TTree` | 5 | 5 and above |
+| `TBranch` | 10 | 10 and above |
 | `TLeaf` | 2 | 2 and above |
-| `TBranch`, `TBranchElement`, `TRefTable` | — | every version |
+| `TLeafObject` | 4, with two shapes below it | 4 and above |
+| `TLeafF16`, `TLeafD32` | — | every version, plus a title fixup below 2 |
+| `TBranchElement`, `TRefTable` | — | every version |
 
 Every version a current file contains is on the right-hand side, so **histograms,
 graphs and `TTree` metadata are ordinary streamer-info-driven objects** and need
@@ -50,6 +53,13 @@ rather than objects in it, and belong to
 
 `TBasket` has no streamer info at all and belongs with `TTree`: see
 [TBasket](../04-ttree/TBasket.md).
+
+`TBranch` and the `TLeaf` family are in the right-hand column above and so need no
+hand-written layout, but what their fields *mean* is not recoverable from a
+streamer info: see [TBranch](../04-ttree/TBranch.md) and
+[TLeaf](../04-ttree/TLeaf.md). The `TLeafF16`/`TLeafD32` entry is the exception
+that proves the rule — their streamers are hand-written purely to re-parse a
+packing annotation out of the leaf title, which no streamer info records.
 
 ## Why there is no generated table here yet
 

@@ -16,8 +16,9 @@ This repository aims to be the shared, testable artifact those projects can rely
 
 The **container** and **object serialization** layers are written and checked:
 enough to locate any object in a ROOT file and decode any user-defined class from
-the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
-`spec/05-rntuple/` are not started.
+the file's own streamer info. `spec/03-classes/` has `TArray`; `spec/04-ttree/`
+covers reading an entry out of an unsplit tree; `spec/05-rntuple/` is not
+started.
 
 | Layer | State |
 |---|---|
@@ -26,10 +27,10 @@ the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
-| `TTree` — `TBasket` | written |
+| `TTree` — `TBranch`, `TLeaf`, `TBasket` | written |
 | Standard classes and `TTree` — everything else, RNTuple | not started |
 
-24 reference files, 525 byte-level assertions, 448 checked source citations.
+27 reference files, 655 byte-level assertions, 549 checked source citations.
 See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
 every known gap — in each case the behaviour is specified and cited, and what is
 missing is a reference file proving it.

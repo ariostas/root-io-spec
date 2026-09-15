@@ -1,8 +1,9 @@
 # PLAN — ROOT I/O Specification
 
 Status: **phases 0–2 complete**, bar the two items in §5. The container and object
-layers are written, checked and pushed; `spec/03-classes/`, `spec/04-ttree/` and
-`spec/05-rntuple/` are not started.
+layers are written, checked and pushed. `spec/03-classes/` has `TArray` and its
+index; `spec/04-ttree/` has `TBranch`, `TLeaf` and `TBasket`, which together cover
+reading an entry out of an unsplit tree; `spec/05-rntuple/` is not started.
 
 Throughout this document: **✅ done**, **◐ partly done**, **☐ not started**.
 `§9` collects every gap the written documents record, so that they can be picked
@@ -361,10 +362,10 @@ spend most of their effort.
 | File | Contents |
 |---|---|
 | `TTree.md` | The `TTree` record, v20 members, `fEntries`/`fTotBytes`, the branch list |
-| `TBranch.md` | v13, `fBasketBytes`/`fBasketEntry`/`fBasketSeek` arrays, the "one basket lives inside the TTree record" rule, branches in separate files |
+| ✅ `TBranch.md` | v13, `fBasketBytes`/`fBasketEntry`/`fBasketSeek` arrays, the "one basket lives inside the TTree record" rule, branches in separate files |
 | `TBranchElement.md` | `fID`, `fType` (−1,0,1,2,3,4,41…), `fStreamerType`, `fClassName`/`fParentName`/`fClonesName`, and how `fType` selects the read algorithm |
-| `TLeaf.md` | `TLeaf` family, `fLen`/`fLenType`/`fOffset`/`fIsRange`/`fIsUnsigned`, leaf counts, `TLeafC` strings, `TLeafElement`, `TLeafD32`/`TLeafF16` |
-| `TBasket.md` | The basket record, `fNevBufSize` sign trick → `fIOBits`, the `flag >= 80` "generate offsets" path, `flag % 10 == 2`, entry-offset arrays and the offset/size conversion, displacement arrays, `fLast` |
+| ✅ `TLeaf.md` | `TLeaf` family, `fLen`/`fLenType`/`fOffset`/`fIsRange`/`fIsUnsigned`, leaf counts, `TLeafC` strings, `TLeafElement`, `TLeafD32`/`TLeafF16` |
+| ✅ `TBasket.md` | The basket record, `fNevBufSize` sign trick → `fIOBits`, the `flag >= 80` "generate offsets" path, `flag % 10 == 2`, entry-offset arrays and the offset/size conversion, displacement arrays, `fLast` |
 | `Splitting.md` | Split levels, how a class becomes a branch tree, the naming convention for sub-branches, unsplit fallback |
 | `ReadingEntries.md` | End-to-end normative procedure: entry number → basket → byte range → value |
 | `Double32.md` | `Double32_t`/`Float16_t` title-comment grammar (`[min,max]`, `[min,max,nbits]`), the factor/offset encoding, and the `TLeafD32`/`TLeafF16` variants |
@@ -652,10 +653,13 @@ interleaved with later phases or accept contributions.
 
 **◐ Phase 5 — TTree**
 ✅ `04-ttree/TBasket.md`, done early because the coverage probe named it the last
-blocker on an ordinary file. The rest of `04-ttree/`, with the full split/type
-matrix of fixtures, is untouched. Largest single phase; still wants its own
-sub-plan (§7 item 5), which should now be written around what `TBasket.md`
-already settles.
+blocker on an ordinary file. ✅ `TBranch.md` and `TLeaf.md`, which together close
+the unsplit reading path: entry number → basket → byte range → values, checked
+end to end by `rootfile.entry_spans`. What remains is the split half —
+`TTree.md`, `TBranchElement.md`, `Splitting.md`, `ReadingEntries.md`,
+`Double32.md`, `Auxiliary.md` — with the full split/type matrix of fixtures.
+Still the largest single phase, and it still wants its own sub-plan (§7 item 5),
+which should now be written around what these three documents settle.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
@@ -751,7 +755,31 @@ Verified against the pinned submodule and real bytes; not yet reported.
    which is most branches in a real file. Verified by source reading; not yet
    confirmed by generating a file with the feature enabled on both branch kinds.
 
-4. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
+4. **An empty `TLeafC` string is misread in a multi-leaf branch.** An empty
+   string occupies zero bytes (`TBufferFile::WriteFastArrayString` returns before
+   writing the length byte, `root/io/io/src/TBufferFile.cxx:2038`), and
+   `TLeafC::ReadBasket` detects that by comparing **whole-entry** offsets
+   (`root/tree/tree/src/TLeafC.cxx:146-166`). That is only the same test when the
+   `TLeafC` is the branch's only leaf. **Verified at byte level:** a branch
+   `x/I:c/C` with `x` = `0x02414243` and the strings `"ab"`, `""`, `"cd"` makes
+   ROOT return `"AB"` for the second entry, reading the third entry's `Int_t` as
+   the string's length and first bytes. It hides itself well — a following byte of
+   0 gives the right answer, and a large one is refused by
+   `ShouldNotReadCollection` — which is why `ttree/leaf` round-trips and why this
+   has presumably survived unnoticed. Reproducer worth attaching to the report.
+   `spec/04-ttree/TLeaf.md` §9.
+
+5. **A `TLeafC` cannot be followed by another leaf in a leaflist.** `TLeaf::fOffset`
+   doubles as the in-memory offset a leaflist branch reads its member from, and a
+   `TLeafC` contributes `fLen × fLenType` = 1 to the running total at construction
+   (`root/tree/tree/src/TBranch.cxx:436`). So `{ Char_t c[8]; Int_t x; }` declared
+   `c/C:x/I` reads `x` from the second byte of the string. **Verified at byte
+   level:** the written values were stack garbage and ROOT read them back
+   unchanged, with no warning at any point. Arguably a documentation bug rather
+   than a code one, but it is silent, and item 4 is the same arrangement.
+   `spec/04-ttree/TLeaf.md` §3.2.
+
+6. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
 
 ## 8. Immediate next steps
 
@@ -837,6 +865,8 @@ No external blocker; these are simply cases nobody has added yet.
 |---|---|
 | A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
 | A compressed basket, a multi-block basket, a displacement array, `fIOBits` in either form, and the embedded (non-record) form of a basket | `04-ttree/TBasket.md` §12 |
+| A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
+| `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
 | `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
@@ -847,10 +877,10 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Where | State |
 |---|---|---|
 | No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
-| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ◐ baskets are read and checked; branches and leaves are not |
+| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ✅ baskets, branches and leaves are read and checked, and `entry_spans` closes the entry → basket → byte range → value path |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
 | **A `TTree` with a `TBranchElement` branch is not digest-portable.** A fixture with a `std::vector<float>` branch drifted between macOS and Linux CI while all 530 of its byte assertions passed on both, so the difference is in a region no case asserts — most likely the order of entries in the `StreamerInfo` record, which `02-serialization/StreamerInfo.md` §3 says is not guaranteed. Worked around by making `ttree/basket` leaflist-only. **Cause not identified.** `tools/generate.py` now prints per-record digests on drift, so the next occurrence names the record | §3.3, §9.7 | ◐ worked around, not understood |
-| Two upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
+| Five upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
 
 ### 9.7 What the coverage probe found
 
@@ -879,6 +909,12 @@ done (`spec/03-classes/TArray.md`, `classes/tarray`), as is `TBasket`
 blocked.** Histograms, a graph, a `TTree` and its baskets — including the
 compressed ones — are all readable from the specification alone. That is the
 milestone the probe was built to measure, reached in two steps.
+
+Since `TBranch.md` and `TLeaf.md`, the same file is more than *accounted for*: its
+branches and leaves are invariant-checked, and `rootfile.entry_spans` closes each
+entry against the leaves that make it up, so the entry → basket → byte range →
+value path is exercised rather than assumed. The caveat above still stands
+unchanged: the file is one we wrote.
 
 Two corrections the probe forced, both recorded where they belong:
 

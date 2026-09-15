@@ -1,0 +1,262 @@
+id   = "ttree/leaf-truncated"
+file = "data/ttree/leaf-truncated.root"
+size = 17768
+
+description = """
+The four ways a truncated floating-point leaf is stored, in one file.
+
+Float16_t (leaflist code `f`) and Double32_t (code `d`) each have a with-factor
+form and a truncated-mantissa form, and which applies is decided by the
+annotation in the leaf *title* -- not by the leaf class, and not by fLenType,
+which stays 4 and 8 whatever ends up on disk.
+
+  a/f            no annotation  ->  3 bytes, mantissa truncated to 12 bits
+  b/f[0,100,10]  a real range   ->  4 bytes, a scaled UInt_t
+  c/d            no annotation  ->  4 bytes, a plain Float_t
+  d/d[0,0,8]     nbits only     ->  3 bytes, mantissa truncated to 8 bits
+
+a and c are the same declaration shape and differ by one byte per entry, in
+opposite directions from what the class names suggest. That asymmetry is the
+point of the case.
+
+What this case pins down:
+
+- The width is 3, 4, 4, 3 while fLenType is 4, 4, 8, 8. Neither the class nor
+  fLenType predicts the on-disk width on its own; only the title does.
+- The same asymmetry is inside the leaf record. TLeafF16::fMinimum and fMaximum
+  are declared Float16_t with no annotation and occupy three bytes each;
+  TLeafD32's are Double32_t with no annotation and occupy four. A reader that
+  assumes the two classes are shaped alike desynchronises by two bytes per leaf.
+- For 1.5 with nbits 12 the encoding is an exponent byte then a two-byte
+  mantissa: 7f 08 00. 0x7f << 23 | (0x0800 & 0x1fff) << 11 is 0x3fc00000.
+- For 50.0 in [0,100] with 10 bits the factor is 1024/100 = 10.24 and the stored
+  UInt_t is round(50 x 10.24) = 512.
+- Every basket here has a fixed entry size and therefore no offset array:
+  fNevBufSize is the entry width, 3 or 4, and fObjlen is twice it.
+- TLeafF16 and TLeafD32 are at class version 2, which is new in ROOT 6.40. At
+  version 1 the title held the type spec alone, with no leaf name and no leading
+  slash.
+"""
+
+spec = [
+  "spec/04-ttree/TLeaf.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 188
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 288
+nbytes = 71
+class  = "TBasket"
+role   = "branch a: Float16_t, no annotation, three bytes an entry"
+
+[[records]]
+offset = 359
+nbytes = 73
+class  = "TBasket"
+role   = "branch b: Float16_t with a range, four bytes an entry"
+
+[[records]]
+offset = 432
+nbytes = 73
+class  = "TBasket"
+role   = "branch c: Double32_t, no annotation, four bytes an entry"
+
+[[records]]
+offset = 505
+nbytes = 71
+class  = "TBasket"
+role   = "branch d: Double32_t with nbits only, three bytes an entry"
+
+[[records]]
+offset = 576
+nbytes = 2303
+class  = "TTree"
+role   = "the tree and its four branches"
+
+[[records]]
+offset = 2879
+nbytes = 14674
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 17553
+nbytes = 125
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 17678
+nbytes = 90
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# The four basket headers and their data. Entry widths come out of the title,
+# not the class.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "a: fNevBufSize is the fixed entry width, three bytes for a 12-bit mantissa"
+offset = 340
+type = "i32"
+value = 3
+[[bytes]]
+name = "a: fObjlen is two entries and nothing else, so there is no offset array"
+offset = 294
+type = "i32"
+value = 6
+[[bytes]]
+name = "a, entry 0: the exponent byte of 1.5"
+offset = 353
+type = "u8"
+value = 127
+[[bytes]]
+name = "a, entry 0: the truncated mantissa, two bytes"
+offset = 354
+type = "u16"
+value = 2048
+[[bytes]]
+name = "a, entry 1 begins three bytes in, not four"
+offset = 356
+type = "u8"
+value = 127
+
+[[bytes]]
+name = "b: fNevBufSize is 4, because a real range means a scaled UInt_t"
+offset = 411
+type = "i32"
+value = 4
+[[bytes]]
+name = "b, entry 0: round(50.0 x 1024/100) = 512"
+offset = 424
+type = "u32"
+value = 512
+[[bytes]]
+name = "b, entry 1"
+offset = 428
+type = "u32"
+value = 512
+
+[[bytes]]
+name = "c: fNevBufSize is 4 -- a Double32_t with no annotation is a plain Float_t"
+offset = 484
+type = "i32"
+value = 4
+[[bytes]]
+name = "c, entry 0: 2.5 as a binary32, not a truncated mantissa"
+offset = 497
+type = "f32"
+value = 2.5
+
+[[bytes]]
+name = "d: fNevBufSize is 3, because [0,0,8] gives nbits and no factor"
+offset = 557
+type = "i32"
+value = 3
+[[bytes]]
+name = "d, entry 0: the exponent byte of 3.5"
+offset = 570
+type = "u8"
+value = 128
+[[bytes]]
+name = "d, entry 0: the mantissa, truncated to eight bits"
+offset = 571
+type = "u16"
+value = 192
+
+# ---------------------------------------------------------------------------
+# The leaf records. The same asymmetry, in the metadata this time.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "leaf a's class"
+offset = 1029
+type = "bytes"
+value = "TLeafF16"
+[[bytes]]
+name = "TLeafF16 class version: 2, which is new in ROOT 6.40"
+offset = 1042
+type = "i16"
+value = 2
+[[bytes]]
+name = "leaf a fTitle: no annotation, so the mantissa form with the default 12 bits"
+offset = 1068
+type = "string"
+value = "a"
+[[bytes]]
+name = "leaf a fLenType: 4, though each value on disk is 3 bytes"
+offset = 1074
+type = "i32"
+value = 4
+[[bytes]]
+name = "leaf a fMinimum is a Float16_t and occupies three bytes, 1088 to 1091"
+offset = 1088
+type = "u8"
+value = 0
+[[bytes]]
+name = "so fMaximum begins at 1091, and the leaf ends at 1094"
+offset = 1091
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "leaf b fTitle: the annotation the reader must parse to get the factor"
+offset = 1554
+type = "string"
+value = "b/f[0,100,10]"
+[[bytes]]
+name = "leaf b fLenType: also 4, and here the width really is 4"
+offset = 1572
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "leaf c's class"
+offset = 2012
+type = "bytes"
+value = "TLeafD32"
+[[bytes]]
+name = "TLeafD32 class version"
+offset = 2025
+type = "i16"
+value = 2
+[[bytes]]
+name = "leaf c fTitle: no annotation, the same shape as leaf a's"
+offset = 2051
+type = "string"
+value = "c"
+[[bytes]]
+name = "leaf c fLenType: 8, and the width on disk is 4"
+offset = 2057
+type = "i32"
+value = 8
+[[bytes]]
+name = "leaf c fMinimum is a Double32_t and occupies four bytes, 2071 to 2075"
+offset = 2071
+type = "f32"
+value = 0.0
+[[bytes]]
+name = "so fMaximum begins at 2075, two bytes later than a TLeafF16's would"
+offset = 2075
+type = "f32"
+value = 0.0
+
+[[bytes]]
+name = "leaf d fTitle: nbits with no range, which is the three-byte form"
+offset = 2536
+type = "string"
+value = "d/d[0,0,8]"
+[[bytes]]
+name = "leaf d fLenType: 8, and the width on disk is 3"
+offset = 2551
+type = "i32"
+value = 8

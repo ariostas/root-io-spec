@@ -38,6 +38,8 @@ nav = [
       { "TArray" = "03-classes/TArray.md" },
   ] },
   { "TTree" = [
+      { "Branches" = "04-ttree/TBranch.md" },
+      { "Leaves" = "04-ttree/TLeaf.md" },
       { "TBasket" = "04-ttree/TBasket.md" },
   ] },
 ]

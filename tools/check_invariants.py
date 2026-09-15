@@ -99,6 +99,7 @@ class Checker:
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
+        self._all_branches: list = []
         self.buf = path.read_bytes()
         self.header = self.records = None
         try:
@@ -1023,6 +1024,249 @@ class Checker:
             self.bad("FreeSegments 8.9",
                      f"fEND {self.header.end} exceeds the file size {len(self.buf)}")
 
+
+    # -- TBranch.md 11 and TLeaf.md 10 --------------------------------------
+    def trees(self):
+        """(buffer, record, branches) for every readable TTree record."""
+        _, _, infos = self.streamer_infos()
+        if infos is None:
+            return
+        for rec in self.records:
+            if rec.free or rec.class_name != "TTree":
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                value = rootfile.decode_record(data, rec, infos)
+                yield data, rec, rootfile.read_branches(data, value, rec.offset)
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError, KeyError) as exc:
+                self.bad("TBranch 11.1", f"tree at {rec.offset}: {exc}")
+
+    def basket_record(self, seek: int):
+        return next((r for r in self.records
+                     if not r.free and r.offset == seek), None)
+
+    def check_branches(self) -> None:
+        found = list(self.trees())
+        self._all_branches = [top for _, _, top in found]
+        for data, rec, top in found:
+            leaves = [lf for b in rootfile.walk_branches(top) for lf in b.leaves]
+            for branch in rootfile.walk_branches(top):
+                self.check_branch(data, branch)
+                self.check_leaves(data, branch, leaves)
+
+    def check_branch(self, data, br) -> None:
+        name = f"branch {br.name!r}"
+        want = max(br.write_basket + 1, 10)
+        if br.max_baskets != want:
+            self.bad("TBranch 11.1",
+                     f"{name}: fMaxBaskets {br.max_baskets}, expected {want} for "
+                     f"fWriteBasket {br.write_basket}")
+        for label, array in (("fBasketBytes", br.basket_bytes),
+                             ("fBasketEntry", br.basket_entry),
+                             ("fBasketSeek", br.basket_seek)):
+            if len(array) != br.max_baskets:
+                self.bad("TBranch 11.1",
+                         f"{name}: {label} has {len(array)} elements, "
+                         f"fMaxBaskets is {br.max_baskets}")
+                return
+        if not 0 <= br.write_basket < br.max_baskets:
+            self.bad("TBranch 11.2", f"{name}: fWriteBasket {br.write_basket}")
+            return
+
+        if br.basket_entry[0] != br.first_entry:
+            self.bad("TBranch 11.3",
+                     f"{name}: fBasketEntry[0] {br.basket_entry[0]} != fFirstEntry "
+                     f"{br.first_entry}")
+        span = br.basket_entry[:br.write_basket + 1]
+        if any(b < a for a, b in zip(span, span[1:])):
+            self.bad("TBranch 11.3", f"{name}: fBasketEntry decreases: {span}")
+        if span[-1] != br.entry_number:
+            self.bad("TBranch 11.3",
+                     f"{name}: fBasketEntry[fWriteBasket] {span[-1]} != "
+                     f"fEntryNumber {br.entry_number}")
+
+        for label, array in (("fBasketBytes", br.basket_bytes),
+                             ("fBasketEntry", br.basket_entry),
+                             ("fBasketSeek", br.basket_seek)):
+            tail = array[br.write_basket + 1:]
+            if any(tail):
+                self.bad("TBranch 11.4",
+                         f"{name}: {label} is not zero above fWriteBasket: {tail}")
+
+        if br.entries != br.entry_number - br.first_entry:
+            self.bad("TBranch 11.8",
+                     f"{name}: fEntries {br.entries} != fEntryNumber - fFirstEntry "
+                     f"({br.entry_number} - {br.first_entry})")
+
+        if br.basket_slots != br.write_basket + 1:
+            self.bad("TBranch 11.9",
+                     f"{name}: fBaskets has {br.basket_slots} slots, expected "
+                     f"{br.write_basket + 1}")
+        if br.basket_objects and any(br.basket_seek[:br.write_basket]):
+            self.bad("TBranch 11.9",
+                     f"{name}: fBaskets holds {br.basket_objects} object(s) though "
+                     f"the baskets are on disk")
+
+        if not br.leaves:
+            self.bad("TBranch 11.10", f"{name}: fLeaves is empty")
+        if br.entry_offset_len and br.entry_offset_len < 10:
+            self.bad("TBranch 11.11",
+                     f"{name}: fEntryOffsetLen {br.entry_offset_len} is below the "
+                     f"floor of 10")
+        variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
+                       for lf in br.leaves)
+        if variable and not br.entry_offset_len:
+            self.bad("TBranch 11.11",
+                     f"{name}: fEntryOffsetLen is 0 though a leaf is variable-size")
+
+        if br.file_name:
+            return                      # 11.5 to 11.7 are about this file only
+        tot = zip_ = 0
+        for i in range(min(br.write_basket, len(br.basket_seek) - 1)):
+            basket_rec = self.basket_record(br.basket_seek[i])
+            if basket_rec is None or basket_rec.class_name != "TBasket":
+                self.bad("TBranch 11.5",
+                         f"{name}: fBasketSeek[{i}] {br.basket_seek[i]} is not a "
+                         f"TBasket record")
+                continue
+            if basket_rec.nbytes != br.basket_bytes[i]:
+                self.bad("TBranch 11.5",
+                         f"{name}: fBasketBytes[{i}] {br.basket_bytes[i]} != the "
+                         f"record's fNbytes {basket_rec.nbytes}")
+            payload = self.data(basket_rec)
+            if payload is None:
+                continue
+            try:
+                basket = rootfile.read_basket(self.buf, basket_rec, payload)
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError) as exc:
+                self.bad("TBranch 11.6", f"{name}: basket {i}: {exc}")
+                continue
+            want_n = br.basket_entry[i + 1] - br.basket_entry[i]
+            if basket.nev_buf != want_n:
+                self.bad("TBranch 11.6",
+                         f"{name}: basket {i} holds {basket.nev_buf} entries, "
+                         f"fBasketEntry says {want_n}")
+            tot += basket_rec.obj_len + basket_rec.key_len
+            zip_ += basket_rec.nbytes
+        if zip_ != br.zip_bytes:
+            self.bad("TBranch 11.7",
+                     f"{name}: fZipBytes {br.zip_bytes} != the sum of the basket "
+                     f"records' fNbytes {zip_}")
+        if tot != br.tot_bytes:
+            self.bad("TBranch 11.7",
+                     f"{name}: fTotBytes {br.tot_bytes} != the sum of "
+                     f"fObjlen + fKeylen {tot}")
+
+    def check_leaves(self, data, br, leaves) -> None:
+        name = f"branch {br.name!r}"
+        counted = {lf.count_slot for lf in leaves if lf.count_slot >= 0}
+        for i, lf in enumerate(br.leaves):
+            where = f"{name} leaf {lf.name!r}"
+            if lf.len_type < 0 or lf.length < 1:
+                self.bad("TLeaf 10.1",
+                         f"{where}: fLenType {lf.len_type}, fLen {lf.length}")
+            if lf.is_range and lf.slot not in counted:
+                self.bad("TLeaf 10.2",
+                         f"{where}: fIsRange is set but no leaf counts with it")
+            if lf.is_range and lf.cls not in rootfile.COUNTER_LEAVES:
+                self.bad("TLeaf 10.3",
+                         f"{where}: fIsRange is set on a {lf.cls}")
+            if lf.count_slot >= 0:
+                try:
+                    rootfile.resolve_leaf_count(lf, leaves)
+                except rootfile.FormatError as exc:
+                    self.bad("TLeaf 10.4", f"{where}: {exc}")
+            if i == 0 and lf.offset != 0:
+                self.bad("TLeaf 10.8",
+                         f"{where}: the first leaf has fOffset {lf.offset}")
+
+        variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
+                       for lf in br.leaves)
+        fixed_width = 0
+        if not variable:
+            widths = [lf.width for lf in br.leaves]
+            if None in widths:
+                return                  # a leaf class with no fixed width
+            fixed_width = sum(w * lf.length for w, lf in zip(widths, br.leaves))
+
+        if br.file_name:
+            return
+        for i in range(min(br.write_basket, len(br.basket_seek))):
+            basket_rec = self.basket_record(br.basket_seek[i])
+            if basket_rec is None or basket_rec.class_name != "TBasket":
+                continue
+            payload = self.data(basket_rec)
+            if payload is None:
+                continue
+            try:
+                basket = rootfile.read_basket(self.buf, basket_rec, payload)
+            except (rootfile.FormatError, struct.error, IndexError, ValueError):
+                continue
+            if variable and not basket.has_offsets:
+                self.bad("TLeaf 10.5",
+                         f"{name}: basket {i} has no entry-offset array though a "
+                         f"leaf is variable-size")
+            if not variable:
+                if basket.has_offsets:
+                    self.bad("TLeaf 10.6",
+                             f"{name}: basket {i} has an entry-offset array though "
+                             f"every leaf is fixed-size")
+                elif basket.nev_buf_size != fixed_width:
+                    self.bad("TLeaf 10.6",
+                             f"{name}: fNevBufSize {basket.nev_buf_size} != the "
+                             f"leaves' {fixed_width} bytes an entry")
+            self.check_entries(payload, basket_rec, basket, br, leaves, i)
+
+    def check_entries(self, payload, basket_rec, basket, br, leaves, index) -> None:
+        """TLeaf.md 10.7: the leaves account for each entry exactly."""
+        for e in range(basket.nev_buf):
+            entry = br.basket_entry[index] + e
+            try:
+                counts = self.leaf_counts(br, leaves, entry)
+                rootfile.entry_spans(payload, basket_rec, basket, br, e,
+                                     counts, leaves)
+            except rootfile.UnsupportedClass:
+                return                  # TLeafElement and friends: not specified
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError) as exc:
+                self.bad("TLeaf 10.7", f"branch {br.name!r}: {exc}")
+                return
+
+    def leaf_counts(self, br, leaves, entry) -> dict[int, int]:
+        """The value, at `entry`, of every counter leaf this branch needs."""
+        counts = {}
+        for lf in br.leaves:
+            if lf.count_slot < 0:
+                continue
+            counter = rootfile.resolve_leaf_count(lf, leaves)
+            owner = self._owner_of(counter)
+            if owner is None:
+                raise rootfile.FormatError(
+                    f"counter leaf {counter.name!r} belongs to no branch")
+            i = rootfile.find_basket(owner, entry)
+            rec = self.basket_record(owner.basket_seek[i])
+            payload = self.data(rec) if rec is not None else None
+            if payload is None:
+                raise rootfile.UnsupportedClass("counter basket unavailable")
+            basket = rootfile.read_basket(self.buf, rec, payload)
+            spans = rootfile.entry_spans(payload, rec, basket, owner,
+                                         entry - owner.basket_entry[i], {}, leaves)
+            start = next(s for lfx, s, _ in spans if lfx is counter)
+            counts[counter.slot] = int.from_bytes(
+                payload[start:start + counter.width], "big", signed=True)
+        return counts
+
+    def _owner_of(self, leaf):
+        for branches in self._all_branches:
+            for br in rootfile.walk_branches(branches):
+                if leaf in br.leaves:
+                    return br
+        return None
+
     def run(self) -> list[str]:
         if self.records is None:
             # The chain could not be walked; report only what the header says.
@@ -1044,6 +1288,7 @@ class Checker:
         self.check_collections()
         self.check_tarray()
         self.check_basket()
+        self.check_branches()
         return self.failures
 
 
