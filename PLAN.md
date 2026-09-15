@@ -865,7 +865,7 @@ No external blocker; these are simply cases nobody has added yet.
 |---|---|
 | A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
 | A compressed basket, a multi-block basket, a displacement array, and `fIOBits` in either form | `04-ttree/TBasket.md` §12 |
-| **The embedded form of a basket — a `TBasket` object inside a `TTree` record's `fBaskets`.** Promoted from "missing fixture" to a blocker by §9.8: it is common in real files, and `TDirectory::WriteTObject` on an unflushed tree produces one | `04-ttree/TBasket.md` §4, `TBranch.md` §5 |
+| ~~The embedded form of a basket~~ | ✅ `04-ttree/TBasket.md` §4.1, `ttree/basket-embedded` |
 | A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
@@ -893,7 +893,7 @@ branches, a `TNamed`, default compression — 12 records come out as 3 container
 | Blocker | Records | Note | State |
 |---|---|---|---|
 | `TArray*` | 7 | Every histogram embeds two: `TH1::fContour` and `fSumw2` are `TArrayD` by value, and `TH1D` has a `TArrayD` base | ✅ `03-classes/TArray.md` |
-| `TBasket` | 3 | A basket has no streamer info in the file at all, and its own fields are inside `fKeylen` | ✅ `04-ttree/TBasket.md` |
+| `TBasket` | 3 | A basket has no streamer info in the file at all, and its own fields are inside `fKeylen` | ✅ `04-ttree/TBasket.md`, both shapes |
 
 **What the probe cannot tell us** is now the important caveat. It checks that every
 record's bytes are *accounted for*, not that the values are right, and it was run
@@ -946,7 +946,7 @@ Both were real gaps, both are now specified:
 
 | Blocker | Records | Reading |
 |---|---|---|
-| **An embedded `TBasket` inside a `TTree` record** | 20 records, **1065 skipped members** | The single biggest finding. `04-ttree/TBranch.md` §5 says this form exists; the probe shows it is *common* — `uproot-issue327` (ROOT 5.34/30) has 80 in one tree, and both ROOT 4.00/00 files have several per tree. A reader that cannot read one fails on real files. §9.5 listed it as a missing fixture; it should be promoted |
+| ~~An embedded `TBasket` inside a `TTree` record~~ | ~~20 records, 1065 skipped members~~ | ✅ **Done.** The biggest finding of the run, now specified in `04-ttree/TBasket.md` §4.1 with the fixture `ttree/basket-embedded`. It is *common* — `uproot-issue327` (ROOT 5.34/30) has 80 in one tree, and both ROOT 4.00/00 files have several per tree |
 | `TMatrixTSym<double>` | 5 | A divergent class with a hand-written streamer. Phase 4 material, now with a concrete demand |
 | The file's own directory records written by a `TFile` **subclass** — here CMS's `TStorageFactoryFile` | 6 | Not an object gap: a reader must recognise the directory records structurally (`fBEGIN`, `fSeekDir`, `fSeekKeys`, `fSeekFree`) rather than by class name. Worth an erratum in `01-container/` |
 | A class with **no streamer info in the file** — `StIOEvent`, `MGTRun`, `ND::TND280Output`, `CalibrationCoefficient`, `RooRealVar`, and ROOT's own `TTime` | 9 | Not a spec gap: `StreamerDriven.md` §6's case, and nobody can read these. That `TTime` is among them is the interesting part — a ROOT class for which ROOT writes no info |
@@ -969,13 +969,24 @@ they have to be separated per file before any of it is evidence:
    those fail invariants for reasons that say nothing about ROOT's format.
    `fEntries 1 != fEntryNumber − fFirstEntry (0 − 0)` is the signature.
    **No invariant may be weakened on the strength of such a file.**
-3. **Genuine format facts we have wrong.** `TBranch` 11.3 fails on
+3. **Genuine format facts we have wrong.** `TBranch` 11.3 failed on
    `uproot-issue431.root` (ROOT 5.34/38) with
-   `fBasketEntry[fWriteBasket] 4 != fEntryNumber 10` — a real ROOT file, and if
-   that is not a writer bug then §10's lookup procedure is incomplete.
+   `fBasketEntry[fWriteBasket] 4 != fEntryNumber 10`, and that one is now
+   **resolved**: the last basket is embedded, so the terminator was never written.
+   The invariant was wrong, not the file. `ttree/basket-embedded` reproduces it.
 
-Triaging those three is a task in itself and is **not** done. Until it is, the
+Triaging the rest is a task in itself and is **not** done. Until it is, the
 foreign corpus is a coverage measurement, not an invariant test.
+
+#### Second run, after the embedded basket
+
+**28 520 decoded, 699 container, 9 partial, 19 blocked, 1 not walkable.** Reading
+embedded baskets removed every one of the 1065 skipped members and took `partial`
+from 20 records to 9. It also turned up one more detail no fixture would have
+shown: **when `fNevBuf` is 0 no offset array is written even though the flag says
+there is one**, because both sides of the streamer guard the array on `fNevBuf`
+independently of the flag. A reader that trusts the flag reads the reserved key
+area as a count.
 
 Two corrections the probe forced, both recorded where they belong:
 

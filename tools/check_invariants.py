@@ -1040,6 +1040,10 @@ class Checker:
             try:
                 value = rootfile.decode_record(data, rec, infos)
                 yield data, rec, rootfile.read_branches(data, value, rec.offset)
+            except rootfile.UnsupportedClass as exc:
+                # A layout this specification does not cover -- a legacy TBranch,
+                # say. Not a failure of the file.
+                self.no_codec.add(str(exc))
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError, KeyError) as exc:
                 self.bad("TBranch 11.1", f"tree at {rec.offset}: {exc}")
@@ -1083,10 +1087,19 @@ class Checker:
         span = br.basket_entry[:br.write_basket + 1]
         if any(b < a for a, b in zip(span, span[1:])):
             self.bad("TBranch 11.3", f"{name}: fBasketEntry decreases: {span}")
-        if span[-1] != br.entry_number:
+        last_embedded = br.embedded.get(br.write_basket)
+        if last_embedded is None:
+            if span[-1] != br.entry_number:
+                self.bad("TBranch 11.3",
+                         f"{name}: fBasketEntry[fWriteBasket] {span[-1]} != "
+                         f"fEntryNumber {br.entry_number}")
+        elif span[-1] >= br.entry_number:
+            # The terminator was never written: the element is the embedded
+            # basket's first entry, so it must be below fEntryNumber.
             self.bad("TBranch 11.3",
-                     f"{name}: fBasketEntry[fWriteBasket] {span[-1]} != "
-                     f"fEntryNumber {br.entry_number}")
+                     f"{name}: fBasketEntry[fWriteBasket] {span[-1]} is not below "
+                     f"fEntryNumber {br.entry_number} though basket "
+                     f"{br.write_basket} is embedded")
 
         for label, array in (("fBasketBytes", br.basket_bytes),
                              ("fBasketEntry", br.basket_entry),
@@ -1101,14 +1114,15 @@ class Checker:
                      f"{name}: fEntries {br.entries} != fEntryNumber - fFirstEntry "
                      f"({br.entry_number} - {br.first_entry})")
 
-        if br.basket_slots != br.write_basket + 1:
+        if br.basket_slots > br.write_basket + 1:
             self.bad("TBranch 11.9",
-                     f"{name}: fBaskets has {br.basket_slots} slots, expected "
-                     f"{br.write_basket + 1}")
-        if br.basket_objects and any(br.basket_seek[:br.write_basket]):
-            self.bad("TBranch 11.9",
-                     f"{name}: fBaskets holds {br.basket_objects} object(s) though "
-                     f"the baskets are on disk")
+                     f"{name}: fBaskets has {br.basket_slots} slots, more than "
+                     f"fWriteBasket + 1 = {br.write_basket + 1}")
+        for index in br.embedded:
+            if index < len(br.basket_seek) and br.basket_seek[index]:
+                self.bad("TBranch 11.9",
+                         f"{name}: slot {index} holds an embedded basket but "
+                         f"fBasketSeek[{index}] is {br.basket_seek[index]}")
 
         if not br.leaves:
             self.bad("TBranch 11.10", f"{name}: fLeaves is empty")
@@ -1121,6 +1135,15 @@ class Checker:
         if variable and not br.entry_offset_len:
             self.bad("TBranch 11.11",
                      f"{name}: fEntryOffsetLen is 0 though a leaf is variable-size")
+
+        emb = br.embedded.get(br.write_basket)
+        if emb is not None:
+            want_n = br.entry_number - br.basket_entry[br.write_basket]
+            if emb.basket.nev_buf != want_n:
+                self.bad("TBranch 11.6",
+                         f"{name}: the embedded basket holds "
+                         f"{emb.basket.nev_buf} entries, fEntryNumber and "
+                         f"fBasketEntry say {want_n}")
 
         if br.file_name:
             return                      # 11.5 to 11.7 are about this file only

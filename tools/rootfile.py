@@ -1368,9 +1368,16 @@ class Decoder:
                 name, body = resolve_class(slot, self.classes)
                 note, inner_members = "", None
                 try:
-                    inner = read_frame(self.buf, body)
-                    version, start = self.resolve_version(name, inner)
-                    inner_members = self.read_members(name, version, start, slot.end)
+                    if name == "TBasket":
+                        # A basket streamed into this buffer rather than written
+                        # as a record: TBasket.md section 4's second shape. It
+                        # can only appear here, as an entry of TBranch::fBaskets.
+                        note = f"embedded basket, flag {read_embedded_basket(self.buf, body).basket.flag}"
+                    else:
+                        # Through read_object, so that a class with a reader of
+                        # its own -- a std::string, a TArray -- is dispatched
+                        # rather than looked up in the streamer info.
+                        inner_members = self.read_object(name, body).members
                 except UnsupportedClass as exc:
                     if not self.tolerant:
                         raise
@@ -2007,6 +2014,7 @@ class Branch:
     zip_bytes: int
     basket_slots: int           # fBaskets' nobjects
     basket_objects: int         # how many of those slots are not null
+    embedded: dict              # slot index -> EmbeddedBasket
     basket_bytes: list[int]
     basket_entry: list[int]
     basket_seek: list[int]
@@ -2100,8 +2108,49 @@ def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
         count_slot=(base + tag - MAP_OFFSET) if tag else -1)
 
 
+def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
+    """The embedded baskets of one fBaskets array, by slot index.
+
+    read_sequence records only the non-null slots, so the index has to be
+    recovered by walking the array again.
+    """
+    out: dict = {}
+    frame = read_frame(buf, baskets.start)
+    pos = frame.body
+    if frame.version > 2:
+        pos = read_tobject(buf, pos).end
+    if frame.version > 1:
+        _, pos = _counted_string(buf, pos)
+    count = _i32(buf, pos)
+    pos += 8                              # nobjects, then fLowerBound
+    for index in range(max(count, 0)):
+        slot = read_slot(buf, pos, base)
+        if slot.kind == "object":
+            # The class may be a back-reference, and the class map is not to hand
+            # here, so identify the basket by parsing it: the key carries its own
+            # fClassName, and a correct parse ends exactly where the slot does.
+            body = slot.offset + 8
+            if slot.class_name is not None:
+                body += len(slot.class_name) + 1
+            try:
+                emb = read_embedded_basket(buf, body)
+            except (FormatError, struct.error, IndexError, ValueError):
+                emb = None
+            if emb is not None and emb.end == slot.end:
+                out[index] = emb
+        pos = slot.end
+    return out
+
+
 def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
     m = _named(buf, entry.members or [])
+    if "fFirstEntry" not in m:
+        # fFirstEntry arrived at TBranch version 11, and below version 10 the
+        # entry counters are Stat_t rather than Long64_t. spec/04-ttree/TBranch.md
+        # section 13 does not give those layouts, so do not guess at them here:
+        # this reader implements what the specification says and no more.
+        raise UnsupportedClass(
+            "TBranch below class version 11: no fFirstEntry, see TBranch.md 13")
     n = _i32(buf, m["fMaxBaskets"].start)
     return Branch(
         slot=entry.start,
@@ -2121,6 +2170,7 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         zip_bytes=_i64(buf, m["fZipBytes"].start),
         basket_slots=_sequence_count(buf, m["fBaskets"]),
         basket_objects=len(m["fBaskets"].members or []),
+        embedded=_embedded_baskets(buf, m["fBaskets"], base),
         basket_bytes=_counted_pointer(buf, m["fBasketBytes"], 4, n),
         basket_entry=_counted_pointer(buf, m["fBasketEntry"], 8, n),
         basket_seek=_counted_pointer(buf, m["fBasketSeek"], 8, n),
@@ -2223,3 +2273,118 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
             f"branch {branch.name!r} entry {index}: leaves account for "
             f"{pos - start} bytes of {end - start}")
     return spans
+
+
+# --- an embedded basket, spec/04-ttree/TBasket.md section 4 ----------------
+
+@dataclass
+class EmbeddedBasket:
+    """A TBasket streamed into another buffer rather than written as a record.
+
+    `TBasket::Streamer` writes the whole TKey first
+    (`root/tree/tree/src/TBasket.cxx:1111`), so the layout is the same fields in
+    the same order as a record -- but the arrays and the data follow the header
+    inline, and every offset is relative to `start` rather than to a record.
+    """
+
+    start: int            # of the object body, i.e. the first TKey byte
+    end: int              # one past the last byte the basket accounts for
+    key_len: int          # fKeylen, which covers the key and the basket header
+    basket: Basket
+    block: int            # where the raw buffer copy begins; -1 if absent
+
+
+# TBasket::Streamer's composed flag, root/tree/tree/src/TBasket.cxx:1139-1152.
+FLAG_NO_OFFSETS = 2       # flag % 10 == 2: there is no entry-offset array
+FLAG_HAS_DATA = 10        # flag == 1 or flag > 10: the entry data follows
+FLAG_DISPLACEMENT = 40    # flag > 40: a displacement array follows
+FLAG_GENERATE = 80        # flag >= 80: the offsets are to be generated
+
+
+def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
+    """Read a TBasket object out of the buffer it was streamed into."""
+    version = _i16(buf, offset + 4)
+    large = version > LARGE_KEY_VERSION
+    obj_len = _i32(buf, offset + 6)
+    key_len = _i16(buf, offset + 14)
+    seek = offset + (18 if large else 18)
+    o = offset + (34 if large else 26)
+    for _ in range(3):                      # fClassName, fName, fTitle
+        _, o = _counted_string(buf, o)
+
+    basket_version = _i16(buf, o)
+    buffer_size = _i32(buf, o + 2)
+    nev_buf_size = _i32(buf, o + 6)
+    o += 10
+    io_bits = 0
+    if nev_buf_size < 0:
+        nev_buf_size = -nev_buf_size
+        io_bits = buf[o]
+        o += 1
+        if io_bits == 0 or io_bits & IO_RESERVED:
+            raise FormatError(
+                f"embedded basket at {offset}: fIOBits {io_bits:#04x} is zero or "
+                f"uses the reserved bit 7")
+    nev_buf = _i32(buf, o)
+    last = _i32(buf, o + 4)
+    flag = buf[o + 8]
+    o += 9
+    if o - offset != key_len:
+        raise FormatError(
+            f"embedded basket at {offset}: header ends {o - offset} bytes in, "
+            f"fKeylen is {key_len}")
+
+    generate = flag >= FLAG_GENERATE
+    if generate:
+        flag -= FLAG_GENERATE
+    offsets = None
+    if not generate and flag and flag % 10 != FLAG_NO_OFFSETS and nev_buf:
+        # An empty basket writes no array even when the flag says it has one:
+        # both sides are guarded by fNevBuf (root/tree/tree/src/TBasket.cxx:1153,
+        # root/tree/tree/src/TBasket.cxx:1046-1071).
+        #
+        # Unlike the record form, the count here is fNevBuf exactly: the
+        # streamer writes the raw array (root/tree/tree/src/TBasket.cxx:1154).
+        count = _i32(buf, o)
+        if count != nev_buf:
+            raise FormatError(
+                f"embedded basket at {offset}: offset array count {count}, "
+                f"expected fNevBuf = {nev_buf}")
+        offsets = list(struct.unpack_from(f">{count}i", buf, o + 4))
+        o += 4 + 4 * count
+        if 20 < flag < FLAG_DISPLACEMENT:
+            offsets = [v & ~DISPLACEMENT_MASK for v in offsets]
+        if flag > FLAG_DISPLACEMENT:
+            o += 4 + 4 * _i32(buf, o)       # the displacement array
+    # The raw block follows the arrays. It is fLast bytes taken from the start
+    # of the basket's own buffer, so its first fKeylen bytes are the reserved
+    # key area and every entry offset is an offset into it.
+    block = o
+    if flag == 1 or flag > FLAG_HAS_DATA:
+        o = block + last
+    else:
+        block = -1
+    basket = Basket(version=basket_version, buffer_size=buffer_size,
+                    nev_buf_size=nev_buf_size, nev_buf=nev_buf, last=last,
+                    flag=flag, io_bits=io_bits, header_offset=offset + key_len - 9,
+                    data_start=block + key_len if block >= 0 else -1,
+                    data_end=block + last if block >= 0 else -1,
+                    entry_offsets=offsets)
+    return EmbeddedBasket(start=offset, end=o, key_len=key_len, basket=basket,
+                          block=block)
+
+
+def embedded_entry_range(emb: EmbeddedBasket, index: int) -> tuple[int, int]:
+    """The absolute byte range of one entry of an embedded basket."""
+    b = emb.basket
+    if not 0 <= index < b.nev_buf:
+        raise FormatError(f"entry {index} outside [0, {b.nev_buf})")
+    if emb.block < 0:
+        raise FormatError(f"embedded basket at {emb.start} carries no data")
+    if b.entry_offsets is None:
+        start = emb.block + emb.key_len + index * b.nev_buf_size
+        return start, start + b.nev_buf_size
+    start = emb.block + b.entry_offsets[index]
+    if index + 1 < b.nev_buf:
+        return start, emb.block + b.entry_offsets[index + 1]
+    return start, b.data_end

@@ -140,6 +140,19 @@ array at `fWriteBasket - 1` cannot determine the length of the last basket.
 > (`root/tree/tree/src/TBranch.cxx:3010-3015`). A third-party reader SHOULD do the
 > same rather than reject the file.
 
+> **The terminator is absent when the last basket is embedded.**
+> `fBasketEntry[fWriteBasket] = fEntryNumber` is written when a basket is closed
+> out (`root/tree/tree/src/TBranch.cxx:3274`), so a basket still in memory has not
+> had it written: `fBasketEntry[fWriteBasket]` is then that basket's **first**
+> entry, and the count is nowhere in the array. §10 covers both cases by taking
+> the last basket's end from `fEntryNumber` rather than from the array.
+>
+> Demonstrated by `ttree/basket-embedded`: `fWriteBasket` 0,
+> `fBasketEntry[0]` 0, `fEntryNumber` 3. `uproot-issue431.root` shows the same
+> shape with real baskets behind it — `fBasketEntry[fWriteBasket]` 4 against
+> `fEntryNumber` 10 — which `PLAN.md` §9.8 had recorded as an undiagnosed
+> anomaly until this fixture explained it.
+
 > Demonstrated by `ttree/branch`: three baskets of 8, 8 and 4 entries give
 > `fBasketEntry` `[0, 8, 16, 20, 0…]` with `fEntries` and `fEntryNumber` both 20.
 
@@ -181,7 +194,17 @@ an embedded basket, which is the second form of
 
 An embedded basket is recognisable from the branch alone: it sits at index
 `fWriteBasket`, and `fBasketSeek[fWriteBasket]` is 0 because it was never given a
-file offset. No fixture in this corpus produces one.
+file offset. Its layout is
+[TBasket §4.1](TBasket.md#41-the-embedded-layout).
+
+> Demonstrated by `ttree/basket-embedded`. Both its branches have `fWriteBasket`
+> 0, `fBasketSeek` and `fBasketBytes` all zero, `fTotBytes` and `fZipBytes` 0, and
+> one non-null slot in `fBaskets` holding the whole basket. The file contains no
+> `TBasket` record at all.
+
+> **Not a corner case.** The probe of `PLAN.md` §9.8 found embedded baskets in
+> files written by ROOT 4.00 and 5.34, one of them with eighty in a single tree.
+> A reader that cannot read one fails on real files.
 
 > Not to be confused with [TBasket §10](TBasket.md#10-errata) erratum 8, which is
 > about the shipped documentation claiming that one basket per branch is
@@ -290,31 +313,40 @@ To read entry *e* of a branch:
 3. `first = fBasketEntry[i]`. The basket's last entry is `fBasketEntry[i+1] - 1`,
    except when `i == fWriteBasket`, where it is `fEntryNumber - 1`
    (`root/tree/tree/src/TBranch.cxx:1377-1383`).
-4. Read the record at `fBasketSeek[i]`, of `fBasketBytes[i]` bytes, from the file
-   named by `fFileName` or the tree's own. Decode it per
-   [TBasket §8](TBasket.md#8-reading).
+4. If `fBasketSeek[i]` is non-zero, read the record there, of `fBasketBytes[i]`
+   bytes, from the file named by `fFileName` or the tree's own, and decode it per
+   [TBasket §8](TBasket.md#8-reading). If it is 0, basket *i* was never written to
+   disk: it is the object in slot *i* of `fBaskets`, in the embedded form of
+   [TBasket §4.1](TBasket.md#41-the-embedded-layout).
 5. Entry *e* is the basket's entry `e - first`.
 6. Hand the resulting byte range to the leaves, in `fLeaves` order, per
    [TLeaf §5](TLeaf.md#5-reading-one-entry).
 
-Step 2 can land on `i == fWriteBasket` only on a file that was not closed
-normally: on a closed file `fBasketEntry[fWriteBasket] == fEntryNumber`, which
-step 1 has already excluded.
+Step 2 lands on `i == fWriteBasket` exactly when that basket is **embedded**. On a
+branch whose baskets are all on disk, `fBasketEntry[fWriteBasket] == fEntryNumber`
+and step 1 has already excluded every entry that could reach it; when the last
+basket is still in memory there is no terminator, and index `fWriteBasket` is where
+the remaining entries live.
 
 ## 11. Invariants
 
 1. `fMaxBaskets == max(fWriteBasket + 1, 10)`, and the three counted pointers each
    have `fMaxBaskets` elements with their *is present* flag set.
 2. `0 <= fWriteBasket < fMaxBaskets`.
-3. `fBasketEntry[0] == fFirstEntry`, `fBasketEntry` is non-decreasing over
-   `[0, fWriteBasket]`, and `fBasketEntry[fWriteBasket] == fEntryNumber`.
+3. `fBasketEntry[0] == fFirstEntry` and `fBasketEntry` is non-decreasing over
+   `[0, fWriteBasket]`. `fBasketEntry[fWriteBasket] == fEntryNumber` **when slot
+   `fWriteBasket` of `fBaskets` is null**; when it holds an embedded basket, that
+   element is the embedded basket's first entry instead and is below
+   `fEntryNumber`.
 4. `fBasketBytes[i]`, `fBasketEntry[i]` and `fBasketSeek[i]` are 0 for every
    `i > fWriteBasket`.
 5. For `i < fWriteBasket` with `fFileName` empty: `fBasketSeek[i]` is the offset
    of a record whose class name is `TBasket`, and that record's `fNbytes` equals
-   `fBasketBytes[i]`.
+   `fBasketBytes[i]`. `fBasketSeek[i]` is 0 exactly when slot *i* of `fBaskets`
+   holds an embedded basket.
 6. For the same `i`, that basket's `fNevBuf` equals
-   `fBasketEntry[i+1] - fBasketEntry[i]`.
+   `fBasketEntry[i+1] - fBasketEntry[i]`, and for an embedded basket at index
+   `fWriteBasket` it equals `fEntryNumber - fBasketEntry[fWriteBasket]`.
 7. `fZipBytes` is the sum of `fBasketBytes[i]` over `i < fWriteBasket`, and
    `fTotBytes` the sum of `fObjlen + fKeylen` over the same baskets.
 8. `fEntries == fEntryNumber - fFirstEntry`.
@@ -385,7 +417,10 @@ the one thing schema evolution of that era could not express.
 | `ttree/branch` | Three baskets in one branch: `fWriteBasket` 3 against `fMaxBaskets` 10, the `fBasketEntry` terminator, and `fTotBytes`/`fZipBytes` as sums over records |
 | `ttree/basket` | Two branches, one with `fEntryOffsetLen` 0 and one with 1000, and a leaf count spanning them |
 | `ttree/leaf` | One branch with thirteen leaves, for `fLeaves` order |
+| `ttree/basket-embedded` | A branch whose only basket is still in memory: `fWriteBasket` 0, the arrays and `fTotBytes`/`fZipBytes` all zero, a non-null `fBaskets` slot, and no terminator in `fBasketEntry` |
 
 No fixture covers a split branch (`fBranches` non-empty), a non-empty
 `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, or a
-`TBranch` at class version 9 or below.
+`TBranch` at class version 9 or below. The foreign corpus of `PLAN.md` §9.8 has
+files for the last of those, and `tools/rootfile.py` refuses them explicitly
+rather than guessing at the legacy layout.

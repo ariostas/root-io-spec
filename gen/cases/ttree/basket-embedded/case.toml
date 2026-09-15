@@ -1,0 +1,316 @@
+id   = "ttree/basket-embedded"
+file = "data/ttree/basket-embedded.root"
+size = 16782
+
+description = """
+Baskets written inside the TTree record rather than as records of their own.
+
+The same two branches as ttree/basket -- n/I and a[n]/F, three entries -- so the
+two files differ only in how the baskets were written and can be compared field
+by field. This one was written with TDirectory::WriteTObject, which does not go
+through TTree::Write's flush, so the baskets were still in memory when
+TBranch::Streamer ran. It contains no TBasket record at all.
+
+What this case pins down:
+
+- An embedded basket is an ordinary object slot whose class is TBasket, and its
+  body begins with the whole TKey -- there is no byte count and no version word
+  in front of the key fields, because TBasket::Streamer streams the key first.
+- fKeylen is 65, the same as in a record, and it still covers the key and the
+  19-byte basket header: 849 + 65 = 914, where the raw block begins.
+- fNbytes, fSeekKey and fSeekPdir are 0: the key was never placed in a file.
+  fObjlen is 31935, which is fBufferSize - fKeylen -- a capacity, not a length.
+  A reader must not use it, and TBasket.md section 3's arithmetic test does not
+  apply here. The flag says what follows instead.
+- The flag is 12 for branch n (2 = no offset array, +10 = the data follows) and
+  11 for branch a (1 = an offset array, +10). Neither value can occur in a
+  basket record, where the flag is only ever 0 or 80.
+- The entry-offset array's leading count is fNevBuf = 3, NOT fNevBuf + 1. That
+  extra element is a property of the record form alone.
+- The offsets are 65, 69, 77 -- the same three values ttree/basket writes -- and
+  they index the raw block from its start, whose first fKeylen bytes are the
+  reserved key area rather than entry data.
+- fBasketSeek, fBasketBytes, fTotBytes and fZipBytes are all 0, and fBaskets has
+  one non-null slot.
+- fBasketEntry[fWriteBasket] is 0, not fEntryNumber: the terminator is written
+  when a basket is closed out, and this one never was. TBranch.md section 10
+  takes the last basket's end from fEntryNumber for exactly this reason.
+"""
+
+spec = [
+  "spec/04-ttree/TBasket.md",
+  "spec/04-ttree/TBranch.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 190
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 290
+nbytes = 1627
+class  = "TTree"
+role   = "the tree, and both baskets inside it"
+
+[[records]]
+offset = 1917
+nbytes = 14648
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 16565
+nbytes = 126
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 16691
+nbytes = 91
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Branch "n". Slot 552, body 574. Its fBaskets runs 808 to 991.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "fWriteBasket: no basket was ever written to disk"
+offset = 618
+type = "i32"
+value = 0
+[[bytes]]
+name = "fEntryNumber: three entries all the same"
+offset = 622
+type = "i64"
+value = 3
+[[bytes]]
+name = "fEntries"
+offset = 653
+type = "i64"
+value = 3
+[[bytes]]
+name = "fBaskets nobjects: one slot, and it is not null"
+offset = 825
+type = "i32"
+value = 1
+
+# --- the embedded basket of branch n: slot 833, body 849 -------------------
+
+[[bytes]]
+name = "the slot's byte count: 154 bytes follow, ending at 991"
+offset = 833
+type = "u32"
+value = 1073741978
+[[bytes]]
+name = "the class record, written in full because this is TBasket's first use"
+offset = 841
+type = "bytes"
+value = "TBasket"
+[[bytes]]
+name = "and the body begins with fNbytes: 0, because this key is not in a file"
+offset = 849
+type = "i32"
+value = 0
+[[bytes]]
+name = "fVersion: the large key form, as every basket uses"
+offset = 853
+type = "i16"
+value = 1004
+[[bytes]]
+name = "fObjlen: 32000 - 65, a stale capacity and not a length"
+offset = 855
+type = "i32"
+value = 31935
+[[bytes]]
+name = "fKeylen: 65, as in a record, and it covers the basket header too"
+offset = 863
+type = "i16"
+value = 65
+[[bytes]]
+name = "fSeekKey: 0, never placed in the file"
+offset = 867
+type = "i64"
+value = 0
+[[bytes]]
+name = "fSeekPdir: 0 as well"
+offset = 875
+type = "i64"
+value = 0
+[[bytes]]
+name = "fClassName"
+offset = 883
+type = "string"
+value = "TBasket"
+[[bytes]]
+name = "fName: the branch"
+offset = 891
+type = "string"
+value = "n"
+[[bytes]]
+name = "fTitle: the tree, not the branch's title"
+offset = 893
+type = "string"
+value = "t"
+[[bytes]]
+name = "the TBasket version word, which follows the key with no byte count"
+offset = 895
+type = "i16"
+value = 3
+[[bytes]]
+name = "fBufferSize"
+offset = 897
+type = "i32"
+value = 32000
+[[bytes]]
+name = "fNevBufSize: the fixed entry width, because there is no offset array"
+offset = 901
+type = "i32"
+value = 4
+[[bytes]]
+name = "fNevBuf"
+offset = 905
+type = "i32"
+value = 3
+[[bytes]]
+name = "fLast: 849 + 77 is where this basket's data ends"
+offset = 909
+type = "i32"
+value = 77
+[[bytes]]
+name = "the flag: 2 for no offset array, plus 10 because the data follows"
+offset = 913
+type = "u8"
+value = 12
+[[bytes]]
+name = "the raw block begins at fKeylen, 849 + 65, with no array in between"
+offset = 914
+type = "i32"
+value = 0
+[[bytes]]
+name = "entry 0 is at block + fKeylen, because the block's first 65 bytes are the reserved key area"
+offset = 979
+type = "i32"
+value = 1
+[[bytes]]
+name = "entry 1"
+offset = 983
+type = "i32"
+value = 2
+[[bytes]]
+name = "entry 2, ending at 991 where the slot ends"
+offset = 987
+type = "i32"
+value = 3
+
+# ---------------------------------------------------------------------------
+# Branch "a". The embedded basket is at slot 1474, body 1482 -- eight bytes of
+# slot header, not sixteen, because TBasket is now a class back-reference.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "branch a fWriteBasket"
+offset = 1256
+type = "i32"
+value = 0
+[[bytes]]
+name = "branch a fEntryNumber"
+offset = 1260
+type = "i64"
+value = 3
+[[bytes]]
+name = "the second basket's class is a back-reference, so its slot is 8 bytes shorter"
+offset = 1478
+type = "u32"
+value = 2147484197
+[[bytes]]
+name = "fKeylen, the same 65"
+offset = 1496
+type = "i16"
+value = 65
+[[bytes]]
+name = "fName"
+offset = 1524
+type = "string"
+value = "a"
+[[bytes]]
+name = "TBasket version"
+offset = 1528
+type = "i16"
+value = 3
+[[bytes]]
+name = "fNevBufSize: with an offset array this is its allocated length"
+offset = 1534
+type = "i32"
+value = 1000
+[[bytes]]
+name = "fNevBuf"
+offset = 1538
+type = "i32"
+value = 3
+[[bytes]]
+name = "fLast"
+offset = 1542
+type = "i32"
+value = 89
+[[bytes]]
+name = "the flag: 1 for an offset array, plus 10 because the data follows"
+offset = 1546
+type = "u8"
+value = 11
+
+# --- the offset array, which here comes BEFORE the data --------------------
+
+[[bytes]]
+name = "the count is fNevBuf, not fNevBuf + 1: the record form's extra element is not written here"
+offset = 1547
+type = "i32"
+value = 3
+[[bytes]]
+name = "offset of entry 0: fKeylen, as in a record"
+offset = 1551
+type = "i32"
+value = 65
+[[bytes]]
+name = "offset of entry 1"
+offset = 1555
+type = "i32"
+value = 69
+[[bytes]]
+name = "offset of entry 2, and the array ends here -- no fourth element"
+offset = 1559
+type = "i32"
+value = 77
+
+# --- the raw block: 89 bytes from 1563, entries from 1563 + 65 -------------
+
+[[bytes]]
+name = "entry 0: one float, 0.0"
+offset = 1628
+type = "f32"
+value = 0.0
+[[bytes]]
+name = "entry 1, element 0: 1.0"
+offset = 1632
+type = "f32"
+value = 1.0
+[[bytes]]
+name = "entry 2, element 0: 2.0"
+offset = 1640
+type = "f32"
+value = 2.0
+[[bytes]]
+name = "entry 2, element 2, the last four bytes of the slot"
+offset = 1648
+type = "f32"
+value = 2.0
+[[bytes]]
+name = "and the branch's fBasketSeek is 0, because nothing was written"
+offset = 1775
+type = "i64"
+value = 0

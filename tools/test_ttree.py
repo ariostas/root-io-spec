@@ -60,7 +60,7 @@ def branch(**kw) -> rootfile.Branch:
         offset=0, max_baskets=10, split_level=0, entries=0, first_entry=0,
         tot_bytes=0, zip_bytes=0, basket_slots=1, basket_objects=0,
         basket_bytes=[0] * 10, basket_entry=[0] * 10, basket_seek=[0] * 10,
-        file_name="", leaves=[], branches=[])
+        file_name="", leaves=[], branches=[], embedded={})
     fields.update(kw)
     return rootfile.Branch(**fields)
 
@@ -141,3 +141,63 @@ class ResolveLeafCount(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmbeddedBasketFlag(unittest.TestCase):
+    """TBasket.md 4.1. The composed flag, and what it does and does not imply."""
+
+    def build(self, flag: int, nev_buf: int, offsets: bytes = b"",
+              data: bytes = b"") -> bytes:
+        # A minimal embedded basket: the large-key fixed part, three counted
+        # strings, then the header. fKeylen must cover all of it.
+        strings = b"\x07TBasket\x01n\x01t"
+        key_len = 34 + len(strings) + 19
+        last = key_len + len(data)
+        return (
+            b"\x00\x00\x00\x00"                      # fNbytes
+            + b"\x03\xec"                            # fVersion 1004
+            + b"\x00\x00\x00\x00"                    # fObjlen
+            + b"\x00\x00\x00\x00"                    # fDatime
+            + key_len.to_bytes(2, "big")             # fKeylen
+            + b"\x00\x00"                            # fCycle
+            + b"\x00" * 16                           # fSeekKey, fSeekPdir
+            + strings
+            + b"\x00\x03"                            # TBasket version 3
+            + b"\x00\x00\x7d\x00"                    # fBufferSize 32000
+            + b"\x00\x00\x00\x04"                    # fNevBufSize 4
+            + nev_buf.to_bytes(4, "big")             # fNevBuf
+            + last.to_bytes(4, "big")                # fLast
+            + bytes([flag])
+            + offsets + data)
+
+    def test_flag_12_has_no_offset_array(self):
+        emb = rootfile.read_embedded_basket(self.build(12, 3, data=b"\x00" * 12), 0)
+        self.assertIsNone(emb.basket.entry_offsets)
+        self.assertEqual(emb.basket.flag, 12)
+
+    def test_flag_11_has_one_counted_by_fnevbuf(self):
+        offsets = b"\x00\x00\x00\x02" + b"\x00\x00\x00A" + b"\x00\x00\x00E"
+        emb = rootfile.read_embedded_basket(
+            self.build(11, 2, offsets=offsets, data=b"\x00" * 8), 0)
+        self.assertEqual(emb.basket.entry_offsets, [0x41, 0x45])
+
+    def test_a_count_of_fnevbuf_plus_one_is_rejected(self):
+        # The record form's extra element must not appear here.
+        offsets = b"\x00\x00\x00\x03" + b"\x00\x00\x00A" * 3
+        with self.assertRaises(rootfile.FormatError):
+            rootfile.read_embedded_basket(
+                self.build(11, 2, offsets=offsets, data=b"\x00" * 8), 0)
+
+    def test_an_empty_basket_writes_no_array_whatever_the_flag_says(self):
+        emb = rootfile.read_embedded_basket(self.build(11, 0, data=b""), 0)
+        self.assertIsNone(emb.basket.entry_offsets)
+
+    def test_flag_80_means_the_offsets_are_generated(self):
+        emb = rootfile.read_embedded_basket(self.build(82, 3, data=b"\x00" * 12), 0)
+        self.assertIsNone(emb.basket.entry_offsets)
+
+    def test_the_header_must_end_at_fkeylen(self):
+        buf = bytearray(self.build(12, 3, data=b"\x00" * 12))
+        buf[14:16] = (99).to_bytes(2, "big")       # a wrong fKeylen
+        with self.assertRaises(rootfile.FormatError):
+            rootfile.read_embedded_basket(bytes(buf), 0)
