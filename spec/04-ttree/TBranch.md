@@ -246,7 +246,25 @@ and agrees.
 
 On an ordinary tree all three agree with the tree's own `fEntries`, with
 `fFirstEntry` 0 and `fEntryNumber == fEntries`. They diverge for a branch added
-to a tree that already had entries, and for a friend tree. The entry-lookup
+to a tree that already had entries, and for a friend tree.
+
+**And they diverge on the parent of a split branch**, which is the common case in
+a real file. When a `TBranchElement` has sub-branches and is not a collection
+counter — `fType` 3 or 4 — its fill path is a bare `++fEntries`
+(`root/tree/tree/src/TBranchElement.cxx:1320`): it never reaches
+`TBranch::FillImpl`, which is what increments `fEntryNumber`
+(`root/tree/tree/src/TBranch.cxx:890-891`). So such a parent ends with
+`fEntries` counted and **`fEntryNumber` still 0**, and `fEntries` is *not*
+`fEntryNumber − fFirstEntry`.
+
+That is consistent rather than broken: the parent holds no data of its own, all of
+it being in the sub-branches, and §10 step 1 duly rejects every entry number for
+it. A reader must not take such a branch's `fEntryNumber` for the tree's entry
+count.
+
+> Found on files this project did not write: 227 branches across the foreign
+> corpus of `PLAN.md` §9.8, including `Header.` in `uproot-issue404.root`
+> (ROOT 6.18/04, thirteen sub-branches) and `Foo` in `uproot-issue-1043.root`. The entry-lookup
 procedure of §10 uses `fFirstEntry` and `fEntryNumber` as the bounds and
 `fBasketEntry` for the partition, so a reader should not substitute the tree's
 count for any of them.
@@ -349,7 +367,8 @@ the remaining entries live.
    `fWriteBasket` it equals `fEntryNumber - fBasketEntry[fWriteBasket]`.
 7. `fZipBytes` is the sum of `fBasketBytes[i]` over `i < fWriteBasket`, and
    `fTotBytes` the sum of `fObjlen + fKeylen` over the same baskets.
-8. `fEntries == fEntryNumber - fFirstEntry`.
+8. `fEntries == fEntryNumber - fFirstEntry`, **unless the branch has
+   sub-branches**, where `fEntryNumber` may be 0 while `fEntries` counts (§7).
 9. `fBaskets` holds `fWriteBasket + 1` slots, and none of them holds a `TBasket`
    for which `fBasketSeek` is non-zero.
 10. `fLeaves` is not empty.

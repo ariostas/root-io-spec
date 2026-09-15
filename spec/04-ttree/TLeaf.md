@@ -380,7 +380,8 @@ consumed, and read nothing if the remainder is zero.
    `TLeaf` in the same `TTree` record.
 5. A branch containing a leaf with a non-null `fLeafCount`, or any `TLeafC`, has
    `fEntryOffsetLen` non-zero, and every basket of that branch carries an
-   entry-offset array.
+   entry-offset array **unless its flag is 80**, in which case the offsets are
+   generated instead ([TBasket §5.2.1](TBasket.md#521-regenerating-the-offsets)).
 6. For a branch every one of whose leaves has a null `fLeafCount` and none of
    which is a `TLeafC`, the sum of `width × fLen` over its leaves equals the
    basket's `fNevBufSize`, and the basket has no entry-offset array.

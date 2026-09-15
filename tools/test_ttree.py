@@ -52,6 +52,14 @@ class TruncatedLeafWidth(unittest.TestCase):
     def test_pi_literals_are_a_range(self):
         self.assertEqual(rootfile.truncated_width("TLeafD32", "d/d[-pi,pi]"), 4)
 
+    def test_the_class_version_1_title_has_no_leading_slash(self):
+        # TLeafF16/TLeafD32 below class version 2 stored the type spec alone.
+        # Seen on ROOT 6.20/04 files in the foreign corpus of PLAN.md 9.8.
+        self.assertEqual(rootfile.truncated_width("TLeafF16", "f[-2.71,10,16]"), 4)
+        self.assertEqual(rootfile.truncated_width("TLeafD32", "d[-2.71,10,30]"), 4)
+        self.assertEqual(rootfile.truncated_width("TLeafF16", "f[0,0,8]"), 3)
+        self.assertEqual(rootfile.truncated_width("TLeafD32", "d[0,0,8]"), 3)
+
 
 def branch(**kw) -> rootfile.Branch:
     fields = dict(
@@ -60,7 +68,7 @@ def branch(**kw) -> rootfile.Branch:
         offset=0, max_baskets=10, split_level=0, entries=0, first_entry=0,
         tot_bytes=0, zip_bytes=0, basket_slots=1, basket_objects=0,
         basket_bytes=[0] * 10, basket_entry=[0] * 10, basket_seek=[0] * 10,
-        file_name="", leaves=[], branches=[], embedded={})
+        file_name="", leaves=[], leaf_refs=[], branches=[], embedded={})
     fields.update(kw)
     return rootfile.Branch(**fields)
 
@@ -99,9 +107,9 @@ class FindBasket(unittest.TestCase):
 
 
 def leaf(**kw) -> rootfile.Leaf:
-    fields = dict(cls="TLeafI", slot=0, name="x", title="x", length=1,
-                  len_type=4, offset=0, is_range=False, is_unsigned=False,
-                  leaf_count=0, count_slot=-1)
+    fields = dict(cls="TLeafI", slot=0, counter=None, name="x", title="x",
+                  length=1, len_type=4, offset=0, is_range=False,
+                  is_unsigned=False, leaf_count=0, count_slot=-1)
     fields.update(kw)
     return rootfile.Leaf(**fields)
 

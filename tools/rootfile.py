@@ -282,7 +282,13 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
     Equivalently: the fields always begin at `rec.offset + fNbytesName`, which is
     why `fNbytesName` differs between the root directory and a subdirectory.
     """
-    if rec.free or rec.class_name not in ("TFile", "TDirectory"):
+    if rec.free:
+        return None
+    # Not gated on the class name: the record that holds a file's root directory
+    # carries the name of whatever TFile subclass wrote it -- CMS files say
+    # TStorageFactoryFile. The fSeekDir self-check below is what identifies a
+    # directory record. spec/01-container/Directory.md section 1.
+    if not rec.class_name:
         return None
     candidates = [rec.payload_offset]
     o = rec.payload_offset
@@ -655,6 +661,13 @@ def read_slot(buf: bytes, offset: int, base: int) -> Slot:
     if word == NEW_CLASS_TAG:
         raise FormatError(f"new-class record with no byte count at {offset}")
     byte_count = word & ~BYTE_COUNT_MASK
+    tag_after_count = _u32(buf, offset + 4)
+    if not (tag_after_count & CLASS_MASK) and tag_after_count != NEW_CLASS_TAG:
+        # A byte count wrapping a bare object reference. ROOT does not write this
+        # but its reader accepts it, and files in the wild contain it.
+        # Buffer.md section 6.1.
+        return Slot(offset=offset, kind="reference", end=offset + 4 + byte_count,
+                    reference=tag_after_count)
     if byte_count > MAX_MAP_COUNT:
         raise FormatError(f"byte count {byte_count} at {offset} exceeds kMaxMapCount")
     end = offset + 4 + byte_count
@@ -1062,6 +1075,7 @@ class Value:
     members: list | None = None   # for a nested object
     note: str = ""                # why it was skipped rather than decoded
     tobject: TObjectBase | None = None
+    reference: int | None = None  # map position, when the slot was a reference
 
 
 class UnsupportedClass(FormatError):
@@ -1306,8 +1320,8 @@ class Decoder:
             # it. Reading TList through its streamer info instead produces a
             # TSeqCollection base that its streamer never writes: the divergence
             # of StreamerDriven.md section 7, in a real file.
-            self.read_object(cls, body_at)
-            return done(slot.end, type_name=cls)
+            nested = self.read_object(cls, body_at)
+            return done(slot.end, type_name=cls, members=nested.members)
 
         if t == 500 and el.cls in ("TStreamerSTL", "TStreamerSTLstring"):
             end = self.read_collection(el, offset)
@@ -1386,6 +1400,11 @@ class Decoder:
                 members.append(Value(name=name, ftype=61, start=slot.offset,
                                      end=slot.end, type_name=name, note=note,
                                      members=inner_members))
+            elif slot.kind == "reference":
+                members.append(Value(name="", ftype=61, start=slot.offset,
+                                     end=slot.end, type_name="",
+                                     reference=slot.reference,
+                                     note=f"reference to {slot.reference}"))
             pos = slot.end
             if options and frame.version > 3:
                 # The option string. Present after *every* entry, empty or not,
@@ -1821,6 +1840,12 @@ TARRAY_WIDTH = {
 BASKET_HEADER = 19        # version, four Int_t, and the flag byte
 BASKET_HEADER_IOBITS = 20  # the same, plus a UChar_t fIOBits
 
+# TBasket::Streamer's composed flag, root/tree/tree/src/TBasket.cxx:1139-1152.
+FLAG_NO_OFFSETS = 2       # flag % 10 == 2: there is no entry-offset array
+FLAG_HAS_DATA = 10        # flag == 1 or flag > 10: the entry data follows
+FLAG_DISPLACEMENT = 40    # flag > 40: a displacement array follows
+FLAG_GENERATE = 80        # flag >= 80: the offsets are to be generated
+
 # TBasket::EIOBits, root/tree/tree/inc/TBasket.h:97-102.
 IO_GENERATE_OFFSET_MAP = 0x01
 IO_SUPPORTED = IO_GENERATE_OFFSET_MAP
@@ -1841,6 +1866,8 @@ class Basket:
     last: int             # measured from the start of the RECORD, not the payload
     flag: int
     io_bits: int          # 0 unless fNevBufSize was written negative
+    generated: bool       # flag 80: the offsets are not stored, TBasket.md 5.2.1
+    key_len: int          # fKeylen: the first entry offset, and where data starts
     header_offset: int    # where the basket's own fields begin, inside the key
     data_start: int       # first entry byte
     data_end: int         # one past the last entry byte
@@ -1934,15 +1961,36 @@ def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
             f"{rec.offset + rec.key_len}")
     return Basket(version=version, buffer_size=buffer_size,
                   nev_buf_size=nev_buf_size, nev_buf=nev_buf, last=last,
-                  flag=flag, io_bits=io_bits, header_offset=header,
+                  flag=flag, io_bits=io_bits,
+                  generated=offsets is None and flag >= FLAG_GENERATE,
+                  key_len=rec.key_len, header_offset=header,
                   data_start=payload_start, data_end=data_end,
                   entry_offsets=offsets)
+
+
+def generate_entry_offsets(key_len: int, nev_buf: int, len_type: int,
+                           counts: list[int], header: int = 0) -> list[int]:
+    """The offsets a kGenerateOffsetMap basket does not store.
+
+    spec/04-ttree/TBasket.md section 5.2, from
+    `root/tree/tree/src/TLeaf.cxx:210-216`. `counts` is the counter leaf's value
+    at each entry, and `header` is 0 for every leaf but TLeafElement.
+    """
+    offset, out = key_len, []
+    for i in range(nev_buf):
+        out.append(offset)
+        offset += len_type * counts[i] + header
+    return out
 
 
 def basket_entry_range(rec: Record, basket: Basket, index: int) -> tuple[int, int]:
     """The absolute byte range of entry `index`. spec/04-ttree/TBasket.md."""
     if not 0 <= index < basket.nev_buf:
         raise FormatError(f"entry {index} outside [0, {basket.nev_buf})")
+    if basket.generated:
+        raise FormatError(
+            f"basket at {rec.offset} has flag 80: its entry offsets are not "
+            f"stored and must be generated from the branch's leaf, TBasket.md 5.2.1")
     if basket.entry_offsets is None:
         width = basket.nev_buf_size
         start = basket.data_start + index * width
@@ -1972,6 +2020,7 @@ class Leaf:
 
     cls: str
     slot: int             # the object slot's offset, for resolving references
+    counter: "Leaf | None"  # the counter leaf, when written inline here
     name: str
     title: str
     length: int           # fLen, after the zero-to-one normalisation
@@ -2020,6 +2069,7 @@ class Branch:
     basket_seek: list[int]
     file_name: str
     leaves: list[Leaf]
+    leaf_refs: list[int]        # map positions of fLeaves entries not written here
     branches: list["Branch"]
 
 
@@ -2028,13 +2078,20 @@ def truncated_width(cls: str, title: str) -> int:
 
     The packing is decided by the annotation in the title and nothing else.
     """
-    marker = "/f[" if cls == "TLeafF16" else "/d["
-    at = title.find(marker)
-    if at < 0:
+    letter = "f" if cls == "TLeafF16" else "d"
+    at = title.find("/" + letter + "[")
+    if at < 0 and title.startswith(letter + "["):
+        # Class version 1 stored the type spec alone, with no leaf name and no
+        # leading slash. ROOT repairs that on read by prepending one
+        # (root/tree/tree/src/TLeafF16.cxx:226-228); accept both forms.
+        at = -1
+        spec = title
+    elif at < 0:
         # No annotation. The two classes disagree: Float16_t falls back to a
         # 12-bit mantissa, Double32_t to a plain Float_t.
         return 3 if cls == "TLeafF16" else 4
-    spec = title[at + 2:]
+    else:
+        spec = title[at + 2:]
     inner = spec[spec.find("[") + 1:spec.find("]")]
     parts = [p.strip() for p in inner.split(",")]
     xmin = _range_literal(parts[0]) if parts[0] else 0.0
@@ -2058,10 +2115,12 @@ def _named(buf: bytes, values: list[Value]) -> dict[str, Value]:
     """Flatten a member list, keyed by name, bases included."""
     out: dict[str, Value] = {}
 
+    BASES = (0, 66, 67)
+
     def walk_members(vs):
         for v in vs:
             out.setdefault(v.name, v)
-            if v.members:
+            if v.members and v.ftype in BASES:
                 walk_members(v.members)
     walk_members(values)
     return out
@@ -2095,9 +2154,17 @@ def _sequence_count(buf: bytes, value: Value) -> int:
 def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
     m = _named(buf, entry.members or [])
     length = _i32(buf, m["fLen"].start)
-    tag = _u32(buf, m["fLeafCount"].start)
+    count_at = m["fLeafCount"].start
+    tag = _u32(buf, count_at)
+    counter = None
+    if tag & BYTE_COUNT_MASK:
+        # The counter leaf's first occurrence in this buffer is written in full,
+        # right here. Every other leaf that names it back-references this
+        # position, so that position is its identity. TLeaf.md section 3.1.
+        counter = _read_leaf(buf, m["fLeafCount"], base)
+        counter.slot = count_at
     return Leaf(
-        cls=entry.type_name, slot=entry.start,
+        cls=entry.type_name, slot=entry.start, counter=counter,
         name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
         length=length or 1,          # TLeaf.cxx:499, a stored 0 means 1
         len_type=_i32(buf, m["fLenType"].start),
@@ -2105,7 +2172,8 @@ def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
         is_range=bool(buf[m["fIsRange"].start]),
         is_unsigned=bool(buf[m["fIsUnsigned"].start]),
         leaf_count=tag,
-        count_slot=(base + tag - MAP_OFFSET) if tag else -1)
+        count_slot=count_at if counter is not None else
+        ((base + tag - MAP_OFFSET) if tag else -1))
 
 
 def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
@@ -2175,7 +2243,10 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         basket_entry=_counted_pointer(buf, m["fBasketEntry"], 8, n),
         basket_seek=_counted_pointer(buf, m["fBasketSeek"], 8, n),
         file_name=_string_at(buf, m["fFileName"]),
-        leaves=[_read_leaf(buf, e, base) for e in (m["fLeaves"].members or [])],
+        leaves=[_read_leaf(buf, e, base) for e in (m["fLeaves"].members or [])
+                if e.reference is None],
+        leaf_refs=[e.reference for e in (m["fLeaves"].members or [])
+                   if e.reference is not None],
         branches=[_read_branch(buf, e, base)
                   for e in (m["fBranches"].members or [])])
 
@@ -2189,8 +2260,30 @@ def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:
     members = _named(buf, tree.members or [])
     if "fBranches" not in members:
         raise FormatError("no fBranches member")
-    return [_read_branch(buf, e, base)
-            for e in (members["fBranches"].members or [])]
+    top = [_read_branch(buf, e, base)
+           for e in (members["fBranches"].members or [])]
+    _resolve_leaf_refs(top, base)
+    return top
+
+
+def _resolve_leaf_refs(top: list[Branch], base: int) -> None:
+    """Attach leaves whose fLeaves entry was only a reference.
+
+    A branch's fLeaves can hold a back-reference to a leaf written in full
+    elsewhere in the same buffer -- inside another leaf's fLeafCount, for one.
+    TLeaf.md section 3.1.
+    """
+    known: dict[int, Leaf] = {}
+    for branch in walk_branches(top):
+        for leaf in branch.leaves:
+            known[leaf.slot] = leaf
+            if leaf.counter is not None:
+                known[leaf.counter.slot] = leaf.counter
+    for branch in walk_branches(top):
+        for ref in branch.leaf_refs:
+            leaf = known.get(base + ref - MAP_OFFSET)
+            if leaf is not None:
+                branch.leaves.append(leaf)
 
 
 def walk_branches(branches: list[Branch]):
@@ -2220,9 +2313,13 @@ def resolve_leaf_count(leaf: Leaf, leaves: list[Leaf]) -> Leaf:
     The stored value is a buffer map position; `Leaf.count_slot` has already
     converted it to an absolute offset.
     """
+    if leaf.counter is not None:
+        return leaf.counter
     for other in leaves:
         if other.slot == leaf.count_slot:
             return other
+        if other.counter is not None and other.counter.slot == leaf.count_slot:
+            return other.counter
     raise FormatError(
         f"leaf {leaf.name!r} has fLeafCount {leaf.leaf_count}, which is no leaf "
         f"in this record")
@@ -2294,13 +2391,6 @@ class EmbeddedBasket:
     block: int            # where the raw buffer copy begins; -1 if absent
 
 
-# TBasket::Streamer's composed flag, root/tree/tree/src/TBasket.cxx:1139-1152.
-FLAG_NO_OFFSETS = 2       # flag % 10 == 2: there is no entry-offset array
-FLAG_HAS_DATA = 10        # flag == 1 or flag > 10: the entry data follows
-FLAG_DISPLACEMENT = 40    # flag > 40: a displacement array follows
-FLAG_GENERATE = 80        # flag >= 80: the offsets are to be generated
-
-
 def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
     """Read a TBasket object out of the buffer it was streamed into."""
     version = _i16(buf, offset + 4)
@@ -2366,7 +2456,8 @@ def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
         block = -1
     basket = Basket(version=basket_version, buffer_size=buffer_size,
                     nev_buf_size=nev_buf_size, nev_buf=nev_buf, last=last,
-                    flag=flag, io_bits=io_bits, header_offset=offset + key_len - 9,
+                    flag=flag, io_bits=io_bits, generated=generate,
+                    key_len=key_len, header_offset=offset + key_len - 9,
                     data_start=block + key_len if block >= 0 else -1,
                     data_end=block + last if block >= 0 else -1,
                     entry_offsets=offsets)

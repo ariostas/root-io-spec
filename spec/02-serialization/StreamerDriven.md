@@ -333,8 +333,9 @@ implemented for any class the reader claims to support.
    `fObjLen` bytes.
 2. Applying it to any nested object consumes exactly the bytes its byte count
    delimits.
-3. Every element's `fCountName`, where non-empty, names an element of the same
-   streamer info that precedes it and whose `fType` is 6 (`kCounter`).
+3. Every element's `fCountName`, where non-empty, names a `kCounter` element:
+   an earlier one in the same list, or one in the info named by its
+   `fCountClass`, which is a base of this class (§3.2).
 4. Every `TStreamerBase` element precedes every non-base element of the same
    streamer info.
 5. Every class named by a `TStreamerBase` element, and every class named in the

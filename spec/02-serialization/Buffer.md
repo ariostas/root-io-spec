@@ -325,6 +325,21 @@ class, because reading a class starts at the enclosing byte count
 (`root/io/io/src/TBufferFile.cxx:3280`, `root/io/io/src/TBufferFile.cxx:3312`).
 A reader MAY treat an unresolvable reference as a null.
 
+**A reference may carry a byte count of its own.** ROOT never writes one —
+`WriteObjectClass` emits the bare four-byte tag for an object already in the map
+(`root/io/io/src/TBufferFile.cxx:2680-2685`) — but its **reader accepts it**:
+`ReadClass` treats a leading word with `kByteCountMask` as a byte count, reads the
+tag after it, and returns that tag as an object reference if `kClassMask` is clear
+(`root/io/io/src/TBufferFile.cxx:2751-2764`). So a slot of `40 00 00 04` followed
+by a four-byte tag is an eight-byte reference, and a reader that requires §6's
+three shapes rejects a file ROOT reads without complaint.
+
+> Found in `uproot-issue413.root` from the foreign corpus of `PLAN.md` §9.8: a
+> `TTree`'s `fLeaves` of six entries, each `40 00 00 04` and a tag, 48 bytes where
+> 24 would do. The file was probably not written by ROOT — the shape of the names
+> suggests a third-party writer — but ROOT reads it, so a reader of other people's
+> files should too.
+
 ### 6.2 Positions 0 and 1, and why `kMapOffset` is 2
 
 The first two map positions are not buffer offsets:

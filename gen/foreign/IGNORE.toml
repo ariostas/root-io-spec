@@ -1,0 +1,40 @@
+# Files in the foreign corpus whose invariant failures are not evidence about
+# ROOT's format, and the invariants to skip for each.
+#
+# The corpus is uproot's regression collection (gen/foreign/MANIFEST.sha256), so
+# some of it was written by third-party writers rather than by ROOT. A file that
+# a third party wrote incorrectly must not be allowed to weaken an invariant --
+# but it must not be allowed to hide behind a weakened invariant either, which is
+# why the skip is per file and per invariant, with a reason, rather than a change
+# to the check.
+#
+# The bar for an entry: the failure has been diagnosed, and the conclusion is that
+# the FILE is wrong rather than the specification. `tools/check_invariants.py
+# --ignore` reports how many failures each entry suppressed, so an entry that
+# stops mattering shows up as suppressing nothing.
+#
+# Nothing here affects `data/`. Our own fixtures are never ignored.
+
+["uproot-issue413.root"]
+reason = """
+Written by a third party, not ROOT: the tree's branch names (I32, F64, Str,
+ArrF64, SliF64) and the file name "struct.root" are uproot's writing-test
+fixtures. ROOT opens it and reads all five entries without complaint, so it is
+not corrupt -- it is just not written the way ROOT writes.
+
+Two departures, both diagnosed:
+
+  - Its basket keys use fVersion 4, the small-key form. ROOT adds 1000 to a
+    basket's key version unconditionally (TBasket.md 1), which is why every
+    basket in data/ reads 1004, and a reader that computes fSeekKey's width from
+    the version gets four bytes fewer here than ROOT would write. This is the
+    only invariant still failing, and it is the file's doing.
+  - Its TTree's fLeaves entries wrap each object reference in a byte count.
+    ROOT's reader accepts that, so it is now specified rather than rejected:
+    Buffer.md 6.1. Recorded here only as the diagnosis.
+  - It writes no TStreamerInfo for TLeafI, TLeafD or TLeafC, which ROOT always
+    does. Nothing can decode those leaf records from the file alone; that is
+    StreamerDriven.md 6's case, caused by the writer. It shows up as NOT CHECKED
+    rather than as a failure.
+"""
+skip = ["TBasket 6.2"]

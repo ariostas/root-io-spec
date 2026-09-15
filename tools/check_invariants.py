@@ -12,6 +12,7 @@ packages; the one exception is noted where it arises.
 
 from __future__ import annotations
 
+import dataclasses
 import struct
 import sys
 from pathlib import Path
@@ -32,13 +33,18 @@ def counted_string_len(buf: bytes, offset: int) -> int:
     return 1 + 4 + struct.unpack_from(">i", buf, offset + 1)[0] if n == 255 else 1 + n
 
 
-def element_list_failures(info) -> list[tuple[str, str]]:
+def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
     """StreamerDriven.md invariants 3, 4 and 6, over one streamer info.
+
+    `by_name` maps a class name to its info, so that a counter declared in a base
+    class can be found -- TArrayD's fArray names fN in TArray. Without it, only
+    counters in this same list are accepted.
 
     Separate from Checker so that it can be exercised on element lists no
     fixture contains -- an out-of-order base class, for one.
     """
     failures: list[tuple[str, str]] = []
+    by_name = by_name or {}
     names = [e.name for e in info.elements]
     bases_seen = 0
     for index, el in enumerate(info.elements):
@@ -50,18 +56,27 @@ def element_list_failures(info) -> list[tuple[str, str]]:
                     f"non-base element"))
             bases_seen += 1
         if el.count_name:
-            if el.count_name not in names[:index]:
+            counter = None
+            if el.count_name in names[:index]:
+                counter = info.elements[names.index(el.count_name)]
+            else:
+                # It may be declared in a base class, which fCountClass names.
+                # StreamerDriven.md 3.2.
+                owner = by_name.get(el.tail.get("fCountClass", ""))
+                if owner is not None:
+                    counter = next((e for e in owner.elements
+                                    if e.name == el.count_name), None)
+            if counter is None:
                 failures.append((
                     "StreamerDriven 10.3",
                     f"{info.name}.{el.name} names counter {el.count_name!r}, "
-                    f"which does not precede it"))
-            else:
-                counter = info.elements[names.index(el.count_name)]
-                if counter.ftype != 6:
-                    failures.append((
-                        "StreamerDriven 10.3",
-                        f"{info.name}.{el.name} names {el.count_name!r}, whose "
-                        f"fType is {counter.ftype}, not 6"))
+                    f"which is neither earlier in this info nor in "
+                    f"{el.tail.get('fCountClass', '')!r}"))
+            elif counter.ftype != 6:
+                failures.append((
+                    "StreamerDriven 10.3",
+                    f"{info.name}.{el.name} names {el.count_name!r}, whose "
+                    f"fType is {counter.ftype}, not 6"))
         if el.ftype == -1 and el.cls != "TStreamerBase":
             failures.append((
                 "StreamerDriven 10.6",
@@ -262,7 +277,10 @@ class Checker:
     # no byte count. A TArray has neither a byte count nor a version word; its
     # payload starts with the element count. See Buffer.md 2.3; they are checked
     # by check_references and check_tarray.
-    UNFRAMED = {"TFile", "TDirectory", "TRef", "TBasket"} | set(rootfile.TARRAY_WIDTH)
+    # Records whose payload is not a framed object: the container's own
+    # bookkeeping, and the classes with a hand-written layout of their own.
+    UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket"}
+                | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
     def check_buffer_framing(self) -> None:
         for rec in self.records:
@@ -436,8 +454,12 @@ class Checker:
                         self.bad("StreamerInfo 13.8",
                                  f"{where}: base fType {e.ftype}")
                     # 13.7: fBaseCheckSum, which is fMaxIndex[1], read unsigned.
+                    # 0 means "not recorded": the field did not exist before
+                    # ROOT 6, and is 0 whenever the writer had no base class
+                    # loaded. StreamerInfo.md 9.1.
                     target = by_name.get(e.name)
-                    if target is not None and target.checksum != e.base_checksum:
+                    if (target is not None and e.base_checksum
+                            and target.checksum != e.base_checksum):
                         self.bad("StreamerInfo 13.7",
                                  f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} != "
                                  f"the base info's fCheckSum 0x{target.checksum:08x}")
@@ -446,7 +468,10 @@ class Checker:
                         self.bad("ElementTypes 11.6",
                                  f"{where}: fType -1 on a base named {e.name!r}")
 
-                if e.cls in ("TStreamerSTL", "TStreamerSTLstring") and e.ftype != 500:
+                # 13.9: 500 on any file ROOT 5 or later wrote; ROOT 4 wrote the
+                # real code. StreamerInfo.md 10.1.
+                if (e.cls in ("TStreamerSTL", "TStreamerSTLstring")
+                        and e.ftype not in (500, 300, 365)):
                     self.bad("StreamerInfo 13.9",
                              f"{where}: STL element fType {e.ftype}, expected 500")
 
@@ -454,10 +479,16 @@ class Checker:
                     counter = e.tail.get("fCountName", "")
                     if not counter:
                         self.bad("StreamerInfo 13.10", f"{where}: empty fCountName")
-                    elif counter not in names:
-                        self.bad("StreamerInfo 13.10",
-                                 f"{where}: fCountName {counter!r} names no element "
-                                 f"of {si.name}")
+                    else:
+                        # It may be in a base class, which fCountClass names.
+                        owner = by_name.get(e.tail.get("fCountClass", ""))
+                        elsewhere = owner is not None and any(
+                            x.name == counter for x in owner.elements)
+                        if counter not in names and not elsewhere:
+                            self.bad("StreamerInfo 13.10",
+                                     f"{where}: fCountName {counter!r} is in "
+                                     f"neither {si.name} nor "
+                                     f"{e.tail.get('fCountClass', '')!r}")
 
                 # 13.11
                 if not 0 <= e.array_dim <= 5:
@@ -494,9 +525,10 @@ class Checker:
         _, _, infos = self.streamer_infos()
         if infos is None:
             return
+        by_info = {i.name: i for i in infos}
 
         for info in infos:
-            for where, message in element_list_failures(info):
+            for where, message in element_list_failures(info, by_info):
                 self.bad(where, message)
 
         for target in self.records:
@@ -837,22 +869,29 @@ class Checker:
                 if any(b < a for a, b in zip(offsets, offsets[1:])):
                     self.bad("TBasket 6.5",
                              f"basket at {rec.offset}: entry offsets decrease")
-                if offsets and offsets[-1] >= basket.last:
+                if offsets and offsets[-1] > basket.last:
                     self.bad("TBasket 6.5",
                              f"basket at {rec.offset}: last entry offset "
-                             f"{offsets[-1]} is not below fLast {basket.last}")
+                             f"{offsets[-1]} is above fLast {basket.last}")
             else:
                 if tail != 0:
                     self.bad("TBasket 6.4",
                              f"basket at {rec.offset} has {tail} unaccounted "
                              f"bytes and no offset array")
                 want = basket.nev_buf * basket.nev_buf_size
+                if basket.generated:
+                    want = rec.obj_len      # 6.6 does not apply, TBasket.md 5.2
                 if rec.obj_len != want:
                     self.bad("TBasket 6.6",
                              f"basket at {rec.offset} has fObjlen {rec.obj_len}, "
                              f"but fNevBuf {basket.nev_buf} x fNevBufSize "
                              f"{basket.nev_buf_size} is {want}")
 
+            if basket.generated:
+                # The offsets are not in the basket at all: generating them needs
+                # the branch's leaf and its counter, which TBasket.md 5.2 covers
+                # and this per-record check does not have to hand.
+                continue
             for index in range(basket.nev_buf):
                 try:
                     start, end = rootfile.basket_entry_range(rec, basket, index)
@@ -1056,7 +1095,14 @@ class Checker:
         found = list(self.trees())
         self._all_branches = [top for _, _, top in found]
         for data, rec, top in found:
-            leaves = [lf for b in rootfile.walk_branches(top) for lf in b.leaves]
+            leaves = []
+            for b in rootfile.walk_branches(top):
+                for lf in b.leaves:
+                    leaves.append(lf)
+                    if lf.counter is not None:
+                        # A counter leaf whose only full copy is inside this
+                        # leaf's fLeafCount. TLeaf.md 3.1.
+                        leaves.append(lf.counter)
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_leaves(data, branch, leaves)
@@ -1109,7 +1155,8 @@ class Checker:
                 self.bad("TBranch 11.4",
                          f"{name}: {label} is not zero above fWriteBasket: {tail}")
 
-        if br.entries != br.entry_number - br.first_entry:
+        # A split parent counts fEntries without fEntryNumber: TBranch.md 7.
+        if not br.branches and br.entries != br.entry_number - br.first_entry:
             self.bad("TBranch 11.8",
                      f"{name}: fEntries {br.entries} != fEntryNumber - fFirstEntry "
                      f"({br.entry_number} - {br.first_entry})")
@@ -1229,7 +1276,7 @@ class Checker:
                 basket = rootfile.read_basket(self.buf, basket_rec, payload)
             except (rootfile.FormatError, struct.error, IndexError, ValueError):
                 continue
-            if variable and not basket.has_offsets:
+            if variable and not basket.has_offsets and not basket.generated:
                 self.bad("TLeaf 10.5",
                          f"{name}: basket {i} has no entry-offset array though a "
                          f"leaf is variable-size")
@@ -1244,8 +1291,40 @@ class Checker:
                              f"leaves' {fixed_width} bytes an entry")
             self.check_entries(payload, basket_rec, basket, br, leaves, i)
 
+    def generated_offsets(self, basket, br, leaves, index):
+        """TBasket.md 5.2.1: the offsets a flag-80 basket does not store."""
+        if len(br.leaves) != 1:
+            self.bad("TBasket 5.2.1",
+                     f"branch {br.name!r}: flag 80 needs exactly one leaf, "
+                     f"there are {len(br.leaves)}")
+            return None
+        leaf = br.leaves[0]
+        if leaf.count_slot < 0:
+            self.bad("TBasket 5.2.1",
+                     f"branch {br.name!r}: flag 80 on a leaf with no fLeafCount")
+            return None
+        counter = rootfile.resolve_leaf_count(leaf, leaves)
+        first = br.basket_entry[index]
+        counts = []
+        for e in range(basket.nev_buf):
+            counts.append(self.leaf_counts(br, leaves, first + e)[counter.slot])
+        header = 1 if leaf.cls == "TLeafElement" else 0
+        return rootfile.generate_entry_offsets(
+            basket.key_len, basket.nev_buf, leaf.len_type, counts, header)
+
     def check_entries(self, payload, basket_rec, basket, br, leaves, index) -> None:
         """TLeaf.md 10.7: the leaves account for each entry exactly."""
+        if basket.generated:
+            offsets = self.generated_offsets(basket, br, leaves, index)
+            if offsets is None:
+                return
+            if offsets[-1] > basket.last:
+                self.bad("TBasket 5.2.1",
+                         f"branch {br.name!r}: generated offsets run to "
+                         f"{offsets[-1]}, past fLast {basket.last}")
+                return
+            basket = dataclasses.replace(basket, entry_offsets=offsets,
+                                         generated=False)
         for e in range(basket.nev_buf):
             entry = br.basket_entry[index] + e
             try:
@@ -1315,7 +1394,24 @@ class Checker:
         return self.failures
 
 
+def load_ignores(path: Path) -> dict[str, list[str]]:
+    """Per-file invariant skips, from gen/foreign/IGNORE.toml.
+
+    Only for files this project did not write and has diagnosed as the file's
+    fault rather than the specification's. See the header of that file.
+    """
+    import tomllib
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+    return {name: entry.get("skip", []) for name, entry in data.items()}
+
+
 def main(argv: list[str]) -> int:
+    ignores: dict[str, list[str]] = {}
+    if "--ignore" in argv:
+        at = argv.index("--ignore")
+        ignores = load_ignores(Path(argv[at + 1]))
+        argv = argv[:at] + argv[at + 2:]
     paths = [Path(a) for a in argv] or sorted((REPO / "data").rglob("*.root"))
     failures = []
     no_codec: set[str] = set()
@@ -1323,6 +1419,21 @@ def main(argv: list[str]) -> int:
         checker = Checker(path)
         failures += checker.run()
         no_codec |= checker.no_codec
+
+    suppressed: dict[tuple[str, str], int] = {}
+    kept = []
+    for f in failures:
+        name, _, rest = f.partition(": ")
+        rule = rest.split(":", 1)[0]
+        if rule in ignores.get(name, []):
+            suppressed[(name, rule)] = suppressed.get((name, rule), 0) + 1
+        else:
+            kept.append(f)
+    failures = kept
+    for (name, rule), n in sorted(suppressed.items()):
+        print(f"IGNORED {n:4} x {rule} in {name} (gen/foreign/IGNORE.toml)",
+              file=sys.stderr)
+
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
     # Say so out loud: a record nobody could decompress is a record nobody

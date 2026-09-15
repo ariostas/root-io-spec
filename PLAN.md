@@ -954,6 +954,53 @@ Both were real gaps, both are now specified:
 | A byte-count-wrapped object **reference** (`40 00 00 04` then a 4-byte tag) | 1 | `Buffer.md` §6 rejects this, and ROOT's reader accepts it. **Provenance unestablished** — `uproot-issue413.root` looks uproot-written (branch names `I32`/`F64`/`Str`/`ArrF64`, file "struct.root"). Settle the writer before changing `Buffer.md` |
 | `TDatime` at version 0 with a checksum matching nothing; `RooAbsCollection` consuming −29 bytes; `vector<double>` version 0 with no info; a zero-length record at 10427 | 5 | One each, undiagnosed |
 
+#### The triage, done
+
+**10 047 failures became 250.** Every group was diagnosed against the pinned
+source, and each resolved to exactly one of four outcomes. Nothing was weakened on
+a file's say-so.
+
+**Five specification errors.** These are the return on the exercise: each is a
+statement that was wrong, published, and would have misled a reader.
+
+| Was wrong | Now | Evidence |
+|---|---|---|
+| `TBasket.md` §6 and §8: no offset array means fixed-length entries | Only when the flag is not 80. A `kGenerateOffsetMap` basket looks identical and is not, and §5.2.1 now gives the recurrence that regenerates its offsets | `uproot-small-dy-nooffsets.root`: `fNevBufSize` 1000, `fNevBuf` 200, `fObjlen` 3400. `77 + 4 × 850` is `fLast` exactly |
+| `TBasket.md` invariant 5: the last offset is below `fLast` | At most `fLast` — an **empty last entry** puts it exactly there, which `TLeafC::ReadBasket` tests for | 1484 baskets across the `uproot-HZZ` family |
+| `StreamerInfo.md` §9 and invariant 7: `fMaxIndex[1]` is the base's checksum | Or **0**, on every file ROOT 5 wrote. `fBaseCheckSum` arrived in 6.00/00 (`185b44f3d96`, 2014-04-21) | The version sweep brackets it: all 23 are 0 from 5.23 to 5.30, none is from 6.08 to 6.20 |
+| `StreamerInfo.md` invariant 9: an STL element's `fType` is 500 | On ROOT 5 and later. **ROOT 4 wrote the real code**, 300 (§10.1) | The two ROOT 4.00/00 files, nine elements each |
+| `StreamerInfo.md` invariant 10 and `StreamerDriven.md` invariant 3: a counter precedes its element in the same info | Or sits in the **base class** its `fCountClass` names | `TArrayD.fArray` names `fN` in `TArray` |
+
+**Two format facts the spec did not have.**
+
+| Fact | Where |
+|---|---|
+| The parent of a split branch counts `fEntries` but never `fEntryNumber`, which stays 0: its fill path is a bare `++fEntries` (`root/tree/tree/src/TBranchElement.cxx:1320`). So `fEntries != fEntryNumber − fFirstEntry` there, and the parent's counters are not the tree's | `TBranch.md` §7, invariant 8 |
+| A slot may wrap an object **reference** in a byte count. ROOT never writes one but its reader accepts it (`root/io/io/src/TBufferFile.cxx:2751-2764`), and files in the wild have it | `Buffer.md` §6.1 |
+
+**Four reader gaps, the spec already being right.** A counter leaf written *inline*
+inside another leaf's `fLeafCount` rather than referenced; a branch's `fLeaves`
+entry that is itself a reference to a leaf written elsewhere; the class-version-1
+`TLeafF16`/`TLeafD32` title with no leading slash; and a directory record whose
+class name is a `TFile` **subclass**, which `read_directory` gated on. Between them
+these were 4 742 failures.
+
+**One file ignored**, with the reason recorded per invariant in
+`gen/foreign/IGNORE.toml`: `uproot-issue413.root` writes basket keys at `fVersion`
+4 where ROOT adds 1000 unconditionally. ROOT reads the file, so it is not corrupt
+— it is simply not written the way ROOT writes, and its 6 failures must not weaken
+`TBasket.md` §1. `check_invariants.py --ignore` prints what each entry suppressed,
+so an entry that stops mattering shows up as suppressing nothing.
+
+#### What is left: 250
+
+| Group | Count | Read |
+|---|---|---|
+| `TBranch` 11.10, `fLeaves` is empty | 146 | Split `TBranchElement`s only. A reference this pass does not resolve yet — probably a leaf written inside a *sub*-branch the resolver visits later. Not diagnosed |
+| `Buffer` 9.9, byte count past the payload | 34 | Records whose class has a hand-written streamer the framing check does not know about. Needs the class list |
+| `ElementTypes` 11.1/11.2 | 36 | Element type codes outside the on-disk set. Not diagnosed |
+| The rest | 34 | Singles and pairs, including one file whose record chain has a zero-length record at 10427 that ROOT reads happily |
+
 #### The methodological catch
 
 `check_invariants.py` over the same corpus reports **10 538 failures**, and

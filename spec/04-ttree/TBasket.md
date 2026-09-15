@@ -290,7 +290,9 @@ When `fIOBits` bit 0 is set, one of two things is true
 
 - the offsets can be regenerated from the branch's type, and **no array is written
   at all** — the record's `fObjlen` then equals `fLast - fKeylen`, and the header's
-  flag is 80;
+  flag is 80. §5.2.1 says how to regenerate them, and **§6's arithmetic must not be
+  applied**: a basket in this state looks exactly like a fixed-length one and is
+  not;
 - they cannot, and the array is written as **differences** instead of offsets:
   `entryOffset[i] -= entryOffset[i-1]` for *i* descending, and `entryOffset[0]` set
   to 0. A reader recovers the offsets by accumulating from `fKeylen`.
@@ -299,10 +301,47 @@ When `fIOBits` bit 0 is set, one of two things is true
 > beginning at 0 and rising by the entry sizes — plausible, monotonic, and wrong
 > by `fKeylen` at every entry.
 
-No reference file exercises either path; producing one needs a branch with the
-IO feature enabled.
+#### 5.2.1 Regenerating the offsets
 
-> **`kGenerateOffsetMap` never applies to a `TBranchElement`.** Every
+When no array was written, a reader must compute one. The recurrence is
+(`root/tree/tree/src/TLeaf.cxx:210-216`):
+
+```
+offset[0]   = fKeylen
+offset[i+1] = offset[i] + fLenType × count[i] + header
+```
+
+where `count[i]` is the value, at entry *i*, of the leaf named by this leaf's
+`fLeafCount` — read from **its** branch, exactly as in
+[TLeaf §5.2](TLeaf.md#52-the-element-count-comes-from-another-leaf) — and `header`
+is 0 for every leaf class except `TLeafElement`, where it is 1
+(`root/tree/tree/inc/TLeafElement.h:42`).
+
+Two preconditions, both enforced by ROOT and both worth checking:
+
+- **the branch has exactly one leaf**, or the offsets cannot be generated at all
+  (`root/tree/tree/src/TBasket.cxx:206-209`);
+- **that leaf has a `fLeafCount`** (`root/tree/tree/inc/TLeaf.h:115`), since a
+  fixed-size leaf would not need generated offsets in the first place.
+
+> Note `fLenType`, not the on-disk width. For `TLeafF16`, `TLeafD32` and `TLeafG`
+> the two differ ([TLeaf §4.1](TLeaf.md#41-flentype-is-not-the-on-disk-width)), so
+> this recurrence is wrong for those three. ROOT has the same problem; whether the
+> combination can arise is recorded in `PLAN.md` §7.1.
+
+> Demonstrated by `ttree/basket-iofeatures`, whose branch `a` has flag 80 and no
+> array: the offsets a reader must compute are 66, 70 and 78, and they land on the
+> same floats `ttree/basket` stores explicitly.
+
+> Verified against a file nobody here wrote as well —
+> `uproot-small-dy-nooffsets.root` from the foreign corpus of `PLAN.md` §9.8:
+> branch `Jet_jetId`, `fNevBufSize` 1000, `fNevBuf` 200, `fKeylen` 77, `fLast`
+> 3477, flag 80, `fIOBits` 1, and no array. The 200 counts in branch `nJet` sum to
+> 850; `77 + 4 × 850` is 3477 exactly.
+
+> **`kGenerateOffsetMap` never applies to a `TBranchElement`.** Demonstrated the
+> other way round by `ttree/basket-iofeatures`, which is leaflist-only for exactly
+> this reason. Every
 > `TBranchElement` constructor delegates to the default `TBranch()` constructor,
 > which does not copy the tree's IO features
 > (`root/tree/tree/src/TBranchElement.cxx:168`,
@@ -312,15 +351,29 @@ IO feature enabled.
 
 ## 6. Fixed-length entries
 
-When there is no entry-offset array, every entry is `fNevBufSize` bytes and entry
-*i* begins at payload offset `i × fNevBufSize`. The whole payload is data:
+When there is no entry-offset array **and the flag is not 80**, every entry is
+`fNevBufSize` bytes and entry *i* begins at payload offset `i × fNevBufSize`. The
+whole payload is data:
 
 ```
 fObjlen == fNevBuf × fNevBufSize
 ```
 
+> **The flag condition is not optional.** A basket with flag 80 also has no array
+> and also has `fObjlen == fLast - fKeylen`, and its entries are *not*
+> fixed-length: `fNevBufSize` is the array capacity there, typically 1000, and
+> multiplying it out overruns the payload by orders of magnitude. §5.2.1 is what
+> applies.
+>
+> **`fIOBits` alone is not the test.** A branch with the feature enabled sets it
+> on *every* basket, including those whose entries really are fixed-length and
+> which keep flag 0 — `ttree/basket-iofeatures` has one of each. It is the flag
+> that says the offsets were dropped.
+
 > Demonstrated by `ttree/basket`: branch `n` has `fNevBuf` 3, `fNevBufSize` 4 and
-> `fObjlen` 12.
+> `fObjlen` 12. And from the other side by `uproot-small-dy-nooffsets.root`
+> (`PLAN.md` §9.8), whose `Jet_jetId` basket has `fNevBuf` 200 and `fNevBufSize`
+> 1000 against an `fObjlen` of 3400.
 
 ## 7. Compression
 
@@ -358,8 +411,10 @@ To read entry *i* of a basket record:
    bit 7 set, or has any bit outside the supported set.
 4. Read `fNevBuf`, `fLast` and the flag byte.
 5. Decompress the payload if `fNbytes - fKeylen != fObjlen`.
-6. If `fObjlen == fLast - fKeylen`, there is no entry-offset array: entry *i* is
-   `fNevBufSize` bytes at payload offset `i × fNevBufSize`. Done.
+6. If `fObjlen == fLast - fKeylen` there is no entry-offset array, and the flag
+   says which of two cases it is. **Flag 80**: the offsets must be generated from
+   the branch's leaf by §5.2.1. **Flag 0**: entry *i* is `fNevBufSize` bytes at
+   payload offset `i × fNevBufSize`. Done either way.
 7. Otherwise read `count` and `count` `i32` values at record offset `fLast`. Use
    the first `fNevBuf`. If `fIOBits` bit 0 is set, they are sizes: accumulate from
    `fKeylen` to recover offsets. If the flag, after subtracting 80, is between 21
@@ -389,9 +444,14 @@ These are the invariants of a basket **record**. An embedded basket satisfies 1,
 3. `fNevBuf >= 0` and `fLast >= fKeylen`.
 4. `fObjlen - (fLast - fKeylen)` is either 0 or `4 + 4 × (fNevBuf + 1)`.
 5. Where an entry-offset array is present, its first element is `fKeylen`, the
-   elements do not decrease, and the last of the first `fNevBuf` is below `fLast`.
-6. Where none is present, `fObjlen == fNevBuf × fNevBufSize`.
-7. Every entry's byte range lies within `[fKeylen, fLast)`.
+   elements do not decrease, and the last of the first `fNevBuf` is **at most**
+   `fLast` — equal when the last entry is empty, which `TLeafC::ReadBasket` tests
+   for explicitly (`root/tree/tree/src/TLeafC.cxx:151`).
+6. Where none is present **and the flag is not 80**,
+   `fObjlen == fNevBuf × fNevBufSize`. With flag 80 there is no relation between
+   `fNevBufSize` and the entry size at all (§5.2).
+7. Every entry's byte range lies within `[fKeylen, fLast]`. An entry may be
+   **empty**, so a range may start at `fLast`.
 8. `fIOBits`, where present, is non-zero and has neither bit 7 nor any
    unsupported bit set.
 
@@ -412,7 +472,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 4 | — | Nothing says `fLast` is record-relative, nor that the entry offsets are (§3, §5.1) |
 | 5 | — | Nothing says the offset array's count is `fNevBuf + 1` with a meaningless final element (§5.1) |
 | 6 | — | Nothing describes the flag byte, or that a basket record's flag is always 0 or 80 and says nothing about whether an offset array is present (§4) |
-| 7 | — | Nothing describes `kGenerateOffsetMap`, under which the array holds sizes or is absent entirely (§5.2) |
+| 7 | — | Nothing describes `kGenerateOffsetMap`, under which the array holds sizes or is absent entirely (§5.2), nor how to regenerate the offsets when it is (§5.2.1) |
 | 7a | — | Nothing gives the embedded layout at all: that the key is streamed in full ahead of the header, that the offset array's count drops to `fNevBuf`, that the raw block's first `fKeylen` bytes are a reserved key area, or that `fObjlen` is stale there (§4.1) |
 | 8 | `README.md`: "For each branch, exactly one `TBasket` object is contained in the `TTree` data record. If the data on a given branch fits in one basket, then all the data for that branch will be in the `TTree` record itself" | **Not true of current ROOT.** `TTree::Write` flushes every basket first (`root/tree/tree/src/TTree.cxx:10012`), and `TBranch::Streamer` removes from `fBaskets` every basket that is on disk or empty (`root/tree/tree/src/TBranch.cxx:3195-3205`). `ttree/basket` has three entries in one basket per branch and still writes both as standalone records, with none embedded. Embedding happens only when a tree is streamed without flushing |
 | 9 | `ttree.md:45-64`: the `TBranch` member list is version 7 | `TBranch` is at version **13** (`root/tree/tree/inc/TBranch.h:304`), `fEntryNumber`, `fEntries`, `fTotBytes` and `fZipBytes` are `Long64_t` rather than `Int_t`/`Stat_t`, `fBasketEntry` and `fBasketSeek` are type 56 rather than 43, and `fIOFeatures`, `fFirstEntry` and the `TAttFill` base are missing entirely |
@@ -436,8 +496,7 @@ and **the version is not how a reader detects `fIOBits`** — the sign of
 |---|---|
 | `ttree/basket` | Both record shapes: a fixed-length basket with no offset array and a variable-length one with it, uncompressed and asserted byte for byte, plus the large key form |
 | `ttree/basket-embedded` | The embedded form of §4.1, for the same two branches: flag 12 and flag 11, an offset array counted by `fNevBuf`, a stale `fObjlen`, and no `TBasket` record in the file |
+| `ttree/basket-iofeatures` | `fIOBits` in both of its consequences: the negated `fNevBufSize` and 20-byte header of §2.2, and the flag-80 basket of §5.2 that stores no offsets at all |
 
-No fixture covers a compressed basket, a multi-block basket, a displacement array,
-or `fIOBits` in either of its forms. The `fIOBits` paths need a branch with the IO
-feature enabled; a displacement array needs an out-of-order fill or a circular
-tree.
+No fixture covers a compressed basket, a multi-block basket, or a displacement
+array. A displacement array needs an out-of-order fill or a circular tree.

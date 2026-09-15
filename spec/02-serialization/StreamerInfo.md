@@ -362,6 +362,27 @@ unsigned. `TObject`'s checksum, `0x901bc02d`, is exactly such a value.
 > info in the same file has `fMaxIndex[1]` equal to that info's `fCheckSum` — 12
 > such pairs, no exceptions. `tools/check_invariants.py` asserts it.
 
+### 9.1 It is 0 on a file written by ROOT 5
+
+**`fBaseCheckSum` did not exist before ROOT 6.** It was added by
+`185b44f3d96`, "Add checksum value to TStreamerBase", on 2014-04-21, first
+released in 6.00/00. Before that the slot was never filled, so every
+`TStreamerBase` on a ROOT 5 file carries `fMaxIndex[1] == 0` — at the same
+`TStreamerBase` class version 3, with no other difference. A reader MUST accept
+0 and fall back to `fBaseVersion`.
+
+> Measured across the version sweep in the foreign corpus of `PLAN.md` §9.8, which
+> brackets the change exactly: `uproot-sample-5.23.02` through `5.30.00` have 23
+> `TStreamerBase` elements each and **all 23 are 0**; `6.08.04` through `6.20.04`
+> have 22 each and **none** is. The boundary lies between 5.30 and 6.08, where the
+> commit puts it.
+
+> This is also why the slot can be relied on at all. `fBaseCheckSum` is set in the
+> constructor from `fBaseClass->GetCheckSum()`
+> (`root/core/meta/src/TStreamerElement.cxx:677`), so it is 0 whenever the writing
+> process did not have the base class loaded — an emulated class, for one — quite
+> apart from the version question.
+
 Two more `TStreamerBase` peculiarities:
 
 - **`fType` is not `kBase`** for the two commonest bases. The constructor rewrites
@@ -378,7 +399,8 @@ Two more `TStreamerBase` peculiarities:
 ## 10. `TStreamerSTL` stores a type code it does not mean
 
 > **On disk, every `TStreamerSTL` and `TStreamerSTLstring` has
-> `fType = 500` (`kStreamer`).** The real code is never written.
+> `fType = 500` (`kStreamer`).** The real code is never written — on any file a
+> ROOT 5 or ROOT 6 wrote. §10.1 is the exception.
 
 The write path builds a default-constructed temporary, copies the fields it wants,
 forces `fType = kStreamer`, and writes *that*, under a comment saying it is for
@@ -413,6 +435,22 @@ Two further read-time reconstructions:
   Current numbering has **5 = multimap, 6 = set**
   (`root/core/foundation/inc/ESTLType.h:28-50`); older ROOT had them the other way
   round.
+
+### 10.1 ROOT 4 wrote the real code
+
+Older files carry the honest value: `fType` **300** (`kSTL`) for a
+`TStreamerSTL`, and the other real codes where they apply. The masking as 500 is a
+forward-compatibility measure that makes an older reader treat the member as
+custom-streamed, and it was not always done.
+
+Because the read path overwrites `fType` from `fSTLtype` and `fCtype` regardless
+of what was stored, this costs a reader nothing — but an invariant that requires
+500 will reject a valid file, and a reader that switches on the stored code will
+take a different path on an old one.
+
+> Measured across the foreign corpus of `PLAN.md` §9.8: the two ROOT 4.00/00 files
+> carry nine `TStreamerSTL` elements each, all with `fType` **300**. Every one of
+> the other 152 files, from ROOT 5.23/02 to 6.36/02, writes only 500.
 
 ## 11. Checksums
 
@@ -513,11 +551,15 @@ Reference values, useful as test vectors:
 6. Every element's `fType` is in the on-disk set of
    [Element types §1](ElementTypes.md#1-the-type-codes).
 7. For a `TStreamerBase` whose base class also has an info in the same file,
-   `fMaxIndex[1]` read as unsigned equals that info's `fCheckSum`.
+   `fMaxIndex[1]` read as unsigned is **either 0 or** that info's `fCheckSum`. It
+   is 0 on every file written before ROOT 6 (§9.1).
 8. A `TStreamerBase` has `fTypeName` `"BASE"`, and `fType` is 0, 66, 67 or -1.
-9. Every `TStreamerSTL` and `TStreamerSTLstring` has `fType == 500` on disk.
+9. Every `TStreamerSTL` and `TStreamerSTLstring` has `fType == 500` on disk,
+   on a file written by ROOT 5 or later. ROOT 4 wrote the real code (§10.1).
 10. A `TStreamerBasicPointer` or `TStreamerLoop` has a non-empty `fCountName`,
-    and some element of the same info is named by it.
+    and the info named by its `fCountClass` — this one, or a base — has an element
+    of that name. `TArrayD`'s `fArray` names `fN` in `TArray`, its base
+    ([Streamer-driven reading §3.2](StreamerDriven.md#32-elements-are-not-independent)).
 11. `fArrayDim` is between 0 and 5, and when it is non-zero the first `fArrayDim`
     entries of `fMaxIndex` are all positive and their product equals
     `fArrayLength`.
@@ -538,7 +580,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 4 | — | An empty list is written deliberately and means "no classes described" (§3.2) |
 | 5 | `fMaxIndex` is "five integers" at a fixed offset | True from `TStreamerElement` version 2. Version 1 wrote a counted array (§7.1) |
 | 6 | `TStreamerElement` ends after `fTypeName` | True for versions 2 and 4, wrong for version **3**, which appends `fXmin`, `fXmax` and `fFactor` (§7.1) |
-| 7 | `fMaxIndex` holds array dimensions, 0 if not applicable | For a `TStreamerBase`, `fMaxIndex[1]` is the base class's **checksum** (§9) |
+| 7 | `fMaxIndex` holds array dimensions, 0 if not applicable | For a `TStreamerBase`, `fMaxIndex[1]` is the base class's **checksum** (§9) — or 0, on a file written by ROOT 5 (§9.1) |
 | 8 | "For TStreamerInfoBase: fBaseVersion" | The class is `TStreamerBase`, and `fBaseVersion` is present only for version > 2 (§8) |
 | 9 | — | `fBits` of both `TStreamerInfo` and `TStreamerElement` is persisted and load-bearing: `kIgnoreTObjectStreamer` removes the `TObject` base from every object of the class, and `kHasRange` is required to decode a `Double32_t`. A `FIXME` in ROOT asserting the info's bits are never saved (`root/io/io/src/TStreamerInfo.cxx:1400-1405`) is wrong — `serialization/streamer-info` has `fBits` `0x00010000` on disk |
 | 10 | `TStreamerBasicPointer`'s third member is `fCountName` (listed twice) | The third member is `fCountClass` (§8) |

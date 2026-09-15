@@ -50,10 +50,24 @@ tools/coverage_probe.py --summary build/foreign/*.root
 ```
 
 Those files are **not** reference files and are not committed;
-`gen/foreign/MANIFEST.sha256` records what was used. Their provenance is mixed —
-the source is uproot's regression corpus, which includes files uproot wrote — so an
-invariant failure there is a lead, not evidence. `PLAN.md` §9.8 has the standing
-result and the triage rules.
+`gen/foreign/MANIFEST.sha256` records what was used. `PLAN.md` §9.8 has the
+standing result.
+
+The invariant checks run over the same corpus, and that is where format errors have
+actually been found — five of them so far:
+
+```sh
+tools/check_invariants.py --ignore gen/foreign/IGNORE.toml build/foreign/*.root
+```
+
+**Their provenance is mixed**: the source is uproot's regression corpus, which
+includes files uproot wrote. So a failure there is a lead, not evidence. Diagnose
+it against the pinned source and resolve it to one of four things — a spec error, a
+missing format fact, a reader gap, or a file at fault. Only the last goes in
+`gen/foreign/IGNORE.toml`, per file and per invariant, with a reason and with the
+suppressed count printed. **Never weaken an invariant because a file disagrees with
+it**; ROOT's source is the authority, and "does ROOT itself read this file" is a
+useful objective check along the way.
 
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
