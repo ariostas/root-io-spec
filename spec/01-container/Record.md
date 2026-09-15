@@ -106,9 +106,15 @@ A negative value at a record position is not a key at all; see §1.
 
 ### 3.2 `fObjlen`
 
-The length of the payload **after decompression**, key excluded. Comparing it
-with `fNbytes - fKeylen` is how a reader decides whether the payload is
-compressed; see [Compression §1](Compression.md#1-deciding-whether-a-payload-is-compressed).
+The length of the payload **after decompression**, key excluded. The payload is
+compressed exactly when `fObjlen` is *greater* than `fNbytes - fKeylen`; when it
+is smaller, the payload is raw with trailing slack the reader ignores. See
+[Compression §1](Compression.md#1-deciding-whether-a-payload-is-compressed) — and
+note that the test is `>` rather than `!=`
+([§1.1](Compression.md#11-why-the-test-is-an-inequality)).
+
+For a record written by RNTuple's own key writer, `fObjlen` is not authoritative
+at all; it exists so that `TFile::Map()` can print a ratio.
 
 ### 3.3 `fKeylen`
 

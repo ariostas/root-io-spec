@@ -33,7 +33,30 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import rootfile  # noqa: E402
 
-CONTAINER = {"TFile", "TDirectory", "TDirectoryFile"}
+def container_offsets(buf: bytes, header, records) -> set[int]:
+    """Offsets of the records that are the container's own bookkeeping.
+
+    Identified structurally rather than by class name: the class on a directory
+    record is whatever TFile subclass wrote the file -- TStorageFactoryFile,
+    ND::TND280Output -- and RNTuple's own writer leaves the class name of the keys
+    list and the free list **empty**. spec/01-container/Record.md section 3.
+    """
+    out = {header.begin}
+    if header.seek_free:
+        out.add(header.seek_free)
+    for rec in records:
+        if rec.free:
+            continue
+        try:
+            directory = rootfile.read_directory(buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            continue
+        if directory is None:
+            continue
+        out.add(rec.offset)
+        if directory.seek_keys:
+            out.add(directory.seek_keys)
+    return out
 
 
 def probe(path: Path, quiet: bool = False
@@ -47,6 +70,7 @@ def probe(path: Path, quiet: bool = False
             print(line)
 
     buf, header, records = rootfile.load(path)
+    container = container_offsets(buf, header, records)
 
     infos: list = []
     for rec in records:
@@ -74,7 +98,7 @@ def probe(path: Path, quiet: bool = False
             outcome["decoded"] += 1
             show(f"{label} decoded (bootstrap reader)")
             continue
-        if rec.class_name in CONTAINER:
+        if rec.offset in container:
             outcome["container"] += 1
             show(f"{label} container")
             continue

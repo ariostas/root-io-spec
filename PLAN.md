@@ -821,7 +821,7 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 | Directory record versions 1, 2, 3 | `01-container/Directory.md` |
 | A buffer written with no byte counts | `02-serialization/Buffer.md` |
 | `TStreamerElement` versions below 4, including the version-3 `fXmin`/`fXmax`/`fFactor` form | `02-serialization/StreamerInfo.md` |
-| A file old enough to take the `BuildEmulated` path | `02-serialization/SchemaEvolution.md` |
+| A file old enough to take the `BuildEmulated` path | `02-serialization/SchemaEvolution.md` — `pippa.root` in §9.9 is one: ROOT 2.24/00 with **zero streamer infos**. Blocked behind the `CS` codec, which this specification does not describe |
 | Collection layouts below `TStreamerInfo` version 8 | `02-serialization/Collections.md` |
 | `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `02-serialization/Collections.md` |
 
@@ -829,9 +829,15 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 
 | Gap | Document |
 |---|---|
-| The large `TFree` entry form, and `fLast` above 2000000000 | `01-container/FreeSegments.md` |
+| ~~The large `TFree` entry form, and `fLast` above 2000000000~~ | ◐ **Measured** on eight remote files, §9.9 — including 32 large and 19 small entries interleaved in one record. Not yet asserted by a committed fixture |
 | ~~A large key~~ | ✅ `ttree/basket` — a basket always uses the large layout (`fVersion += 1000` unconditionally), so this closed as predicted |
-| Everything else past 2 GB | §2.2, `LargeFiles.md` |
+| The `+1000000` `fVersion` flag and `fUnits` 8 | ◐ measured, §9.9: six files from ROOT 5.19 to 6.23, and `lhcb2.root` has `fEND` past **4 GB** |
+| Everything else past 2 GB | §2.2, `LargeFiles.md` — now writable against something real |
+
+The blocker here was "we cannot produce a 2 GB fixture". §9.9 routes around it: the
+files exist at root.cern, `Accept-Ranges` works, and the header plus the
+free-segment record is all that `01-container/` needs. `tools/fetch_cern.py
+--headers` is a standing check over them and downloads nothing.
 
 ### 9.3 Needs a compiled dictionary — **✅ unblocked**
 
@@ -1115,3 +1121,116 @@ Two corrections the probe forced, both recorded where they belong:
   `TCollection` base; `TList::Streamer` writes none of them. Recorded as
   `02-serialization/StreamerDriven.md` §7, now with a real-file example rather
   than only the principle.
+
+### 9.9 The CERN corpus — files ROOT wrote
+
+Added 2026-09-15 from <https://root.cern/files/> and its `rootbench/`
+subdirectory. `gen/cern/README.md` lists every file and why;
+`tools/fetch_cern.py` fetches it; nothing is committed.
+
+**Why a second corpus.** §9.8's weakness is provenance: uproot's regression suite
+contains files uproot wrote, so a failure there is a lead that has to be traced to
+a writer before it is evidence, and that ambiguity dominated the triage. Everything
+here was written by ROOT and published by the ROOT team. It also reaches further
+back — **ROOT 2.24/00 to 6.35/01**, about twenty-five years, where §9.8 starts at
+4.00 and its two ROOT-4-labelled files turned out not to be ROOT's output at all.
+
+Curated hard: the listing has ~40 near-identical `TGeoManager` geometry demos and
+one is included. Tier `core` is **22 files, 5 MB**; tier `physics` adds two real
+production trees, 27 MB. Each file covers something no fixture and no other listed
+file does.
+
+#### What it found
+
+**Two more specification errors**, one on a file written by current ROOT and one on
+the oldest file in the corpus. Both were the same mistake in different places:
+stating an equality where ROOT tests an inequality.
+
+| Was wrong | Now |
+|---|---|
+| `Compression.md` §1: a payload is compressed when `fNbytes - fKeyLen != fObjLen` | Compressed when `fObjLen > fNbytes - fKeyLen`. The `!=` form is `TFile::Map()`'s *display* test (`root/io/io/src/TFile.cxx:1616`); `TKey`'s *read* test is `>`, in all eight places it decides (`root/io/io/src/TKey.cxx:827` and seven more). A payload longer than `fObjLen` is stored raw and the reader takes the first `fObjLen` bytes (§1.1, erratum 5) |
+| `FileHeader.md` invariant 5: `fEND == filesize` for a cleanly closed file | `fEND <= filesize`. ROOT compares the two only to detect truncation (`root/io/io/src/TFile.cxx:881-889`); bytes past `fEND` are outside the format and it never looks at them. `pippa.root` is cleanly closed by `FileHeader.md` §5.4's own signal — `fSeekFree` 391546 — and has **four** unexplained trailing bytes; `TFile::Open` reads it silently and reports `GetEND()` 391641 against `GetSize()` 391645 (§5.2, erratum 2) |
+
+Found on `RNTuple.root`, 2.5 KB, ROOT 6.35/01: its `RBlob` at offset 586 has
+`fNbytes` 789, `fKeylen` 34 and `fObjLen` **723**, so a 755-byte payload holds 723
+bytes of data. `TFile::Map()` prints `CX = 0.96` and `TFile::Open` reads it without
+complaint; a reader using `!=` finds the magic `05 00` and rejects the whole file.
+The cause is in RNTuple's own key writer, which takes the on-disk and in-memory
+lengths as independent arguments and says in a comment that the object length is
+kept only "for seeing compression ratios in `TFile::Map()`"
+(`root/tree/ntuple/src/RMiniFile.cxx:230-235`,
+`root/tree/ntuple/src/RMiniFile.cxx:1437-1438`).
+
+**Two reader gaps, the spec being right.**
+
+- `coverage_probe.py` identified the container's own records by **class name**,
+  where `check_invariants.py` had already been fixed to do it structurally. So
+  every directory record written by a `TFile` subclass or by RNTuple's minimal
+  writer — which leaves the class name of the keys list and the free list
+  **empty** — was counted as blocked. Fixing it closed §9.8's
+  `TStorageFactoryFile` row: container records over that corpus went 699 → 705,
+  which is exactly the six it named.
+- `needs_unspecified_streamer` walked the streamer-info graph with the raw
+  `fTypeName`, so it dead-ended at the first object pointer: a `RooArgList*`
+  member matches no info named `RooArgList`. That hid `RooAbsCollection` behind
+  `RooFitResult` and produced 19 spurious failures.
+
+**And a performance problem the corpus exposed.** `check_invariants.py` took
+**675 s** on `SMHiggsToZZTo4L.root` — 42 549 entries across 32 branches — because
+`TLeaf.md` 10.7 checks every entry, and per entry it re-decompressed the counter's
+basket (copying the whole file buffer), re-parsed it, and linearly scanned every
+record to find it. Caching those three brought it to ~250 s, and sampling large
+baskets to **40 s**: above 256 entries the check now takes the first and last 32 and
+a stride, printing `SAMPLED n basket(s)` so it is never silent. `--all-entries`
+forces the exhaustive check, and both modes give 0 failures over the fixtures and
+all 154 files of §9.8 — which is what justifies the default.
+
+**Two more divergent classes, now named in the output rather than failing.**
+`RooAbsCollection` (reached through `RooFitResult`) and `ROOT::RNTuple`, whose
+`Streamer` calls `ReadClassBuffer` and then reads an 8-byte XXH3-64 checksum
+*outside* the byte count (`root/tree/ntuple/src/RNTuple.cxx:25-49`) — which is
+`spec/05-rntuple/` material and is why the anchor record has 8 bytes of slack.
+
+#### The large files, without downloading them
+
+root.cern serves `Accept-Ranges: bytes`. `gen/cern/LARGE.toml` records eight files
+from 1.3 GB to 5.3 GB, and `tools/fetch_cern.py --headers` re-reads each one's
+header and free-segment record — about 8 KB of traffic for 20 GB of files — and
+checks every recorded field. **This is the only thing exercising the large-file
+layout at all**, and it discharges most of §9.2:
+
+| Confirmed | Evidence |
+|---|---|
+| The `+1000000` `fVersion` flag and `fUnits` 8 | six files, ROOT 5.19/03 to 6.23/01 |
+| Offsets past 4 GB, where even an unsigned 32-bit reader fails | `lhcb2.root`, `fEND` 4 947 894 760 |
+| The **large `TFree` form interleaved with the small one in one record**, which `FreeSegments.md` §2.1 requires per-entry sizing for | `volume.root`: 51 entries, **32** in the 18-byte form and 19 in the 10-byte form |
+| `nfree` agrees with the parsed list, and the last entry always passes `fEND` | all eight, counts 1 to 1539 |
+| The boundary from below: over 1 GB and *not* large format | `CMS_7250E9A5-….root` at 1.997 GB with `units` 4; `AOD.067184.big.pool_4.root` with **1539** small entries |
+| A free record whose key class is a `TFile` subclass | `CMS_7250E9A5-….root`: `TStorageFactoryFile` |
+
+`§9.2`'s first row — "the large `TFree` entry form, and `fLast` above 2000000000" —
+is therefore **measured**, though still not asserted by a committed fixture, and
+`LargeFiles.md` can now be written against something real.
+
+#### Standing result
+
+`tools/check_invariants.py` over tier `all`: **24 files, 0 failures.** The probe:
+1388 decoded, 264 container, 31 partial, 202 blocked, 495 no codec — the 495 all
+`CS`, and 197 of the 202 RooFit. `--headers`: 8 files, 0 failures.
+
+Both corpora together are now **178 files, 0 failures, ROOT 2.24/00 to 6.36/02.**
+
+#### The gap it exposes and this project cannot close cheaply
+
+**The legacy `CS` codec is not implementable from `Compression.md`.** The document
+names the magic and says such files are "rare but readable", but never says what is
+inside a `CS` block, and `tools/rootfile.py` refuses it. That is **495 of 1759
+non-container records** in the core tier: all 468 of `pippa.root`, and some of every
+file at ROOT 5.05 and below. Either specify the algorithm from
+`root/core/zip/src/` or stop claiming such files are readable.
+
+`pippa.root` is also worth its own note: ROOT 2.24/00, 517 records, **24 nested
+directories**, and **zero streamer infos** — it predates automatic schema evolution
+entirely. It is the only file in reach that exercises §9.1's "a file old enough to
+take the `BuildEmulated` path", and everything in it is `CS`-compressed, so the two
+gaps are locked together.

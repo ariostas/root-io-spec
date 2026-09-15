@@ -111,13 +111,22 @@ def info_list_failures(infos) -> list[tuple[str, str]]:
 
 
 class Checker:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, all_entries: bool = False):
         self.path = path
+        self.all_entries = all_entries
+        self.sampled = 0
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
         self._all_branches: list = []
         self._container: set | None = None
+        # Decompressing a record copies the whole file buffer, and the entry check
+        # of TLeaf.md 10.7 asks for the same counter basket once per entry. Without
+        # these two caches a 42 000-entry tree takes minutes instead of a second.
+        self._data: dict[int, bytes | None] = {}
+        self._baskets: dict[int, object] = {}
+        self._by_offset: dict[int, object] | None = None
+        self._owners: dict[int, object] = {}
         self.buf = path.read_bytes()
         self.header = self.records = None
         try:
@@ -138,14 +147,28 @@ class Checker:
         deliberately depend on nothing outside the standard library, and zstd
         needs Python 3.14 while LZ4 needs a package.
         """
+        if rec.offset in self._data:
+            return self._data[rec.offset]
         try:
-            return rootfile.object_data(self.buf, rec)
+            out = rootfile.object_data(self.buf, rec)
         except rootfile.MissingCodec as exc:
             self.no_codec.add(f"some records were not decompressed: {exc}")
-            return None
+            out = None
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
             self.bad("Compression 9", str(exc))
-            return None
+            out = None
+        # An uncompressed record shares self.buf, so caching it costs nothing; a
+        # compressed one is a file-sized copy, so keep only a handful.
+        if out is None or out is self.buf or len(self._data) < 8:
+            self._data[rec.offset] = out
+        return out
+
+    def basket(self, rec, payload):
+        """`rec` parsed as a basket, memoised. TBasket.md 8."""
+        if rec.offset not in self._baskets:
+            self._baskets[rec.offset] = rootfile.read_basket(self.buf, rec,
+                                                             payload)
+        return self._baskets[rec.offset]
 
     def streamer_infos(self):
         """(buffer, record, infos) for this file's StreamerInfo record.
@@ -179,8 +202,11 @@ class Checker:
             self.bad("FileHeader 10.2", f"fBEGIN {h.begin}, fEND {h.end}")
         if not 10 <= h.nbytes_name <= 10000:
             self.bad("FileHeader 10.4", f"fNbytesName {h.nbytes_name} outside [10, 10000]")
-        if h.end != size:
-            self.bad("FileHeader 10.5", f"fEND {h.end} != file size {size}")
+        if h.end > size:
+            # Only this direction is an error: the file is truncated. Trailing
+            # bytes past fEND are outside the format (FileHeader.md 5.2).
+            self.bad("FileHeader 10.5",
+                     f"fEND {h.end} past file size {size}: truncated")
 
         if h.seek_free:
             if not h.begin < h.seek_free < h.end:
@@ -296,8 +322,16 @@ class Checker:
     #   RooLinkedList  writes _size then that many object pointers then _name,
     #                  while its info lists a _hashThresh that is not on disk
     #                  (root/roofit/roofitcore/src/RooLinkedList.cxx:891-924)
+    # Classes whose hand-written Streamer diverges from their streamer info and
+    # which no document here describes yet. Reported as NOT CHECKED with the
+    # class named, never passed over silently.
     UNSPECIFIED_STREAMERS = ("TMatrixT", "TMatrixTSym", "TVectorT",
-                             "RooLinkedList")
+                             "RooLinkedList", "RooAbsCollection",
+                             # ReadClassBuffer, then an 8-byte XXH3-64 checksum
+                             # outside the byte count
+                             # (root/tree/ntuple/src/RNTuple.cxx:25-49).
+                             # spec/05-rntuple/ material.
+                             "ROOT::RNTuple")
 
     def unspecified_streamer(self, name: str) -> str | None:
         """`name` reduced to an undescribed hand-written streamer, or None."""
@@ -326,7 +360,12 @@ class Checker:
             if info is None:
                 continue
             for el in info.elements:
-                stack.append(el.name if el.cls == "TStreamerBase" else el.type_name)
+                # An object-pointer member's type name carries a trailing `*`,
+                # which matches no streamer info; strip it or the walk dead-ends
+                # at the first pointer. RooFitResult reaches RooAbsCollection
+                # only through `RooArgList*`.
+                stack.append(el.name if el.cls == "TStreamerBase"
+                             else rootfile._bare_class(el.type_name))
         return None
 
     def container_records(self) -> set[int]:
@@ -1025,8 +1064,8 @@ class Checker:
             if rec.free:
                 continue
             payload, end = rec.payload_offset, rec.offset + rec.nbytes
-            if rec.payload_nbytes == rec.obj_len:
-                continue                                   # stored raw, 9.1
+            if rec.obj_len <= rec.payload_nbytes:
+                continue           # stored raw, 9.1 -- Compression.md 1.1
 
             produced, o, blocks = 0, payload, 0
             while o < end:
@@ -1210,8 +1249,9 @@ class Checker:
                 self.bad("TBranch 11.1", f"tree at {rec.offset}: {exc}")
 
     def basket_record(self, seek: int):
-        return next((r for r in self.records
-                     if not r.free and r.offset == seek), None)
+        if self._by_offset is None:
+            self._by_offset = {r.offset: r for r in self.records if not r.free}
+        return self._by_offset.get(seek)
 
     def check_branches(self) -> None:
         found = list(self.trees())
@@ -1545,7 +1585,7 @@ class Checker:
                 return
             basket = dataclasses.replace(basket, entry_offsets=offsets,
                                          generated=False)
-        for e in range(basket.nev_buf):
+        for e in self.entry_sample(basket.nev_buf):
             entry = br.basket_entry[index] + e
             try:
                 counts = self.leaf_counts(br, leaves, entry)
@@ -1557,6 +1597,28 @@ class Checker:
                     ValueError) as exc:
                 self.bad("TLeaf 10.7", f"branch {br.name!r}: {exc}")
                 return
+
+    # A basket with at most this many entries is checked entry by entry. Above
+    # it, only the ends and a stride through the middle are, because the check
+    # costs one entry_spans call per entry per branch and a 42 000-entry tree with
+    # 32 branches is millions of them. Every reference file and almost every file
+    # in gen/foreign/ is below the threshold, and both corpora give the same
+    # result either way -- `--all-entries` turns sampling off to confirm that.
+    ENTRY_SAMPLE_ABOVE = 256
+    ENTRY_SAMPLE_ENDS = 32
+
+    def entry_sample(self, nev_buf: int) -> list[int]:
+        """Which entries of a basket to check. TLeaf.md 10.7."""
+        if self.all_entries or nev_buf <= self.ENTRY_SAMPLE_ABOVE:
+            return list(range(nev_buf))
+        ends = self.ENTRY_SAMPLE_ENDS
+        # The ends matter most: an offset array's first and last entry are where
+        # the errors of TBasket.md 5 and TLeaf.md 9 actually showed up.
+        picked = set(range(ends)) | set(range(nev_buf - ends, nev_buf))
+        stride = max(1, nev_buf // ends)
+        picked |= set(range(0, nev_buf, stride))
+        self.sampled += 1
+        return sorted(picked)
 
     def leaf_counts(self, br, leaves, entry) -> dict[int, int]:
         """The value, at `entry`, of every counter leaf this branch needs."""
@@ -1574,7 +1636,7 @@ class Checker:
             payload = self.data(rec) if rec is not None else None
             if payload is None:
                 raise rootfile.UnsupportedClass("counter basket unavailable")
-            basket = rootfile.read_basket(self.buf, rec, payload)
+            basket = self.basket(rec, payload)
             spans = rootfile.entry_spans(payload, rec, basket, owner,
                                          entry - owner.basket_entry[i], {}, leaves)
             start = next(s for lfx, s, _ in spans if lfx is counter)
@@ -1583,6 +1645,13 @@ class Checker:
         return counts
 
     def _owner_of(self, leaf):
+        if leaf.slot in self._owners:
+            return self._owners[leaf.slot]
+        found = self._owner_scan(leaf)
+        self._owners[leaf.slot] = found
+        return found
+
+    def _owner_scan(self, leaf):
         for branches in self._all_branches:
             for br in rootfile.walk_branches(branches):
                 if leaf in br.leaves:
@@ -1593,9 +1662,10 @@ class Checker:
         if self.records is None:
             # The chain could not be walked; report only what the header says.
             if self.header is not None:
-                if self.header.end != len(self.buf):
+                if self.header.end > len(self.buf):
                     self.bad("FileHeader 10.5",
-                             f"fEND {self.header.end} != file size {len(self.buf)}")
+                             f"fEND {self.header.end} past file size "
+                             f"{len(self.buf)}: truncated")
             return self.failures
         self.check_header()
         self.check_records()
@@ -1632,13 +1702,17 @@ def main(argv: list[str]) -> int:
         at = argv.index("--ignore")
         ignores = load_ignores(Path(argv[at + 1]))
         argv = argv[:at] + argv[at + 2:]
+    all_entries = "--all-entries" in argv
+    argv = [a for a in argv if a != "--all-entries"]
     paths = [Path(a) for a in argv] or sorted((REPO / "data").rglob("*.root"))
     failures = []
     no_codec: set[str] = set()
+    sampled = 0
     for path in paths:
-        checker = Checker(path)
+        checker = Checker(path, all_entries=all_entries)
         failures += checker.run()
         no_codec |= checker.no_codec
+        sampled += checker.sampled
 
     suppressed: dict[tuple[str, str], int] = {}
     kept = []
@@ -1662,6 +1736,11 @@ def main(argv: list[str]) -> int:
     # streamer spec/ has not written up.
     for reason in sorted(no_codec):
         print(f"NOT CHECKED {reason}", file=sys.stderr)
+    if sampled:
+        print(f"SAMPLED {sampled} basket(s) held more than "
+              f"{Checker.ENTRY_SAMPLE_ABOVE} entries, so TLeaf 10.7 checked the "
+              f"ends and a stride rather than every entry; --all-entries forces "
+              f"the exhaustive check", file=sys.stderr)
     print(f"invariants checked on {len(paths)} file(s), {len(failures)} failure(s)")
     return 1 if failures else 0
 

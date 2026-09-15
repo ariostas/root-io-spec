@@ -54,7 +54,7 @@ Those files are **not** reference files and are not committed;
 standing result.
 
 The invariant checks run over the same corpus, and that is where format errors have
-actually been found — five of them so far:
+actually been found — thirteen of them so far:
 
 ```sh
 tools/check_invariants.py --ignore gen/foreign/IGNORE.toml build/foreign/*.root
@@ -68,6 +68,44 @@ missing format fact, a reader gap, or a file at fault. Only the last goes in
 suppressed count printed. **Never weaken an invariant because a file disagrees with
 it**; ROOT's source is the authority, and "does ROOT itself read this file" is a
 useful objective check along the way.
+
+### The second corpus: files ROOT wrote
+
+`gen/cern/` is the same idea without the provenance problem. Everything in it was
+written by ROOT and published by the ROOT team at <https://root.cern/files/>, so a
+failure **is** evidence rather than a lead. It also reaches from ROOT 2.24/00 to
+6.35/01, where `gen/foreign/` starts at 4.00.
+
+```sh
+tools/fetch_cern.py                         # core tier: 22 files, 5 MB
+tools/fetch_cern.py --tier physics          # 2 production trees, 27 MB more
+tools/fetch_cern.py --headers               # the 8 multi-GB files, ~8 KB of traffic
+tools/coverage_probe.py --summary build/cern/*.root
+tools/check_invariants.py build/cern/*.root
+```
+
+`gen/cern/README.md` says why each file is listed and what gaps it exposes; the
+listing has ~40 near-identical `TGeoManager` demos and only one is included.
+
+`--headers` is the interesting one. root.cern serves `Accept-Ranges: bytes`, so the
+header and free-segment record of a 5 GB file cost a few hundred bytes each, and
+`gen/cern/LARGE.toml` records the measured facts for eight files from 1.3 GB to
+5.3 GB. **That is the only thing exercising the large-file layout at all** — no
+fixture does, and it already confirmed the interleaved 10-byte/18-byte `TFree`
+entries of `FreeSegments.md` §2.1 on `volume.root` (51 entries, 32 large).
+
+Adding a file to either corpus: it must earn its place by covering something no
+fixture and no listed file does, and the reason goes in the README. Re-running
+`--headers` after a `rootfile.py` change is a cheap regression check on the
+container layer.
+
+**The entry check samples on large baskets.** `TLeaf.md` 10.7 costs one
+`entry_spans` call per entry per branch, so a 42 000-entry tree with 32 branches is
+millions of them. Above 256 entries in a basket, `check_invariants.py` checks the
+first and last 32 and a stride through the middle, and says `SAMPLED n basket(s)`
+so it is never silent about it. `--all-entries` forces the exhaustive check; both
+modes give 0 failures over the fixtures and `gen/foreign/`, which is what justifies
+the default.
 
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.

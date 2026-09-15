@@ -1,0 +1,39 @@
+# ROOT files published by CERN, used to measure the specification's coverage.
+# NOT part of data/: these are not our fixtures and are not committed.
+#   https://root.cern/files/  and  https://root.cern/files/rootbench/
+# Fetch with tools/fetch_cern.py; gen/cern/README.md says why each file is here.
+#
+# Unlike gen/foreign/, every file here was written by ROOT itself, so a failure
+# is evidence about the format rather than a lead to be traced to a writer.
+#
+# Columns: sha256, bytes, the ROOT version in the file header, tier, remote path
+# relative to https://root.cern/files/.
+#
+# Tier "core" is 22 files and 5 MB: the version sweep, the divergent classes and
+# the containers that find things. Tier "physics" is 27 MB of real production
+# trees, useful as a regression corpus and nothing else. The multi-gigabyte files
+# are in LARGE.toml and are read by range request, never downloaded.
+b420976630878093fe8f014420ce7a23a82e841eadbee890d369e744e19179dc     391645  2.24/00   core     pippa.root
+e46c683f56a4fe2e38037ef963a4ef27f3a175cb03c1f7230c093ac64f516a65      44364  3.04/02   core     mlpHiggs.root
+f7e9902ca2e33df2488ae91aab5293c2a1ffaa3bf6a3930c70d608233a6b785c       8711  3.05/07   core     H1display.root
+8cc2dec6c7efb4419067271b065cc4ce824e66831aff00a1e71fa5d80308584a     163873  4.00/07   core     stock.root
+2954a2a26eb4aaf5f59a40c94e4c23e2945407aaf22958274a7ef20f01e42283      47160  4.03/04   core     lhcb_mag.root
+4911e2b168d88af8c4e1aa365c8ebc08984ce39cea7b0f5fedc613b9abc6481d     360185  5.01/01   core     galaxy.root
+3227e24df5c93e85ae5665d98fb53e9a077c182b0c7ef9523721286121066363       3873  5.05/01   core     linearIO.root
+98473aa27157e609d2a26bdba4556dcacc9337a4553b959b0b3b222c7740c5cf      87881  5.15/07   core     rootstat.root
+6a9c15cd34d573a0f68e6e1232eed160895fb90e391f9702c074c70089e62acd     875041  5.16/00   core     alice_ESDs.root
+0b66983b9a3bcfacc63ded7181638fcc2899cc8052f40cb753f5e7592d239171     206758  5.18/00   core     tmva_class_example.root
+188154dc9cc7d8de365593051e6c5232530592f8ae789c399454f06c060f2dc4      49755  5.18/00   core     stressHistogram.5.18.00.root
+3be24f0949082e0ad4a0d2933c4dd014bba1942421f04aa4f91074307194b411     449263  5.21/07   core     stressRooFit_v522_ref.root
+f09af27a8c2253facdcf75c425e2284878e837b6d655d1423dd474386d18af71       8190  5.23/03   core     barres.root
+9520837aef16052449fe3096c17fa62e500afe386824af08eba1967bc159cec6      99408  5.23/05   core     geom_cms_recording.root
+201a1110fff7542d79c31315ef4638a74c28763947180ece22672eb4c8582132     136561  5.25/05   core     fitpanel_playback.root
+89c8a581818085e3acbc74dac6eecfd96c1db9fdaf70d3b072647f45f1cc14e1     429899  5.34/04   core     stressRooFit_v534_ref.root
+4344f0a79a262d7f2569977cad77d32d613a478a066983ad12f4e5ee00dfc2a5      21207  5.99/01   core     stressRooStats_v534_ref.root
+9753b90ac8fb1373f22b3f231f2421cfc8a9b1b33b71ff7e4732a4faabd33fe9      18238  6.07/03   core     test_distroot_small.root
+028d39d3c5ae82ce2569505471fb6d6cf8492f04b4ed40de3ddb3d5a1f2fe2c0    1576721  6.09/03   core     Higgs_data.root
+bd780b441818a2d6f858e594f6fc5361ab5886f6c24141845938c1079f6704c2      54216  6.11/01   core     stressHistogram.testRefRead.6.10.0.root
+841030b7d83a93937d7b9608e99f96a2eeafbf762b830d3b044dcfffb658e899      28704  6.19/01   core     tmva101.root
+aa6ed8d4bb821ab55c0a5ecb7cd2e05f098fc6a355ca6025e9f5e83c5fc62db6       2514  6.35/01   core     RNTuple.root
+b10d2e4a1ac737ee6ebadacdab01987838ca7d18a64f6fc244a4b3bdc9bb11d6    7911341  6.23/01   physics  rootbench/SMHiggsToZZTo4L.root
+3e82490972377556e5d601bed82cd2a8080f017ffdb193100b418c7ca710479e   19009234  6.23/01   physics  rootbench/data_A.GamGam.100k.root

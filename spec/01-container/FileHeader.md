@@ -142,14 +142,29 @@ A file whose first four bytes are not `root` MUST be rejected.
 
 ### 5.2 `fEND`
 
-Offset of the first free byte at the end of the file. For a cleanly closed file it
-equals the file size.
+Offset of the first free byte at the end of the file. It is where a writer would
+append, and it is **not** necessarily the file size.
 
-It does **not** equal the file size for a file that was never closed — the value on
-disk is then whatever the last successful header write left. `fSeekFree == 0` is the
-reliable signal for that case (§5.4), because ROOT writes the free list before the
-header when closing (`root/io/io/src/TFile.cxx:1024-1025`). A reader SHOULD NOT
-validate `fEND == filesize` unconditionally.
+`fEND > filesize` is the one bad case: the file is truncated, and ROOT says so and
+refuses to open it unless recovery was asked for
+(`root/io/io/src/TFile.cxx:881-889`).
+
+`fEND < filesize` is not an error and is not even a sign of a problem. ROOT
+compares the two only to detect truncation, so trailing bytes past `fEND` are
+simply outside the format. Two different things produce them:
+
+- **A file that was never closed** — the value on disk is then whatever the last
+  successful header write left. `fSeekFree == 0` is the reliable signal for that
+  case (§5.4), because ROOT writes the free list before the header when closing
+  (`root/io/io/src/TFile.cxx:1024-1025`).
+- **A cleanly closed file with slack all the same.** `pippa.root` in the corpus of
+  `PLAN.md` §9.9 — ROOT 2.24/00, `fSeekFree` 391546, so closed by that signal — is
+  391 645 bytes long with `fEND` 391 641 and four unexplained trailing bytes.
+  `TFile::Open` reads it without a warning and reports `GetEND()` 391641 against
+  `GetSize()` 391645.
+
+So a reader MUST NOT validate `fEND == filesize`, in either direction, and MUST NOT
+take a mismatch as evidence that the file was not closed.
 
 ### 5.3 `fNbytesName`
 
@@ -354,8 +369,10 @@ make the data ambiguous.
 2. `0 <= fBEGIN <= fEND`.
 3. `fBEGIN + fNbytesName + sizeof(directory record) <= fEND`.
 4. `10 <= fNbytesName <= 10000`.
-5. `fEND == filesize`, **for a cleanly closed file only**. `fEND > filesize` means
-   the file is truncated.
+5. `fEND <= filesize`. `fEND > filesize` means the file is **truncated**, and is
+   the only direction ROOT rejects (`root/io/io/src/TFile.cxx:881-889`). A file
+   longer than `fEND` carries trailing bytes outside the format; ROOT never looks
+   at them and neither should a reader (§5.2).
 6. `fSeekFree == 0` **iff** the file was never closed. Otherwise
    `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes` of the
    record at `fSeekFree`.
@@ -386,6 +403,7 @@ Against `root/io/doc/TFile/header.md` in the pinned submodule:
 | # | Claim there | Actually |
 |---|---|---|
 | 1 | Widening is triggered when "END, SeekFree, or SeekInfo" exceed 2000000000 | The test is on `fEND` alone, strictly greater-than (§3) |
+| 2 | *This document, until 2026-09-15*: invariant 5 required `fEND == filesize` for a cleanly closed file | `fEND <= filesize`. ROOT compares them only to detect truncation, and a cleanly closed ROOT 2.24/00 file in the corpus has four trailing bytes past `fEND` (§5.2) |
 | 2 | `Compress` is a "Zip compression level (i.e. 0-9)" | `100 * algorithm + level` since ~5.30 (§5.8); typical values like `505` are unexplainable under the stated rule |
 | 3 | `Units` is "Number of bytes for file pointers (4)" | Also 8; and ROOT never reads it (§5.7) |
 | 4 | Padding is "extra space to allow END, SeekFree, or SeekInfo to become 64 bit" | True as intent, but the padding is never written and may hold stale data (§7) |

@@ -1,0 +1,159 @@
+# ROOT files too large to download, read by HTTP range request instead.
+#
+# root.cern serves `Accept-Ranges: bytes`, so the header and the free-segment
+# record of a multi-gigabyte file cost a few hundred bytes each. That is enough to
+# exercise everything spec/01-container/ says about the large-file layout -- the
+# `+1000000` fVersion flag, `units` 8, the widened key and TFree fields -- which no
+# committed fixture covers and nothing else in reach does either (PLAN.md 9.1).
+#
+# Each entry records what was measured. `tools/fetch_cern.py --headers` re-reads
+# the two ranges and checks every field below, so a drift in the remote file or a
+# regression in tools/rootfile.py both show up as a failure. Nothing is downloaded.
+#
+# `path` is relative to https://root.cern/files/.
+# `free_small` and `free_large` count the 10-byte and 18-byte TFree entries
+# (FreeSegments.md 2.1); their sum must equal `nfree`.
+
+[[file]]
+path        = "lhcb2.root"
+why         = "fEND past 4 GB, so a 32-bit offset cannot address the file at all"
+root        = "5.26/00"
+size        = 4947894760
+fversion    = 1052600
+units       = 8
+fbegin      = 100
+fend        = 4947894760
+fseekfree   = 4947894637
+nbytesfree  = 123
+nfree       = 1
+free_keylen = 105
+free_class  = "TFile"
+free_small  = 0
+free_large  = 1
+sentinel    = [4947894760, 5000000000]
+
+[[file]]
+path        = "volume.root"
+why         = "51 free segments, 32 large and 19 small INTERLEAVED in one record -- the case FreeSegments.md 2.1 requires per-entry sizing for"
+root        = "5.19/03"
+size        = 5253395573
+fversion    = 1051903
+units       = 8
+fbegin      = 100
+fend        = 5253395573
+fseekfree   = 105159358
+nbytesfree  = 826
+nfree       = 51
+free_keylen = 60
+free_class  = "TFile"
+free_small  = 19
+free_large  = 32
+sentinel    = [5253395573, 6000000000]
+
+[[file]]
+path        = "Event100000.root"
+why         = "the 2.9 GB form of the Event benchmark, split TBranchElement trees"
+root        = "5.25/03"
+size        = 2906686793
+fversion    = 1052503
+units       = 8
+fbegin      = 100
+fend        = 2906686793
+fseekfree   = 2906686698
+nbytesfree  = 95
+nfree       = 1
+free_keylen = 77
+free_class  = "TFile"
+free_small  = 0
+free_large  = 1
+sentinel    = [2906686793, 3000000000]
+
+[[file]]
+path        = "h1huge.root"
+why         = "the H1 DST at 2.2 GB; the smallest large-format file listed"
+root        = "5.25/01"
+size        = 2242724865
+fversion    = 1052501
+units       = 8
+fbegin      = 100
+fend        = 2242724865
+fseekfree   = 2242724789
+nbytesfree  = 76
+nfree       = 1
+free_keylen = 58
+free_class  = "TFile"
+free_small  = 0
+free_large  = 1
+sentinel    = [2242724865, 3000000000]
+
+[[file]]
+path        = "rootbench/h1analysis.root"
+why         = "large format written by a current ROOT (6.23), with an interior free segment as well as the sentinel"
+root        = "6.23/01"
+size        = 2670464440
+fversion    = 1062301
+units       = 8
+fbegin      = 100
+fend        = 2670464440
+fseekfree   = 21663298
+nbytesfree  = 85
+nfree       = 2
+free_keylen = 57
+free_class  = "TFile"
+free_small  = 1
+free_large  = 1
+sentinel    = [2670464440, 3000000000]
+
+[[file]]
+path        = "rootbench/Run2012BC_DoubleMuParked_Muons.root"
+why         = "74 free segments, 8 of them large; CMS open data at zlib level 1"
+root        = "6.17/01"
+size        = 2244449133
+fversion    = 1061701
+units       = 8
+fbegin      = 100
+fend        = 2244449133
+fseekfree   = 30042890
+nbytesfree  = 874
+nfree       = 74
+free_keylen = 70
+free_class  = "TFile"
+free_small  = 66
+free_large  = 8
+sentinel    = [2244449133, 3000000000]
+
+[[file]]
+path        = "CMS_7250E9A5-682D-DF11-8701-002618943934.root"
+why         = "1.997 GB and NOT large format -- units 4, no fVersion flag, every TFree entry 10 bytes. Brackets the boundary from below, and its key class name is the TFile subclass TStorageFactoryFile"
+root        = "5.22/00"
+size        = 1997354026
+fversion    = 52200
+units       = 4
+fbegin      = 100
+fend        = 1997354026
+fseekfree   = 1995717263
+nbytesfree  = 100
+nfree       = 2
+free_keylen = 80
+free_class  = "TStorageFactoryFile"
+free_small  = 2
+free_large  = 0
+sentinel    = [1997354026, 2000000000]
+
+[[file]]
+path        = "AOD.067184.big.pool_4.root"
+why         = "1539 free segments in a sub-2 GB file: the most fragmented free list available, and all of it in the small form"
+root        = "5.22/00"
+size        = 1338275841
+fversion    = 52200
+units       = 4
+fbegin      = 100
+fend        = 1338275841
+fseekfree   = 1318680969
+nbytesfree  = 15486
+nfree       = 1539
+free_keylen = 96
+free_class  = "TFile"
+free_small  = 1539
+free_large  = 0
+sentinel    = [1338275841, 2000000000]

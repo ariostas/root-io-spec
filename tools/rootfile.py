@@ -94,7 +94,10 @@ class Record:
 
     @property
     def compressed(self) -> bool:
-        return self.payload_nbytes != self.obj_len
+        # Compression.md 1.1: the test is `>`, not `!=`. A payload LONGER than
+        # fObjlen is stored raw with trailing slack, which is what an RNTuple
+        # RBlob looks like.
+        return self.obj_len > self.payload_nbytes
 
 
 def _u8(b, o):
@@ -227,23 +230,38 @@ def read_records(buf: bytes, header: FileHeader) -> list[Record]:
     return records
 
 
+def parse_free_list(chunk: bytes, key_len: int,
+                    payload_nbytes: int) -> list[tuple[int, int]]:
+    """The TFree entries of a free-segment record. FreeSegments.md section 2.
+
+    `chunk` holds the record from its key onwards -- it need not be the whole file,
+    which is what lets a caller read the list of a multi-gigabyte file with one
+    HTTP range request. Each entry sizes itself from its own version word, so the
+    10-byte and 18-byte forms may be interleaved (section 2.1).
+    """
+    o, end, out = key_len, key_len + payload_nbytes, []
+    while o + 10 <= end:
+        version = _i16(chunk, o)
+        o += 2
+        if version > 1000:
+            if o + 16 > end:
+                break
+            first, last = _i64(chunk, o), _i64(chunk, o + 8)
+            o += 16
+        else:
+            first, last = _i32(chunk, o), _i32(chunk, o + 4)
+            o += 8
+        out.append((first, last))
+    return out
+
+
 def read_free_segments(buf: bytes, header: FileHeader) -> list[tuple[int, int]]:
     """The `TFree` list from the FreeSegments record: (first, last) byte ranges."""
     if not header.seek_free:
         return []
     rec = next(r for r in read_records(buf, header) if r.offset == header.seek_free)
-    o, end, out = rec.payload_offset, rec.offset + rec.nbytes, []
-    while o < end:
-        version = _i16(buf, o)
-        o += 2
-        if version > 1000:
-            first, last = _i64(buf, o), _i64(buf, o + 8)
-            o += 16
-        else:
-            first, last = _i32(buf, o), _i32(buf, o + 4)
-            o += 8
-        out.append((first, last))
-    return out
+    return parse_free_list(buf[rec.offset:rec.offset + rec.nbytes],
+                           rec.key_len, rec.payload_nbytes)
 
 
 def load(path) -> tuple[bytes, FileHeader, list[Record]]:
@@ -448,7 +466,8 @@ def read_frame(buf: bytes, offset: int) -> Frame:
 
 
 def is_compressed(rec: Record) -> bool:
-    return rec.nbytes - rec.key_len != rec.obj_len
+    """Compression.md 1. The test is `>`: see 1.1 for why not `!=`."""
+    return rec.obj_len > rec.nbytes - rec.key_len
 
 
 def payload_range(rec: Record) -> tuple[int, int]:
