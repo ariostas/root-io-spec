@@ -1,0 +1,255 @@
+id   = "classes/tarray"
+file = "data/classes/tarray.root"
+size = 1237
+
+description = """
+The seven concrete TArray classes, one record each.
+
+TArray's streamer is the shortest hand-written one in ROOT: an Int_t count, then
+that many values, with no byte count and no version word. Writing each array as a
+standalone record makes its whole payload be exactly that, so fObjlen alone pins
+the element width: 4 + fN * width, with nothing else in the record.
+
+What this case pins down:
+
+- All seven element widths, including TArrayL's, which is 8 bytes on disk however
+  wide `long` is on the writing machine. Its second element, 1234567890, is
+  written as 00 00 00 00 49 96 02 d2.
+- That there is no framing. The payload begins with the count, not with a byte
+  count word, so a reader that expects one reads 0x00000002 as a length.
+- That an empty array is four zero bytes and nothing else.
+- That ROOT writes **no streamer info for any TArray**. The StreamerInfo record
+  here is the 21-byte empty list, so a reader has no choice but to hardcode the
+  layout -- which is the whole argument for spec/03-classes/.
+"""
+
+spec = [
+  "spec/03-classes/TArray.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 180
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 280
+nbytes = 43
+class  = "TArrayC"
+role   = "1 byte per element"
+
+[[records]]
+offset = 323
+nbytes = 45
+class  = "TArrayS"
+role   = "2 bytes per element"
+
+[[records]]
+offset = 368
+nbytes = 49
+class  = "TArrayI"
+role   = "4 bytes per element"
+
+[[records]]
+offset = 417
+nbytes = 57
+class  = "TArrayL"
+role   = "8 bytes per element, whatever sizeof(long) was"
+
+[[records]]
+offset = 474
+nbytes = 59
+class  = "TArrayL64"
+role   = "8 bytes per element"
+
+[[records]]
+offset = 533
+nbytes = 49
+class  = "TArrayF"
+role   = "4 bytes per element"
+
+[[records]]
+offset = 582
+nbytes = 57
+class  = "TArrayD"
+role   = "8 bytes per element"
+
+[[records]]
+offset = 639
+nbytes = 45
+class  = "TArrayD"
+role   = "an empty array"
+
+[[records]]
+offset = 684
+nbytes = 85
+class  = "TList"
+role   = "StreamerInfo; the empty list, because no TArray gets one"
+
+[[records]]
+offset = 769
+nbytes = 382
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1151
+nbytes = 86
+class  = "TFile"
+role   = "free segments"
+
+# --- TArrayC: key at 280, fKeyLen 37, payload at 317, fObjlen 6 -------------
+
+[[bytes]]
+name = "fN: the payload begins with the count, not with a byte count"
+offset = 317
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0, one byte"
+offset = 321
+type = "i8"
+value = 1
+[[bytes]]
+name = "element 1: Char_t is signed, and 127 is its maximum"
+offset = 322
+type = "i8"
+value = 127
+[[bytes]]
+name = "the next record's key begins here: 4 + 2 * 1 bytes of payload"
+offset = 323
+type = "u32"
+value = 45
+
+# --- TArrayS: payload at 360, fObjlen 8 ------------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 360
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0, two bytes"
+offset = 364
+type = "i16"
+value = 2
+[[bytes]]
+name = "element 1"
+offset = 366
+type = "i16"
+value = 32767
+
+# --- TArrayI: payload at 405, fObjlen 12 -----------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 405
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0, four bytes"
+offset = 409
+type = "i32"
+value = 4
+[[bytes]]
+name = "element 1"
+offset = 413
+type = "i32"
+value = 2147483647
+
+# --- TArrayL: payload at 454, fObjlen 20 -----------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 454
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0: eight bytes on disk, not sizeof(long)"
+offset = 458
+type = "i64"
+value = 8
+[[bytes]]
+name = "element 1, sign-extended into eight bytes"
+offset = 466
+type = "i64"
+value = 1234567890
+
+# --- TArrayL64: payload at 513, fObjlen 20 ---------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 513
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0"
+offset = 517
+type = "i64"
+value = 8
+[[bytes]]
+name = "element 1: a value no Double_t could carry exactly"
+offset = 525
+type = "i64"
+value = 1234567890123456789
+
+# --- TArrayF: payload at 570, fObjlen 12 -----------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 570
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0, binary32 for 4.0"
+offset = 574
+type = "u32"
+value = 1082130432
+[[bytes]]
+name = "element 1, binary32 for 0.5"
+offset = 578
+type = "u32"
+value = 1056964608
+
+# --- TArrayD: payload at 619, fObjlen 20 -----------------------------------
+
+[[bytes]]
+name = "fN"
+offset = 619
+type = "i32"
+value = 2
+[[bytes]]
+name = "element 0, binary64 for 8.0"
+offset = 623
+type = "u64"
+value = 4620693217682128896
+[[bytes]]
+name = "element 1, binary64 for 0.5"
+offset = 631
+type = "u64"
+value = 4602678819172646912
+
+# --- the empty array: payload at 680, fObjlen 4 ----------------------------
+
+[[bytes]]
+name = "fN of an empty array"
+offset = 680
+type = "i32"
+value = 0
+[[bytes]]
+name = "the next record's key begins immediately: an empty array is four bytes"
+offset = 684
+type = "u32"
+value = 85
+
+# --- the StreamerInfo record: payload at 748, fObjlen 21 -------------------
+
+[[bytes]]
+name = "the StreamerInfo list is empty: no TArray gets a streamer info"
+offset = 765
+type = "i32"
+value = 0

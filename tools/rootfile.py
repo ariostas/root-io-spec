@@ -962,9 +962,10 @@ OFFSET_P = 40
 CUSTOM_STREAMER = {
     # The container's own bookkeeping, specified in spec/01-container/.
     "TFile", "TDirectory", "TDirectoryFile",
-    # Specified but not implemented here: an n:i32 count then n values.
-    "TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL", "TArrayL64",
-    "TArrayF", "TArrayD",
+    # TArray itself is abstract and never streamed; its streamer info, which
+    # lists fN, describes nothing any file contains. The concrete subclasses are
+    # implemented below, from spec/03-classes/TArray.md.
+    "TArray",
     # Reachable only through TList's streamer info, which describes bases its
     # hand-written streamer never writes. read_sequence bypasses that info, so
     # these should never be reached at all.
@@ -1108,6 +1109,8 @@ class Decoder:
             return self.read_clones_array(offset)
         if cls in self.SEQUENCES:
             return self.read_sequence(cls, offset)
+        if cls in TARRAY_WIDTH:
+            return self.read_tarray(cls, offset)
         try:
             frame = read_frame(self.buf, offset)
             version, body = self.resolve_version(cls, frame)
@@ -1299,6 +1302,19 @@ class Decoder:
         self.unread.append((str(exc), offset))
         return Value(name=cls, ftype=61, start=offset, end=frame.end,
                      type_name=cls, note=f"unread: {exc}")
+
+    def read_tarray(self, cls: str, offset: int) -> Value:
+        """A TArrayC/S/I/L/L64/F/D. spec/03-classes/TArray.md.
+
+        `fN:i32` then fN values, with no byte count and no version word -- the
+        shortest hand-written streamer in ROOT, and the reason a kBase element is
+        not always framed.
+        """
+        count = _i32(self.buf, offset)
+        if count < 0:
+            raise FormatError(f"{cls} at {offset} has fN {count}")
+        end = offset + 4 + count * TARRAY_WIDTH[cls]
+        return Value(name=cls, ftype=61, start=offset, end=end, type_name=cls)
 
     def read_sequence(self, cls: str, offset: int) -> Value:
         """A TList, THashList or TObjArray. StreamerInfo.md sections 4 and 5."""
@@ -1725,3 +1741,11 @@ def synthesise_pair(name: str) -> StreamerInfo:
             max_index=[0] * 5, type_name=type_name, tail={}))
     return StreamerInfo(name=name, title="", version=10, bits=0, checksum=0,
                         class_version=0, elements=elements)
+
+
+# On-disk element width of each concrete TArray. spec/03-classes/TArray.md.
+# TArrayL is 8 bytes on disk whatever sizeof(long) is on the writing machine.
+TARRAY_WIDTH = {
+    "TArrayC": 1, "TArrayS": 2, "TArrayI": 4, "TArrayL": 8,
+    "TArrayL64": 8, "TArrayF": 4, "TArrayD": 8,
+}

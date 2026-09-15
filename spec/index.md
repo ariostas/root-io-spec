@@ -27,7 +27,8 @@ own streamer info. The remaining layers are not started. See the repository's
 | Container — all of it | written |
 | Serialization — framing, streamer info, element types, the reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes | not yet written |
+| Standard classes — `TArray` | written |
+| Standard classes — everything else | not yet written |
 | `TTree` | not yet written |
 | RNTuple | not yet imported |
 

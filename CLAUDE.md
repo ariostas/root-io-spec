@@ -47,6 +47,16 @@ it at a file the fixtures were not designed around — a few histograms and a
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
 
+**`set -e` does not abort in this environment.** A `set -e; check1; check2; echo OK`
+prints `OK` even when `check1` fails, so that idiom gives a false guarantee. Chain
+the suite with `&&` instead, and treat CI as the authority:
+
+```sh
+tools/generate.py --check && tools/check_invariants.py && tools/check_pin.py \
+  && tools/check_citations.py && PYTHONPATH=. .venv/bin/zensical build --clean --strict \
+  && PYTHONPATH=tools .venv/bin/python -m unittest discover -s tools -p "test_*.py"
+```
+
 Docs toolchain is separate from the checks and is not needed for any fixture
 check. `.venv/` is gitignored, so create it there:
 

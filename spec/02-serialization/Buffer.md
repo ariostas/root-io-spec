@@ -90,15 +90,20 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
   byte count. `TObject` does this for its base
   (`root/core/base/src/TObject.cxx:1022`), and `TRef` writes **nothing else**,
   so a `TRef` stored as a record of its own has a 12-byte payload whose first
-  word is a version.
+  word is a version;
+- a class whose hand-written streamer writes no version word either. A `TArray`
+  payload begins with its element **count**
+  ([TArray §1](../03-classes/TArray.md#1-layout)).
 
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
 > `fObjLen` 12 and its payload begins `00 01` — the `TObject` version word —
-> where every other object record in that file begins `40 00`.
+> where every other object record in that file begins `40 00`. And by
+> `classes/tarray`, whose eight records begin with an `i32` count.
 
 A reader MUST therefore decide from the class, not from the first word, whether
-a payload is framed. Reading `00 01 00 00` as a byte count yields 65536, which
-is not obviously wrong.
+a payload is framed, and what the first word then means. Reading a `TArray`'s
+`00 00 00 02` as a byte count gives 2; reading a `TRef`'s `00 01 00 00` as one
+gives 65536. Neither is obviously wrong at the point of the mistake.
 
 ### 2.2 Two code paths, one encoding
 

@@ -33,6 +33,9 @@ nav = [
       { "Schema evolution" = "02-serialization/SchemaEvolution.md" },
       { "References" = "02-serialization/References.md" },
   ] },
+  { "Standard classes" = [
+      { "TArray" = "03-classes/TArray.md" },
+  ] },
 ]
 
 [project.theme]

@@ -283,8 +283,20 @@ streamer-info-driven path.
 |---|---|---|---|
 | `TObject` | 66 | **no** | yes |
 | `TNamed` | 67 | yes | yes |
-| anything else | 0 | yes | yes |
+| anything else, generated streamer | 0 | yes | yes |
+| anything else, hand-written streamer | 0 | **whatever that streamer writes** |
 | `TObject`, suppressed | **-1** | — | — (nothing written) |
+
+> **The framing of a `kBase` element is not the element's; it is the base class's
+> own.** Code 0 recurses into the base, and what appears is whatever that class's
+> streamer emits. For the common case — a class with a generated streamer — that
+> is a byte count and a version word. For a base with a hand-written streamer it
+> can be neither: a `TArray` base is a bare `fN` and its values, with nothing in
+> front ([TArray §3.1](../03-classes/TArray.md#31-as-a-base-class)).
+>
+> The same is true of the object-valued codes in §7. Their byte-count and version
+> columns describe what a generated streamer writes, which is what a reader will
+> meet almost always — but the authority is the member class, not the code.
 
 `kNoType` arises when the class sets `kIgnoreTObjectStreamer`, and a reader MUST
 consume **nothing** for it rather than treating it as an error
@@ -324,6 +336,14 @@ decides which** (`root/core/meta/src/TStreamerElement.cxx:1527`,
 
 The choice between `kObject`/`kObjectp`/`kObjectP` and `kAny`/`kAnyp`/`kAnyP` is
 whether the member's class derives from `TObject`.
+
+> **The byte count and version columns are the member class's doing.** For a
+> class with a generated streamer they are always there; for one with a
+> hand-written streamer they are whatever it writes. `TH1::fContour` is a
+> `TArrayD` held by value, so its code is 62 and its whole on-disk form is four
+> bytes of `fN` ([TArray §3.2](../03-classes/TArray.md#32-as-a-member-by-value)).
+> The class record column, by contrast, *is* a property of the code, because the
+> element layer writes it.
 
 > Demonstrated by `serialization/pointer-forms`, whose `fArrow` and `fPlainP` have
 > the same C++ type and differ only by the `->` comment: `fArrow` is 14 bytes with

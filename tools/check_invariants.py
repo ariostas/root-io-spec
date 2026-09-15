@@ -250,8 +250,10 @@ class Checker:
     #
     # TRef is a streamed object that nonetheless carries none: its streamer is
     # TObject::Streamer plus a pidf, and TObject::Streamer asks WriteVersion for
-    # no byte count. See Buffer.md 2.3; it is checked by check_references.
-    UNFRAMED = {"TFile", "TDirectory", "TRef"}
+    # no byte count. A TArray has neither a byte count nor a version word; its
+    # payload starts with the element count. See Buffer.md 2.3; they are checked
+    # by check_references and check_tarray.
+    UNFRAMED = {"TFile", "TDirectory", "TRef"} | set(rootfile.TARRAY_WIDTH)
 
     def check_buffer_framing(self) -> None:
         for rec in self.records:
@@ -746,6 +748,37 @@ class Checker:
                              f"{name} is a member-wise collection of {value!r}, "
                              f"which has no streamer info in this file")
 
+    def check_tarray(self) -> None:
+        """TArray.md invariants 1 and 3.
+
+        Invariant 2 -- that a TArray occupies 4 + fN * width -- is checked through
+        the enclosing object's byte count by the streamer-driven read, since a
+        TArray carries no byte count of its own to check against. Confirmed by
+        shortening the fN of TH1L's TArrayL64 base on a copy of
+        serialization/version-zero, which then reports "TH1L v0 consumed 544
+        bytes, byte count says 552".
+
+        Nothing here checks the recorded streamer info of TArray.md section 2: no
+        reference file contains one, so the check would pass vacuously.
+        """
+        for rec in self.records:
+            if rec.free or rec.class_name not in rootfile.TARRAY_WIDTH:
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            start, _ = rootfile.payload_range(rec)
+            count = struct.unpack_from(">i", data, start)[0]
+            if count < 0:
+                self.bad("TArray 5.1",
+                         f"{rec.class_name} at {rec.offset} has fN {count}")
+                continue
+            want = 4 + count * rootfile.TARRAY_WIDTH[rec.class_name]
+            if rec.obj_len != want:
+                self.bad("TArray 5.3",
+                         f"{rec.class_name} at {rec.offset} has fObjlen "
+                         f"{rec.obj_len}, but fN {count} needs {want}")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -924,6 +957,7 @@ class Checker:
         self.check_references()
         self.check_schema_evolution()
         self.check_collections()
+        self.check_tarray()
         return self.failures
 
 

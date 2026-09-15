@@ -637,8 +637,9 @@ the corpus from the specification alone.
 blocks phase 3; `inventory.py` should be built first inside phase 3, since that
 phase's class list is exactly what it produces.
 
-**☐ Phase 3 — the bootstrap classes and the table generator**
-The ~30 regime-3 classes in `03-classes/`, hand-written. Plus
+**◐ Phase 3 — the bootstrap classes and the table generator**
+✅ `03-classes/TArray.md`, the first and — by the §9.7 measurement — the most
+load-bearing of them. The ~30 regime-3 classes in `03-classes/`, hand-written. Plus
 `dump_streamerinfo.C`, `gen_tables.py` and `check_versions.py`, since the generator
 pays for itself from phase 4 onward.
 Deliverable: enough to read `TFile` internals and the standard containers.
@@ -749,11 +750,13 @@ Phases 0–2 are done (§5). The next things, in order:
 2. **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
    authoritative class/version list. It turns the phase-3 scope from an estimate
    into a checked-in file, and phase 3 cannot be planned properly without it.
-3. **Start phase 3** with the classes `spec/02-serialization/` already leans on and
-   names as divergent: `TFile`/`TDirectoryFile`, `TList`/`TObjArray`/`TCollection`,
-   `TClonesArray`, `TArray*`, `TRef`/`TRefArray`/`TProcessID` (already specified in
-   `References.md` — decide whether `03-classes/` duplicates or cross-references),
-   `TString`, `TObject`/`TNamed`.
+3. **Continue phase 3.** `TArray*` is done. By the §9.7 measurement the classes
+   that diverge at *every* version are `TObject`, `TString`, `TList`, `TObjArray`,
+   `TClonesArray`, `TRef`, `TRefArray`, `TCollection` and `TArray*` — and all but
+   `TCollection` are now specified, though the first seven live in
+   `spec/02-serialization/` rather than `spec/03-classes/`. **Decide whether
+   `03-classes/` re-homes them, cross-references them, or stays thin.**
+   `TArray.md` took the cross-reference route and reads well that way.
 4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
 
 Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on, and the
@@ -820,6 +823,7 @@ No external blocker; these are simply cases nobody has added yet.
 
 | Gap | Document |
 |---|---|
+| A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
 | `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
@@ -841,15 +845,16 @@ around. On an ordinary file — `TH1D`, `TH2F`, `TGraph`, a `TTree` with three
 branches, a `TNamed`, default compression — 12 records come out as 3 container,
 3 decoded in full, 2 partial and 4 blocked, and the blockers rank like this:
 
-| Blocker | Records | Note |
-|---|---|---|
-| `TArray*` | 7 | Every histogram embeds two: `TH1::fContour` and `fSumw2` are `TArrayD` by value, and `TH1D` has a `TArrayD` base |
-| `TBasket` | 3 | Phase 5; a basket has no streamer info in the file at all |
+| Blocker | Records | Note | State |
+|---|---|---|---|
+| `TArray*` | 7 | Every histogram embeds two: `TH1::fContour` and `fSumw2` are `TArrayD` by value, and `TH1D` has a `TArrayD` base | ✅ `03-classes/TArray.md` |
+| `TBasket` | 3 | Phase 5; a basket has no streamer info in the file at all | ☐ |
 
-**`TArray*` is therefore the single highest-value thing left**, and it is small:
-`TArrayD::Streamer` writes `n:i32` then `n` values, with **no byte count and no
-version word** (`root/core/cont/src/TArrayD.cxx:148-159`). Specifying that one
-shape makes histograms readable.
+**`TArray*` was therefore the single highest-value thing left** — and it is now
+done (`spec/03-classes/TArray.md`, `classes/tarray`). Re-running the probe on the
+same file: **6 decoded, 0 partial, 3 blocked**, and the only blocker left is
+`TBasket`. `TH1D`, `TH2F`, `TGraph` and `TTree` all decode in full, as does
+`serialization/version-zero`'s `TH1L`.
 
 Two corrections the probe forced, both recorded where they belong:
 
