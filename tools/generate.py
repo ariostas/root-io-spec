@@ -2,8 +2,9 @@
 """Regenerate the reference files in `data/` from the macros in `gen/cases/`.
 
 Each case directory holds a `gen.C` defining `void gen(const char *out)` and a
-`case.toml` describing what the resulting file should contain. Running this
-requires ROOT on PATH; checking the result afterwards does not.
+`case.toml` describing what the resulting file should contain. It may also hold a
+`classes.h`, which is compiled into a dictionary first; see `gen/common/README.md`.
+Running this requires ROOT on PATH; checking the result afterwards does not.
 
   tools/generate.py              regenerate everything, then verify
   tools/generate.py --check      verify only, without regenerating
@@ -36,19 +37,38 @@ def cases(selected: list[str]) -> list[Path]:
     return [p.parent for p in sorted((REPO / "gen/cases").rglob("case.toml"))]
 
 
+# Where ACLiC puts its build products. Gitignored; see gen/common/README.md.
+BUILD_DIR = REPO / "build/aclic"
+
+
 def run(case_dir: Path) -> Path:
     case = tomllib.loads((case_dir / "case.toml").read_text())
     out = REPO / case["file"]
     out.parent.mkdir(parents=True, exist_ok=True)
     macro = case_dir / "gen.C"
+
+    args = ["root", "-l", "-b", "-q"]
+    # A case that needs real ClassDef classes declares them in classes.h, which is
+    # compiled into a dictionary first. It has to be a separate step: the
+    # interpreter parses gen.C in full before running any of it, so a macro that
+    # compiled its own classes could not then mention them.
+    classes = case_dir / "classes.h"
+    if classes.exists():
+        helper = REPO / "gen/common/aclic.C"
+        args += ["-e", f".L {helper}",
+                 "-e", f'aclic("{classes.relative_to(REPO)}", "{BUILD_DIR.relative_to(REPO)}");']
+
     # The output path is passed REPO-relative and ROOT is run from REPO, because
     # TFile stores the path it was given as the file's name and title. Passing an
     # absolute path would bake this checkout's location into the fixture and shift
     # every byte offset after the header.
-    subprocess.run(
-        ["root", "-l", "-b", "-q", "-e", f'.L {macro}', "-e", f'gen("{case["file"]}");'],
-        cwd=REPO, check=True, capture_output=True, text=True,
-    )
+    args += ["-e", f".L {macro}", "-e", f'gen("{case["file"]}");']
+
+    result = subprocess.run(args, cwd=REPO, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"{case['id']}: ROOT exited {result.returncode}\n"
+            f"{result.stdout}\n{result.stderr}")
     if not out.exists():
         raise SystemExit(f"{case['id']}: {macro} did not produce {out}")
     return out

@@ -62,6 +62,9 @@ is also the site.
 
 **`gen/cases/<group>/<case>/`** — one `gen.C` (a ROOT macro defining
 `void gen(const char *out)`) plus one `case.toml`. Each case exercises *one* thing.
+A case may also hold a `classes.h`, which `generate.py` compiles into a dictionary
+with ACLiC before loading the macro; `gen/common/README.md` says when that is
+needed and why it has to be a separate step.
 
 **`data/`** — the generated reference files, committed, plus `MANIFEST.sha256`.
 
@@ -120,6 +123,18 @@ These cost time this session. Most are not discoverable by reading the code.
   fixture is meant to round-trip, check it:
   `root -l -b -q -e 'auto f=TFile::Open("data/.../x.root"); f->Get("a");'` and
   look for `CheckByteCount` errors.
+- **ACLiC fails on macOS with a recent Xcode SDK.** conda-forge ROOT's bundled
+  clang targets an older Darwin, and linking against Xcode 26/27's SDK dies with
+  `unknown architecture arm64e.x1` and then undefined symbols. Regenerate a case
+  that has a `classes.h` with an older SDK:
+
+  ```sh
+  SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk tools/generate.py
+  ```
+
+  Nothing in the repository hardcodes that path; it is a property of the local
+  toolchain. Linux CI needs no override — conda-forge `root` has a compiler as a
+  run dependency precisely so ACLiC works.
 - **Never assume `root/io/doc/TFile/*.md` is correct.** It is the 3.02.06-era
   documentation. Roughly 37 errata against it are already recorded. Treat it as a
   source of questions, not answers.

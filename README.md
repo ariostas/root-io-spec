@@ -27,7 +27,7 @@ the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
 | Serialization — collections, schema evolution, references | written |
 | Standard classes, `TTree`, RNTuple | not started |
 
-21 reference files, 438 byte-level assertions, 421 checked source citations.
+22 reference files, 469 byte-level assertions, 423 checked source citations.
 See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
 every known gap — in each case the behaviour is specified and cited, and what is
 missing is a reference file proving it.

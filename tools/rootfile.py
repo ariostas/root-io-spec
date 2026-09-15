@@ -805,7 +805,7 @@ OFFSET_P = 40
 # still in the file -- does not describe their bytes (StreamerDriven.md section 7).
 CUSTOM_STREAMER = {
     "TFile", "TDirectory", "TDirectoryFile",
-    "TList", "TObjArray", "THashList", "TClonesArray", "TCollection", "TSeqCollection",
+    "TList", "TObjArray", "THashList", "TCollection", "TSeqCollection",
     "TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL", "TArrayL64",
     "TArrayF", "TArrayD",
     "TH1", "TAxis",
@@ -932,6 +932,8 @@ class Decoder:
 
     def read_object(self, cls: str, offset: int) -> Value:
         """An object introduced by its own `byteCount version` (no class record)."""
+        if cls == "TClonesArray":
+            return self.read_clones_array(offset)
         frame = read_frame(self.buf, offset)
         version, body = self.resolve_version(cls, frame)
         members = self.read_members(cls, version, body, frame.end)
@@ -1093,6 +1095,52 @@ class Decoder:
 
         raise UnsupportedClass(f"type code {t}")
 
+
+    # -- TClonesArray -----------------------------------------------------
+
+    # TClonesArray::kBypassStreamer, root/core/cont/inc/TClonesArray.h:37.
+    # BIT(12) at class version 4; it was BIT(14) at version 3.
+    BYPASS_STREAMER = 0x1000
+    BYPASS_STREAMER_V3 = 0x4000
+
+    def read_clones_array(self, offset: int) -> Value:
+        """Collections.md section 12. The encoding is a bit in fBits."""
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"TClonesArray at {offset} has no byte count")
+        version = frame.version
+        pos = frame.body
+        bits = 0
+        if version > 2:
+            base = read_tobject(self.buf, pos)
+            bits, pos = base.bits, base.end
+        if version > 1:
+            _, pos = _counted_string(self.buf, pos)
+        spec, pos = _counted_string(self.buf, pos)
+        count = _i32(self.buf, pos)
+        pos += 8                       # nobjects, then fLowerBound
+
+        cls, _, text = spec.partition(";")
+        if not text.lstrip("-").isdigit():
+            raise UnsupportedClass(f"TClonesArray element spec {spec!r}")
+        mask = self.BYPASS_STREAMER if version >= 4 else self.BYPASS_STREAMER_V3
+        if bits & mask:
+            info = self.info_for(cls, int(text))
+            for element in info.elements:
+                pos = self.read_column(element, count, pos)
+        else:
+            for _ in range(max(count, 0)):
+                present = self.buf[pos]
+                pos += 1
+                if present:
+                    pos = self.read_object(cls, pos).end
+        if pos != frame.end:
+            raise FormatError(
+                f"TClonesArray at {offset} consumed to {pos}, byte count says "
+                f"{frame.end}")
+        return Value(name="TClonesArray", ftype=61, start=offset, end=frame.end,
+                     type_name=cls,
+                     note="bypass" if bits & mask else "per-slot flags")
 
     # -- collections ------------------------------------------------------
 

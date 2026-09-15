@@ -1,0 +1,243 @@
+id   = "serialization/clones-array"
+file = "data/serialization/clones-array.root"
+size = 1725
+
+description = """
+TClonesArray in both of its encodings, side by side.
+
+TClonesArray predates STL streaming and has its own format. It records its element
+class as the text "<class>;<version>", so its elements need a real ClassDef; Pt is
+compiled into a dictionary by gen/common/aclic.C before the macro runs. This is the
+first case in the repository to need a compiler.
+
+What this case pins down:
+
+- The encoding is chosen by TClonesArray::kBypassStreamer, BIT(12), and that bit is
+  written into the TObject base so that the file is self-describing. `bypass` has
+  fBits 0x00001000 and `plain` has 0x00000000.
+- With the bit set -- the default -- the objects are transposed: one column per
+  member of the element class, the TObject base first. There is no second version
+  word and no kStreamedMemberWise bit, unlike an STL collection: the element class
+  version comes from the "Pt;2" string and the mode from fBits.
+- With the bit clear, each slot costs a Char_t flag, and an *empty* slot costs its
+  flag too. `plain` has nobjects 2 with slot 0 empty, so its body begins 00 01.
+- nobjects is the last occupied index plus one, not the capacity. `plain` was
+  constructed with room for 2 and filled only slot 1, and still reports 2.
+
+The bit moved: in TClonesArray class version 3 it was BIT(14), and the class version
+was bumped to 4 for no other reason. A reader must check the version before testing
+the bit. Only version 4 is reachable here.
+"""
+
+spec = [
+  "spec/02-serialization/Collections.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 212
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 312
+nbytes = 141
+class  = "TClonesArray"
+role   = "kBypassStreamer set: the transposed encoding"
+
+[[records]]
+offset = 453
+nbytes = 130
+class  = "TClonesArray"
+role   = "kBypassStreamer clear: a flag byte per slot"
+
+[[records]]
+offset = 583
+nbytes = 801
+class  = "TList"
+role   = "StreamerInfo; carries Pt and TObject"
+
+[[records]]
+offset = 1384
+nbytes = 239
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 1623
+nbytes = 102
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# `bypass`: key at 312, fKeyLen 72, payload at 384. The transposed encoding.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 65"
+offset = 384
+type = "u32"
+value = 1073741889
+[[bytes]]
+name = "TClonesArray class version"
+offset = 388
+type = "i16"
+value = 4
+[[bytes]]
+name = "TObject version word"
+offset = 390
+type = "i16"
+value = 1
+[[bytes]]
+name = "fUniqueID"
+offset = 392
+type = "u32"
+value = 0
+[[bytes]]
+name = "fBits: kBypassStreamer (BIT(12)), and nothing else"
+offset = 396
+type = "u32"
+value = 4096
+[[bytes]]
+name = "fName, present because the class version is above 1"
+offset = 400
+type = "string"
+value = "Pts"
+[[bytes]]
+name = "the element class and its version, as text: the only record of either"
+offset = 404
+type = "string"
+value = "Pt;2"
+[[bytes]]
+name = "nobjects"
+offset = 409
+type = "i32"
+value = 2
+[[bytes]]
+name = "fLowerBound"
+offset = 413
+type = "i32"
+value = 0
+[[bytes]]
+name = "the TObject column: version word of element 0, with no framing around it"
+offset = 417
+type = "i16"
+value = 1
+[[bytes]]
+name = "the TObject column: version word of element 1, ten bytes later"
+offset = 427
+type = "i16"
+value = 1
+[[bytes]]
+name = "the fX column begins only after both TObject bases: fX of element 0"
+offset = 437
+type = "i32"
+value = 7
+[[bytes]]
+name = "the fX column: fX of element 1"
+offset = 441
+type = "i32"
+value = 8
+[[bytes]]
+name = "the fY column: fY of element 0"
+offset = 445
+type = "u32"
+value = 1088421888
+[[bytes]]
+name = "the fY column: fY of element 1, ending the payload"
+offset = 449
+type = "u32"
+value = 1090519040
+
+# ---------------------------------------------------------------------------
+# `plain`: key at 453, fKeyLen 71, payload at 524. A flag byte per slot.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "byte count, kByteCountMask | 55"
+offset = 524
+type = "u32"
+value = 1073741879
+[[bytes]]
+name = "TClonesArray class version"
+offset = 528
+type = "i16"
+value = 4
+[[bytes]]
+name = "TObject version word"
+offset = 530
+type = "i16"
+value = 1
+[[bytes]]
+name = "fBits: kBypassStreamer clear, which is what selects the other encoding"
+offset = 536
+type = "u32"
+value = 0
+[[bytes]]
+name = "fName"
+offset = 540
+type = "string"
+value = "Pts"
+[[bytes]]
+name = "the element class and its version"
+offset = 544
+type = "string"
+value = "Pt;2"
+[[bytes]]
+name = "nobjects: the last occupied index plus one, not the count of objects"
+offset = 549
+type = "i32"
+value = 2
+[[bytes]]
+name = "fLowerBound"
+offset = 553
+type = "i32"
+value = 0
+[[bytes]]
+name = "slot 0 is empty, and still costs a flag byte"
+offset = 557
+type = "u8"
+value = 0
+[[bytes]]
+name = "slot 1 is present"
+offset = 558
+type = "u8"
+value = 1
+[[bytes]]
+name = "slot 1's object, framed in full: byte count, kByteCountMask | 20"
+offset = 559
+type = "u32"
+value = 1073741844
+[[bytes]]
+name = "Pt's class version, here written per object rather than as text"
+offset = 563
+type = "i16"
+value = 2
+[[bytes]]
+name = "fX"
+offset = 575
+type = "i32"
+value = 9
+[[bytes]]
+name = "fY, ending the payload"
+offset = 579
+type = "u32"
+value = 1091567616
+
+# ---------------------------------------------------------------------------
+# The streamer info for Pt, whose class version is what "Pt;2" refers to.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "Pt's checksum, in its streamer info"
+offset = 1059
+type = "u32"
+value = 4173340938
+[[bytes]]
+name = "Pt's fClassVersion: 2, because Pt has a real ClassDef and is not foreign"
+offset = 1063
+type = "i32"
+value = 2

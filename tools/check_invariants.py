@@ -665,6 +665,33 @@ class Checker:
                 continue
             if target.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
                 continue
+
+            # 14.7. 14.8 -- that the body matches the encoding fBits selects --
+            # is checked through consumption, by decode_record below: reading the
+            # wrong encoding desynchronises and the byte count catches it.
+            # Confirmed by flipping kBypassStreamer on a copy of
+            # serialization/clones-array.
+            if target.class_name == "TClonesArray":
+                start, _ = rootfile.payload_range(target)
+                frame = rootfile.read_frame(self.buf, start)
+                pos = frame.body
+                if frame.version > 2:
+                    pos = rootfile.read_tobject(self.buf, pos).end
+                if frame.version > 1:
+                    _, pos = rootfile._counted_string(self.buf, pos)
+                spec, _ = rootfile._counted_string(self.buf, pos)
+                cls, _, text = spec.partition(";")
+                match = next((i for i in infos if i.name == cls), None)
+                if match is None:
+                    self.bad("Collections 14.7",
+                             f"TClonesArray at {target.offset} names element class "
+                             f"{spec!r}, and {cls!r} has no streamer info here")
+                elif text.lstrip("-").isdigit() and match.class_version != int(text):
+                    self.bad("Collections 14.7",
+                             f"TClonesArray at {target.offset} names {spec!r}, but "
+                             f"{cls}'s streamer info has version "
+                             f"{match.class_version}")
+
             try:
                 decoder, _ = rootfile.decode_record_verbose(self.buf, target, infos)
             except (rootfile.UnsupportedClass, rootfile.FormatError,

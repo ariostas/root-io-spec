@@ -369,6 +369,15 @@ base deliberately so that the encoding is self-describing
 > **Empty slots cost a byte each** in the non-bypass form, which ROOT's own
 > header comment says (`root/core/cont/src/TClonesArray.cxx:740-742`) and the
 > shipped documentation omits.
+>
+> Demonstrated by `serialization/clones-array`, which writes the same element
+> class both ways. The bypass array's body at 417 is a `TObject` column, an `fX`
+> column and an `fY` column; the other's at 557 is `00 01` — an empty slot's flag
+> and then a present one — followed by one fully framed object.
+
+`nobjects` is the last occupied index plus one, not the number of objects present,
+so it counts trailing-free but not interior-empty slots
+(`root/core/cont/src/TClonesArray.cxx:886`, `root/core/cont/inc/TObjArray.h:58-60`).
 
 ## 13. Reading
 
@@ -407,6 +416,14 @@ and the file has no info for it, the collection is not readable (§9).
 6. Every class named as the value class of a member-wise collection has a
    streamer info in the same file, unless it is a `pair`.
 
+7. A `TClonesArray`'s `"<class>;<version>"` string names a class that has a
+   streamer info in the same file, at that class version.
+8. Parsing a `TClonesArray` body according to `fBits` bit 12 — bit 14 below class
+   version 4 — consumes exactly the bytes its byte count delimits. Like
+   [References §8](References.md#8-invariants) invariant 1, this is checked
+   through consumption rather than directly: reading the wrong encoding
+   desynchronises and the byte count catches it.
+
 Invariant 6 is the one that fails on a file ROOT wrote (§9), which is why it is
 reported rather than assumed.
 
@@ -433,9 +450,13 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | Case | Exercises |
 |---|---|
 | `serialization/collections` | Object-wise and member-wise side by side; `vector<int>`, `vector<bool>`, `set<int>`, `vector<Hit>`, `vector<vector<int>>`, `vector<string>`, `map<int,int>`, `std::string`, and the missing `pair<int,int>` info |
+| `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 
-No fixture covers `TClonesArray`, `std::bitset`, `std::array`, a collection of
-pointers, a fixed array of collections, a member-wise collection whose value class
-has a `ClassDef` (and so a plain version word rather than a checksum), or the
-pre-version-8 layouts. The `ClassDef` case needs a compiled dictionary, which no
-generator macro here produces.
+No fixture covers `std::bitset`, `std::array`, a collection of pointers, a fixed
+array of collections, a member-wise collection whose value class has a `ClassDef`
+(and so a plain version word rather than a checksum), `TClonesArray` at class
+version 3, or the pre-version-8 layouts.
+
+The `ClassDef` case is no longer blocked: `serialization/clones-array` shows how a
+case compiles a dictionary (`gen/common/README.md`), and the same mechanism would
+produce a versioned value class for a `std::vector`.

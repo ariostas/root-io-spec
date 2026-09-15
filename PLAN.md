@@ -127,7 +127,7 @@ exercises any of it (§9).
 
 This is the core of the repo and the answer to "how do we handle custom classes".
 
-**All seven are written**, with 11 fixtures and 315 byte assertions between them.
+**All seven are written**, with 12 fixtures and 346 byte assertions between them.
 
 | File | Contents |
 |---|---|
@@ -787,21 +787,20 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 | A large key | `01-container/Record.md` — a `TBasket` fixture supplies this, since baskets always use the large layout |
 | Everything else past 2 GB | §2.2, `LargeFiles.md` |
 
-### 9.3 Needs a compiled dictionary
+### 9.3 Needs a compiled dictionary — **✅ unblocked**
 
-A `gen.C` runs in the interpreter, so a class with a real `ClassDef` and a
-generated dictionary is out of reach. This blocks more than expected:
+A `gen.C` runs in the interpreter, so a class with a real `ClassDef` was out of
+reach. `gen/common/aclic.C` now compiles a case's optional `classes.h` into a
+dictionary before the macro is loaded; see `gen/common/README.md`.
 
-| Gap | Document |
-|---|---|
-| A member-wise collection whose value class has a `ClassDef`, and so a plain version word instead of a checksum | `02-serialization/Collections.md` |
-| `TClonesArray` in either encoding | `02-serialization/Collections.md` |
-| A `type=readraw` rule | `02-serialization/SchemaEvolution.md` |
+| Gap | Document | State |
+|---|---|---|
+| `TClonesArray` in either encoding | `02-serialization/Collections.md` | ✅ `serialization/clones-array` |
+| A member-wise collection whose value class has a `ClassDef`, and so a plain version word instead of a checksum | `02-serialization/Collections.md` | ☐ mechanism exists, case not written |
+| A `type=readraw` rule | `02-serialization/SchemaEvolution.md` | ☐ mechanism exists, case not written |
 
-> **Worth solving once rather than working around repeatedly.** A `gen/common/`
-> helper that compiles a small dictionary with `ACLiC` or `rootcling` before the
-> macro runs would unblock this whole row and much of phase 4. Cost: the fixture
-> then depends on a working compiler in CI, which conda-forge ROOT provides.
+The same mechanism is what phase 4 will need for any class family whose fixtures
+must carry real class versions, so it is worth having landed early.
 
 ### 9.4 Needs two ROOT sessions or two files
 
