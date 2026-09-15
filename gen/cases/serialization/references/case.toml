@@ -1,0 +1,260 @@
+id   = "serialization/references"
+file = "data/serialization/references.root"
+size = 2171
+
+description = """
+Object references: a TProcessID record, a referenced TObject, a TRef and a
+TRefArray.
+
+The four things this case pins down:
+
+- Referencing an object sets TObject::kIsReferenced (0x10) in its fBits, which
+  appends a UShort_t pidf to its TObject base. That base is 12 bytes here, not
+  the usual 10, and the streamer info gives no warning: only the bit does.
+- The pidf is an index into the file's own key namespace. 0 means the record
+  keyed "ProcessID0", whose payload is a bare TNamed whose title is the process
+  UUID.
+- TRef writes no byte count and no version word of its own. Its 12 bytes are the
+  TObject layout above: the version word on the wire is TObject's, not TRef's,
+  even though TRef has a ClassDef version of 1.
+- TRefArray does have a byte count and a version word, and carries one pidf for
+  the whole array followed by a plain UInt_t per entry.
+
+The TProcessID record precedes the object that needs it, because it is written
+as a side effect of writing the first reference.
+
+The 36-byte UUID string is masked by tools/normalize.py, which is why this file
+has a stable digest despite carrying a fresh UUID on every run.
+"""
+
+spec = [
+  "spec/02-serialization/References.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 198
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 298
+nbytes = 155
+class  = "TProcessID"
+role   = "ProcessID0; written before the object that references it"
+
+[[records]]
+offset = 453
+nbytes = 84
+class  = "TObjString"
+role   = "the referenced object, whose TObject base carries a pidf"
+
+[[records]]
+offset = 537
+nbytes = 46
+class  = "TRef"
+role   = "a reference to it"
+
+[[records]]
+offset = 583
+nbytes = 106
+class  = "TRefArray"
+role   = "an array of references to it"
+
+[[records]]
+offset = 689
+nbytes = 1040
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 1729
+nbytes = 347
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 2076
+nbytes = 95
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# The TProcessID record. Key at 298, fKeyLen 85, so the payload starts at 383.
+# The payload is exactly a TNamed: every data member of TProcessID is transient.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "TProcessID byte count, kByteCountMask | 66"
+offset = 383
+type = "u32"
+value = 1073741890
+[[bytes]]
+name = "TProcessID class version"
+offset = 387
+type = "i16"
+value = 1
+[[bytes]]
+name = "TNamed base byte count, kByteCountMask | 60"
+offset = 389
+type = "u32"
+value = 1073741884
+[[bytes]]
+name = "TNamed class version"
+offset = 393
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject version word"
+offset = 395
+type = "i16"
+value = 1
+[[bytes]]
+name = "fUniqueID of the TProcessID: the writer's session index, not the pidf"
+offset = 397
+type = "u32"
+value = 0
+[[bytes]]
+name = "fBits: kIsReferenced is clear, so this TObject base is 10 bytes"
+offset = 401
+type = "u32"
+value = 0
+[[bytes]]
+name = "fName, which repeats the key name"
+offset = 405
+type = "string"
+value = "ProcessID0"
+[[bytes]]
+name = "fTitle length: a canonical UUID is always 36 characters"
+offset = 416
+type = "u8"
+value = 36
+
+# ---------------------------------------------------------------------------
+# The referenced TObjString. Key at 453, fKeyLen 64, payload at 517.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "TObjString byte count, kByteCountMask | 16"
+offset = 517
+type = "u32"
+value = 1073741840
+[[bytes]]
+name = "TObjString class version"
+offset = 521
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject version word"
+offset = 523
+type = "i16"
+value = 1
+[[bytes]]
+name = "fUniqueID: the object's reference id, masked to 24 bits on write"
+offset = 525
+type = "u32"
+value = 1
+[[bytes]]
+name = "fBits: kIsReferenced (0x10) | kMustCleanup (0x8)"
+offset = 529
+type = "u32"
+value = 24
+[[bytes]]
+name = "pidf, present only because kIsReferenced is set"
+offset = 533
+type = "u16"
+value = 0
+[[bytes]]
+name = "fString, immediately after the 12-byte TObject base"
+offset = 535
+type = "string"
+value = "a"
+
+# ---------------------------------------------------------------------------
+# The TRef. Key at 537, fKeyLen 34, payload at 571. Twelve bytes, and the first
+# word is a version, not a byte count.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "no byte count: the first word is TObject's version"
+offset = 571
+type = "i16"
+value = 1
+[[bytes]]
+name = "fUniqueID: the referenced object's id"
+offset = 573
+type = "u32"
+value = 1
+[[bytes]]
+name = "fBits: a TRef is not itself referenced, so kIsReferenced is clear"
+offset = 577
+type = "u32"
+value = 0
+[[bytes]]
+name = "pidf, written unconditionally by TRef::Streamer"
+offset = 581
+type = "u16"
+value = 0
+[[bytes]]
+name = "the next record's key begins here: the TRef payload is 12 bytes"
+offset = 583
+type = "u32"
+value = 106
+
+# ---------------------------------------------------------------------------
+# The TRefArray. Key at 583, fKeyLen 75, payload at 658.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "TRefArray byte count, kByteCountMask | 27"
+offset = 658
+type = "u32"
+value = 1073741851
+[[bytes]]
+name = "TRefArray class version"
+offset = 662
+type = "i16"
+value = 1
+[[bytes]]
+name = "TObject version word"
+offset = 664
+type = "i16"
+value = 1
+[[bytes]]
+name = "fUniqueID of the array itself"
+offset = 666
+type = "u32"
+value = 0
+[[bytes]]
+name = "fBits: the array is not itself referenced, so its TObject base is 10 bytes"
+offset = 670
+type = "u32"
+value = 0
+[[bytes]]
+name = "fName: an empty counted string, and the only TCollection member written"
+offset = 674
+type = "string"
+value = ""
+[[bytes]]
+name = "nobjects"
+offset = 675
+type = "i32"
+value = 1
+[[bytes]]
+name = "fLowerBound"
+offset = 679
+type = "i32"
+value = 0
+[[bytes]]
+name = "pidf: one for the whole array"
+offset = 683
+type = "u16"
+value = 0
+[[bytes]]
+name = "fUIDs[0]"
+offset = 685
+type = "u32"
+value = 1

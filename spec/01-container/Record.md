@@ -149,7 +149,7 @@ directory's key list.
 > Masking is always safe, since no file approaches 2⁴⁸ bytes. A non-zero
 > `fPidOffset` also *forces* the large layout, because there is nowhere to put it
 > otherwise (`root/io/io/src/TKey.cxx:696-704`). See
-> `02-serialization/References.md`.
+> [References](../02-serialization/References.md).
 
 What it points at:
 

@@ -442,13 +442,43 @@ def payload_range(rec: Record) -> tuple[int, int]:
     return start, start + rec.obj_len
 
 
+@dataclass
+class TObjectBase:
+    """A TObject base: Buffer.md section 7, References.md section 1."""
+
+    version: int
+    unique_id: int
+    bits: int
+    pidf: int | None     # present iff fBits & kIsReferenced
+    end: int
+
+    @property
+    def referenced(self) -> bool:
+        return bool(self.bits & IS_REFERENCED)
+
+    @property
+    def serial(self) -> int:
+        """The reference serial: the low 24 bits (References.md section 5)."""
+        return self.unique_id & 0x00FFFFFF
+
+
+def read_tobject(buf: bytes, offset: int) -> TObjectBase:
+    """A TObject base. Ten bytes, or twelve when kIsReferenced is set."""
+    version = _i16(buf, offset)
+    unique_id = _u32(buf, offset + 2)
+    bits = _u32(buf, offset + 6)
+    if bits & IS_REFERENCED:
+        return TObjectBase(version, unique_id, bits, _u16(buf, offset + 10),
+                           offset + 12)
+    return TObjectBase(version, unique_id, bits, None, offset + 10)
+
+
 def skip_tobject(buf: bytes, offset: int) -> int:
     """Skip a TObject base: version, fUniqueID, fBits, and a pidf if referenced.
 
     Buffer.md section 7. There is no byte count.
     """
-    bits = _u32(buf, offset + 6)
-    return offset + 10 + (2 if bits & IS_REFERENCED else 0)
+    return read_tobject(buf, offset).end
 
 
 @dataclass
@@ -849,6 +879,7 @@ class Value:
     type_name: str = ""
     members: list | None = None   # for a nested object
     note: str = ""                # why it was skipped rather than decoded
+    tobject: TObjectBase | None = None
 
 
 class UnsupportedClass(FormatError):
@@ -930,8 +961,9 @@ class Decoder:
                      limit: int | None) -> list[Value]:
         """The element loop of StreamerDriven.md section 3."""
         if cls == "TObject":
-            end = skip_tobject(self.buf, offset)
-            return [Value(name="TObject", ftype=66, start=offset, end=end)]
+            base = read_tobject(self.buf, offset)
+            return [Value(name="TObject", ftype=66, start=offset, end=base.end,
+                          tobject=base)]
         info = self.info_for(cls, version)
         values: list[Value] = []
         pos = offset
@@ -967,7 +999,8 @@ class Decoder:
             return done(nested.end, members=nested.members)
 
         if t == 66:                                   # kTObject: no byte count
-            return done(skip_tobject(buf, offset))
+            base = read_tobject(buf, offset)
+            return done(base.end, tobject=base)
 
         if t == 67:                                   # kTNamed
             nested = self.read_object("TNamed", offset)
@@ -1062,3 +1095,53 @@ def decode_record(buf: bytes, rec: Record, infos: list[StreamerInfo]) -> Value:
         raise FormatError(
             f"{rec.class_name} consumed {value.end - start} bytes of {end - start}")
     return value
+
+
+def walk(value: Value):
+    """Every Value in a decoded tree, depth first."""
+    yield value
+    for member in value.members or ():
+        yield from walk(member)
+
+
+@dataclass
+class RefArray:
+    """A TRefArray record payload (References.md section 4)."""
+
+    version: int
+    tobject: TObjectBase
+    name: str
+    nobjects: int
+    lower_bound: int
+    pidf: int
+    uids: list[int]
+    end: int
+
+
+def read_ref_array(buf: bytes, offset: int) -> RefArray:
+    frame = read_frame(buf, offset)
+    base = read_tobject(buf, frame.body)
+    name, o = _counted_string(buf, base.end)
+    nobjects = _i32(buf, o)
+    lower_bound = _i32(buf, o + 4)
+    pidf = _u16(buf, o + 8)
+    o += 10
+    uids = [_u32(buf, o + 4 * i) for i in range(max(nobjects, 0))]
+    return RefArray(version=frame.version, tobject=base, name=name,
+                    nobjects=nobjects, lower_bound=lower_bound, pidf=pidf,
+                    uids=uids, end=o + 4 * max(nobjects, 0))
+
+
+def read_ref(buf: bytes, offset: int) -> TObjectBase:
+    """A TRef payload: the TObject layout, with a pidf written unconditionally.
+
+    TRef has no byte count and no version word of its own, and its fBits never
+    carries kIsReferenced, so read_tobject would stop two bytes early.
+    """
+    version = _i16(buf, offset)
+    unique_id = _u32(buf, offset + 2)
+    bits = _u32(buf, offset + 6)
+    if bits & 0x20:          # kHasUUID: a counted string, not a pidf
+        raise FormatError(f"kHasUUID TRef at {offset} is not supported")
+    return TObjectBase(version, unique_id, bits, _u16(buf, offset + 10),
+                       offset + 12)

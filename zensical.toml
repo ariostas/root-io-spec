@@ -29,6 +29,7 @@ nav = [
       { "Streamer information" = "02-serialization/StreamerInfo.md" },
       { "Element types" = "02-serialization/ElementTypes.md" },
       { "Streamer-driven reading" = "02-serialization/StreamerDriven.md" },
+      { "References" = "02-serialization/References.md" },
   ] },
 ]
 

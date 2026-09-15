@@ -78,6 +78,28 @@ A byte count larger than `kMaxMapCount` cannot be written
 (`root/io/io/src/TBufferFile.cxx:351-354`), which caps a single serialized
 object at just under 1 GiB.
 
+### 2.3 A record's object data does not always begin with one
+
+Most record payloads open with a byte count, because most classes are written
+through `WriteClassBuffer`, which asks for one. Two kinds do not:
+
+- the container's own bookkeeping — the root directory record, the key lists,
+  the free list — which is not a streamed object at all
+  ([Record](../01-container/Record.md));
+- a class whose hand-written streamer calls `WriteVersion` without requesting a
+  byte count. `TObject` does this for its base
+  (`root/core/base/src/TObject.cxx:1022`), and `TRef` writes **nothing else**,
+  so a `TRef` stored as a record of its own has a 12-byte payload whose first
+  word is a version.
+
+> Demonstrated by `serialization/references`: the `TRef` record at 537 has
+> `fObjLen` 12 and its payload begins `00 01` — the `TObject` version word —
+> where every other object record in that file begins `40 00`.
+
+A reader MUST therefore decide from the class, not from the first word, whether
+a payload is framed. Reading `00 01 00 00` as a byte count yields 65536, which
+is not obviously wrong.
+
 ### 2.2 Two code paths, one encoding
 
 ROOT writes a byte count either as a plain `cnt | kByteCountMask` or, when the
@@ -359,7 +381,7 @@ Four properties a reader needs:
   persisted (`root/core/base/src/TObject.cxx:1036`). So the base is **10 or 12
   bytes**, and the only signal is a bit of the `fBits` value just read. A reader
   MUST test it and consume the extra two bytes. See
-  `02-serialization/References.md`.
+  [References](References.md).
 - **The base may be absent entirely.** If the owning class sets
   `kIgnoreTObjectStreamer`, `TObject::Streamer` returns immediately and writes
   nothing (`root/core/base/src/TObject.cxx:996-997`). The streamer info is what
@@ -417,7 +439,10 @@ To read a version word at the current position:
    back-reference is at least 2.
 8. A class or object back-reference above 1 points **backwards**: its position is
    less than the position of the reference itself.
-9. At the outermost level, the bytes consumed equal `fObjLen` exactly.
+9. At the outermost level, the bytes consumed equal `fObjLen` exactly. For a
+   class whose streamer emits a byte count, that count spans the payload
+   exactly; for the classes of §2.3 there is no outermost count to check
+   against.
 
 Invariant 9 is the one that legitimately fails in the wild: a class whose
 hand-written `Streamer` is out of step with its data produces a byte-count
@@ -440,7 +465,8 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 9 | `tobject.md`: inside the `StreamerInfo` record `fBits` "will be `0x03000000`" | It is `0x00000000`. `kIsOnHeap` and `kNotDeleted` are masked off on write (§7). `0x03000000` was correct before the masking was introduced |
 | 10 | `dobject.md`: only the class back-reference is described | Neither the **object** back-reference nor the null pointer is documented at all, so a reader built from it cannot parse either (§6) |
 | 11 | `dobject.md`: the two byte counts are given identical wording | They have different owners and different extents: the outer one spans the class record **and** the object, the inner one only the version and members (§2, §5) |
-| 12 | `streamerinfo.md`: the `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | Not so: in `container/file-minimal` the file is uncompressed and `fNbytes - fKeyLen == fObjLen` for that record, so it is stored uncompressed |
+| 12 | — | Not every record's object data starts with a byte count: a `TRef` record's starts with a version word (§2.3) |
+| 13 | `streamerinfo.md`: the `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | Not so: in `container/file-minimal` the file is uncompressed and `fNbytes - fKeyLen == fObjLen` for that record, so it is stored uncompressed |
 
 ## 11. Reference files
 

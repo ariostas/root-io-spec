@@ -24,7 +24,8 @@ written layer by layer. See the repository's `PLAN.md` for the phasing.
 | Conventions | written |
 | Container — all of it | written |
 | Serialization — buffer framing, streamer info, element types, the reading algorithm | written |
-| Serialization — collections, schema evolution, references | not yet written |
+| Serialization — references | written |
+| Serialization — collections, schema evolution | not yet written |
 | Standard classes | not yet written |
 | `TTree` | not yet written |
 | RNTuple | not yet imported |

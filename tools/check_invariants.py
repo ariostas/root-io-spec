@@ -181,7 +181,11 @@ class Checker:
     # Records whose class is TFile or TDirectory are the container's own
     # bookkeeping (root directory, key list, free list, subdirectory records).
     # They are not streamed objects and carry no frame.
-    UNFRAMED = {"TFile", "TDirectory"}
+    #
+    # TRef is a streamed object that nonetheless carries none: its streamer is
+    # TObject::Streamer plus a pidf, and TObject::Streamer asks WriteVersion for
+    # no byte count. See Buffer.md 2.3; it is checked by check_references.
+    UNFRAMED = {"TFile", "TDirectory", "TRef"}
 
     def check_buffer_framing(self) -> None:
         for rec in self.records:
@@ -442,6 +446,115 @@ class Checker:
                          f"{target.class_name} {target.name!r} at "
                          f"{target.offset}: {exc}")
 
+    def check_references(self) -> None:
+        """References.md invariants 1 to 6."""
+        processes: dict[int, object] = {}
+        for rec in self.records:
+            if rec.free or rec.class_name != "TProcessID":
+                continue
+            if not rec.name.startswith("ProcessID") or not rec.name[9:].isdigit():
+                self.bad("References 8.2",
+                         f"a TProcessID record is keyed {rec.name!r}, which is not "
+                         f"'ProcessID' followed by a decimal integer")
+                continue
+            processes[int(rec.name[9:])] = rec
+
+        titles: dict[str, int] = {}
+        for index, rec in sorted(processes.items()):
+            if rootfile.is_compressed(rec):
+                continue
+            start, _ = rootfile.payload_range(rec)
+            frame = rootfile.read_frame(self.buf, start)
+            name, title, _, _ = rootfile._skip_named(self.buf, frame.body)
+            if len(title) != 36:
+                self.bad("References 8.3",
+                         f"ProcessID{index} fTitle is {len(title)} characters, not 36")
+            if title != rec.title:
+                self.bad("References 8.3",
+                         f"ProcessID{index} fTitle {title!r} != key title {rec.title!r}")
+            if title in titles:
+                self.bad("References 8.4",
+                         f"ProcessID{index} and ProcessID{titles[title]} share the "
+                         f"UUID {title!r}")
+            titles[title] = index
+
+        def process_exists(pidf: int, rec) -> bool:
+            return (pidf + rec.pid_offset) in processes
+
+        for rec in self.records:
+            if rec.free or rootfile.is_compressed(rec):
+                continue
+
+            if rec.class_name == "TRef":
+                if rec.obj_len != 12:
+                    self.bad("References 8.7",
+                             f"TRef payload at {rec.offset} is {rec.obj_len} bytes, "
+                             f"not 12")
+                    continue
+                start, _ = rootfile.payload_range(rec)
+                ref = rootfile.read_ref(self.buf, start)
+                if not process_exists(ref.pidf, rec):
+                    self.bad("References 8.2",
+                             f"TRef at {rec.offset} names pidf {ref.pidf}, and no "
+                             f"ProcessID{ref.pidf + rec.pid_offset} record exists")
+
+            if rec.class_name == "TRefArray":
+                start, end = rootfile.payload_range(rec)
+                arr = rootfile.read_ref_array(self.buf, start)
+                if arr.nobjects < 0:
+                    self.bad("References 8.5",
+                             f"TRefArray at {rec.offset} has nobjects {arr.nobjects}")
+                elif arr.end != end:
+                    self.bad("References 8.5",
+                             f"TRefArray at {rec.offset} ends at {arr.end}, payload "
+                             f"ends at {end}")
+                if not process_exists(arr.pidf, rec):
+                    self.bad("References 8.2",
+                             f"TRefArray at {rec.offset} names pidf {arr.pidf}, and "
+                             f"no ProcessID{arr.pidf + rec.pid_offset} record exists")
+
+        # 8.6, over every TObject base the streamer-driven read reached.
+        #
+        # 8.1 -- that kIsReferenced makes the base 12 bytes rather than 10 -- is
+        # not checked here, because read_tobject derives the length from the bit
+        # and comparing the two would be vacuous. It is checked instead by
+        # StreamerDriven 10.1/10.2: mis-reading the length desynchronises the
+        # enclosing object and its byte count catches it. Confirmed by clearing
+        # kIsReferenced on serialization/references, which reports
+        # "TObjString v1 consumed 11 bytes, byte count says 14".
+        info_rec = next((r for r in self.records
+                         if not r.free and r.name == "StreamerInfo"), None)
+        if info_rec is None or rootfile.is_compressed(info_rec):
+            return
+        try:
+            infos = rootfile.read_streamer_infos(self.buf, info_rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            return
+        for rec in self.records:
+            if rec.free or rootfile.is_compressed(rec):
+                continue
+            if rec.class_name in ("TFile", "TDirectory", "TDirectoryFile", "TRef"):
+                continue
+            try:
+                tree = rootfile.decode_record(self.buf, rec, infos)
+            except (rootfile.UnsupportedClass, rootfile.FormatError,
+                    struct.error, IndexError, ValueError):
+                continue
+            for value in rootfile.walk(tree):
+                base = value.tobject
+                if base is None:
+                    continue
+                if not base.referenced:
+                    continue
+                if base.unique_id >> 24:
+                    self.bad("References 8.6",
+                             f"referenced object at {value.start} has fUniqueID "
+                             f"{base.unique_id:#010x}, whose top byte is not zero")
+                if not process_exists(base.pidf, rec):
+                    self.bad("References 8.2",
+                             f"object at {value.start} names pidf {base.pidf}, and "
+                             f"no ProcessID{base.pidf + rec.pid_offset} record exists")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -617,6 +730,7 @@ class Checker:
         self.check_buffer_framing()
         self.check_streamer_info()
         self.check_streamer_driven()
+        self.check_references()
         return self.failures
 
 

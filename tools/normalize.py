@@ -14,7 +14,10 @@ Masking strategy (deliberately blunt, and stated here because it is a tradeoff):
     parsing the directory structure -- each directory carries a *distinct* UUID,
     so the file-level one is not enough;
   * every further occurrence, anywhere in the file, of any UUID or `fDatime`
-    value found above.
+    value found above;
+  * every canonical UUID *string*, found by pattern. A `TProcessID` record
+    carries its process UUID as 36 ASCII characters in both the key title and
+    the payload, and that UUID is unrelated to the file's own.
 
 The last rule catches further copies without this tool having to chase them. It
 can in principle mask a coincidentally equal run of payload bytes; for the small,
@@ -25,10 +28,16 @@ stable across runs so it cannot cause a false digest mismatch.
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
 import sys
 
 import rootfile
+
+
+# A TUUID rendered as text, e.g. "33f12151-b110-11f1-94cd-b10c080abeef".
+UUID_TEXT = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                       rb"[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 def normalize(buf: bytes) -> bytes:
@@ -58,6 +67,9 @@ def normalize(buf: bytes) -> bytes:
         for value in (directory.datime_c, directory.datime_m):
             if value:
                 volatile.append(struct.pack(">I", value))
+
+    for match in UUID_TEXT.finditer(buf):
+        out[match.start() : match.end()] = b"0" * (match.end() - match.start())
 
     for pattern in volatile:
         start = 0
