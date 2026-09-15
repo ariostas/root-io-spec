@@ -34,6 +34,22 @@ those extra fields land inside the key:
 `fSeekKey` and `fSeekPdir` are 8 bytes each however small the file is. This is the
 only place in ROOT where the large form appears in a file under 2 GB.
 
+Two other key fields carry basket-specific meanings:
+
+| Field | In a basket |
+|---|---|
+| `fName` | the **branch** name |
+| `fTitle` | the **tree** name (`root/tree/tree/src/TTree.cxx:3777`) |
+| `fCycle` | the **basket number**, not a cycle |
+
+> **`fCycle` is not a cycle.** It is set to `fBranch->GetWriteBasket()`
+> (`root/tree/tree/src/TBasket.cxx:1293`), so basket 0 has `fCycle` 0 — a value no
+> other key in a ROOT file carries, since `TKey` treats a cycle of 0 or less as
+> "keep" (`root/io/io/src/TKey.cxx:640-642`). A reader that de-duplicates keys by
+> `(name, cycle)`, as
+> [Record §8](../01-container/Record.md#8-invariants) invariant 9 allows for
+> ordinary keys, must exclude baskets.
+
 > Demonstrated by `ttree/basket`: both basket keys have `fVersion` 1004 and
 > `fKeylen` 65, where the fixed part plus their three strings is 46.
 
@@ -157,7 +173,20 @@ and read back by decomposition (`root/tree/tree/src/TBasket.cxx:1027-1098`):
 > **The consequence for a reader of files:** in a basket *record* the flag is 0 or
 > 80, and it tells you nothing about whether an offset array is present — §3's
 > arithmetic does. Every other flag value belongs to a basket embedded in some
-> other buffer.
+> other buffer, where the arrays and the data sit in the key area, before the raw
+> block, rather than after the data in the payload.
+
+Two of the flag ranges cannot occur in a file written by a current ROOT:
+
+- **`20 < flag < 40`** is the pre-2000 packing, where each entry offset carried a
+  displacement in its top byte. Nothing writes it any more, and the read path
+  masks those bits off and discards them
+  (`root/tree/tree/src/TBasket.cxx:1073-1077`) rather than recovering the
+  displacement.
+- **`flag > 40`**, a displacement array, requires `TBasket::Update` to be called
+  with a skip count, which happens only for a branch filled entry-by-entry out of
+  order or for a circular tree (`root/tree/tree/src/TBasket.cxx:311-352`). An
+  ordinary `TBranch::Fill` never produces one.
 >
 > Demonstrated by `ttree/basket`, where **both** baskets have `flag` 0 and only
 > one has an offset array.
@@ -213,6 +242,14 @@ When `fIOBits` bit 0 is set, one of two things is true
 No reference file exercises either path; producing one needs a branch with the
 IO feature enabled.
 
+> **`kGenerateOffsetMap` never applies to a `TBranchElement`.** Every
+> `TBranchElement` constructor delegates to the default `TBranch()` constructor,
+> which does not copy the tree's IO features
+> (`root/tree/tree/src/TBranchElement.cxx:168`,
+> `root/tree/tree/src/TBranchElement.cxx:213`). So in 6.40.04 only leaflist
+> branches ever carry a non-zero `fIOBits`, and a reader will meet the feature
+> only on those. Recorded as a probable defect in `PLAN.md` §7.1.
+
 ## 6. Fixed-length entries
 
 When there is no entry-offset array, every entry is `fNevBufSize` bytes and entry
@@ -240,6 +277,15 @@ without decompressing the whole basket.
 container layer (`root/tree/tree/src/TBasket.cxx:1300-1355`), so nothing about the
 block format differs.
 
+**Compression is all or nothing for the whole basket.** If any chunk compresses to
+zero bytes or to no less than `fObjlen`, ROOT abandons compression for the entire
+basket and writes it raw (`root/tree/tree/src/TBasket.cxx:1334`,
+`root/tree/tree/src/TBasket.cxx:1347`) — giving `fNbytes == fKeylen + fObjlen`,
+which is the ordinary "stored raw" case of
+[Compression §1](../01-container/Compression.md#1-deciding-whether-a-payload-is-compressed).
+Note that the test compares one *chunk's* output against the *whole* object's
+length, which is a loose test for a multi-block basket.
+
 ## 8. Reading
 
 To read entry *i* of a basket record:
@@ -263,6 +309,13 @@ To read entry *i* of a basket record:
 
 What those bytes then mean is the branch's business, not the basket's: a basket
 carries no type information at all.
+
+> **Step 6's test is not the one ROOT uses.** `TBasket::ReadBasketBuffers` decides
+> whether to read an offset array from `fBranch->GetEntryOffsetLen()`, a field of
+> the *branch* (`root/tree/tree/src/TBasket.cxx:689-691`) — so ROOT cannot
+> interpret a basket record without its branch. The arithmetic test above needs
+> only the basket, and agrees with ROOT on every file it writes: the array is
+> present exactly when there are bytes between `fLast` and the end of the payload.
 
 ## 9. Invariants
 
@@ -296,8 +349,23 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 5 | — | Nothing says the offset array's count is `fNevBuf + 1` with a meaningless final element (§5.1) |
 | 6 | — | Nothing describes the flag byte, or that a basket record's flag is always 0 or 80 and says nothing about whether an offset array is present (§4) |
 | 7 | — | Nothing describes `kGenerateOffsetMap`, under which the array holds sizes or is absent entirely (§5.2) |
+| 8 | `README.md`: "For each branch, exactly one `TBasket` object is contained in the `TTree` data record. If the data on a given branch fits in one basket, then all the data for that branch will be in the `TTree` record itself" | **Not true of current ROOT.** `TTree::Write` flushes every basket first (`root/tree/tree/src/TTree.cxx:10012`), and `TBranch::Streamer` removes from `fBaskets` every basket that is on disk or empty (`root/tree/tree/src/TBranch.cxx:3195-3205`). `ttree/basket` has three entries in one basket per branch and still writes both as standalone records, with none embedded. Embedding happens only when a tree is streamed without flushing |
+| 9 | `ttree.md:45-64`: the `TBranch` member list is version 7 | `TBranch` is at version **13** (`root/tree/tree/inc/TBranch.h:304`), `fEntryNumber`, `fEntries`, `fTotBytes` and `fZipBytes` are `Long64_t` rather than `Int_t`/`Stat_t`, `fBasketEntry` and `fBasketSeek` are type 56 rather than 43, and `fIOFeatures`, `fFirstEntry` and the `TAttFill` base are missing entirely |
+| 10 | `README.md`: "the custom written `TBasket` streamer internally handles the packing of data into fixed size `TBasket` objects" | Baskets are not fixed size, and the streamer writes only the header — the record framing and the compression are `TBasket::WriteBuffer`'s doing. The neighbouring claim that there is no streamer info for `TBasket` is correct |
 
-## 11. Reference files
+## 11. Class versions
+
+| Version | Difference |
+|---|---|
+| 1 | the embedded raw buffer was written as a **counted** array, so a reader must use `ReadArray` rather than a bare `fLast` bytes (`root/tree/tree/src/TBasket.cxx:1102-1103`) |
+| 2 | the form this document describes, minus `fIOBits` |
+| 3 | current: the negated-`fNevBufSize` extension of §2.2 |
+
+A version-3 basket with no IO features set is byte-identical to a version-2 one,
+and **the version is not how a reader detects `fIOBits`** — the sign of
+`fNevBufSize` is (§2.2).
+
+## 12. Reference files
 
 | Case | Exercises |
 |---|---|

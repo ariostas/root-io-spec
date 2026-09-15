@@ -742,7 +742,16 @@ Verified against the pinned submodule and real bytes; not yet reported.
    No such file has been constructed here; verify before reporting.
    `Collections.md` section 6.
 
-3. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
+3. **`kGenerateOffsetMap` cannot reach a `TBranchElement`.** Every
+   `TBranchElement` constructor delegates to the default `TBranch()`, which does
+   not copy the tree's `fIOFeatures`
+   (`root/tree/tree/src/TBranchElement.cxx:168`,
+   `root/tree/tree/src/TBranchElement.cxx:213`), so a feature set with
+   `TTree::SetIOFeatures` silently has no effect on any split or object branch —
+   which is most branches in a real file. Verified by source reading; not yet
+   confirmed by generating a file with the feature enabled on both branch kinds.
+
+4. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
 
 ## 8. Immediate next steps
 
@@ -827,7 +836,7 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Document |
 |---|---|
 | A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
-| A compressed basket, a multi-block basket, a displacement array, `fIOBits` in either form, and the embedded (non-record) form of a basket | `04-ttree/TBasket.md` §11 |
+| A compressed basket, a multi-block basket, a displacement array, `fIOBits` in either form, and the embedded (non-record) form of a basket | `04-ttree/TBasket.md` §12 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
 | `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
