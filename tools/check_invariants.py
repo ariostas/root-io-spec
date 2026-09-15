@@ -70,6 +70,29 @@ def element_list_failures(info) -> list[tuple[str, str]]:
     return failures
 
 
+def info_list_failures(infos) -> list[tuple[str, str]]:
+    """SchemaEvolution.md invariants 1 and 2, over one StreamerInfo record.
+
+    Separate from Checker so that invariant 2 can be exercised: no fixture can
+    hold two identical infos, because ROOT would not write one.
+    """
+    failures: list[tuple[str, str]] = []
+    seen: set[tuple[str, int, int]] = set()
+    for info in infos:
+        if not 0 <= info.class_version <= 65000:
+            failures.append((
+                "SchemaEvolution 9.1",
+                f"{info.name} has fClassVersion {info.class_version}"))
+        key = (info.name, info.class_version, info.checksum)
+        if key in seen:
+            failures.append((
+                "SchemaEvolution 9.2",
+                f"two infos for {info.name} share version {info.class_version} "
+                f"and checksum {info.checksum:#010x}"))
+        seen.add(key)
+    return failures
+
+
 class Checker:
     def __init__(self, path: Path):
         self.path = path
@@ -555,6 +578,54 @@ class Checker:
                              f"object at {value.start} names pidf {base.pidf}, and "
                              f"no ProcessID{base.pidf + rec.pid_offset} record exists")
 
+    def check_schema_evolution(self) -> None:
+        """SchemaEvolution.md invariants 1 to 5."""
+        rec = next((r for r in self.records
+                    if not r.free and r.name == "StreamerInfo"), None)
+        if rec is None or rec.class_name != "TList" or rootfile.is_compressed(rec):
+            return
+        try:
+            entries = rootfile.read_streamer_info_entries(self.buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            self.bad("SchemaEvolution 9.3", f"could not walk the list: {exc}")
+            return
+
+        rule_lists = 0
+        for cls, slot in entries:
+            if cls == "TStreamerInfo":
+                continue
+            if cls != "TList":
+                self.bad("SchemaEvolution 9.3",
+                         f"the StreamerInfo list holds a {cls}, which is neither a "
+                         f"TStreamerInfo nor a listOfRules")
+                continue
+            try:
+                name, rules = rootfile.read_rule_list(self.buf, rec, slot)
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError) as exc:
+                self.bad("SchemaEvolution 9.4", f"nested TList at {slot.offset}: {exc}")
+                continue
+            if name != "listOfRules":
+                self.bad("SchemaEvolution 9.3",
+                         f"the StreamerInfo list holds a TList named {name!r}, "
+                         f"not 'listOfRules'")
+                continue
+            rule_lists += 1
+            for text in rules:
+                if not text.startswith(("type=read ", "type=readraw ")):
+                    self.bad("SchemaEvolution 9.5",
+                             f"a rule begins {text[:20]!r}, not with a type= token")
+        if rule_lists > 1:
+            self.bad("SchemaEvolution 9.4",
+                     f"{rule_lists} listOfRules entries; at most one is expected")
+
+        try:
+            infos = rootfile.read_streamer_infos(self.buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            return
+        for where, message in info_list_failures(infos):
+            self.bad(where, message)
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -731,6 +802,7 @@ class Checker:
         self.check_streamer_info()
         self.check_streamer_driven()
         self.check_references()
+        self.check_schema_evolution()
         return self.failures
 
 

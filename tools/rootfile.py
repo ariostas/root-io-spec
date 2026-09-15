@@ -1145,3 +1145,45 @@ def read_ref(buf: bytes, offset: int) -> TObjectBase:
         raise FormatError(f"kHasUUID TRef at {offset} is not supported")
     return TObjectBase(version, unique_id, bits, _u16(buf, offset + 10),
                        offset + 12)
+
+
+def read_streamer_info_entries(buf: bytes, rec: Record) -> list[tuple[str, Slot]]:
+    """Every entry of the StreamerInfo record's TList, as (class name, slot).
+
+    SchemaEvolution.md section 6.1: the list is not purely TStreamerInfo. It can
+    carry one further entry, a nested TList named "listOfRules".
+    """
+    entries: list[tuple[str, Slot]] = []
+    classes: dict[int, str] = {}
+    for slot in read_tlist(buf, rec):
+        if slot.kind != "object":
+            continue
+        cls, _ = resolve_class(slot, classes)
+        entries.append((cls, slot))
+    return entries
+
+
+def read_rule_list(buf: bytes, rec: Record, slot: Slot) -> tuple[str, list[str]]:
+    """A nested TList of TObjString. Returns (fName, the rule texts).
+
+    Used for the listOfRules entry of SchemaEvolution.md section 6.
+    """
+    classes: dict[int, str] = {}
+    cls, body = resolve_class(slot, classes)
+    frame = read_frame(buf, body)
+    o = read_tobject(buf, frame.body).end
+    name, o = _counted_string(buf, o)
+    count = _i32(buf, o)
+    o += 4
+    rules: list[str] = []
+    for _ in range(count):
+        entry = read_slot(buf, o, rec.offset)
+        entry_cls, entry_body = resolve_class(entry, classes)
+        if entry_cls != "TObjString":
+            raise FormatError(f"{name} holds a {entry_cls}, not a TObjString")
+        inner = read_frame(buf, entry_body)
+        text, _ = _counted_string(buf, read_tobject(buf, inner.body).end)
+        rules.append(text)
+        o = entry.end
+        o += 1 + buf[o]          # the list entry's option string
+    return name, rules

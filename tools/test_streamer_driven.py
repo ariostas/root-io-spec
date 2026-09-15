@@ -105,5 +105,38 @@ class ElementListInvariants(unittest.TestCase):
         self.assertEqual(self.failures(si), [])
 
 
+class InfoListInvariants(unittest.TestCase):
+    """SchemaEvolution.md invariants 1 and 2."""
+
+    def failures(self, infos):
+        return [where for where, _ in check_invariants.info_list_failures(infos)]
+
+    def test_a_conforming_list_passes(self):
+        self.assertEqual(self.failures([info(name="A"), info(name="B")]), [])
+
+    def test_two_identical_infos_are_caught(self):
+        # Two layouts of one class are distinguished by checksum, so two entries
+        # agreeing on both version and checksum make the choice ill defined.
+        self.assertEqual(self.failures([info(name="A"), info(name="A")]),
+                         ["SchemaEvolution 9.2"])
+
+    def test_same_class_different_checksum_is_allowed(self):
+        a, b = info(name="A"), info(name="A")
+        b.checksum = 1
+        self.assertEqual(self.failures([a, b]), [])
+
+    def test_an_out_of_range_version_is_caught(self):
+        a = info(name="A")
+        a.class_version = 65001
+        self.assertEqual(self.failures([a]), ["SchemaEvolution 9.1"])
+
+    def test_a_negative_version_is_caught(self):
+        # The streamer writes the absolute value, so a negative one cannot occur
+        # in a file ROOT wrote (SchemaEvolution.md 1.1).
+        a = info(name="A")
+        a.class_version = -1
+        self.assertEqual(self.failures([a]), ["SchemaEvolution 9.1"])
+
+
 if __name__ == "__main__":
     unittest.main()
