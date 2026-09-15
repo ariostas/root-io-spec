@@ -14,8 +14,23 @@ This repository aims to be the shared, testable artifact those projects can rely
 
 ## Status
 
-Early — structure and scope agreed, no specification text written yet.
-See [PLAN.md](PLAN.md) for the structure, scope, phasing, and the decisions taken.
+The **container** and **object serialization** layers are written and checked:
+enough to locate any object in a ROOT file and decode any user-defined class from
+the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
+`spec/05-rntuple/` are not started.
+
+| Layer | State |
+|---|---|
+| Conventions | written |
+| Container — header, records, directories, compression, free list | written |
+| Serialization — framing, streamer info, element types, reading algorithm | written |
+| Serialization — collections, schema evolution, references | written |
+| Standard classes, `TTree`, RNTuple | not started |
+
+21 reference files, 438 byte-level assertions, 421 checked source citations.
+See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
+every known gap — in each case the behaviour is specified and cited, and what is
+missing is a reference file proving it.
 
 Scope in brief: reading is specified normatively; writing is covered by per-layer
 invariants a conforming file must satisfy, rather than by prescribing ROOT's

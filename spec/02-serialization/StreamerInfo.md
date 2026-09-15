@@ -76,8 +76,11 @@ current convention.
 ROOT itself currently ignores the rules it writes: the loop that would apply them
 is inside `#if 0` (`root/io/io/src/TFile.cxx:3364-3373`).
 
-No fixture contains a `listOfRules`; producing one needs a compiled dictionary
-carrying a `#pragma read` rule.
+The full shape, and why ROOT ignores it, is in
+[Schema evolution §6](SchemaEvolution.md#6-rules-and-the-listofrules-entry).
+
+> Demonstrated by `serialization/schema-rules`. A `#pragma read` needs a compiled
+> dictionary, but `TClass::AddRule` produces the same entry from the interpreter.
 
 ### 3.2 An empty list is meaningful
 
@@ -257,14 +260,16 @@ Only these members are persistent; `fOffset`, `fNewType`, `fXmin`, `fXmax` and
 > `fSize` 24, while its on-disk form is a counted string of 2 bytes.
 
 **`fSize` makes a streamer info platform dependent.** Two ROOT builds of the same
-version, on the same architecture, can write byte-different streamer info for the
-same class, because `sizeof` differs between standard libraries:
-`sizeof(std::string)` is 24 with libc++ and 32 with libstdc++. Nothing else in the
-record varies, so the difference is invisible to a reader — but it means a
-streamer info cannot be compared byte-for-byte across platforms, and a class with
-a `std::string` member cannot serve as a portable reference file. This is why
-there is no `TStreamerSTLstring` fixture here; it was removed after the digest of
-one drifted between macOS and Linux CI while all its byte assertions passed.
+version, on the same architecture, write byte-different streamer info for the same
+class whenever `sizeof` differs between their standard libraries:
+`sizeof(std::string)` is 24 with libc++ and 32 with libstdc++, and
+`sizeof(std::map<int,int>)` is 24 and 48. Nothing else in the record varies, so
+the difference is invisible to a reader — but **two files describing the same
+class cannot be compared byte-for-byte across platforms**, and any tool that
+digests a file must mask `fSize` first. `tools/normalize.py` in this repository
+does, which is the only reason a fixture here can contain a `std::string` or
+`std::map` member at all; the constraint was found when one drifted between macOS
+and Linux CI while every byte assertion passed and the file size was identical.
 
 ### 7.1 The range fields moved out of the record
 
@@ -551,7 +556,9 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/streamer-info` | The whole chain: `TList`, `TStreamerInfo`, `TNamed`, `TObjArray`, and four element subclasses including `TStreamerSTL` |
 | `serialization/object-tags` | `TStreamerBase` for a `TObject` base, and a class back-reference between two infos |
 | `serialization/version-zero` | Fourteen infos and seventy-one elements, from `TH1L`'s whole class hierarchy |
+| `serialization/schema-rules` | The optional `listOfRules` entry alongside a `TStreamerInfo` |
+| `serialization/collections` | `TStreamerSTL` in seven shapes, and the only `TStreamerSTLstring` in the corpus |
 
-No fixture covers `listOfRules`, `TStreamerLoop`, or any `TStreamerElement`
-version below 4 — the last needs a file written by ROOT 3. `TStreamerSTLstring`
-cannot have one, for the `fSize` reason in §7.
+No fixture covers `TStreamerLoop`, `TStreamerArtificial` (which cannot occur —
+§14), or any `TStreamerElement` version below 4; the last needs a file written by
+ROOT 3.

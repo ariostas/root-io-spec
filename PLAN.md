@@ -1,7 +1,12 @@
 # PLAN — ROOT I/O Specification
 
-Status: **draft for discussion**. Nothing below is implemented yet except the repo
-skeleton and the pinned ROOT submodule.
+Status: **phases 0–2 complete**, bar the two items in §5. The container and object
+layers are written, checked and pushed; `spec/03-classes/`, `spec/04-ttree/` and
+`spec/05-rntuple/` are not started.
+
+Throughout this document: **✅ done**, **◐ partly done**, **☐ not started**.
+`§9` collects every gap the written documents record, so that they can be picked
+up rather than rediscovered.
 
 ## 1. Goal
 
@@ -100,29 +105,39 @@ Normative preliminaries, adopted once so every other document can be terse:
 
 | File | Contents |
 |---|---|
-| `FileHeader.md` | The 64/100-byte header; `fVersion` encoding; the `+1000000` large-file flag and the field widening it implies |
-| `Record.md` | `TKey` layout, `fNbytes`/`fObjLen`/`fKeyLen`, cycles, `fSeekKey` self-check, the "key of a key" for large files |
-| `Directory.md` | `TFile`'s own record, `TDirectoryFile`, the keys list, `fSeekDir`/`fSeekParent`/`fSeekKeys`, nested directories |
-| `FreeSegments.md` | `TFree` list, the sentinel free segment past EOF, gaps |
-| `Compression.md` | The 9-byte block header, the `ZL`/`XZ`/`L4`/`ZS`/`CS` magics, multi-block payloads, the LZ4 XXH64 trailer, `fCompress` encoding (`100*algorithm + level`), and which records are never compressed |
-| `LargeFiles.md` | Everything that changes past 2 GB, collected in one place |
+| ✅ `FileHeader.md` | The 64/100-byte header; `fVersion` encoding; the `+1000000` large-file flag and the field widening it implies |
+| ✅ `Record.md` | `TKey` layout, `fNbytes`/`fObjLen`/`fKeyLen`, cycles, `fSeekKey` self-check, the "key of a key" for large files |
+| ✅ `Directory.md` | `TFile`'s own record, `TDirectoryFile`, the keys list, `fSeekDir`/`fSeekParent`/`fSeekKeys`, nested directories |
+| ✅ `FreeSegments.md` | `TFree` list, the sentinel free segment past EOF, gaps |
+| ✅ `Compression.md` | The 9-byte block header, the `ZL`/`XZ`/`L4`/`ZS`/`CS` magics, multi-block payloads, the LZ4 XXH64 trailer, `fCompress` encoding (`100*algorithm + level`), and which records are never compressed |
+| ☐ `LargeFiles.md` | Everything that changes past 2 GB, collected in one place |
 
 `Compression.md` is called out separately because the old docs are actively wrong
 here and every implementer has to rediscover the block header by hand.
+
+`LargeFiles.md` was not written as a separate document. What changes past 2 GB is
+instead stated where it arises — `FileHeader.md` §2 for the `+1000000` flag and
+the widened fields, `Record.md` §3.5–3.6 for the large key layout and the packed
+`fPidOffset`, `FreeSegments.md` §3 for the large `TFree` entry. **Decide whether
+to keep it that way or collect it**; a single page is easier to hand to an
+implementer, but it would duplicate rather than replace those sections. No fixture
+exercises any of it (§9).
 
 ### 2.3 `spec/02-serialization/` — the object layer
 
 This is the core of the repo and the answer to "how do we handle custom classes".
 
+**All seven are written**, with 11 fixtures and 315 byte assertions between them.
+
 | File | Contents |
 |---|---|
-| `Buffer.md` | Byte counts (`kByteCountMask = 0x40000000`), the version word and `kByteCountVMask = 0x4000`, `ReadVersion`'s "no byte count in old files" backup path, class tags (`kNewClassTag = 0xFFFFFFFF`, `kClassMask = 0x80000000`), the buffer object/class map and `kMapOffset = 2`, object deduplication, `kNullTag` |
-| `StreamerInfo.md` | The `StreamerInfo` key, the `TList` of `TStreamerInfo`, and the byte layout of `TStreamerInfo` + every `TStreamerElement` subclass. **This is the bootstrap set: these classes cannot be read using streamer info, so a reader must hardcode them.** |
-| `StreamerDriven.md` | The normative algorithm: given a `TStreamerInfo` and a byte range, produce a value tree |
-| `ElementTypes.md` | The complete `EReadWrite` type-code table → exact on-disk bytes |
-| `Collections.md` | STL containers, collection proxies, object-wise vs member-wise streaming |
-| `SchemaEvolution.md` | Class version 0, checksums, `TSchemaRuleSet`, conversion/artificial/cache/skip elements, emulated classes |
-| `References.md` | `TProcessID`, `TRef`, `TRefArray`, `TObject::kIsReferenced` and the extra `fPID` word |
+| ✅ `Buffer.md` | Byte counts (`kByteCountMask = 0x40000000`), the version word and `kByteCountVMask = 0x4000`, `ReadVersion`'s "no byte count in old files" backup path, class tags (`kNewClassTag = 0xFFFFFFFF`, `kClassMask = 0x80000000`), the buffer object/class map and `kMapOffset = 2`, object deduplication, `kNullTag` |
+| ✅ `StreamerInfo.md` | The `StreamerInfo` key, the `TList` of `TStreamerInfo`, and the byte layout of `TStreamerInfo` + every `TStreamerElement` subclass. **This is the bootstrap set: these classes cannot be read using streamer info, so a reader must hardcode them.** |
+| ✅ `StreamerDriven.md` | The normative algorithm: given a `TStreamerInfo` and a byte range, produce a value tree |
+| ✅ `ElementTypes.md` | The complete `EReadWrite` type-code table → exact on-disk bytes |
+| ✅ `Collections.md` | STL containers, collection proxies, object-wise vs member-wise streaming |
+| ✅ `SchemaEvolution.md` | Class version 0, checksums, `TSchemaRuleSet`, conversion/artificial/cache/skip elements, emulated classes |
+| ✅ `References.md` | `TProcessID`, `TRef`, `TRefArray`, `TObject::kIsReferenced` and the extra `fPID` word |
 
 #### The element-type table (`ElementTypes.md`)
 
@@ -390,14 +405,24 @@ spec/05-rntuple/
 
 ### 2.7 `spec/99-appendix/`
 
-- `Bootstrap.md` — the minimal hardcoded class set, in dependency order.
-- `ReaderChecklist.md` — an implementation checklist for a new reader.
-- `Pitfalls.md` — a curated list of the things that have historically bitten
-  implementers, each linking to the normative section.
-- `Glossary.md`.
-- `Bibliography.md` — the old ROOT docs, the user's guide, prior art
+**☐ None of these exist.** The directory has not been created. Two of them are
+already referenced from written text as inline code and so are on the critical
+path for tidiness rather than correctness:
+
+- ☐ `Bootstrap.md` — the minimal hardcoded class set, in dependency order.
+  Referenced from `00-conventions.md` §9. The content largely exists already as
+  `02-serialization/StreamerInfo.md` §11; this would be the index.
+- ☐ `Glossary.md` — referenced from `00-conventions.md` §9.
+- ☐ `ReaderChecklist.md` — an implementation checklist for a new reader.
+- ☐ `Pitfalls.md` — a curated list of the things that have historically bitten
+  implementers, each linking to the normative section. There is now a lot of
+  material for this: the version-0 ambiguity, `kIsReferenced` changing a fixed
+  layout's length, `fType` 500, `fCtype` 61, `fOffset`/`fSize` being unusable.
+- ☐ `Bibliography.md` — the old ROOT docs, the user's guide, prior art
   (uproot, groot, UnROOT.jl, root-io, jsroot) with links.
-- `WriterInvariants.md` — the collected index of §2.8.
+- ☐ `WriterInvariants.md` — the collected index of §2.8. Every layer now has an
+  `Invariants` section, so this is a collation job, and `tools/check_invariants.py`
+  is already its executable form.
 
 ### 2.8 Write support: invariants, not algorithms
 
@@ -447,11 +472,33 @@ data/
 └── <group>/<case-id>.root
 ```
 
-One case = one file = one specific thing being exercised. Cases are named
-`<class>-<variant>-<qualifier>`, e.g. `th1-th1d-basic`, `th1-th1d-varbins`,
-`th1-th1l-v0checksum`, `ttree-branchelement-split2-vectorint`.
+One case = one file = one specific thing being exercised.
 
-### 3.2 `case.yaml`
+**As built** (21 cases): the file is `case.toml`, not `case.yaml`, and the groups
+so far are `container/` and `serialization/`. Case names are
+`<what-is-exercised>` rather than `<class>-<variant>-<qualifier>`, because these
+layers are not per-class — `container/file-minimal`, `serialization/pointer-forms`.
+The `<class>-<variant>` convention still applies from `03-classes/` onward.
+
+### 3.2 `case.yaml` — superseded by `case.toml`
+
+> **Changed in practice.** The sketch below assumes semantic assertions
+> (`path`/`value`), which need a reader that resolves member paths. What was built
+> instead asserts **byte offsets** — `{name, offset, type, value}` — checkable
+> with stdlib Python alone and with no reader at all, which is what lets a
+> third-party implementation in any language use the corpus as test vectors on day
+> one. `tools/check_bytes.py` is ~70 lines as a result.
+>
+> The cost is that assertions are tied to absolute offsets, so any change to a
+> `gen.C` renumbers them; in practice that has been cheap and has repeatedly
+> caught errors (four hex-to-decimal slips in one session).
+>
+> `case.toml` also carries a prose `description`, a `[[records]]` table giving the
+> record chain, and a `spec` list naming the documents the case supports.
+> **Semantic `expect` assertions remain worth adding** once a reference reader
+> exists (§7 item 4); they would complement the byte assertions, not replace them.
+
+The original sketch:
 
 ```yaml
 id: th1-th1d-basic
@@ -482,6 +529,20 @@ time and `TFile` writes a fresh `TUUID` per file. Approach:
   format changes are caught while timestamps are not.
 - Fixed RNG seeds and fixed literal data in every `gen.C`. No `gRandom` without an
   explicit `SetSeed`.
+
+**✅ Built, and two masks were added that this section did not anticipate:**
+
+- the **process UUID as text**, 36 ASCII characters in a `TProcessID` record's key
+  title and payload, unrelated to the file's own `TUUID`;
+- every **`TStreamerElement::fSize`**, which is `sizeof` on the writing machine and
+  differs between standard libraries (`std::string` 24 vs 32,
+  `std::map<int,int>` 24 vs 48). Without this, no fixture containing a
+  `std::string` or `std::map` member can have a stable digest across macOS and
+  Linux, and the symptom is `DRIFT` with every byte assertion passing.
+
+Masking `fSize` means the digest can no longer notice a change in *which* value
+ROOT stores there, so a case should assert `fSize` directly for members whose
+`sizeof` is standard-library independent.
 
 ### 3.4 Coverage targets
 
@@ -519,69 +580,88 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 
 | Tool | Purpose |
 |---|---|
-| `tools/inventory.py` | Parse every `ClassDef*` in the submodule → the authoritative class/version inventory. Feeds the coverage matrix. |
-| `tools/check_versions.py` | Fail if a class document's version matrix disagrees with the submodule's `ClassDef`. This is what keeps the spec from rotting. |
-| `tools/dump_streamerinfo.C` | ROOT macro wrapping `TFile::ShowStreamerInfo()` + `TClass::GetCheckSum()` into machine-readable JSON, used to generate and verify the member tables. |
-| `tools/gen_tables.py` | Fill the `<!-- BEGIN GENERATED -->` blocks in `spec/03-classes/` from `dump_streamerinfo.C` output + `git log -L` release ranges + the `.notes.yaml` sidecars. CI fails on stale blocks. |
-| `tools/check_invariants.py` | Verify the §2.8 invariants hold for every fixture. Doubles as a test that the invariants are stated correctly. **Implemented.** |
-| `tools/sync_rntuple.py` | Re-copy the upstream RNTuple spec; fail on drift. |
-| `tools/normalize.py` | Timestamp/UUID-masked digests for fixtures. |
-| `tools/generate.py` | Run every `gen.C`, produce `data/`, validate against `case.yaml`. |
-| `tools/coverage.py` | Render `spec/03-classes/index.md` coverage table from the inventory + what is actually documented. |
+| ☐ `tools/inventory.py` | Parse every `ClassDef*` in the submodule → the authoritative class/version inventory. Feeds the coverage matrix. |
+| ☐ `tools/check_versions.py` | Fail if a class document's version matrix disagrees with the submodule's `ClassDef`. This is what keeps the spec from rotting. |
+| ☐ `tools/dump_streamerinfo.C` | ROOT macro wrapping `TFile::ShowStreamerInfo()` + `TClass::GetCheckSum()` into machine-readable JSON, used to generate and verify the member tables. |
+| ☐ `tools/gen_tables.py` | Fill the `<!-- BEGIN GENERATED -->` blocks in `spec/03-classes/` from `dump_streamerinfo.C` output + `git log -L` release ranges + the `.notes.yaml` sidecars. CI fails on stale blocks. |
+| ✅ `tools/check_invariants.py` | Verify the §2.8 invariants hold for every fixture. Doubles as a test that the invariants are stated correctly. |
+| ☐ `tools/sync_rntuple.py` | Re-copy the upstream RNTuple spec; fail on drift. |
+| ✅ `tools/normalize.py` | Timestamp/UUID-masked digests for fixtures. |
+| ✅ `tools/generate.py` | Run every `gen.C`, produce `data/`, validate against `case.toml`. `--check` validates without ROOT; `--accept` re-records an intentional digest change. |
+| ☐ `tools/coverage.py` | Render `spec/03-classes/index.md` coverage table from the inventory + what is actually documented. |
+| ✅ `tools/check_bytes.py` | Evaluate the `[[bytes]]` assertions of a `case.toml`. Stdlib only, so third parties can run it. Not in the original plan. |
+| ✅ `tools/check_citations.py` | Every cited `path:line` exists in the pinned submodule. Not in the original plan. |
+| ✅ `tools/check_pin.py` | `zensical.toml`'s citation commit matches the submodule pin. Not in the original plan. |
+| ✅ `tools/rootcite.py` | Markdown extension turning `path:line` into a link at the pinned commit. Not in the original plan. |
+| ◐ `tools/rootfile.py` | Independent pure-Python reader: header, record chain, directories, key lists, buffer framing, streamer info, the streamer-driven read, collections, references. This is §7 item 4's reference reader arriving early and piecemeal; it has no decompression and no `TTree`. |
 
-CI (GitHub Actions, ROOT from conda-forge):
+CI (GitHub Actions, ROOT from conda-forge) — two workflows, `ci.yml` and
+`docs.yml`:
 
-1. Regenerate all fixtures, compare normalized digests.
-2. `check_versions.py` against the pinned submodule.
-3. `gen_tables.py --check` — generated blocks must be current.
-4. `check_invariants.py` over every fixture.
-5. `sync_rntuple.py` drift check.
-6. Markdown link check across `spec/`.
-7. Optionally: a minimal pure-Python reference reader in `tools/refreader/` that
-   implements only what the spec says and must read every fixture. This is the
-   strongest possible check that the spec is complete — if the reference reader
-   needs a fact that isn't written down, the spec has a hole. Worth doing, but
-   scope it as a later phase.
+1. ✅ Regenerate all fixtures, compare normalized digests. (Linux job; this is what
+   catches the `fSize` portability class of problem.)
+2. ☐ `check_versions.py` against the pinned submodule.
+3. ☐ `gen_tables.py --check` — generated blocks must be current.
+4. ✅ `check_invariants.py` over every fixture.
+5. ☐ `sync_rntuple.py` drift check.
+6. ✅ Link and **anchor** check across `spec/`, via `zensical build --strict`.
+7. ✅ `check_citations.py`, `check_pin.py`, and the `tools/test_*.py` unit tests.
+   Not in the original list.
+8. ◐ A pure-Python reference reader that implements only what the spec says and
+   must read every fixture — the strongest possible completeness check. Partly
+   arrived as `tools/rootfile.py`; see §7 item 4.
 
 ## 5. Phasing
 
-**Phase 0 — skeleton** (done in this session)
+**✅ Phase 0 — skeleton**
 Repo initialized, ROOT pinned as a submodule at `v6-40-04`, this plan.
 
-**Phase 1 — foundations**
-`00-conventions.md`, all of `01-container/`, `02-serialization/Buffer.md` and
-`StreamerInfo.md`. Fixture generator harness + first few cases. `inventory.py`.
-Deliverable: enough to locate and decompress any object in any ROOT file.
+**◐ Phase 1 — foundations**
+✅ `00-conventions.md`, ✅ all of `01-container/` except `LargeFiles.md` (§2.2),
+✅ `02-serialization/Buffer.md` and `StreamerInfo.md`, ✅ the fixture harness and
+10 container cases. ☐ `inventory.py` was not built.
+Deliverable met, with one caveat: "locate and decompress any object" is specified,
+but `tools/rootfile.py` does not itself decompress, so no checker looks inside a
+compressed record. `Compression.md` is verified by byte assertions on the block
+headers only.
 
-**Phase 2 — the generic object layer**
-`StreamerDriven.md`, `ElementTypes.md`, `Collections.md`, `SchemaEvolution.md`,
-`References.md`, `99-appendix/Bootstrap.md`. Fixtures for every element type code
-and every collection shape.
-Deliverable: enough to read any user-defined class.
+**◐ Phase 2 — the generic object layer**
+✅ `StreamerDriven.md`, `ElementTypes.md`, `Collections.md`, `SchemaEvolution.md`,
+`References.md`, and 11 serialization cases. ☐ `99-appendix/Bootstrap.md` was not
+written; its content exists as `StreamerInfo.md` §11 but is not collected.
+Deliverable met: `tools/rootfile.py` reads every uncompressed non-`TTree` record in
+the corpus from the specification alone.
 
-**Phase 3 — the bootstrap classes and the table generator**
+**The two carried-over items are `inventory.py` and `99-appendix/`.** Neither
+blocks phase 3; `inventory.py` should be built first inside phase 3, since that
+phase's class list is exactly what it produces.
+
+**☐ Phase 3 — the bootstrap classes and the table generator**
 The ~30 regime-3 classes in `03-classes/`, hand-written. Plus
 `dump_streamerinfo.C`, `gen_tables.py` and `check_versions.py`, since the generator
 pays for itself from phase 4 onward.
 Deliverable: enough to read `TFile` internals and the standard containers.
 
-**Phase 4 — standard classes**
+**☐ Phase 4 — standard classes**
 Run the generator over everything persistable (~440 classes) in one pass, then
 hand-review by family: hist → graf → func → math → misc. The generated pass is
 mechanical and cheap; the review is where the time goes, and it can be
 interleaved with later phases or accept contributions.
 
-**Phase 5 — TTree**
+**☐ Phase 5 — TTree**
 All of `04-ttree/`, with the full split/type matrix of fixtures. Largest single
 phase; likely to want its own sub-plan.
 
-**Phase 6 — RNTuple audit**
+**☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
 upstream PRs for anything found.
 
-**Phase 7 — legacy versions and reference reader**
+**◐ Phase 7 — legacy versions and reference reader**
 `gen/legacy/`, historical fixtures, and (optionally) the pure-Python reference
-reader as the completeness check.
+reader as the completeness check. The reader half started early and unplanned as
+`tools/rootfile.py`, because an independent implementation turned out to be the
+cheapest way to keep each new document honest. `gen/legacy/` does not exist, and
+**a large share of the gaps in §9 need it.**
 
 Phases 1–3 are sequential. Phase 4, 5 and 6 are independent of each other once
 phase 2 is done.
@@ -603,8 +683,10 @@ Settled 2026-09-14:
 These do not block starting, but should be resolved before the phase they affect:
 
 1. **When to approach the ROOT I/O team** (affects phase 6, and possibly the
-   markup format if they ever want to absorb this). Proposal: after phase 1 exists,
-   so the conversation is about a concrete artifact rather than an intention.
+   markup format if they ever want to absorb this). Proposal was: after phase 1
+   exists, so the conversation is about a concrete artifact rather than an
+   intention. **That condition is now met** — phases 1 and 2 are written, and §7.1
+   holds two concrete bug reports that would be a natural opening. Still to decide.
 2. **`TGeo*` hand-review** — 88 persistable classes, self-contained, genuinely
    present in real files (detector geometries). Generated tables are in scope by
    decision 1; whether it earns a hand-written pass is a phase-4 judgement call.
@@ -612,8 +694,14 @@ These do not block starting, but should be resolved before the phase they affect
    `\page`/`\ref`. Our tables and bit diagrams are better in plain Markdown. If the
    ROOT team wants to absorb this, we need a converter or a decision to diverge.
 4. **Reference reader.** Strongest completeness check available (if it needs a fact
-   that isn't written down, the spec has a hole), but a project in itself. Deferred
-   to phase 7; revisit once phase 2 is done and the cost is clearer.
+   that isn't written down, the spec has a hole), but a project in itself.
+   **Partly resolved by accident**: `tools/rootfile.py` grew into one over phases 1
+   and 2, because writing an independent implementation alongside each document was
+   the cheapest way to catch errors — and it did, repeatedly. It covers everything
+   through the object layer for uncompressed records, and has no decompression and
+   no `TTree`. The open question is now narrower: whether to finish it deliberately
+   as a completeness check, or leave it as a checking tool that happens to be
+   thorough.
 5. **`TTree` sub-plan.** Phase 5 is large enough that it wants its own plan document
    with the full split/leaf-type/collection fixture matrix enumerated.
 
@@ -652,11 +740,96 @@ Verified against the pinned submodule and real bytes; not yet reported.
 
 ## 8. Immediate next steps
 
-1. Write `spec/00-conventions.md` and `spec/01-container/FileHeader.md` as the style
-   prototype, with one fixture and one invariants section, and review the format
-   before scaling out. Getting the notation right once is worth more than getting
-   three more documents drafted.
-2. Build `tools/inventory.py` — cheap, and it turns the class-scope decision into a
-   concrete checked-in list rather than an estimate.
-3. Stand up the fixture harness (`gen/`, `data/`, `tools/generate.py`,
-   `tools/normalize.py`) with `th1-th1d-basic` as the first case.
+Phases 0–2 are done (§5). The next things, in order:
+
+1. **`99-appendix/Bootstrap.md` and `Glossary.md`.** Small, and they close the last
+   two inline-code forward references in `00-conventions.md` §9 — which by the
+   §6.5 convention are the working list of what is missing.
+2. **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
+   authoritative class/version list. It turns the phase-3 scope from an estimate
+   into a checked-in file, and phase 3 cannot be planned properly without it.
+3. **Start phase 3** with the classes `spec/02-serialization/` already leans on and
+   names as divergent: `TFile`/`TDirectoryFile`, `TList`/`TObjArray`/`TCollection`,
+   `TClonesArray`, `TArray*`, `TRef`/`TRefArray`/`TProcessID` (already specified in
+   `References.md` — decide whether `03-classes/` duplicates or cross-references),
+   `TString`, `TObject`/`TNamed`.
+4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
+
+Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on, and the
+`TTree` sub-plan (§7 item 5).
+
+## 9. Known gaps
+
+Every gap the written documents record, collected so they can be picked up rather
+than rediscovered. Most are stated in the `Reference files` section of the document
+named; a few are derived from a version difference the document describes.
+
+**None of them is a hole in the prose.** In every case the behaviour is specified
+and cited against the submodule; what is missing is a fixture proving it, so each
+is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline").
+
+### 9.1 Needs a legacy ROOT (blocked on `gen/legacy/`, §3.5)
+
+| Gap | Document |
+|---|---|
+| Directory record versions 1, 2, 3 | `01-container/Directory.md` |
+| A buffer written with no byte counts | `02-serialization/Buffer.md` |
+| `TStreamerElement` versions below 4, including the version-3 `fXmin`/`fXmax`/`fFactor` form | `02-serialization/StreamerInfo.md` |
+| A file old enough to take the `BuildEmulated` path | `02-serialization/SchemaEvolution.md` |
+| Collection layouts below `TStreamerInfo` version 8 | `02-serialization/Collections.md` |
+| `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `02-serialization/Collections.md` |
+
+### 9.2 Needs a file over 2 GB (release artifact, §3.5)
+
+| Gap | Document |
+|---|---|
+| The large `TFree` entry form, and `fLast` above 2000000000 | `01-container/FreeSegments.md` |
+| A large key | `01-container/Record.md` — a `TBasket` fixture supplies this, since baskets always use the large layout |
+| Everything else past 2 GB | §2.2, `LargeFiles.md` |
+
+### 9.3 Needs a compiled dictionary
+
+A `gen.C` runs in the interpreter, so a class with a real `ClassDef` and a
+generated dictionary is out of reach. This blocks more than expected:
+
+| Gap | Document |
+|---|---|
+| A member-wise collection whose value class has a `ClassDef`, and so a plain version word instead of a checksum | `02-serialization/Collections.md` |
+| `TClonesArray` in either encoding | `02-serialization/Collections.md` |
+| A `type=readraw` rule | `02-serialization/SchemaEvolution.md` |
+
+> **Worth solving once rather than working around repeatedly.** A `gen/common/`
+> helper that compiles a small dictionary with `ACLiC` or `rootcling` before the
+> macro runs would unblock this whole row and much of phase 4. Cost: the fixture
+> then depends on a working compiler in CI, which conda-forge ROOT provides.
+
+### 9.4 Needs two ROOT sessions or two files
+
+| Gap | Document |
+|---|---|
+| A non-zero `pidf`, a non-zero `fPidOffset`, and a `fUniqueID` whose top byte survives to disk | `02-serialization/References.md` |
+| Two streamer infos for one class distinguished by checksum | `02-serialization/SchemaEvolution.md` |
+| A negative in-memory class version reaching disk as 1 | `02-serialization/SchemaEvolution.md` |
+
+`fPidOffset` specifically arises when a key is copied between files, so a
+`TTreeCloner` or `TFile::Cp` case would produce several of these at once.
+
+### 9.5 Reachable now, just not written
+
+No external blocker; these are simply cases nobody has added yet.
+
+| Gap | Document |
+|---|---|
+| `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
+| `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
+| `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
+| The `kHasUUID` form of `TRef`, and a `TExec` index in a `TRef`'s `fBits` | `02-serialization/References.md` |
+
+### 9.6 Structural, not a missing fixture
+
+| Gap | Where |
+|---|---|
+| No checker decompresses, so nothing verifies a compressed payload's *contents* — only its block headers | `tools/rootfile.py`, `01-container/Compression.md` |
+| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 |
+| Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 |
+| Two upstream bug candidates found and banked, not yet reported | §7.1 |

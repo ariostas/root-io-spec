@@ -478,5 +478,5 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/version-zero` | A declared-version-0 class: version word 0 followed by no checksum |
 
 No fixture covers a buffer written without byte counts, which needs a file older
-than any ROOT release that can still be built here, or a member-wise collection,
-which belongs with [Collections](Collections.md).
+than any ROOT release that can still be built here. The member-wise version word
+is covered by `serialization/collections`.

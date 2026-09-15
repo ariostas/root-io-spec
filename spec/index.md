@@ -16,8 +16,10 @@ This is intended to be the shared, testable artifact those projects can rely on.
 
 ## Status
 
-Early. The structure and scope are settled; the specification text is being
-written layer by layer. See the repository's `PLAN.md` for the phasing.
+The container and object serialization layers are written and checked — enough to
+locate any object in a ROOT file and decode any user-defined class from the file's
+own streamer info. The remaining layers are not started. See the repository's
+`PLAN.md` for the phasing, and its §9 for every known gap.
 
 | Layer | State |
 |---|---|
