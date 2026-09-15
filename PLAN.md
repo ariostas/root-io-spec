@@ -2,8 +2,9 @@
 
 Status: **phases 0–2 complete**, bar the two items in §5. The container and object
 layers are written, checked and pushed. `spec/03-classes/` has `TArray` and its
-index; `spec/04-ttree/` has `TBranch`, `TLeaf` and `TBasket`, which together cover
-reading an entry out of an unsplit tree; `spec/05-rntuple/` is not started.
+index; `spec/04-ttree/` has `TTree`, `TBranch`, `TLeaf` and `TBasket`, which
+together cover reading an entry out of an unsplit tree; `spec/05-rntuple/` is not
+started.
 
 Throughout this document: **✅ done**, **◐ partly done**, **☐ not started**.
 `§9` collects every gap the written documents record, so that they can be picked
@@ -361,7 +362,7 @@ spend most of their effort.
 
 | File | Contents |
 |---|---|
-| `TTree.md` | The `TTree` record, v20 members, `fEntries`/`fTotBytes`, the branch list |
+| ✅ `TTree.md` | The `TTree` record, v20 members, `fEntries`/`fTotBytes`, the branch list, `fLeaves` as back-references, cluster ranges, finding a tree by derivation |
 | ✅ `TBranch.md` | v13, `fBasketBytes`/`fBasketEntry`/`fBasketSeek` arrays, the "one basket lives inside the TTree record" rule, branches in separate files |
 | `TBranchElement.md` | `fID`, `fType` (−1,0,1,2,3,4,41…), `fStreamerType`, `fClassName`/`fParentName`/`fClonesName`, and how `fType` selects the read algorithm |
 | ✅ `TLeaf.md` | `TLeaf` family, `fLen`/`fLenType`/`fOffset`/`fIsRange`/`fIsUnsigned`, leaf counts, `TLeafC` strings, `TLeafElement`, `TLeafD32`/`TLeafF16` |
@@ -594,7 +595,7 @@ Most class versions cannot be produced by ROOT 6.40. To cover them:
 | ✅ `tools/check_citations.py` | Every cited `path:line` exists in the pinned submodule. Not in the original plan. |
 | ✅ `tools/check_pin.py` | `zensical.toml`'s citation commit matches the submodule pin. Not in the original plan. |
 | ✅ `tools/rootcite.py` | Markdown extension turning `path:line` into a link at the pinned commit. Not in the original plan. |
-| ◐ `tools/rootfile.py` | Independent pure-Python reader: header, record chain, directories, key lists, decompression, buffer framing, streamer info, the streamer-driven read, collections, references, `TClonesArray`, `TList`/`TObjArray`. This is §7 item 4's reference reader arriving early and piecemeal; it has no `TTree` and no `TArray*`. |
+| ◐ `tools/rootfile.py` | Independent pure-Python reader: header, record chain, directories, key lists, decompression, buffer framing, streamer info, the streamer-driven read, collections, references, `TClonesArray`, `TList`/`TObjArray`, and the unsplit `TTree` path — tree record, branches, leaves, baskets, entry spans. This is §7 item 4's reference reader arriving early and piecemeal. |
 | ✅ `tools/coverage_probe.py` | Measure how much of an arbitrary ROOT file the specification covers, and rank what blocks the rest. Not a CI check; see §9.7. Not in the original plan. |
 
 CI (GitHub Actions, ROOT from conda-forge) — two workflows, `ci.yml` and
@@ -653,13 +654,14 @@ interleaved with later phases or accept contributions.
 
 **◐ Phase 5 — TTree**
 ✅ `04-ttree/TBasket.md`, done early because the coverage probe named it the last
-blocker on an ordinary file. ✅ `TBranch.md` and `TLeaf.md`, which together close
-the unsplit reading path: entry number → basket → byte range → values, checked
-end to end by `rootfile.entry_spans`. What remains is the split half —
-`TTree.md`, `TBranchElement.md`, `Splitting.md`, `ReadingEntries.md`,
-`Double32.md`, `Auxiliary.md` — with the full split/type matrix of fixtures.
-Still the largest single phase, and it still wants its own sub-plan (§7 item 5),
-which should now be written around what these three documents settle.
+blocker on an ordinary file. ✅ `TBranch.md`, `TLeaf.md` and `TTree.md`, which
+together close the unsplit reading path from the record down: tree → branch →
+basket → byte range → values, checked end to end by `rootfile.entry_spans`. What
+remains is the split half — `TBranchElement.md`, `Splitting.md`,
+`ReadingEntries.md`, `Double32.md`, `Auxiliary.md` — with the full split/type
+matrix of fixtures. Still the largest single phase, and it still wants its own
+sub-plan (§7 item 5), which should now be written around what these four
+documents settle.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
@@ -1039,6 +1041,27 @@ layout `TBranch.md` §13 does not give; and `TMatrixT`, `TVectorT` and
 specification has not written up — `RooLinkedList` writes `_size` and then that
 many object pointers, while its info advertises a `_hashThresh` that is not on disk
 (`root/roofit/roofitcore/src/RooLinkedList.cxx:891-924`).
+
+#### What `TTree.md` added
+
+Written 2026-09-15 with the corpus in hand rather than against it, so the
+measurements above are what the document states. Three further findings:
+
+| Found | Where |
+|---|---|
+| A tree's record need not be of class `TTree`. `TNtuple`, `TNtupleD` and `TChain` derive from it, and `check_invariants.py` was skipping such records outright because `trees()` compared the key's class name. Trees are now found through the base-class chain of the file's own streamer infos, and `ttree/ntuple` is the fixture | `TTree.md` §1, `rootfile.derives_from` |
+| `fEntries` may disagree with the branches by design. `string-example.root`, an LHCb DST written by ROOT 6.30/02, has a tree with `fEntries` 0 and a branch holding 2 entries and 157 bytes. `TTree::SetEntries(-1)` warns about exactly this rather than refusing, so there is deliberately no invariant relating the two | `TTree.md` §3 |
+| A reader gap: `Branch.io_bits` was always 0. `fIOFeatures` is a `kAny` member, not a base class, so `_named` does not flatten it and the lookup for `fIOBits` silently missed. Unused by any check, so it had gone unnoticed since `ttree/basket-iofeatures` was written | `rootfile._io_bits` |
+
+**And one published number corrected.** `TBranch.md` §8 said `fIOFeatures` has been
+in every branch "since ROOT 6.14". It is **6.12/02** — `be4f62946e3`, 2017-10-20,
+first tagged `v6-12-02`, and the corpus has ROOT 6.12/04 files with `TBranch` v13
+and `TTree` v20.
+
+Nothing in the corpus has a non-zero `fNClusterRange`, a non-null `fAliases`,
+`fTreeIndex`, `fFriends`, `fUserInfo` or `fBranchRef`, or a non-empty `fIndex`, so
+`ttree/clusters` covers the first and the rest stay uncovered until
+`Auxiliary.md`.
 
 #### The methodological catch
 

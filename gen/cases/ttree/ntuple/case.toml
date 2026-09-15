@@ -1,0 +1,142 @@
+id   = "ttree/ntuple"
+file = "data/ttree/ntuple.root"
+size = 16954
+
+description = """
+A TNtuple: a tree whose record is not of class TTree.
+
+TNtuple derives from TTree and adds one member. The key's class name is
+"TNtuple", the whole TTree layout sits inside the record as a base class, and
+fNvar follows it. The point of the case is that a reader cannot find the trees in
+a file by comparing the key's class name against "TTree" -- it has to know, from
+the file's own streamer info, which classes derive from it.
+
+What this case pins down:
+
+- The key names the class "TNtuple", and the object data opens with TNtuple's own
+  byte count and class version 2, not TTree's.
+- The TTree base is a nested framed object: its own byte count and version word
+  20, then the whole member list of ttree/tree. A reader that dispatches on the
+  key's class name and then applies TTree's streamer info directly is four bytes
+  and a version word out of step.
+- fNvar is the last member of the record, after every TTree member. fArgs is
+  transient and is not on disk.
+- TNtuple's three branches are plain TBranch objects holding TLeafF leaves; the
+  class adds nothing to them. fTotBytes is 3 x 73.
+"""
+
+spec = [
+  "spec/04-ttree/TTree.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 158
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 258
+nbytes = 73
+class  = "TBasket"
+role   = "column x"
+
+[[records]]
+offset = 331
+nbytes = 73
+class  = "TBasket"
+role   = "column y"
+
+[[records]]
+offset = 404
+nbytes = 73
+class  = "TBasket"
+role   = "column z"
+
+[[records]]
+offset = 477
+nbytes = 1788
+class  = "TNtuple"
+role   = "the ntuple: a TTree base plus fNvar"
+
+[[records]]
+offset = 2265
+nbytes = 14499
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 16764
+nbytes = 115
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 16879
+nbytes = 75
+class  = "TFile"
+role   = "free segments"
+
+[[bytes]]
+name = "the key's class name: a reader looking for \"TTree\" does not match it"
+offset = 503
+type = "string"
+value = "TNtuple"
+[[bytes]]
+name = "the object data opens with TNtuple's byte count, 1738"
+offset = 523
+type = "u32"
+value = 1073743562
+[[bytes]]
+name = "TNtuple class version"
+offset = 527
+type = "i16"
+value = 2
+[[bytes]]
+name = "then the TTree base's own byte count, ten bytes shorter"
+offset = 529
+type = "u32"
+value = 1073743552
+[[bytes]]
+name = "and TTree's class version, inside the derived record"
+offset = 533
+type = "i16"
+value = 20
+[[bytes]]
+name = "fName, from the TNamed base of TTree"
+offset = 551
+type = "string"
+value = "n"
+[[bytes]]
+name = "fTitle"
+offset = 553
+type = "string"
+value = "an ntuple"
+[[bytes]]
+name = "fEntries"
+offset = 599
+type = "i64"
+value = 2
+[[bytes]]
+name = "fTotBytes: three basket records of 73 bytes"
+offset = 607
+type = "i64"
+value = 219
+[[bytes]]
+name = "fLeaves' nobjects: one reference per column"
+offset = 2213
+type = "i32"
+value = 3
+[[bytes]]
+name = "fBranchRef, TTree's last member, ends the base class at 2261"
+offset = 2257
+type = "u32"
+value = 0
+[[bytes]]
+name = "fNvar: TNtuple's only persistent member, after the whole TTree base"
+offset = 2261
+type = "i32"
+value = 3

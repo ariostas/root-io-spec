@@ -1182,19 +1182,25 @@ class Checker:
 
     # -- TBranch.md 11 and TLeaf.md 10 --------------------------------------
     def trees(self):
-        """(buffer, record, branches) for every readable TTree record."""
+        """(buffer, record, tree) for every readable tree record.
+
+        Found by derivation rather than by class name: TNtuple and TNtupleD are
+        trees too, and their records do not say "TTree". TTree.md 1.
+        """
         _, _, infos = self.streamer_infos()
         if infos is None:
             return
         for rec in self.records:
-            if rec.free or rec.class_name != "TTree":
+            if rec.free or not rec.key_len:
+                continue
+            if not rootfile.derives_from(infos, rec.class_name or "", "TTree"):
                 continue
             data = self.data(rec)
             if data is None:
                 continue
             try:
                 value = rootfile.decode_record(data, rec, infos)
-                yield data, rec, rootfile.read_branches(data, value, rec.offset)
+                yield data, rec, rootfile.read_tree(data, value, rec.offset)
             except rootfile.UnsupportedClass as exc:
                 # A layout this specification does not cover -- a legacy TBranch,
                 # say. Not a failure of the file.
@@ -1209,8 +1215,10 @@ class Checker:
 
     def check_branches(self) -> None:
         found = list(self.trees())
-        self._all_branches = [top for _, _, top in found]
-        for data, rec, top in found:
+        self._all_branches = [tree.branches for _, _, tree in found]
+        for data, rec, tree in found:
+            self.check_tree(data, rec, tree)
+            top = tree.branches
             leaves = []
             for b in rootfile.walk_branches(top):
                 for lf in b.leaves:
@@ -1222,6 +1230,97 @@ class Checker:
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_leaves(data, branch, leaves)
+
+    def check_tree(self, data, rec, tree) -> None:
+        """The Invariants of spec/04-ttree/TTree.md."""
+        name = f"tree {tree.name!r}"
+        branches = list(rootfile.walk_branches(tree.branches))
+
+        # 1. The byte counters are the sums over every branch, at every depth.
+        for label, got, want in (
+                ("fTotBytes", tree.tot_bytes,
+                 sum(b.tot_bytes for b in branches)),
+                ("fZipBytes", tree.zip_bytes,
+                 sum(b.zip_bytes for b in branches))):
+            if got != want:
+                self.bad("TTree 11.1",
+                         f"{name}: {label} {got}, sum over {len(branches)} "
+                         f"branches {want}")
+        if tree.entries < 0:
+            self.bad("TTree 11.1", f"{name}: fEntries {tree.entries}")
+
+        # 2. The two watermarks are at most what has been written.
+        for label, got in (("fSavedBytes", tree.saved_bytes),
+                           ("fFlushedBytes", tree.flushed_bytes)):
+            if not 0 <= got <= tree.zip_bytes:
+                self.bad("TTree 11.2",
+                         f"{name}: {label} {got}, fZipBytes {tree.zip_bytes}")
+
+        # 3. The cluster arrays hold exactly fNClusterRange values, and the
+        #    is-present flag is clear exactly when there are none.
+        n = tree.n_cluster_range
+        if n is not None:
+            if n < 0:
+                self.bad("TTree 11.3", f"{name}: fNClusterRange {n}")
+            for label, array, flag in (
+                    ("fClusterRangeEnd", tree.cluster_range_end,
+                     tree.cluster_present[0]),
+                    ("fClusterSize", tree.cluster_size,
+                     tree.cluster_present[1])):
+                if len(array) != max(n, 0):
+                    self.bad("TTree 11.3",
+                             f"{name}: {label} has {len(array)} values, "
+                             f"fNClusterRange is {n}")
+                if bool(flag) != bool(n):
+                    self.bad("TTree 11.3",
+                             f"{name}: {label} is-present flag {flag} with "
+                             f"fNClusterRange {n}")
+
+            # 4. The range ends partition the entries, in order.
+            ends = tree.cluster_range_end
+            if any(b < a for a, b in zip(ends, ends[1:])):
+                self.bad("TTree 11.4", f"{name}: fClusterRangeEnd {ends}")
+            if ends and ends[-1] >= tree.entries:
+                self.bad("TTree 11.4",
+                         f"{name}: fClusterRangeEnd ends at {ends[-1]} but "
+                         f"fEntries is {tree.entries}")
+            if any(s < 0 for s in tree.cluster_size):
+                self.bad("TTree 11.4", f"{name}: fClusterSize {tree.cluster_size}")
+
+        # 5. fLeaves is one back-reference per leaf of the whole tree.
+        want_slots = [lf.slot for b in branches for lf in b.leaves]
+        got_slots = [rec.offset + r - rootfile.MAP_OFFSET for r in tree.leaf_refs]
+        if tree.leaf_objects:
+            self.bad("TTree 11.5",
+                     f"{name}: {tree.leaf_objects} of fLeaves' entries are "
+                     f"objects rather than references")
+        elif sorted(got_slots) != sorted(want_slots):
+            missing = sorted(set(want_slots) - set(got_slots))
+            extra = sorted(set(got_slots) - set(want_slots))
+            self.bad("TTree 11.5",
+                     f"{name}: fLeaves has {len(got_slots)} references and the "
+                     f"branches hold {len(want_slots)} leaves; "
+                     f"unreferenced at {missing}, references to no leaf at "
+                     f"{extra}")
+        if tree.leaf_slots != len(tree.leaf_refs) + tree.leaf_objects:
+            self.bad("TTree 11.5",
+                     f"{name}: fLeaves' nobjects is {tree.leaf_slots} but it "
+                     f"holds {len(tree.leaf_refs) + tree.leaf_objects} entries")
+
+        # 6. The old-style index is two arrays of one length.
+        if tree.index_n != tree.index_values_n:
+            self.bad("TTree 11.6",
+                     f"{name}: fIndex has {tree.index_n} values, fIndexValues "
+                     f"{tree.index_values_n}")
+
+        # 7. The two write-time lengths are in range.
+        if tree.estimate <= 0:
+            self.bad("TTree 11.7", f"{name}: fEstimate {tree.estimate}")
+        if (tree.default_entry_offset_len is not None
+                and tree.default_entry_offset_len < 10):
+            self.bad("TTree 11.7",
+                     f"{name}: fDefaultEntryOffsetLen "
+                     f"{tree.default_entry_offset_len}")
 
     def check_branch(self, data, br) -> None:
         name = f"branch {br.name!r}"

@@ -27,7 +27,7 @@ started.
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
-| `TTree` — `TBranch`, `TLeaf`, `TBasket` | written |
+| `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket` | written |
 | Standard classes and `TTree` — everything else, RNTuple | not started |
 
 29 reference files, 723 byte-level assertions, 583 checked source citations.

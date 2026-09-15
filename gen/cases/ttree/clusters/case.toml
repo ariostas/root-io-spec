@@ -1,0 +1,226 @@
+id   = "ttree/clusters"
+file = "data/ttree/clusters.root"
+size = 15917
+
+description = """
+A tree whose cluster size changes twice, so that fNClusterRange and its two
+counted pointers carry real values.
+
+SetAutoFlush(4), then 3, then 5, with nineteen entries filled across the three
+settings. Each change closes out a cluster range, so the record ends with two
+ranges on disk and a third described by fAutoFlush alone. Nothing in the 154-file
+foreign corpus of PLAN.md section 9.8 has a non-zero fNClusterRange, which is why
+this case exists.
+
+What this case pins down:
+
+- fNClusterRange is 2, and the is-present flag byte of both fClusterRangeEnd and
+  fClusterSize is 1, with exactly fNClusterRange values behind it -- not
+  fMaxClusterRange, which is transient. Contrast ttree/tree, where the count is 0
+  and the flag byte is 0.
+- fClusterRangeEnd holds the *last* entry of each range, inclusive: 7 and 13. The
+  next range therefore starts at 8 and at 14. fClusterSize holds the cluster size
+  within each range, in entries: 4 and 3.
+- The final, open-ended range starts at 14 and its size is fAutoFlush, which is 5.
+  It is not in either array.
+- fAutoFlush on disk is 5, a positive entry count, because SetAutoFlush was given
+  one. fAutoSave is 3703700, which is neither the -300000000 the constructor set
+  nor anything the caller asked for: on the first automatic flush ROOT rewrites
+  fAutoSave into a multiple of fAutoFlush estimated from the bytes written so far.
+  Neither member's stored value is the writer's request.
+- fFlushedBytes is 401, equal to fZipBytes, because the last flush was the last
+  thing that happened. In ttree/tree it is 0, which is how a reader tells that no
+  automatic flush was ever reached.
+- With auto-flush active, one cluster is one basket: the five clusters
+  [0,4) [4,8) [8,11) [11,14) [14,19) are exactly the five baskets, and the
+  branch's fBasketEntry is 0, 4, 8, 11, 14, 19.
+"""
+
+spec = [
+  "spec/04-ttree/TTree.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 172
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 272
+nbytes = 81
+class  = "TBasket"
+role   = "cluster 0: entries 0 to 3"
+
+[[records]]
+offset = 353
+nbytes = 81
+class  = "TBasket"
+role   = "cluster 1: entries 4 to 7, the end of range 0"
+
+[[records]]
+offset = 434
+nbytes = 77
+class  = "TBasket"
+role   = "cluster 2: entries 8 to 10"
+
+[[records]]
+offset = 511
+nbytes = 77
+class  = "TBasket"
+role   = "cluster 3: entries 11 to 13, the end of range 1"
+
+[[records]]
+offset = 588
+nbytes = 85
+class  = "TBasket"
+role   = "cluster 4: entries 14 to 18, in the open-ended range"
+
+[[records]]
+offset = 673
+nbytes = 860
+class  = "TTree"
+role   = "the tree, holding the cluster ranges"
+
+[[records]]
+offset = 1533
+nbytes = 14185
+class  = "TList"
+role   = "StreamerInfo"
+
+[[records]]
+offset = 15718
+nbytes = 117
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 15835
+nbytes = 82
+class  = "TFile"
+role   = "free segments"
+
+[[bytes]]
+name = "TTree class version"
+offset = 718
+type = "i16"
+value = 20
+[[bytes]]
+name = "fEntries"
+offset = 781
+type = "i64"
+value = 19
+[[bytes]]
+name = "fTotBytes: 81 + 81 + 77 + 77 + 85"
+offset = 789
+type = "i64"
+value = 401
+[[bytes]]
+name = "fZipBytes"
+offset = 797
+type = "i64"
+value = 401
+[[bytes]]
+name = "fSavedBytes: still 0, because no AutoSave watermark was reached"
+offset = 805
+type = "i64"
+value = 0
+[[bytes]]
+name = "fFlushedBytes: non-zero, so automatic flushing did happen"
+offset = 813
+type = "i64"
+value = 401
+
+# --- the cluster ranges -----------------------------------------------------
+
+[[bytes]]
+name = "fNClusterRange: two ranges were closed out"
+offset = 845
+type = "i32"
+value = 2
+[[bytes]]
+name = "fAutoSave: rewritten by ROOT, not the -300000000 the constructor set"
+offset = 873
+type = "i64"
+value = 3703700
+[[bytes]]
+name = "fAutoFlush: a positive entry count, and the size of the open-ended range"
+offset = 881
+type = "i64"
+value = 5
+[[bytes]]
+name = "fEstimate"
+offset = 889
+type = "i64"
+value = 1000000
+[[bytes]]
+name = "fClusterRangeEnd: the is-present flag, set this time"
+offset = 897
+type = "u8"
+value = 1
+[[bytes]]
+name = "fClusterRangeEnd[0]: the last entry of range 0, inclusive"
+offset = 898
+type = "i64"
+value = 7
+[[bytes]]
+name = "fClusterRangeEnd[1]: range 1 ends here, so range 2 starts at 14"
+offset = 906
+type = "i64"
+value = 13
+[[bytes]]
+name = "fClusterSize: its own is-present flag, immediately after"
+offset = 914
+type = "u8"
+value = 1
+[[bytes]]
+name = "fClusterSize[0]: four entries per cluster in range 0"
+offset = 915
+type = "i64"
+value = 4
+[[bytes]]
+name = "fClusterSize[1]: three in range 1. There is no third element."
+offset = 923
+type = "i64"
+value = 3
+[[bytes]]
+name = "fIOFeatures follows immediately: its byte count"
+offset = 931
+type = "u32"
+value = 1073741831
+
+# --- the branch, one basket per cluster --------------------------------------
+
+[[bytes]]
+name = "fWriteBasket: five baskets, one per cluster"
+offset = 1033
+type = "i32"
+value = 5
+[[bytes]]
+name = "fBasketEntry[1]: the second cluster begins at entry 4"
+offset = 1322
+type = "i64"
+value = 4
+[[bytes]]
+name = "fBasketEntry[2]: 8, which is fClusterRangeEnd[0] + 1"
+offset = 1330
+type = "i64"
+value = 8
+[[bytes]]
+name = "fBasketEntry[3]: 11, three entries later, range 1's cluster size"
+offset = 1338
+type = "i64"
+value = 11
+[[bytes]]
+name = "fBasketEntry[4]: 14, which is fClusterRangeEnd[1] + 1"
+offset = 1346
+type = "i64"
+value = 14
+[[bytes]]
+name = "fBasketEntry[5]: the terminator, equal to fEntries"
+offset = 1354
+type = "i64"
+value = 19

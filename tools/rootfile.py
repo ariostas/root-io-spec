@@ -2047,6 +2047,37 @@ class Leaf:
 
 
 @dataclass
+class Tree:
+    """A decoded TTree record. TTree.md section 2."""
+
+    name: str
+    title: str
+    version: int                  # the record's class version
+    entries: int
+    tot_bytes: int
+    zip_bytes: int
+    saved_bytes: int
+    flushed_bytes: int
+    default_entry_offset_len: int | None   # None below class version 17
+    n_cluster_range: int | None            # None below class version 19
+    max_entries: int | None                # None below class version 14
+    auto_save: int
+    auto_flush: int | None                 # None below class version 18
+    estimate: int
+    io_bits: int | None                    # None below class version 20
+    cluster_range_end: list[int]
+    cluster_size: list[int]
+    cluster_present: tuple[int, int]       # the two is-present flag bytes
+    index_values_n: int                    # fIndexValues' fN
+    index_n: int                           # fIndex' fN
+    leaf_slots: int                        # fLeaves' nobjects
+    leaf_refs: list[int]                   # map positions of its entries
+    leaf_objects: int                      # entries written in full, not as a reference
+    pointers: dict                         # fAliases etc -> "null" | "object" | "reference"
+    branches: list["Branch"]
+
+
+@dataclass
 class Branch:
     """One entry of a tree's or branch's fBranches. TBranch.md section 2."""
 
@@ -2114,6 +2145,21 @@ def truncated_width(cls: str, title: str) -> int:
     if nbits < 15:
         return 3                      # nbits smuggled through fXmin
     return 3 if cls == "TLeafF16" else 4
+
+
+def _io_bits(buf: bytes, m: dict) -> int | None:
+    """fIOFeatures' single member, or None when the class has no fIOFeatures.
+
+    fIOFeatures is a kAny member rather than a base class, so `_named` does not
+    flatten it: the byte has to be taken from the nested object.
+    """
+    outer = m.get("fIOFeatures")
+    if outer is None:
+        return None
+    for member in outer.members or []:
+        if member.name == "fIOBits":
+            return buf[member.start]
+    return None
 
 
 def _named(buf: bytes, values: list[Value]) -> dict[str, Value]:
@@ -2233,7 +2279,7 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         entry_offset_len=_i32(buf, m["fEntryOffsetLen"].start),
         write_basket=_i32(buf, m["fWriteBasket"].start),
         entry_number=_i64(buf, m["fEntryNumber"].start),
-        io_bits=buf[m["fIOBits"].start] if "fIOBits" in m else 0,
+        io_bits=_io_bits(buf, m) or 0,
         offset=_i32(buf, m["fOffset"].start),
         max_baskets=n,
         split_level=_i32(buf, m["fSplitLevel"].start),
@@ -2254,6 +2300,104 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
                    if e.reference is not None],
         branches=[_read_branch(buf, e, base)
                   for e in (m["fBranches"].members or [])])
+
+
+TREE_POINTERS = ("fAliases", "fTreeIndex", "fFriends", "fUserInfo", "fBranchRef")
+
+
+def _int_member(buf: bytes, value: Value) -> int:
+    """An integral member, whatever width the streamer info gave it.
+
+    fEntries and its neighbours were Int_t or Stat_t -- a double -- below TTree
+    class version 13, so the width cannot be assumed. TTree.md section 12.
+    """
+    if value.ftype in (3, 6, 13):
+        return _i32(buf, value.start)
+    if value.ftype in (16, 17):
+        return _i64(buf, value.start)
+    if value.ftype == 8:
+        return int(struct.unpack_from(">d", buf, value.start)[0])
+    raise FormatError(f"{value.name}: unexpected type code {value.ftype}")
+
+
+def derives_from(infos: list[StreamerInfo], name: str, ancestor: str) -> bool:
+    """Is `ancestor` in `name`'s base-class chain, per the file's own infos?
+
+    A tree's record may be of any class deriving from TTree -- TNtuple, TNtupleD,
+    TChain -- so a reader cannot find trees by comparing the key's class name
+    against "TTree". TTree.md section 1.
+    """
+    by_name = {i.name: i for i in infos}
+    seen: set[str] = set()
+    stack = [name]
+    while stack:
+        current = stack.pop()
+        if current == ancestor:
+            return True
+        if current in seen:
+            continue
+        seen.add(current)
+        info = by_name.get(current)
+        if info is None:
+            continue
+        stack += [el.name for el in info.elements if el.cls == "TStreamerBase"]
+    return False
+
+
+def read_tree(buf: bytes, value: Value, base: int) -> Tree:
+    """A decoded TTree record, branches nested.
+
+    `value` may be a class deriving from TTree, in which case the TTree part is a
+    base-class member of it and the version reported is that base's.
+
+    `base` is the record's offset, i.e. buffer position 0, which is what the
+    reference tags in fLeaves and fLeafCount are relative to.
+    """
+    m = _named(buf, value.members or [])
+    if "fBranches" not in m:
+        raise FormatError("no fBranches member")
+    # The frame whose version word is TTree's own.
+    framed = next((mem for mem in (value.members or []) if mem.name == "TTree"),
+                  value)
+
+    def opt(name):
+        return _int_member(buf, m[name]) if name in m else None
+
+    n = _int_member(buf, m["fNClusterRange"]) if "fNClusterRange" in m else 0
+    leaves = m["fLeaves"].members or []
+    branches = [_read_branch(buf, e, base)
+                for e in (m["fBranches"].members or [])]
+    _resolve_leaf_refs(branches, base)
+    return Tree(
+        name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
+        version=read_frame(buf, framed.start).version,
+        entries=_int_member(buf, m["fEntries"]),
+        tot_bytes=_int_member(buf, m["fTotBytes"]),
+        zip_bytes=_int_member(buf, m["fZipBytes"]),
+        saved_bytes=_int_member(buf, m["fSavedBytes"]),
+        flushed_bytes=opt("fFlushedBytes") or 0,
+        default_entry_offset_len=opt("fDefaultEntryOffsetLen"),
+        n_cluster_range=opt("fNClusterRange"),
+        max_entries=opt("fMaxEntries"),
+        auto_save=_int_member(buf, m["fAutoSave"]),
+        auto_flush=opt("fAutoFlush"),
+        estimate=_int_member(buf, m["fEstimate"]),
+        io_bits=_io_bits(buf, m),
+        cluster_range_end=(_counted_pointer(buf, m["fClusterRangeEnd"], 8, n)
+                           if "fClusterRangeEnd" in m else []),
+        cluster_size=(_counted_pointer(buf, m["fClusterSize"], 8, n)
+                      if "fClusterSize" in m else []),
+        cluster_present=((buf[m["fClusterRangeEnd"].start],
+                          buf[m["fClusterSize"].start])
+                         if "fClusterRangeEnd" in m else (0, 0)),
+        index_values_n=_i32(buf, m["fIndexValues"].start),
+        index_n=_i32(buf, m["fIndex"].start),
+        leaf_slots=_sequence_count(buf, m["fLeaves"]),
+        leaf_refs=[e.reference for e in leaves if e.reference is not None],
+        leaf_objects=sum(1 for e in leaves if e.reference is None),
+        pointers={name: read_slot(buf, m[name].start, base).kind
+                  for name in TREE_POINTERS if name in m},
+        branches=branches)
 
 
 def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:
@@ -2289,6 +2433,42 @@ def _resolve_leaf_refs(top: list[Branch], base: int) -> None:
             leaf = known.get(base + ref - MAP_OFFSET)
             if leaf is not None:
                 branch.leaves.append(leaf)
+
+
+def cluster_of(tree: Tree, entry: int) -> tuple[int, int] | None:
+    """The cluster `[start, end)` containing `entry`. TTree.md section 6.2.
+
+    Returns None when the file does not record the cluster size for that entry,
+    which is the case for the open-ended range of any tree whose fAutoFlush is
+    not positive. ROOT then estimates it from run-time cache settings, so it is
+    not a property of the file.
+    """
+    ends = tree.cluster_range_end
+    n = len(ends)
+    r = sum(1 for end in ends if end < entry)
+    pedestal = 0 if r == 0 else ends[r - 1] + 1
+    size = (tree.auto_flush or 0) if r == n else tree.cluster_size[r]
+    if size <= 0:
+        return None
+    start = pedestal + ((entry - pedestal) // size) * size
+    end = start + size
+    if r < n:
+        end = min(end, ends[r] + 1)
+    return start, min(end, tree.entries)
+
+
+def clusters(tree: Tree):
+    """Every cluster of the tree, in order, while the size is recorded."""
+    entry = 0
+    while entry < tree.entries:
+        found = cluster_of(tree, entry)
+        if found is None:
+            return
+        start, end = found
+        if end <= entry:
+            return
+        yield start, end
+        entry = end
 
 
 def walk_branches(branches: list[Branch]):

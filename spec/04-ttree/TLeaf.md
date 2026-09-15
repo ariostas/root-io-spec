@@ -20,7 +20,7 @@ Keep them apart while reading:
 
 | | Where | Described by |
 |---|---|---|
-| The leaf *record* | inside a `TBranch`'s `fLeaves`, in the `TTree` record | the file's own streamer info |
+| The leaf *record* | inside a `TBranch`'s `fLeaves`, in the [`TTree` record](TTree.md) | the file's own streamer info |
 | The leaf *data* | inside a basket | §5 of this document, and nothing else |
 
 ## 2. The leaf record

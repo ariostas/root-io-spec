@@ -209,3 +209,121 @@ class EmbeddedBasketFlag(unittest.TestCase):
         buf[14:16] = (99).to_bytes(2, "big")       # a wrong fKeylen
         with self.assertRaises(rootfile.FormatError):
             rootfile.read_embedded_basket(bytes(buf), 0)
+
+
+def tree(**kw) -> rootfile.Tree:
+    fields = dict(
+        name="t", title="", version=20, entries=0, tot_bytes=0, zip_bytes=0,
+        saved_bytes=0, flushed_bytes=0, default_entry_offset_len=1000,
+        n_cluster_range=0, max_entries=10 ** 12, auto_save=-300000000,
+        auto_flush=-30000000, estimate=10 ** 6, io_bits=0,
+        cluster_range_end=[], cluster_size=[], cluster_present=(0, 0),
+        index_values_n=0, index_n=0, leaf_slots=0, leaf_refs=[],
+        leaf_objects=0, pointers={}, branches=[])
+    fields.update(kw)
+    return rootfile.Tree(**fields)
+
+
+class Clusters(unittest.TestCase):
+    """TTree.md section 6.2, on shapes no fixture in this corpus has."""
+
+    def test_one_range_described_by_fautoflush(self):
+        # fNClusterRange 0 and a positive fAutoFlush: the whole tree is one range.
+        t = tree(entries=10, auto_flush=4)
+        self.assertEqual(list(rootfile.clusters(t)),
+                         [(0, 4), (4, 8), (8, 10)])
+
+    def test_the_last_cluster_is_truncated_at_fentries(self):
+        t = tree(entries=10, auto_flush=4)
+        self.assertEqual(rootfile.cluster_of(t, 9), (8, 10))
+
+    def test_a_negative_fautoflush_records_nothing(self):
+        # The common case: the byte watermark was never reached, so the file does
+        # not say where the boundaries are.
+        self.assertIsNone(rootfile.cluster_of(tree(entries=10), 0))
+        self.assertEqual(list(rootfile.clusters(tree(entries=10))), [])
+
+    def test_two_ranges_and_an_open_one(self):
+        # ttree/clusters' shape, checked against the fixture's baskets.
+        t = tree(entries=19, n_cluster_range=2, cluster_range_end=[7, 13],
+                 cluster_size=[4, 3], cluster_present=(1, 1), auto_flush=5)
+        self.assertEqual(list(rootfile.clusters(t)),
+                         [(0, 4), (4, 8), (8, 11), (11, 14), (14, 19)])
+
+    def test_a_range_end_truncates_a_cluster(self):
+        # Range 0 ends at entry 6, so its last cluster is short: the next range
+        # starts at 7 whatever the size says.
+        t = tree(entries=12, n_cluster_range=1, cluster_range_end=[6],
+                 cluster_size=[4], cluster_present=(1, 1), auto_flush=5)
+        self.assertEqual(rootfile.cluster_of(t, 5), (4, 7))
+        self.assertEqual(rootfile.cluster_of(t, 7), (7, 12))
+
+    def test_a_zero_cluster_size_records_nothing(self):
+        # Fast-merging a tree whose fAutoFlush was negative writes 0 for that
+        # range (TTree.cxx:6504-6508), so a real range can have no recorded
+        # size. The ranges either side of it are still usable.
+        t = tree(entries=12, n_cluster_range=2, cluster_range_end=[3, 7],
+                 cluster_size=[2, 0], cluster_present=(1, 1), auto_flush=4)
+        self.assertEqual(rootfile.cluster_of(t, 0), (0, 2))
+        self.assertIsNone(rootfile.cluster_of(t, 5))
+        self.assertEqual(rootfile.cluster_of(t, 8), (8, 12))
+        # clusters() stops at the gap rather than guessing across it.
+        self.assertEqual(list(rootfile.clusters(t)), [(0, 2), (2, 4)])
+
+    def test_an_empty_range_is_skipped(self):
+        # Two SetAutoFlush calls with no Fill between them close two ranges at
+        # the same entry; the second is empty, so no entry lands in it.
+        t = tree(entries=12, n_cluster_range=2, cluster_range_end=[5, 5],
+                 cluster_size=[6, 0], cluster_present=(1, 1), auto_flush=6)
+        self.assertEqual(rootfile.cluster_of(t, 0), (0, 6))
+        self.assertEqual(rootfile.cluster_of(t, 6), (6, 12))
+
+    def test_an_entry_in_the_open_range_uses_the_pedestal(self):
+        # Cluster starts are counted from the range's first entry, not from 0.
+        t = tree(entries=20, n_cluster_range=1, cluster_range_end=[6],
+                 cluster_size=[7], cluster_present=(1, 1), auto_flush=5)
+        self.assertEqual(rootfile.cluster_of(t, 7), (7, 12))
+        self.assertEqual(rootfile.cluster_of(t, 13), (12, 17))
+
+
+def info(name, *bases) -> rootfile.StreamerInfo:
+    elements = [
+        rootfile.Element(cls="TStreamerBase", version=4, name=b, title="",
+                         bits=0, ftype=0, fsize=0, array_length=0, array_dim=0,
+                         max_index=[0] * 5, type_name="BASE", tail={})
+        for b in bases]
+    return rootfile.StreamerInfo(name=name, title="", version=10, bits=0,
+                                 checksum=0, class_version=1, elements=elements)
+
+
+class DerivesFrom(unittest.TestCase):
+    """TTree.md section 1. A tree's record may name any derived class."""
+
+    INFOS = [info("TTree", "TNamed", "TAttLine"),
+             info("TNtuple", "TTree"),
+             info("TNtupleD", "TTree"),
+             info("TChain", "TTree"),
+             info("TBranch", "TNamed", "TAttFill"),
+             info("TNamed", "TObject")]
+
+    def derives(self, name):
+        return rootfile.derives_from(self.INFOS, name, "TTree")
+
+    def test_the_class_itself(self):
+        self.assertTrue(self.derives("TTree"))
+
+    def test_a_direct_subclass(self):
+        for name in ("TNtuple", "TNtupleD", "TChain"):
+            self.assertTrue(self.derives(name), name)
+
+    def test_an_unrelated_class(self):
+        for name in ("TBranch", "TNamed", "TH1F"):
+            self.assertFalse(self.derives(name), name)
+
+    def test_a_cycle_does_not_hang(self):
+        # A malformed file could describe a class as its own base.
+        infos = [info("A", "B"), info("B", "A")]
+        self.assertFalse(rootfile.derives_from(infos, "A", "TTree"))
+
+    def test_a_class_the_file_does_not_describe(self):
+        self.assertFalse(self.derives("Unknown"))

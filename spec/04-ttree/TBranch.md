@@ -5,11 +5,12 @@ arrays that say where the data is, and a list of [leaves](TLeaf.md) that say wha
 the data means.
 
 Prerequisites: [Streamer-driven reading](../02-serialization/StreamerDriven.md),
-[TBasket](TBasket.md).
+[TTree](TTree.md), [TBasket](TBasket.md).
 
 ## 1. Where a branch lives
 
-A branch is never a record of its own. Every branch is inside the `TTree` record,
+A branch is never a record of its own. Every branch is inside the
+[`TTree` record](TTree.md),
 as an entry of the tree's `fBranches` `TObjArray`, or of another branch's — a
 split branch nests. `TBranch` is therefore read with the object-slot machinery of
 [Buffer §6](../02-serialization/Buffer.md#6-object-slots): a byte count, a class
@@ -70,7 +71,7 @@ marked `//!`, including `fTree`, `fDirectory`, `fParent`, `fNleaves`,
 > back-pointer from each sub-branch to this one, `fNleaves` from `fLeaves`, and
 > `fNBaskets` (`root/tree/tree/src/TBranch.cxx:2986-3009`). The owning tree is
 > supplied later still, by `TTree::Streamer`
-> (`root/tree/tree/src/TTree.cxx:9774-9793`). A reader that wants those
+> (`root/tree/tree/src/TTree.cxx:9773-9792`). A reader that wants those
 > relationships builds them the same way; none of them is on disk.
 
 > **And one member that is on disk but must be corrected.** A `fSplitLevel` of 0
@@ -244,7 +245,8 @@ and agrees.
 | `fEntryNumber` | one past the last entry number filled |
 | `fFirstEntry` | the entry number of this branch's entry 0 |
 
-On an ordinary tree all three agree with the tree's own `fEntries`, with
+On an ordinary tree all three agree with
+[the tree's own `fEntries`](TTree.md#3-fentries-is-a-counter-not-a-derived-quantity), with
 `fFirstEntry` 0 and `fEntryNumber == fEntries`. They diverge for a branch added
 to a tree that already had entries, and for a friend tree.
 
@@ -300,7 +302,9 @@ a four-byte checksum, then the member.
 
 This is the case [Buffer §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)
 describes, and `TBranch` is where an ordinary file meets it: every branch of every
-tree written since ROOT 6.14 contains one. The checksum selects the streamer info,
+tree written since ROOT 6.12/02 contains one
+(`root/tree/tree/inc/TTree.h:757` and the measurement in
+[TTree §13](TTree.md#13-class-versions)). The checksum selects the streamer info,
 which the file carries under the name `ROOT::TIOFeatures`.
 
 `fIOBits` is the feature set new baskets are written with; bit 0 is
