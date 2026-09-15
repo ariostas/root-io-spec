@@ -186,6 +186,25 @@ needs both:
 > stream desynchronises here, and the failure is silent: the following member
 > simply reads the wrong bytes.
 
+### 4.3 A base class that is an STL container
+
+A class may inherit from a collection, and ROOT does not write that base as a
+`TStreamerBase`. It appears as a **`TStreamerSTL` whose `fName` is the container
+type**, indistinguishable in class from an ordinary collection member except that
+its `fName` and `fTypeName` are equal.
+
+Its bytes are the collection's, framed as
+[Collections §2](Collections.md#2-the-frame) describes, and a reader that treats it
+as a member reads it correctly — so this matters for element *ordering* rather than
+for decoding. It is why §3's "bases first" is a statement about `TStreamerBase`
+elements only.
+
+> Seen in both `uproot-issue433-splitlevel*` files of the foreign corpus
+> (`PLAN.md` §9.8): `JTRIGGER::JPMTSelector` has two elements, a `TStreamerSTL`
+> named `vector<JTRIGGER::JPMTIdentifier_t>` and then a `TStreamerBase` named
+> `TObject` — the C++ being `class JPMTSelector : public
+> std::vector<JPMTIdentifier_t>, public TObject`.
+
 ## 5. Nested objects
 
 An object-valued member is read by running this same loop over the member's own
@@ -333,11 +352,14 @@ implemented for any class the reader claims to support.
    `fObjLen` bytes.
 2. Applying it to any nested object consumes exactly the bytes its byte count
    delimits.
-3. Every element's `fCountName`, where non-empty, names a `kCounter` element:
-   an earlier one in the same list, or one in the info named by its
-   `fCountClass`, which is a base of this class (§3.2).
+3. Every element's `fCountName`, where non-empty, names an element of an integer
+   basic type — `kCounter` (6) usually, but `kInt` (3) or `kUInt` (13) are
+   legitimate ([Element types §2.1](ElementTypes.md#21-kcounter-6)) — either
+   earlier in the same list, or in the info named by its `fCountClass`, which is a
+   base of this class (§3.2).
 4. Every `TStreamerBase` element precedes every non-base element of the same
-   streamer info.
+   streamer info — except that a base which is an **STL container** is written as
+   a `TStreamerSTL` and may precede it (§4.3).
 5. Every class named by a `TStreamerBase` element, and every class named in the
    `fTypeName` of an element with an object-valued code, has a streamer info in
    the same file — unless it is `TObject`, `TNamed` or `TString`, which are read

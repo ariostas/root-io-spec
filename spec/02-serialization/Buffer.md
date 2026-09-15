@@ -103,6 +103,16 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
 > where every other object record in that file begins `40 00`. And by
 > `classes/tarray`, whose eight records begin with an `i32` count.
 
+**And on a file older than ROOT 5, an ordinary class's payload may have no byte
+count either.** The leading byte count that `WriteClassBuffer` requests today was
+not always written: a ROOT 4 record holding a `TH1D` opens with the bare version
+words of `TH1D` and then `TH1`, and only the `TNamed` base inside is framed.
+
+> Measured on the two ROOT 4.00/00 files of the foreign corpus (`PLAN.md` §9.8):
+> 19 records across them — `TH1D`, `TH2D` — begin `00 01 00 03 40 00 ...`, a
+> version word, a version word, and only then a byte count. Nothing in the record
+> says so; only the file header's version does.
+
 A reader MUST therefore decide from the class, not from the first word, whether
 a payload is framed, and what the first word then means. Reading a `TArray`'s
 `00 00 00 02` as a byte count gives 2; reading a `TRef`'s `00 01 00 00` as one

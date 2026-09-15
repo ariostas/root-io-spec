@@ -290,21 +290,41 @@ To read a member the reader's target does not have, or to leave a target member
 the file does not supply: nothing. Neither changes any bytes
 ([Streamer-driven reading §3](StreamerDriven.md#3-the-element-loop)).
 
+## 8.1 A class may appear twice in one `StreamerInfo` record
+
+ROOT does not deduplicate the list. A record can hold two entries for one class
+with the same `fClassVersion`, the same `fCheckSum` and the same elements,
+differing only in `fBits` — where the difference is `kIsCompiled` (`BIT(16)`,
+`root/core/meta/inc/TVirtualStreamerInfo.h:82`), an in-memory flag that reaches
+disk because `fBits` is written wholesale by the `TNamed` base.
+
+A reader MUST tolerate the duplicate and may take either entry; they describe the
+same layout. A reader that indexes the list by `(class, version)` and asserts
+uniqueness will reject ordinary files.
+
+> Seen in three files of the foreign corpus (`PLAN.md` §9.8), all for
+> `ROOT::TIOFeatures`: `uproot-issue121.root` (ROOT 6.18/00) has 23 entries of
+> which two are `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`, `fBits`
+> `0x3000000` and `0x3010000`.
+
 ## 9. Invariants
 
 1. Every `fClassVersion` in a `StreamerInfo` record is non-negative and at most
    65000.
-2. No two entries for the same class have both the same `fClassVersion` and the
-   same `fCheckSum`.
-3. Every entry of the `StreamerInfo` `TList` is a `TStreamerInfo`, or a `TList`
+2. Every entry of the `StreamerInfo` `TList` is a `TStreamerInfo`, or a `TList`
    whose `fName` is `listOfRules`.
-4. At most one `listOfRules` entry exists, and every member of it is a
+3. At most one `listOfRules` entry exists, and every member of it is a
    `TObjString`.
-5. Every `TObjString` in a `listOfRules` begins with `type=read ` or
+4. Every `TObjString` in a `listOfRules` begins with `type=read ` or
    `type=readraw `.
-6. No element of any streamer info has an `fType` in the `kSkip`, `kConv` or
+5. No element of any streamer info has an `fType` in the `kSkip`, `kConv` or
    `kCache` families, or equal to 1000, 1001, 1002, 99997, 99999 or -2. (Stated
    and checked as [Element types §11](ElementTypes.md#11-invariants).)
+
+**There is deliberately no uniqueness invariant.** Two entries for one class may
+share a `fClassVersion` and differ in `fCheckSum`, which §3 says is how an
+unversioned class is disambiguated; and they may agree on *both*, which §8.1 shows
+ROOT writing. A reader must index the list in a way that tolerates either.
 
 Invariant 2 is the one that gives checksums their job: it is what makes §4 step 2
 well defined.

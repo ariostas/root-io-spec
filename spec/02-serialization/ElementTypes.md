@@ -117,6 +117,22 @@ refers to it by name.
 > written for the member that uses it.** A reader MUST retain every counter value
 > it has read in the current object.
 
+**A counter is not always marked.** `kCounter` replaces `kInt` (3) only when the
+class that *uses* the member as a length is built, and ROOT notes that "the switch
+from `Int_t` (3) to `kCounter` (6) might be triggered by a derived class using the
+field as an array size, [so] the class itself has no control on what the field type
+really use" (`root/io/io/src/TStreamerInfo.cxx:2967-2972`). The same code treats
+the two as one on-file format. And a counter declared as an unsigned integer keeps
+`kUInt` (13) — `TBits::fNbytes` is one.
+
+So a reader resolving `fCountName` must accept **any integer basic type**, not only
+6; all of them are a 4-byte value on disk and the code is a hint about the writing
+class, not about the bytes.
+
+> Seen on real files: `TArrayD.fArray` names `fN` with `fType` 3 on both ROOT
+> 4.00/00 files of the foreign corpus, where a modern file writes 6; and
+> `TBits.fAllBits` names `fNbytes` with `fType` 13 (`PLAN.md` §9.8).
+
 ### 2.2 `kCharStar` (7)
 
 ```
@@ -478,6 +494,10 @@ two as separate skip and convert paths, but they change no bytes.
 1. Every element's `fType` is in the on-disk set of §1.
 2. No element has `fType` in the `kSkip`, `kConv`, `kCache` or `kArtificial`
    families, or equal to 71, 300 or 365.
+
+Invariants 1 and 2 hold on a file written by ROOT 5 or later. **ROOT 4 wrote 300
+and 365**, the real STL codes, where later releases write 500
+([Streamer information §10.1](StreamerInfo.md#101-root-4-wrote-the-real-code)).
 3. An element with `fType` 500 or 501 is either a `TStreamerSTL`,
    a `TStreamerSTLstring`, or an element whose class carries a custom streamer.
 4. `fArrayLength` is 0 for a scalar and positive for any code in `[20, 59]`.

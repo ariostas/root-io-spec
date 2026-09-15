@@ -28,6 +28,20 @@ To walk the chain, read a 4-byte signed integer at the current offset:
 > [Free segments](FreeSegments.md). Demonstrated by `container/gap`, which has a
 > `-187` span at offset 718 where a deleted record used to be.
 
+> **Walking is optional, and a file that cannot be walked may still be sound.**
+> Nothing in `TFile::Open` walks the chain: objects are reached through
+> `fSeekDir`, `fSeekKeys` and `fSeekFree`. Only `TFile::Map` walks, and when it
+> meets a zero it prints `=====E R R O R=======` and abandons the rest of the
+> file (`root/io/io/src/TFile.cxx:1676-1680`) — ROOT agrees a zero is a defect,
+> but goes on reading the file's contents regardless.
+>
+> A reader whose job is to enumerate *everything* — a checker, a repair tool —
+> should therefore treat a broken chain as a finding about the file, not a reason
+> to reject it. `uproot-issue261.root` in the foreign corpus (`PLAN.md` §9.8) has
+> a 70-byte hole with a zero where a record header should be, between the last
+> data record and the free-list record, and ROOT opens it and reads its `TTree`
+> without a word.
+
 ## 2. Key layout
 
 Two layouts, selected by the key's own `fVersion`:
@@ -204,6 +218,18 @@ Three properties a reader must not assume away:
 In reproducible mode the value written is the encoding of local time 1 rather
 than zero (`root/io/io/src/TKey.cxx:654-655`), which is itself timezone
 dependent — so "reproducible" files are only byte-identical within one timezone.
+
+> **A `TDatime` *member* of an ordinary class is these same four bytes, bare.**
+> `TDatime::Streamer` is hand-written and writes `fDatime` and nothing else — no
+> version word, no byte count (`root/core/base/src/TDatime.cxx:415-422`). So a
+> member of element code 62 (`kAny`) whose type is `TDatime` is four bytes where
+> the generic algorithm would expect a frame, and a reader must special-case the
+> class. Its streamer info, a single `TStreamerBasicType` named `fDatime`,
+> describes the payload correctly and the framing not at all: the divergence of
+> [Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes).
+>
+> Found on `uproot-issue-407.root` of the foreign corpus (`PLAN.md` §9.8), whose
+> `TFoo` is a `TObject` and a `TDatime` in a 20-byte payload.
 
 ### 3.8 `fCycle`
 

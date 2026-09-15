@@ -23,6 +23,8 @@ sys.path.insert(0, str(REPO / "tools"))
 import rootfile  # noqa: E402
 
 KNOWN_KEY_VERSIONS = {1, 2, 3, 4, 1002, 1003, 1004}
+# A counter need not be marked kCounter: ElementTypes.md 2.1.
+COUNTER_TYPES = {3, 6, 13}
 BLOCK_MAGICS = {b"ZL": 8, b"XZ": 0, b"L4": None, b"ZS": 1, b"CS": 8}
 KMAXZIPBUF = 0xFFFFFF
 KSTART_BIG_FILE = 2000000000
@@ -48,6 +50,11 @@ def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
     names = [e.name for e in info.elements]
     bases_seen = 0
     for index, el in enumerate(info.elements):
+        # A base that is an STL container is a TStreamerSTL, not a
+        # TStreamerBase, and may precede one: StreamerDriven.md 4.3. Its fName
+        # is the container type rather than a member name.
+        if el.cls in ("TStreamerSTL", "TStreamerSTLstring") and el.name == el.type_name:
+            bases_seen += 1
         if el.cls == "TStreamerBase":
             if bases_seen != index:
                 failures.append((
@@ -72,11 +79,11 @@ def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
                     f"{info.name}.{el.name} names counter {el.count_name!r}, "
                     f"which is neither earlier in this info nor in "
                     f"{el.tail.get('fCountClass', '')!r}"))
-            elif counter.ftype != 6:
+            elif counter.ftype not in COUNTER_TYPES:
                 failures.append((
                     "StreamerDriven 10.3",
                     f"{info.name}.{el.name} names {el.count_name!r}, whose "
-                    f"fType is {counter.ftype}, not 6"))
+                    f"fType is {counter.ftype}, not an integer basic type"))
         if el.ftype == -1 and el.cls != "TStreamerBase":
             failures.append((
                 "StreamerDriven 10.6",
@@ -92,19 +99,14 @@ def info_list_failures(infos) -> list[tuple[str, str]]:
     hold two identical infos, because ROOT would not write one.
     """
     failures: list[tuple[str, str]] = []
-    seen: set[tuple[str, int, int]] = set()
     for info in infos:
         if not 0 <= info.class_version <= 65000:
             failures.append((
                 "SchemaEvolution 9.1",
                 f"{info.name} has fClassVersion {info.class_version}"))
-        key = (info.name, info.class_version, info.checksum)
-        if key in seen:
-            failures.append((
-                "SchemaEvolution 9.2",
-                f"two infos for {info.name} share version {info.class_version} "
-                f"and checksum {info.checksum:#010x}"))
-        seen.add(key)
+        # No uniqueness invariant: two entries for one class may share a version
+        # and differ in checksum (SchemaEvolution.md 3), and may agree on both
+        # (8.1, which ROOT writes for ROOT::TIOFeatures).
     return failures
 
 
@@ -115,6 +117,7 @@ class Checker:
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
         self._all_branches: list = []
+        self._container: set | None = None
         self.buf = path.read_bytes()
         self.header = self.records = None
         try:
@@ -138,7 +141,7 @@ class Checker:
         try:
             return rootfile.object_data(self.buf, rec)
         except rootfile.MissingCodec as exc:
-            self.no_codec.add(str(exc))
+            self.no_codec.add(f"some records were not decompressed: {exc}")
             return None
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
             self.bad("Compression 9", str(exc))
@@ -189,10 +192,12 @@ class Checker:
                     self.bad("FileHeader 10.6",
                              f"fNbytesFree {h.nbytes_free} != fNbytes at fSeekFree ({got})")
             segments = rootfile.read_free_segments(self.buf, h)
-            if h.nfree != len(segments):
+            # nfree is advisory and ROOT 4 wrote 0: FileHeader.md 5.4.
+            advisory = h.root_version[0] < 5
+            if h.nfree != len(segments) and not advisory:
                 self.bad("FileHeader 10.7",
                          f"nfree {h.nfree} != {len(segments)} entries in the free list")
-            if h.nfree < 1:
+            if h.nfree < 1 and not advisory:
                 self.bad("FileHeader 10.7", "nfree is 0 for a closed file")
 
         if h.seek_info > h.begin:
@@ -282,9 +287,105 @@ class Checker:
     UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket"}
                 | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
+    # Classes with a hand-written streamer that spec/ does not describe, verified
+    # one at a time against the pinned source. Their records are reported as not
+    # checked rather than as failures, so the gap stays visible instead of being
+    # silently tolerated. PLAN.md 9.8.
+    #
+    #   TMatrixT, TMatrixTSym, TVectorT  the leading byte count spans only the base
+    #   RooLinkedList  writes _size then that many object pointers then _name,
+    #                  while its info lists a _hashThresh that is not on disk
+    #                  (root/roofit/roofitcore/src/RooLinkedList.cxx:891-924)
+    UNSPECIFIED_STREAMERS = ("TMatrixT", "TMatrixTSym", "TVectorT",
+                             "RooLinkedList")
+
+    def unspecified_streamer(self, name: str) -> str | None:
+        """`name` reduced to an undescribed hand-written streamer, or None."""
+        base = (name or "").split("<", 1)[0]
+        return base if base in self.UNSPECIFIED_STREAMERS else None
+
+    def needs_unspecified_streamer(self, data, rec) -> str | None:
+        """Does reading this record require a class we know diverges?
+
+        Followed through the file's own streamer infos, because an inline member
+        is written with no class record and so cannot be found in the bytes.
+        """
+        _, _, infos = self.streamer_infos()
+        by_name = {i.name: i for i in (infos or [])}
+        seen: set[str] = set()
+        stack = [rec.class_name or ""]
+        while stack:
+            name = stack.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            found = self.unspecified_streamer(name)
+            if found is not None:
+                return found
+            info = by_name.get(name)
+            if info is None:
+                continue
+            for el in info.elements:
+                stack.append(el.name if el.cls == "TStreamerBase" else el.type_name)
+        return None
+
+    def container_records(self) -> set[int]:
+        """Offsets of the records that are the container's own bookkeeping.
+
+        Identified structurally, because the class name on them is whatever TFile
+        subclass wrote the file -- TStorageFactoryFile, ND::TND280Output -- and
+        not necessarily TFile. Record.md 3.
+        """
+        if self._container is None:
+            out = {self.header.begin}
+            if self.header.seek_free:
+                out.add(self.header.seek_free)
+            for rec in self.records:
+                if rec.free:
+                    continue
+                directory = rootfile.read_directory(self.buf, rec)
+                if directory is None:
+                    continue
+                out.add(rec.offset)
+                if directory.seek_keys:
+                    out.add(directory.seek_keys)
+            self._container = out
+        return self._container
+
+    def class_is_described(self, name: str) -> bool:
+        """Does this file carry a streamer info for `name`?
+
+        A record whose class the file does not describe cannot be checked against
+        anything: StreamerDriven.md 6.
+        """
+        if (name in rootfile.CUSTOM_STREAMER or name in self.UNFRAMED
+                or name in rootfile.Decoder.SEQUENCES
+                or name in ("TClonesArray", "TDatime")):
+            return True         # described by hand, not by a streamer info
+        _, _, infos = self.streamer_infos()
+        if infos is None:
+            return True
+        return any(i.name == name for i in infos)
+
     def check_buffer_framing(self) -> None:
+        # Before ROOT 5 an ordinary class's record payload could begin with a bare
+        # version word: Buffer.md 2.3. There is nothing in the record that says
+        # so, only the file header's version.
+        framed_by_default = self.header.root_version[0] >= 5
         for rec in self.records:
             if rec.free or rec.class_name in self.UNFRAMED:
+                continue
+            if rec.offset in self.container_records():
+                continue
+            base = self.unspecified_streamer(rec.class_name)
+            if base is not None:
+                self.no_codec.add(
+                    f"{base} has a hand-written streamer this specification does "
+                    f"not describe")
+                continue
+            if not self.class_is_described(rec.class_name):
+                self.no_codec.add(
+                    f"{rec.class_name} has no streamer info in its own file")
                 continue
             data = self.data(rec)
             if data is None:
@@ -300,6 +401,8 @@ class Checker:
             # 9.9 and 9.2 at the outermost level: the leading byte count spans
             # the payload exactly.
             if frame.byte_count is None:
+                if not framed_by_default:
+                    continue
                 self.bad("Buffer 9.9",
                          f"{rec.class_name} at {rec.offset} has no leading byte count")
                 continue
@@ -438,10 +541,15 @@ class Checker:
                 where = f"{si.name}.{e.name}"
                 if e.cls not in self.ELEMENT_CLASSES:
                     self.bad("StreamerInfo 13.5", f"{where}: element class {e.cls}")
-                if not self._on_disk_type(e.ftype):
+                # ROOT 4 wrote the real STL codes where later releases write
+                # 500: ElementTypes.md 11, StreamerInfo.md 10.1.
+                legacy_stl = (self.header.root_version[0] < 5
+                              and e.cls in ("TStreamerSTL", "TStreamerSTLstring")
+                              and e.ftype in (300, 365))
+                if not self._on_disk_type(e.ftype) and not legacy_stl:
                     self.bad("ElementTypes 11.1",
                              f"{where}: fType {e.ftype} is not an on-disk code")
-                if e.ftype in self.FORBIDDEN_TYPES:
+                if e.ftype in self.FORBIDDEN_TYPES and not legacy_stl:
                     self.bad("ElementTypes 11.2",
                              f"{where}: fType {e.ftype} cannot occur on disk")
 
@@ -545,6 +653,14 @@ class Checker:
                 continue    # a hand-written Streamer; StreamerDriven.md 7
             except (rootfile.FormatError, struct.error,
                     IndexError, ValueError) as exc:
+                # A record may need a class we know diverges but have not
+                # specified. Report the gap rather than the symptom.
+                needed = self.needs_unspecified_streamer(data, target)
+                if needed is not None:
+                    self.no_codec.add(
+                        f"{needed} has a hand-written streamer this specification "
+                        f"does not describe")
+                    continue
                 self.bad("StreamerDriven 10.1",
                          f"{target.class_name} {target.name!r} at "
                          f"{target.offset}: {exc}")
@@ -1171,7 +1287,9 @@ class Checker:
                          f"{name}: slot {index} holds an embedded basket but "
                          f"fBasketSeek[{index}] is {br.basket_seek[index]}")
 
-        if not br.leaves:
+        # An interior node of a split branch has no leaves of its own: TBranch.md
+        # 9.1. ROOT has a dedicated zero-leaf read path for it.
+        if not br.leaves and not br.branches:
             self.bad("TBranch 11.10", f"{name}: fLeaves is empty")
         if br.entry_offset_len and br.entry_offset_len < 10:
             self.bad("TBranch 11.11",
@@ -1236,13 +1354,16 @@ class Checker:
         counted = {lf.count_slot for lf in leaves if lf.count_slot >= 0}
         for i, lf in enumerate(br.leaves):
             where = f"{name} leaf {lf.name!r}"
-            if lf.len_type < 0 or lf.length < 1:
+            # fLen may be -1: the title's dimension named something the writer
+            # could not resolve. TLeaf.md 4.2.
+            if lf.len_type < 0 or (lf.length < 1 and lf.length != -1):
                 self.bad("TLeaf 10.1",
                          f"{where}: fLenType {lf.len_type}, fLen {lf.length}")
             if lf.is_range and lf.slot not in counted:
                 self.bad("TLeaf 10.2",
                          f"{where}: fIsRange is set but no leaf counts with it")
-            if lf.is_range and lf.cls not in rootfile.COUNTER_LEAVES:
+            if (lf.is_range and lf.cls != "TLeafElement"
+                    and lf.cls not in rootfile.COUNTER_LEAVES):
                 self.bad("TLeaf 10.3",
                          f"{where}: fIsRange is set on a {lf.cls}")
             if lf.count_slot >= 0:
@@ -1436,11 +1557,12 @@ def main(argv: list[str]) -> int:
 
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
-    # Say so out loud: a record nobody could decompress is a record nobody
-    # checked, and silence there would overstate the coverage.
+    # Say so out loud: a record nobody could read is a record nobody checked,
+    # and silence there would overstate the coverage. The reasons are a missing
+    # codec, a class the file does not describe, and a class with a hand-written
+    # streamer spec/ has not written up.
     for reason in sorted(no_codec):
-        print(f"NOT CHECKED some records were not decompressed: {reason}",
-              file=sys.stderr)
+        print(f"NOT CHECKED {reason}", file=sys.stderr)
     print(f"invariants checked on {len(paths)} file(s), {len(failures)} failure(s)")
     return 1 if failures else 0
 

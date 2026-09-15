@@ -183,9 +183,22 @@ outside `[10, 10000]` (`root/io/io/src/TFile.cxx:841-844`).
 `fNbytesInfo`. Reading either as a payload length is the most common off-by-a-key
 error in a reimplementation.
 
-`nfree` is the number of `TFree` entries in the list. It is never zero for a cleanly
-closed file: the list always ends with a sentinel segment running to `kStartBigFile`
-(`root/io/io/src/TFile.cxx:691`), so an otherwise empty file has `nfree == 1`.
+`nfree` is the number of `TFree` entries in the list. On a file ROOT 5 or later
+wrote it is never zero: the list always ends with a sentinel segment running to
+`kStartBigFile` (`root/io/io/src/TFile.cxx:691`), so an otherwise empty file has
+`nfree == 1`.
+
+> **It is advisory, and a reader should ignore it.** ROOT writes
+> `fFree->GetSize()` (`root/io/io/src/TFile.cxx:2676`) but on reading takes it
+> into a local variable and never looks at it again
+> (`root/io/io/src/TFile.cxx:743`, `root/io/io/src/TFile.cxx:753`) — the free list
+> is rebuilt by walking from `fSeekFree` instead. A file whose `nfree` disagrees
+> with its list is read correctly.
+>
+> Both ROOT 4.00/00 files in the foreign corpus of `PLAN.md` §9.8 carry `nfree`
+> **0** against a free list of two entries, and ROOT opens them without complaint.
+> A reader that trusts `nfree` as a count, rather than walking the list, is wrong
+> on those.
 
 `fSeekFree == 0` marks a file that was created but never closed. ROOT warns and
 attempts recovery rather than failing (`root/io/io/src/TFile.cxx:771-775`).
@@ -347,7 +360,8 @@ make the data ambiguous.
    `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes` of the
    record at `fSeekFree`.
 7. `nfree` equals the number of entries in the free list at `fSeekFree`, and is
-   at least 1.
+   at least 1 — on a file written by ROOT 5 or later. It is advisory (§5.4) and
+   ROOT 4 wrote 0.
 8. `fSeekInfo` is either `<= fBEGIN` (no streamer info) or satisfies
    `fBEGIN < fSeekInfo < fEND` with `fNbytesInfo` equal to the `fNbytes` of the
    record there.

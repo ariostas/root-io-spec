@@ -956,9 +956,14 @@ Both were real gaps, both are now specified:
 
 #### The triage, done
 
-**10 047 failures became 250.** Every group was diagnosed against the pinned
-source, and each resolved to exactly one of four outcomes. Nothing was weakened on
-a file's say-so.
+**10 047 failures became 0.** Every group was diagnosed against the pinned source,
+and each resolved to exactly one of four outcomes: a specification error, a format
+fact the specification lacked, a gap in `tools/rootfile.py`, or a defect in the
+file. Nothing was weakened on a file's say-so, and everything still unexplained is
+printed as `NOT CHECKED` with a reason rather than passed over.
+
+**Eleven specification errors** in total, five below and six in the second pass —
+each one published, wrong, and reader-facing.
 
 **Five specification errors.** These are the return on the exercise: each is a
 statement that was wrong, published, and would have misled a reader.
@@ -992,14 +997,48 @@ these were 4 742 failures.
 `TBasket.md` §1. `check_invariants.py --ignore` prints what each entry suppressed,
 so an entry that stops mattering shows up as suppressing nothing.
 
-#### What is left: 250
+#### The rest of the 250, also done
 
-| Group | Count | Read |
-|---|---|---|
-| `TBranch` 11.10, `fLeaves` is empty | 146 | Split `TBranchElement`s only. A reference this pass does not resolve yet — probably a leaf written inside a *sub*-branch the resolver visits later. Not diagnosed |
-| `Buffer` 9.9, byte count past the payload | 34 | Records whose class has a hand-written streamer the framing check does not know about. Needs the class list |
-| `ElementTypes` 11.1/11.2 | 36 | Element type codes outside the on-disk set. Not diagnosed |
-| The rest | 34 | Singles and pairs, including one file whose record chain has a zero-length record at 10427 that ROOT reads happily |
+**Zero failures across all 154 files.** Six more specification errors, one more
+format fact, two reader gaps, and one more file ignored.
+
+| Was wrong | Now |
+|---|---|
+| `TBranch.md` invariant 10: `fLeaves` is not empty | An interior node of a split branch has no leaves at all — all 146 leafless branches in the corpus have sub-branches, `fWriteBasket` 0 and no baskets, and ROOT has a dedicated `ReadLeaves0Impl` for them (§9.1) |
+| `ElementTypes.md` invariants 1 and 2: `fType` 300 and 365 cannot occur | They do, on ROOT 4 — the same finding as `StreamerInfo.md` §10.1, which the element-type invariants had missed |
+| `StreamerDriven.md` invariant 3: a counter's `fType` is 6 | Any integer basic type. `kCounter` replaces `kInt` only when the class that *uses* the member is built, so the class "has no control over what the field type really use" (`root/io/io/src/TStreamerInfo.cxx:2967-2972`); and an unsigned counter keeps `kUInt` — `TBits::fNbytes` is one ([Element types §2.1](ElementTypes.md#21-kcounter-6)) |
+| `StreamerDriven.md` invariant 4: bases precede members | A base that is an **STL container** is written as a `TStreamerSTL`, not a `TStreamerBase`, and may precede one. `JTRIGGER::JPMTSelector` inherits from `std::vector` and `TObject`, in that order (§4.3) |
+| `SchemaEvolution.md` invariant 2: no two entries share a version and a checksum | Dropped. ROOT writes such a pair for `ROOT::TIOFeatures`, differing only in the transient `kIsCompiled` bit, and a differing checksum at one version was already legitimate — so there is no uniqueness invariant at all (§8.1) |
+| `TLeaf.md` invariant 1: `fLen` is positive | Or **−1**, a documented parse failure when the title's dimension names neither a leaf nor an integer (`root/tree/tree/src/TLeaf.cxx:244-245`). Normal for a `TLeafElement` on a split branch (§4.2) |
+| `TLeaf.md` invariant 3: `fIsRange` only on an integer leaf | Or a `TLeafElement`, which keeps the range in its `TBranchElement` — as `TLeaf.h:78` says |
+| `FileHeader.md` invariant 7: `nfree` equals the free list's length | Advisory. ROOT reads it into a local and never uses it (`root/io/io/src/TFile.cxx:743`), rebuilding the list from `fSeekFree`; both ROOT 4 files write 0 against a list of two (§5.4) |
+
+**One more format fact.** `TDatime` as a *member* is four bare bytes: its streamer
+writes `fDatime` and nothing else, no version word and no byte count
+(`root/core/base/src/TDatime.cxx:415-422`), so a `kAny` member of that type has no
+frame where the generic algorithm expects one.
+[Records and keys §3.7](spec/01-container/Record.md), and it is the tenth entry in
+`03-classes/`'s index.
+
+**Two reader gaps.** A branch's `fLeaves` entry that is a bare reference — 146
+branches — and a counter leaf in the *same* branch as what it counts, which the
+checker demanded up front instead of reading in order as §5 says.
+
+**One more file ignored.** `uproot-issue261.root` has a 70-byte hole where a record
+header should be. ROOT's own walker calls a zero `fNbytes` an error and abandons the
+file (`root/io/io/src/TFile.cxx:1676-1680`), so it is a defect — but nothing in
+`TFile::Open` walks the chain, so ROOT reads the file's `TTree` without a word.
+[Records and keys §1](spec/01-container/Record.md#1-the-record-chain) now says
+walking is optional.
+
+**And what is deliberately *not* checked**, each named in the output rather than
+passed over: a class the file carries no streamer info for (`StIOEvent`, `TTime`,
+`MGTRun`, `CalibrationCoefficient`); a `TBranch` below class version 11, whose
+layout `TBranch.md` §13 does not give; and `TMatrixT`, `TVectorT` and
+`RooLinkedList`, whose hand-written streamers are real divergences this
+specification has not written up — `RooLinkedList` writes `_size` and then that
+many object pointers, while its info advertises a `_hashThresh` that is not on disk
+(`root/roofit/roofitcore/src/RooLinkedList.cxx:891-924`).
 
 #### The methodological catch
 

@@ -1149,6 +1149,11 @@ class Decoder:
             return self.read_tarray(cls, offset)
         if cls in STD_STRING_NAMES:
             return read_std_string(self.buf, offset)
+        if cls == "TDatime":
+            # A hand-written streamer that writes fDatime and nothing else: no
+            # version word and no byte count. Record.md section 3.7.
+            return Value(name="TDatime", ftype=62, start=offset, end=offset + 4,
+                         type_name="TDatime")
         try:
             frame = read_frame(self.buf, offset)
             version, body = self.resolve_version(cls, frame)
@@ -2338,7 +2343,7 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
     Raises FormatError when the leaves do not account for the entry exactly,
     which is TLeaf.md invariant 7.
     """
-    counts = counts or {}
+    counts = dict(counts or {})
     leaves = leaves if leaves is not None else branch.leaves
     start, end = basket_entry_range(rec, basket, index)
     pos = start
@@ -2364,6 +2369,11 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
                     f"no count for leaf {leaf.name!r} from {counter.name!r}")
             n = counts[counter.slot] * leaf.length
         spans.append((leaf, pos, pos + n * width))
+        # A counter in this same branch precedes what it counts, so read its
+        # value here rather than requiring it up front. TLeaf.md section 5.2.
+        if leaf.is_range and width and n == 1:
+            counts[leaf.slot] = int.from_bytes(buf[pos:pos + width], "big",
+                                               signed=True)
         pos += n * width
     if pos != end:
         raise FormatError(

@@ -33,7 +33,7 @@ older than ROOT 6 to test against and are tracked as gaps in `PLAN.md` §9.1.
 
 ## The classes that diverge at every version
 
-Nine, and they are specified where their behaviour arises rather than collected
+Ten, and they are specified where their behaviour arises rather than collected
 here — see `PLAN.md` decision 6. This table is the index:
 
 | Class | Specified in |
@@ -45,6 +45,7 @@ here — see `PLAN.md` decision 6. This table is the index:
 | `TClonesArray` | [Collections §12](../02-serialization/Collections.md#12-tclonesarray) |
 | `TRef`, `TRefArray` | [References §3](../02-serialization/References.md#3-tref), [§4](../02-serialization/References.md#4-trefarray) |
 | `TArray*` | [TArray](TArray.md) |
+| `TDatime` | [Records and keys §3.7](../01-container/Record.md#37-fdatime) — four bare bytes as a member, exactly as in a key |
 | `TCollection` | not specified; reachable only through `TList`'s fictional streamer info, which no reader should follow ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)) |
 
 `TFile` and `TDirectoryFile` are also hand-written, but they are the container

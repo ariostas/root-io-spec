@@ -174,6 +174,22 @@ A reader MUST take the width from the leaf's class, not from `fLenType`.
 > 8, 8 and occupy 3, 4, 4 and 3 bytes per entry — in that order, so neither the
 > class nor `fLenType` predicts the width on its own.
 
+### 4.2 `fLen` can be −1
+
+`fLen` comes from parsing the `[...]` in the leaf's title, and that parse has a
+documented failure value. `TLeaf::GetLeafCounter` returns `countval = -1` when the
+title has the form `var[...]` but the contents are neither a leaf name in this
+tree nor a non-negative integer (`root/tree/tree/src/TLeaf.cxx:244-245`,
+`root/tree/tree/src/TLeaf.cxx:334`).
+
+That is the normal state for a `TLeafElement` on a split branch, where the
+dimension names a data member rather than a leaf, and the count lives in the
+`TBranchElement` (§8). A reader must not multiply by it.
+
+> Seen on `uproot-issue431.root` and both `uproot-issue433-splitlevel*` files of
+> the foreign corpus: leaf
+> `vector<KM3NETDAQ::JDAQSuperFrame>.buffer[numberOfHits]` has `fLen` −1.
+
 ## 5. Reading one entry
 
 A basket holds no type information and no per-leaf framing. Given the byte range
@@ -370,12 +386,14 @@ consumed, and read nothing if the remainder is zero.
 
 ## 10. Invariants
 
-1. `fLenType` is 0 or positive, and `fLen` is positive after the zero-to-one
-   normalisation of §2.
+1. `fLenType` is 0 or positive. `fLen` is positive after the zero-to-one
+   normalisation of §2, **or −1**, which means the dimension in the title named
+   something the writer could not resolve (§4.2).
 2. `fIsRange` is true only on a leaf that some other leaf in the same tree names
    as its `fLeafCount`.
 3. A leaf with `fIsRange` true is an integer leaf — `TLeafO`, `TLeafB`, `TLeafS`,
-   `TLeafI`, `TLeafL` or `TLeafG`.
+   `TLeafI`, `TLeafL`, `TLeafG` — or a `TLeafElement`, which keeps the range in
+   its `TBranchElement` instead (`root/tree/tree/inc/TLeaf.h:78`).
 4. `fLeafCount`, where non-null, resolves through the buffer object map to a
    `TLeaf` in the same `TTree` record.
 5. A branch containing a leaf with a non-null `fLeafCount`, or any `TLeafC`, has

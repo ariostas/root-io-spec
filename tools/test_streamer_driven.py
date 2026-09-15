@@ -89,8 +89,18 @@ class ElementListInvariants(unittest.TestCase):
                   element("fN", ftype=6))
         self.assertEqual(self.failures(si), ["StreamerDriven 10.3"])
 
-    def test_a_counter_that_is_not_kcounter_is_caught(self):
-        si = info(element("fN", ftype=3),
+    def test_an_unmarked_integer_counter_is_allowed(self):
+        # kCounter replaces kInt only when the class that USES the member as a
+        # length is built, so a counter may be plain kInt or kUInt.
+        # ElementTypes.md 2.1; seen on ROOT 4 files and on TBits.
+        for ftype in (3, 6, 13):
+            si = info(element("fN", ftype=ftype),
+                      element("fVar", cls="TStreamerBasicPointer", ftype=43,
+                              count_name="fN"))
+            self.assertEqual(self.failures(si), [], f"fType {ftype}")
+
+    def test_a_counter_of_a_non_integer_type_is_caught(self):
+        si = info(element("fN", ftype=5),          # kFloat
                   element("fVar", cls="TStreamerBasicPointer", ftype=43,
                           count_name="fN"))
         self.assertEqual(self.failures(si), ["StreamerDriven 10.3"])
@@ -114,11 +124,12 @@ class InfoListInvariants(unittest.TestCase):
     def test_a_conforming_list_passes(self):
         self.assertEqual(self.failures([info(name="A"), info(name="B")]), [])
 
-    def test_two_identical_infos_are_caught(self):
-        # Two layouts of one class are distinguished by checksum, so two entries
-        # agreeing on both version and checksum make the choice ill defined.
-        self.assertEqual(self.failures([info(name="A"), info(name="A")]),
-                         ["SchemaEvolution 9.2"])
+    def test_two_identical_infos_are_allowed(self):
+        # ROOT does not deduplicate the list, and writes such a pair for
+        # ROOT::TIOFeatures: SchemaEvolution.md 8.1. There is deliberately no
+        # uniqueness invariant, so neither this nor a checksum disagreement at
+        # one version is a failure.
+        self.assertEqual(self.failures([info(name="A"), info(name="A")]), [])
 
     def test_same_class_different_checksum_is_allowed(self):
         a, b = info(name="A"), info(name="A")

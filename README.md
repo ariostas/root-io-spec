@@ -30,9 +30,10 @@ started.
 | `TTree` — `TBranch`, `TLeaf`, `TBasket` | written |
 | Standard classes and `TTree` — everything else, RNTuple | not started |
 
-28 reference files, 699 byte-level assertions, 561 checked source citations,
-plus a coverage measurement against 154 files written by other people and
-other ROOT releases (`PLAN.md` §9.8).
+29 reference files, 723 byte-level assertions, 583 checked source citations.
+The invariants also run clean over 154 files written by other people and other
+ROOT releases, from ROOT 4.00 to 6.36 — which is where eleven errors in this
+specification were found and fixed (`PLAN.md` §9.8).
 See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
 every known gap — in each case the behaviour is specified and cited, and what is
 missing is a reference file proving it.

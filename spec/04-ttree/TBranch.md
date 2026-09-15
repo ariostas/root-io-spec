@@ -318,6 +318,26 @@ resolved relative to the tree's own file's directory
 A reader that ignores `fFileName` reads whatever happens to lie at that offset in
 the wrong file. No fixture in this corpus exercises it.
 
+### 9.1 A branch may have no leaves
+
+A split branch's interior nodes carry no data of their own: all of it is in their
+sub-branches. Such a node has an **empty `fLeaves`**, `fWriteBasket` 0 and no
+baskets, and exists only to give the sub-branches a parent and a name prefix.
+
+ROOT provides for it explicitly — `TBranch::Streamer` selects
+`TBranch::ReadLeaves0Impl` when `fNleaves` is 0
+(`root/tree/tree/src/TBranch.cxx:3021-3022`), and that function's body is empty
+(`root/tree/tree/src/TBranch.cxx:2471-2473`).
+
+> Measured across the foreign corpus of `PLAN.md` §9.8: **146 leafless branches,
+> and every one of them** has sub-branches, `fWriteBasket` 0 and no unresolved
+> leaf references — the shape is uniform. `TObject` in `uproot-issue-1229.root` is
+> the smallest: two sub-branches, `fUniqueID` and `fBits`, and nothing of its own.
+
+Together with §7 this is the shape of a split interior node: `fEntries` counted,
+`fEntryNumber` 0, `fLeaves` empty, `fBaskets` empty, and all the data one level
+down.
+
 ## 10. Reading
 
 To read entry *e* of a branch:
@@ -371,7 +391,8 @@ the remaining entries live.
    sub-branches**, where `fEntryNumber` may be 0 while `fEntries` counts (§7).
 9. `fBaskets` holds `fWriteBasket + 1` slots, and none of them holds a `TBasket`
    for which `fBasketSeek` is non-zero.
-10. `fLeaves` is not empty.
+10. `fLeaves` is not empty, **unless the branch has sub-branches**, where it may
+    hold nothing at all (§9.1).
 11. `fEntryOffsetLen` is 0 or at least 10, and is 0 only if no leaf of this branch
     has a leaf count and none is a `TLeafC`.
 

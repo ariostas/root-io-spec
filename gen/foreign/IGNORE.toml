@@ -38,3 +38,18 @@ Two departures, both diagnosed:
     rather than as a failure.
 """
 skip = ["TBasket 6.2"]
+
+["uproot-issue261.root"]
+reason = """
+The record chain has a 70-byte hole: at 10427, where a record header should be,
+the first word is 0. ROOT's own walker calls that an error -- TFile::Map prints
+"=====E R R O R=======" and abandons the rest of the file
+(root/io/io/src/TFile.cxx:1676-1680) -- so this is a defect and not a form the
+specification should accommodate.
+
+It does not stop ROOT reading the file, because nothing in TFile::Open walks the
+chain: the TTree is reached through fSeekKeys and reads with no complaint.
+Record.md 1 now says so. Skipped here because an unwalkable chain stops every
+other check on the file, and one defective file must not hide the rest.
+"""
+skip = ["structure"]
