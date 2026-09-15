@@ -177,7 +177,7 @@ skipped. A version-0 class with base classes therefore writes a full payload.
 The streamer-info rule above has no such failure mode, because it asks the file
 what `fClassVersion` the class was written with rather than guessing from a length.
 
-### 4.1 `SkipVersion` disagrees with `ReadVersion`
+### 4.2 `SkipVersion` disagrees with `ReadVersion`
 
 `SkipVersion` reads a checksum whenever the class version is non-zero and the
 version word is ≤ 0, without `ReadVersion`'s additional "byte count ≥ 6" guard
@@ -387,7 +387,7 @@ To read one object slot at the current position:
 6. Record the object at `(position of w) + 2` before reading its content, so that
    a reference from inside the object itself resolves.
 7. Read the object: a version word (§3), then the class's content as specified by
-   `02-serialization/StreamerDriven.md`.
+   [Streamer-driven reading](StreamerDriven.md).
 8. If there was a byte count, seek to the remembered end position regardless of
    how many bytes step 7 consumed.
 

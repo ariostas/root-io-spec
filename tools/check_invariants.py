@@ -32,6 +32,44 @@ def counted_string_len(buf: bytes, offset: int) -> int:
     return 1 + 4 + struct.unpack_from(">i", buf, offset + 1)[0] if n == 255 else 1 + n
 
 
+def element_list_failures(info) -> list[tuple[str, str]]:
+    """StreamerDriven.md invariants 3, 4 and 6, over one streamer info.
+
+    Separate from Checker so that it can be exercised on element lists no
+    fixture contains -- an out-of-order base class, for one.
+    """
+    failures: list[tuple[str, str]] = []
+    names = [e.name for e in info.elements]
+    bases_seen = 0
+    for index, el in enumerate(info.elements):
+        if el.cls == "TStreamerBase":
+            if bases_seen != index:
+                failures.append((
+                    "StreamerDriven 10.4",
+                    f"{info.name}: base {el.name!r} at index {index} follows a "
+                    f"non-base element"))
+            bases_seen += 1
+        if el.count_name:
+            if el.count_name not in names[:index]:
+                failures.append((
+                    "StreamerDriven 10.3",
+                    f"{info.name}.{el.name} names counter {el.count_name!r}, "
+                    f"which does not precede it"))
+            else:
+                counter = info.elements[names.index(el.count_name)]
+                if counter.ftype != 6:
+                    failures.append((
+                        "StreamerDriven 10.3",
+                        f"{info.name}.{el.name} names {el.count_name!r}, whose "
+                        f"fType is {counter.ftype}, not 6"))
+        if el.ftype == -1 and el.cls != "TStreamerBase":
+            failures.append((
+                "StreamerDriven 10.6",
+                f"{info.name}.{el.name} has fType -1 but is a {el.cls}, not a "
+                f"TStreamerBase"))
+    return failures
+
+
 class Checker:
     def __init__(self, path: Path):
         self.path = path
@@ -367,6 +405,43 @@ class Checker:
                              f"{where}: kHasRange set on fType {e.ftype}")
 
     # -- Compression.md 9 ---------------------------------------------------
+    def check_streamer_driven(self) -> None:
+        """StreamerDriven.md invariants 1-4: applying the streamer info to a
+        record's object data consumes exactly its length, and to a nested object
+        exactly its byte count.
+
+        Records whose class has a hand-written Streamer are reported as skipped
+        rather than as failures -- that divergence is StreamerDriven.md section 7
+        and is the subject of spec/03-classes/.
+        """
+        rec = next((r for r in self.records
+                    if not r.free and r.name == "StreamerInfo"), None)
+        if rec is None or rootfile.is_compressed(rec):
+            return
+        try:
+            infos = rootfile.read_streamer_infos(self.buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            return  # already reported by check_streamer_info
+
+        for info in infos:
+            for where, message in element_list_failures(info):
+                self.bad(where, message)
+
+        for target in self.records:
+            if target.free or rootfile.is_compressed(target):
+                continue
+            if target.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
+                continue
+            try:
+                rootfile.decode_record(self.buf, target, infos)
+            except rootfile.UnsupportedClass:
+                continue    # a hand-written Streamer; StreamerDriven.md 7
+            except (rootfile.FormatError, struct.error,
+                    IndexError, ValueError) as exc:
+                self.bad("StreamerDriven 10.1",
+                         f"{target.class_name} {target.name!r} at "
+                         f"{target.offset}: {exc}")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -541,6 +616,7 @@ class Checker:
         self.check_free_list()
         self.check_buffer_framing()
         self.check_streamer_info()
+        self.check_streamer_driven()
         return self.failures
 
 

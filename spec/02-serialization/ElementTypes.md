@@ -182,7 +182,9 @@ Four things to get right:
 - There is **exactly one flag byte** even when `fArrayLength > 1`: `kOffsetL` is
   not added for counted pointers
   (`root/core/meta/src/TStreamerElement.cxx:1022-1025`), so the total element
-  count is `fArrayLength × c`.
+  count is `max(fArrayLength, 1) × c` — ROOT raises a zero `fArrayLength` to 1
+  when it compiles the info (`root/io/io/src/TStreamerInfoActions.cxx:4332-4334`),
+  and a scalar counted pointer has `fArrayLength` 0.
 - The length comes from the counter, never from the stream (§2.1).
 
 > Demonstrated by `serialization/arrays`: `fVar` has flag byte 1 followed by three

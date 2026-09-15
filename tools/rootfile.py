@@ -600,6 +600,11 @@ class Element:
         """
         return self.max_index[1] & 0xFFFFFFFF
 
+    @property
+    def count_name(self) -> str:
+        """For a TStreamerBasicPointer or TStreamerLoop, the counter it names."""
+        return self.tail.get("fCountName", "")
+
 
 @dataclass
 class StreamerInfo:
@@ -741,3 +746,319 @@ def read_streamer_infos(buf: bytes, rec: Record) -> list[StreamerInfo]:
             continue   # the optional listOfRules; skipped by its byte count
         infos.append(read_streamer_info(buf, rec, slot, classes))
     return infos
+
+
+# ---------------------------------------------------------------------------
+# The streamer-driven read (spec/02-serialization/StreamerDriven.md).
+#
+# Written from the specification, not from ROOT's source, so that the two
+# disagreeing is a detectable event. It produces a value tree and, more to the
+# point, an exact end position -- which is what StreamerDriven.md invariants 1
+# and 2 check.
+# ---------------------------------------------------------------------------
+
+# On-disk width of a scalar type code (ElementTypes.md section 2). kDouble32 (9)
+# and kFloat16 (19) are absent because their width depends on the comment string,
+# and kCharStar (7) because its length is in the stream.
+SCALAR_WIDTH = {
+    1: 1, 2: 2, 3: 4, 4: 8, 5: 4, 6: 4, 8: 8, 10: 1,
+    11: 1, 12: 2, 13: 4, 14: 8, 15: 4, 16: 8, 17: 8, 18: 1,
+}
+
+OFFSET_L = 20
+OFFSET_P = 40
+
+# Classes whose Streamer is hand-written, so that their streamer info -- which is
+# still in the file -- does not describe their bytes (StreamerDriven.md section 7).
+CUSTOM_STREAMER = {
+    "TFile", "TDirectory", "TDirectoryFile",
+    "TList", "TObjArray", "THashList", "TClonesArray", "TCollection", "TSeqCollection",
+    "TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL", "TArrayL64",
+    "TArrayF", "TArrayD",
+    "TH1", "TAxis",
+    "TRef", "TRefArray", "TProcessID",
+}
+
+_PI_LITERALS = {
+    "pi": 3.141592653589793,
+    "2pi": 6.283185307179586,
+    "twopi": 6.283185307179586,
+    "pi/2": 1.5707963267948966,
+    "pi/4": 0.7853981633974483,
+}
+
+
+def _range_literal(text: str) -> float:
+    text = text.strip()
+    sign = 1.0
+    if text[:1] in "+-":
+        sign, text = (-1.0 if text[0] == "-" else 1.0), text[1:].strip()
+    key = text.lower()
+    if key in _PI_LITERALS:
+        return sign * _PI_LITERALS[key]
+    return sign * float(text)
+
+
+def quantised_width(ftype: int, title: str) -> int:
+    """On-disk width of a kDouble32 or kFloat16 member (ElementTypes.md 5.2).
+
+    The annotation is in the declaration comment, so the streamer info's type
+    fields alone are not enough. The first bracket group may be an array
+    dimension, which has no comma; the range grammar always has one.
+    """
+    xmin = xmax = 0.0
+    nbits = 32
+    rest = title
+    while "[" in rest and "]" in rest:
+        inner = rest[rest.index("[") + 1:rest.index("]")]
+        rest = rest[rest.index("]") + 1:]
+        if "," not in inner:
+            continue
+        parts = inner.split(",")
+        try:
+            xmin = _range_literal(parts[0])
+            xmax = _range_literal(parts[1])
+            if len(parts) > 2:
+                nbits = int(parts[2].strip())
+        except ValueError:
+            continue
+        break
+    if not 2 <= nbits <= 32:
+        nbits = 32
+    bigint = (1 << nbits) if nbits < 32 else 0xFFFFFFFF
+    factor = 0.0
+    if xmin < xmax:
+        factor = bigint / (xmax - xmin)
+    elif nbits < 15:
+        xmin = nbits + 0.1
+    if factor != 0.0:
+        return 4
+    if int(xmin) != 0:
+        return 3
+    return 4 if ftype == 9 else 3
+
+
+@dataclass
+class Value:
+    """One member, and the byte range it occupied."""
+
+    name: str
+    ftype: int
+    start: int
+    end: int
+    type_name: str = ""
+    members: list | None = None   # for a nested object
+    note: str = ""                # why it was skipped rather than decoded
+
+
+class UnsupportedClass(FormatError):
+    """The class has a hand-written Streamer, or no streamer info in this file."""
+
+
+def _bare_class(type_name: str) -> str:
+    name = type_name.strip()
+    if name.startswith("const "):
+        name = name[6:]
+    return name.rstrip("*").strip()
+
+
+class Decoder:
+    """Applies streamer infos to a record's object data.
+
+    `base` is the record start, which is buffer position 0 (Buffer.md section 1).
+    """
+
+    def __init__(self, buf: bytes, base: int, infos: list[StreamerInfo]):
+        self.buf = buf
+        self.base = base
+        self.infos: dict[str, dict[int, StreamerInfo]] = {}
+        for info in infos:
+            self.infos.setdefault(info.name, {})[info.class_version] = info
+        self.classes: dict[int, str] = {}
+
+    def info_for(self, cls: str, version: int) -> StreamerInfo:
+        if cls in CUSTOM_STREAMER:
+            raise UnsupportedClass(f"{cls} has a hand-written Streamer")
+        by_version = self.infos.get(cls)
+        if not by_version:
+            raise UnsupportedClass(f"no streamer info for {cls}")
+        if version in by_version:
+            return by_version[version]
+        if len(by_version) == 1:
+            # A single info for the class: ROOT renumbers a version of 0, so an
+            # exact match is not required (SchemaEvolution).
+            return next(iter(by_version.values()))
+        raise UnsupportedClass(f"no streamer info for {cls} version {version}")
+
+    # -- objects ----------------------------------------------------------
+
+    def read_object(self, cls: str, offset: int) -> Value:
+        """An object introduced by its own `byteCount version` (no class record)."""
+        frame = read_frame(self.buf, offset)
+        version, body = self.resolve_version(cls, frame)
+        members = self.read_members(cls, version, body, frame.end)
+        end = frame.end if frame.end is not None else (
+            members[-1].end if members else body)
+        return Value(name=cls, ftype=61, start=offset, end=end,
+                     type_name=cls, members=members)
+
+    def resolve_version(self, cls: str, frame: Frame) -> tuple[int, int]:
+        """Apply the version-0 rule of Buffer.md section 4.
+
+        A version word of 0 is followed by a checksum for a foreign class and by
+        nothing for a class that declares version 0. Nothing in the stream says
+        which, so the file's own streamer info decides: an entry with
+        fClassVersion == 0 means no checksum follows.
+        """
+        if frame.version > 0:
+            return frame.version, frame.body
+        by_version = self.infos.get(cls, {})
+        if 0 in by_version:
+            return 0, frame.body
+        if not by_version:
+            raise UnsupportedClass(
+                f"version word 0 for {cls}, which has no streamer info here")
+        checksum = _u32(self.buf, frame.body)
+        for version, info in by_version.items():
+            if info.checksum == checksum:
+                return version, frame.body + 4
+        raise FormatError(
+            f"version word 0 for {cls} with checksum {checksum:#x}, "
+            f"which matches no streamer info in this file")
+
+    def read_members(self, cls: str, version: int, offset: int,
+                     limit: int | None) -> list[Value]:
+        """The element loop of StreamerDriven.md section 3."""
+        if cls == "TObject":
+            end = skip_tobject(self.buf, offset)
+            return [Value(name="TObject", ftype=66, start=offset, end=end)]
+        info = self.info_for(cls, version)
+        values: list[Value] = []
+        pos = offset
+        counters: dict[str, int] = {}
+        for el in info.elements:
+            value = self.read_element_value(el, pos, counters)
+            if el.ftype == 6:                 # kCounter: retain it for later
+                counters[el.name] = _i32(self.buf, pos)
+            values.append(value)
+            pos = value.end
+        if limit is not None and pos != limit:
+            raise FormatError(
+                f"{cls} v{version} consumed {pos - offset} bytes, "
+                f"byte count says {limit - offset}")
+        return values
+
+    # -- elements ---------------------------------------------------------
+
+    def read_element_value(self, el: Element, offset: int,
+                           counters: dict[str, int]) -> Value:
+        t = el.ftype
+        buf = self.buf
+
+        def done(end, **kw):
+            kw.setdefault("type_name", el.type_name)
+            return Value(name=el.name, ftype=t, start=offset, end=end, **kw)
+
+        if t == -1:                                   # kNoType: nothing at all
+            return done(offset)
+
+        if t == 0:                                    # kBase
+            nested = self.read_object(el.name, offset)
+            return done(nested.end, members=nested.members)
+
+        if t == 66:                                   # kTObject: no byte count
+            return done(skip_tobject(buf, offset))
+
+        if t == 67:                                   # kTNamed
+            nested = self.read_object("TNamed", offset)
+            return done(nested.end, members=nested.members)
+
+        if t == 65:                                   # kTString: bare, unframed
+            _, end = _counted_string(buf, offset)
+            return done(end)
+
+        if t == 7:                                    # kCharStar: i32 then n bytes
+            n = _i32(buf, offset)
+            return done(offset + 4 + max(n, 0))
+
+        if t in SCALAR_WIDTH:
+            return done(offset + SCALAR_WIDTH[t])
+
+        if t in (9, 19):                              # kDouble32 / kFloat16
+            return done(offset + quantised_width(t, el.title))
+
+        if OFFSET_L <= t < OFFSET_P:                  # fixed C array of a scalar
+            inner = t - OFFSET_L
+            n = el.array_length
+            if inner in SCALAR_WIDTH:
+                return done(offset + n * SCALAR_WIDTH[inner])
+            if inner in (9, 19):
+                return done(offset + n * quantised_width(inner, el.title))
+            raise UnsupportedClass(f"array of type code {inner}")
+
+        if OFFSET_L + 61 <= t <= OFFSET_L + 71:       # fixed C array of objects
+            inner = t - OFFSET_L
+            if inner in (61, 62):                     # 81, 82: no outer framing
+                pos = offset
+                for _ in range(el.array_length):
+                    pos = self.read_object(_bare_class(el.type_name), pos).end
+                return done(pos)
+            if inner in (65, 66, 67):                 # 85, 86, 87: bc ver, then n
+                frame = read_frame(buf, offset)
+                if frame.end is None:
+                    raise FormatError(f"array element {el.name} has no byte count")
+                return done(frame.end)
+            raise UnsupportedClass(f"array of type code {inner}")
+
+        if OFFSET_P <= t < 60:                        # counted pointer
+            inner = t - OFFSET_P
+            if buf[offset] == 0:
+                return done(offset + 1)               # absent: one byte, no more
+            count = counters.get(el.count_name)
+            if count is None:
+                raise FormatError(
+                    f"{el.name} names counter {el.count_name!r}, not yet seen")
+            n = max(el.array_length, 1) * count
+            if inner in SCALAR_WIDTH:
+                return done(offset + 1 + n * SCALAR_WIDTH[inner])
+            if inner in (9, 19):
+                return done(offset + 1 + n * quantised_width(inner, el.title))
+            raise UnsupportedClass(f"counted pointer of type code {inner}")
+
+        if t in (61, 62, 63, 68):                     # embedded or `->` pointer
+            nested = self.read_object(_bare_class(el.type_name), offset)
+            return done(nested.end, members=nested.members)
+
+        if t in (64, 69):                             # pointer with a class record
+            slot = read_slot(buf, offset, self.base)
+            if slot.kind == "null":
+                return done(slot.end, note="null")
+            if slot.kind == "reference":
+                return done(slot.end, note=f"reference to {slot.reference}")
+            cls, body_at = resolve_class(slot, self.classes)
+            frame = read_frame(buf, body_at)
+            version, body = self.resolve_version(cls, frame)
+            self.read_members(cls, version, body, slot.end)
+            return done(slot.end, type_name=cls)
+
+        if t in (500, 501) or t == 71:                # collections, custom streamers
+            frame = read_frame(buf, offset)
+            if frame.end is None:
+                raise FormatError(f"element {el.name} type {t} has no byte count")
+            return done(frame.end, note="skipped by byte count")
+
+        raise UnsupportedClass(f"type code {t}")
+
+
+def decode_record(buf: bytes, rec: Record, infos: list[StreamerInfo]) -> Value:
+    """Apply the streamer-driven read to one uncompressed record's object data.
+
+    Raises UnsupportedClass when the record's class has a hand-written Streamer.
+    """
+    start, end = payload_range(rec)
+    decoder = Decoder(buf, rec.offset, infos)
+    value = decoder.read_object(rec.class_name, start)
+    if value.end != end:
+        raise FormatError(
+            f"{rec.class_name} consumed {value.end - start} bytes of {end - start}")
+    return value
