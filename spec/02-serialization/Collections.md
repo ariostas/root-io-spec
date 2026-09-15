@@ -310,6 +310,46 @@ string of §3.
 > Demonstrated by `serialization/collections`: `fStr` is
 > `40 00 00 06 | 00 0a | 03 "abc"`, and `fWords`'s two strings have no framing.
 
+### 10.1 A `std::string` object has no frame either
+
+The three-byte-different case that catches readers: when a `std::string` is the
+*whole object* — a record of its own, or a member of a pointer-to-object type, or
+one half of a `pair` — it is again the **bare counted string**, with no byte count
+and no version word.
+
+`std::string`'s `TClass` carries a hand-written streamer registered outside the
+class (`root/core/base/src/String.cxx:36`), and that streamer is
+`TBufferFile::WriteStdString` / `ReadStdString`
+(`root/io/io/src/TBufferFile.cxx:261-280`, `root/io/io/src/TBufferFile.cxx:230-255`),
+which writes nothing but the counted string. Its declared class version is 2
+(`root/core/base/src/String.cxx:39`), and that number never reaches a file.
+
+So the same `std::string` is written three different ways depending on where it
+sits:
+
+| Where | Bytes |
+|---|---|
+| A member (`TStreamerSTLstring`) | `byteCount version(10) counted-string` — §10 |
+| An element of a collection | counted string |
+| A whole object: a record, a `pair` half, a pointed-to object | counted string |
+
+A reader MUST hardcode this: no file contains a streamer info for `string`, so the
+streamer-driven algorithm has nothing to go on
+([Streamer-driven reading §6](StreamerDriven.md#6-when-there-is-no-usable-streamer-info)).
+The class name in the key or class record is spelled `string` — not
+`std::string`, and not the fully expanded `basic_string<...>`.
+
+> **Unlike `TLeafC`, an empty string does write its length byte.**
+> `WriteStdString` emits the zero (`root/io/io/src/TBufferFile.cxx:275-277`) where
+> `WriteFastArrayString` returns first
+> ([TLeaf §9](../04-ttree/TLeaf.md#9-tleafc)). The two look alike and are not
+> interchangeable.
+
+> Found by the foreign-file probe, not by a fixture: 114 records across
+> `uproot-issue485` and `uproot-issue486` are standalone `string` objects, and
+> `string-example.root` holds one 127-byte record whose payload is
+> `7e` followed by 126 bytes of JSON. `PLAN.md` §9.8 has the run.
+
 ## 11. Other containers
 
 **`std::vector<bool>`** is special-cased in ROOT's code to work around the

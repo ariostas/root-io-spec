@@ -115,6 +115,21 @@ in declaration order and the `[n]` annotation can only name an already-declared
 member. A reader MAY rely on this, but SHOULD fail loudly rather than guess if a
 `fCountName` names an element it has not yet read.
 
+**The counter is not necessarily in the same element list.** It may be declared in
+a base class, in which case it is nowhere among the current class's elements at
+all. `TStreamerBasicPointer` records where it is, in `fCountClass` and
+`fCountVersion` alongside `fCountName`
+(`root/core/meta/inc/TStreamerElement.h:202-204`), and a reader must therefore
+carry counter values **down the whole base chain of one object**, not reset them
+per class. `fCountClass` is always written, even when it names the element's own
+class.
+
+> `TGraphAsymmErrors` version 3 is the standard example: `fEXlow`, `fEXhigh`,
+> `fEYlow` and `fEYhigh` all name `fNpoints` with `fCountClass` `TGraph`, which is
+> its base. A reader that scopes counters per class reads the four arrays as
+> length 0 and then desynchronises. Seen in the wild on `RooHist`, which reaches
+> `TGraph` two bases up, and on `TF1::fParErrors`, which names `fNpar`.
+
 > **There is no length prefix on a counted array.** The only bytes are the
 > one-byte presence flag and the payload. A reader that loses the counter's value
 > cannot recover the member's length from the stream, and because a counted array

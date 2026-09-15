@@ -166,3 +166,57 @@ class CountedString(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StdStringObject(unittest.TestCase):
+    """Collections.md 10.1. A std::string object has no frame at all."""
+
+    def test_a_short_string(self):
+        buf = b"\x03abc"
+        value = rootfile.read_std_string(buf, 0)
+        self.assertEqual((value.start, value.end), (0, 4))
+
+    def test_an_empty_string_is_one_byte(self):
+        # Unlike TLeafC, WriteStdString emits the zero length byte.
+        self.assertEqual(rootfile.read_std_string(b"\x00", 0).end, 1)
+
+    def test_the_escape(self):
+        buf = b"\xff\x00\x00\x01\x04" + b"x" * 260
+        self.assertEqual(rootfile.read_std_string(buf, 0).end, 265)
+
+    def test_every_spelling_is_recognised(self):
+        for name in ("string", "std::string"):
+            self.assertIn(name, rootfile.STD_STRING_NAMES)
+
+
+class BaseClassCounter(unittest.TestCase):
+    """StreamerDriven.md 3.2. A counted pointer may name a counter in a base."""
+
+    def test_a_counter_in_a_base_is_visible_to_a_derived_element(self):
+        # TGraph holds fNpoints and fX; TGraphAsymmErrors adds fEXlow, which
+        # names fNpoints with fCountClass "TGraph". Two i32 values, so the
+        # derived array must consume 1 + 2 * 4 bytes.
+        base = info(element("fNpoints", ftype=6),
+                    name="TGraph")
+        derived = info(element("TGraph", cls="TStreamerBase", ftype=0),
+                       element("fEXlow", cls="TStreamerBasicPointer", ftype=43,
+                               count_name="fNpoints"),
+                       name="TGraphAsymmErrors")
+        buf = (b"\x40\x00\x00\x06\x00\x01"          # TGraph frame, version 1
+               b"\x00\x00\x00\x02"                  # fNpoints = 2
+               b"\x01"                              # fEXlow is present
+               b"\x00\x00\x00\x07\x00\x00\x00\x08")   # its two values
+        decoder = rootfile.Decoder(buf, 0, [base, derived])
+        values = decoder.read_members("TGraphAsymmErrors", 1, 0, None)
+        self.assertEqual(values[0].name, "TGraph")
+        self.assertEqual(values[1].name, "fEXlow")
+        # 1 flag byte plus two i32: the count came from the base.
+        self.assertEqual(values[1].end - values[1].start, 9)
+
+    def test_a_counter_that_is_nowhere_is_still_an_error(self):
+        derived = info(element("fEXlow", cls="TStreamerBasicPointer", ftype=43,
+                               count_name="fNope"),
+                       name="C")
+        decoder = rootfile.Decoder(b"\x01\x00\x00\x00\x07", 0, [derived])
+        with self.assertRaises(rootfile.FormatError):
+            decoder.read_members("C", 1, 0, None)

@@ -959,6 +959,23 @@ OFFSET_P = 40
 # wrongly refuse files this specification can in fact describe.
 #
 # What remains are the classes that diverge at every version.
+# std::string has a hand-written streamer registered on its TClass
+# (root/core/base/src/String.cxx:36) and is written with no framing at all.
+# Every spelling libstdc++ and libc++ give it reaches a file as a class name.
+STD_STRING_NAMES = {
+    "string", "std::string",
+    "basic_string<char,char_traits<char>,allocator<char> >",
+    "std::basic_string<char>",
+}
+
+
+def read_std_string(buf: bytes, offset: int) -> Value:
+    """A std::string object: a bare counted string. Collections.md 10.1."""
+    _, end = _counted_string(buf, offset)
+    return Value(name="string", ftype=61, start=offset, end=end,
+                 type_name="string")
+
+
 CUSTOM_STREAMER = {
     # The container's own bookkeeping, specified in spec/01-container/.
     "TFile", "TDirectory", "TDirectoryFile",
@@ -1103,18 +1120,25 @@ class Decoder:
     # per-entry option string and one extra Int_t. StreamerInfo.md 4 and 5.
     SEQUENCES = {"TList": True, "THashList": True, "TObjArray": False}
 
-    def read_object(self, cls: str, offset: int) -> Value:
-        """An object introduced by its own `byteCount version` (no class record)."""
+    def read_object(self, cls: str, offset: int,
+                    counters: dict[str, int] | None = None) -> Value:
+        """An object introduced by its own `byteCount version` (no class record).
+
+        `counters` is passed down only for a base class, whose counted pointers
+        may name a counter in a base of their own.
+        """
         if cls == "TClonesArray":
             return self.read_clones_array(offset)
         if cls in self.SEQUENCES:
             return self.read_sequence(cls, offset)
         if cls in TARRAY_WIDTH:
             return self.read_tarray(cls, offset)
+        if cls in STD_STRING_NAMES:
+            return read_std_string(self.buf, offset)
         try:
             frame = read_frame(self.buf, offset)
             version, body = self.resolve_version(cls, frame)
-            members = self.read_members(cls, version, body, frame.end)
+            members = self.read_members(cls, version, body, frame.end, counters)
         except UnsupportedClass as exc:
             return self.skip_or_fail(cls, offset, exc)
         end = frame.end if frame.end is not None else (
@@ -1147,8 +1171,13 @@ class Decoder:
             f"which matches no streamer info in this file")
 
     def read_members(self, cls: str, version: int, offset: int,
-                     limit: int | None) -> list[Value]:
-        """The element loop of StreamerDriven.md section 3."""
+                     limit: int | None,
+                     counters: dict[str, int] | None = None) -> list[Value]:
+        """The element loop of StreamerDriven.md section 3.
+
+        `counters` is shared with the object's base classes, because a counted
+        pointer may name a counter declared in a base -- ElementTypes.md 4.1.
+        """
         if cls == "TObject":
             base = read_tobject(self.buf, offset)
             return [Value(name="TObject", ftype=66, start=offset, end=base.end,
@@ -1156,7 +1185,8 @@ class Decoder:
         info = self.info_for(cls, version)
         values: list[Value] = []
         pos = offset
-        counters: dict[str, int] = {}
+        if counters is None:
+            counters = {}
         for el in info.elements:
             try:
                 value = self.read_element_value(el, pos, counters)
@@ -1197,7 +1227,7 @@ class Decoder:
             return done(offset)
 
         if t == 0:                                    # kBase
-            nested = self.read_object(el.name, offset)
+            nested = self.read_object(el.name, offset, counters)
             return done(nested.end, members=nested.members)
 
         if t == 66:                                   # kTObject: no byte count

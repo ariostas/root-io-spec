@@ -39,10 +39,21 @@ changed or a fixture stopped being reproducible. `--accept` re-records it, and i
 the right move only when you changed the case yourself.
 
 `tools/coverage_probe.py <file.root>` is not a CI check: it measures how much of a
-file the specification currently covers, and prints what blocked each record. Point
-it at a file the fixtures were not designed around — a few histograms and a
-`TTree` — to get a ranked list of what is still missing, rather than guessing from
-`PLAN.md`.
+file the specification currently covers, and prints what blocked each record.
+`--summary` gives one line per file. Point it at files the fixtures were not
+designed around to get a ranked list of what is still missing, rather than guessing
+from `PLAN.md`:
+
+```sh
+tools/fetch_foreign.py                      # 154 third-party files, 20 MB, to build/foreign/
+tools/coverage_probe.py --summary build/foreign/*.root
+```
+
+Those files are **not** reference files and are not committed;
+`gen/foreign/MANIFEST.sha256` records what was used. Their provenance is mixed —
+the source is uproot's regression corpus, which includes files uproot wrote — so an
+invariant failure there is a lead, not evidence. `PLAN.md` §9.8 has the standing
+result and the triage rules.
 
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.

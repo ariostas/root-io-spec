@@ -864,7 +864,8 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Document |
 |---|---|
 | A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
-| A compressed basket, a multi-block basket, a displacement array, `fIOBits` in either form, and the embedded (non-record) form of a basket | `04-ttree/TBasket.md` §12 |
+| A compressed basket, a multi-block basket, a displacement array, and `fIOBits` in either form | `04-ttree/TBasket.md` §12 |
+| **The embedded form of a basket — a `TBasket` object inside a `TTree` record's `fBaskets`.** Promoted from "missing fixture" to a blocker by §9.8: it is common in real files, and `TDirectory::WriteTObject` on an unflushed tree produces one | `04-ttree/TBasket.md` §4, `TBranch.md` §5 |
 | A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
@@ -913,8 +914,68 @@ milestone the probe was built to measure, reached in two steps.
 Since `TBranch.md` and `TLeaf.md`, the same file is more than *accounted for*: its
 branches and leaves are invariant-checked, and `rootfile.entry_spans` closes each
 entry against the leaves that make it up, so the entry → basket → byte range →
-value path is exercised rather than assumed. The caveat above still stands
-unchanged: the file is one we wrote.
+value path is exercised rather than assumed.
+
+**The caveat above has now been discharged: see §9.8.**
+
+### 9.8 The foreign-file probe
+
+Run 2026-09-15 over **154 files this project did not write**, 20 MB, taken from
+[scikit-hep-testdata](https://github.com/scikit-hep/scikit-hep-testdata) — uproot's
+regression corpus, chosen because it spans **ROOT 4.00/00 to 6.36/02 on purpose**:
+2 files from ROOT 4, 27 from ROOT 5 (5.23 to 5.34), 125 from ROOT 6, including a
+sweep of `uproot-sample-<version>` files in four codecs. That sweep is the closest
+thing available to the legacy corpus `gen/legacy/` was meant to provide, and it
+cost nothing to obtain. `gen/foreign/MANIFEST.sha256` records exactly what was
+used; `tools/fetch_foreign.py` reproduces it. The files are **not committed** —
+they are not our fixtures.
+
+**29 248 records. 28 509 decoded, 699 container, 20 partial, 19 blocked, 1 file
+not walkable.** 99.87% of records read from the specification alone, on files
+written by four major ROOT versions over sixteen years.
+
+The first run was worse — 139 blocked — and two fixes account for the difference.
+Both were real gaps, both are now specified:
+
+| Found | Records | Fix |
+|---|---|---|
+| A `std::string` written as a whole object (a record, a `pair` half, a pointed-to object) has no frame at all, and no file carries a streamer info for `string` | 114 | `02-serialization/Collections.md` §10.1 |
+| A counted pointer's `kCounter` may be declared in a **base class**, which `fCountClass` names. Counters must be carried down the base chain, not scoped per class | 10 | `02-serialization/StreamerDriven.md` §3.2, `ElementTypes.md` §4 |
+
+#### What still blocks, and what it means
+
+| Blocker | Records | Reading |
+|---|---|---|
+| **An embedded `TBasket` inside a `TTree` record** | 20 records, **1065 skipped members** | The single biggest finding. `04-ttree/TBranch.md` §5 says this form exists; the probe shows it is *common* — `uproot-issue327` (ROOT 5.34/30) has 80 in one tree, and both ROOT 4.00/00 files have several per tree. A reader that cannot read one fails on real files. §9.5 listed it as a missing fixture; it should be promoted |
+| `TMatrixTSym<double>` | 5 | A divergent class with a hand-written streamer. Phase 4 material, now with a concrete demand |
+| The file's own directory records written by a `TFile` **subclass** — here CMS's `TStorageFactoryFile` | 6 | Not an object gap: a reader must recognise the directory records structurally (`fBEGIN`, `fSeekDir`, `fSeekKeys`, `fSeekFree`) rather than by class name. Worth an erratum in `01-container/` |
+| A class with **no streamer info in the file** — `StIOEvent`, `MGTRun`, `ND::TND280Output`, `CalibrationCoefficient`, `RooRealVar`, and ROOT's own `TTime` | 9 | Not a spec gap: `StreamerDriven.md` §6's case, and nobody can read these. That `TTime` is among them is the interesting part — a ROOT class for which ROOT writes no info |
+| Member-wise `pair<string,string>` | 3 | Needs byte archaeology; `synthesise_pair` has no `string` case |
+| A byte-count-wrapped object **reference** (`40 00 00 04` then a 4-byte tag) | 1 | `Buffer.md` §6 rejects this, and ROOT's reader accepts it. **Provenance unestablished** — `uproot-issue413.root` looks uproot-written (branch names `I32`/`F64`/`Str`/`ArrF64`, file "struct.root"). Settle the writer before changing `Buffer.md` |
+| `TDatime` at version 0 with a checksum matching nothing; `RooAbsCollection` consuming −29 bytes; `vector<double>` version 0 with no info; a zero-length record at 10427 | 5 | One each, undiagnosed |
+
+#### The methodological catch
+
+`check_invariants.py` over the same corpus reports **10 538 failures**, and
+**that number means almost nothing yet.** Three different things produce it and
+they have to be separated per file before any of it is evidence:
+
+1. **Invariants stated too strongly.** Already confirmed for `TBranch` 11.9:
+   `fBaskets`'s slot count on disk is *not* `fWriteBasket + 1` in general — it
+   comes from `TObjArray`'s cached `fLast`, which `TBranch::Streamer`'s
+   `fBaskets[i] = nullptr` does not update, so it can be 0. The invariant should
+   not assert the count at all.
+2. **Files not written by ROOT.** uproot's corpus contains files uproot wrote, and
+   those fail invariants for reasons that say nothing about ROOT's format.
+   `fEntries 1 != fEntryNumber − fFirstEntry (0 − 0)` is the signature.
+   **No invariant may be weakened on the strength of such a file.**
+3. **Genuine format facts we have wrong.** `TBranch` 11.3 fails on
+   `uproot-issue431.root` (ROOT 5.34/38) with
+   `fBasketEntry[fWriteBasket] 4 != fEntryNumber 10` — a real ROOT file, and if
+   that is not a writer bug then §10's lookup procedure is incomplete.
+
+Triaging those three is a task in itself and is **not** done. Until it is, the
+foreign corpus is a coverage measurement, not an invariant test.
 
 Two corrections the probe forced, both recorded where they belong:
 

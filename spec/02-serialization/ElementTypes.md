@@ -185,7 +185,10 @@ Four things to get right:
   count is `max(fArrayLength, 1) × c` — ROOT raises a zero `fArrayLength` to 1
   when it compiles the info (`root/io/io/src/TStreamerInfoActions.cxx:4332-4334`),
   and a scalar counted pointer has `fArrayLength` 0.
-- The length comes from the counter, never from the stream (§2.1).
+- The length comes from the counter, never from the stream (§2.1), and the counter
+  may be declared in a **base class** rather than beside it — see
+  [Streamer-driven reading §3.2](StreamerDriven.md#32-elements-are-not-independent).
+  `fCountClass` names the class it is in.
 
 > Demonstrated by `serialization/arrays`: `fVar` has flag byte 1 followed by three
 > `i32`, and `fMissing` has flag byte 0 followed by nothing at all — the record
