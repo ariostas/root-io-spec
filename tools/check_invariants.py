@@ -626,6 +626,67 @@ class Checker:
         for where, message in info_list_failures(infos):
             self.bad(where, message)
 
+    def check_collections(self) -> None:
+        """Collections.md invariants 1, 2, 3, 4 and 6.
+
+        Invariant 5 is StreamerDriven 10.2 applied inside a collection, and is
+        checked by decode_record.
+        """
+        rec = next((r for r in self.records
+                    if not r.free and r.name == "StreamerInfo"), None)
+        if rec is None or rootfile.is_compressed(rec):
+            return
+        try:
+            infos = rootfile.read_streamer_infos(self.buf, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            return
+        known = {i.name for i in infos}
+
+        for info in infos:
+            for el in info.elements:
+                if el.cls not in ("TStreamerSTL", "TStreamerSTLstring"):
+                    continue
+                stl = el.tail.get("fSTLtype", 0)
+                # kOffsetP is added for a pointer member, but only to a
+                # container code; 300 and 365 stand alone.
+                bare = stl - rootfile.OFFSET_P if 40 <= stl <= 54 else stl
+                if not (0 <= bare <= 14 or bare in (300, 365)):
+                    self.bad("Collections 14.1",
+                             f"{info.name}.{el.name} has fSTLtype {stl}")
+                if el.cls == "TStreamerSTLstring":
+                    if (stl, el.tail.get("fCtype")) != (365, 365):
+                        self.bad("Collections 14.2",
+                                 f"{info.name}.{el.name} is a TStreamerSTLstring "
+                                 f"with fSTLtype {stl} and fCtype "
+                                 f"{el.tail.get('fCtype')}, not 365 and 365")
+
+        for target in self.records:
+            if target.free or rootfile.is_compressed(target):
+                continue
+            if target.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
+                continue
+            try:
+                decoder, _ = rootfile.decode_record_verbose(self.buf, target, infos)
+            except (rootfile.UnsupportedClass, rootfile.FormatError,
+                    struct.error, IndexError, ValueError):
+                continue
+            for name, value, offset in decoder.member_wise:
+                frame = rootfile.read_frame(self.buf, offset)
+                if frame.version > 10:
+                    self.bad("Collections 14.3",
+                             f"{name} has version word {frame.version}, above "
+                             f"TStreamerInfo's current class version")
+                if (rootfile.is_collection_name(value)
+                        or value in ("string", "std::string", "TString")
+                        or value.endswith("*")):
+                    self.bad("Collections 14.4",
+                             f"{name} is member-wise but its value class "
+                             f"{value!r} is one CanSplit refuses")
+                if not value.startswith("pair<") and value not in known:
+                    self.bad("Collections 14.6",
+                             f"{name} is a member-wise collection of {value!r}, "
+                             f"which has no streamer info in this file")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -803,6 +864,7 @@ class Checker:
         self.check_streamer_driven()
         self.check_references()
         self.check_schema_evolution()
+        self.check_collections()
         return self.failures
 
 

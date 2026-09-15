@@ -617,6 +617,39 @@ These do not block starting, but should be resolved before the phase they affect
 5. **`TTree` sub-plan.** Phase 5 is large enough that it wants its own plan document
    with the full split/leaf-type/collection fixture matrix enumerated.
 
+### 7.1 Upstream bug candidates found while writing the spec
+
+Verified against the pinned submodule and real bytes; not yet reported.
+
+1. **A `std::vector<T>` of an interpreted class writes an unreadable file.**
+   When `T` has no dictionary and the only reference to it in the written class
+   is through a collection, `T`'s streamer info is not recorded. The bytes are
+   written member-wise, naming `T`'s checksum, with **no warning on the write
+   side**. Reopening gives
+   `Error in <TBufferFile::CheckByteCount>: object of class vector<Hit3> read too
+   few bytes: 6 instead of 20`. Adding any direct member of type `T` is enough to
+   get the info written.
+
+   ```cpp
+   struct Hit3 { Int_t x; Float_t y; };
+   struct C3   { std::vector<Hit3> fHits; };
+   // f.WriteObjectAny(&a, "C3", "a");  -> silent; the file cannot be read back
+   ```
+
+   The contrast with the direct-member path, which warns "has no streamer or
+   dictionary, data member will not be saved", is what makes this a bug rather
+   than a limitation: silent data loss versus a diagnostic. Recorded as
+   `spec/02-serialization/Collections.md` section 9.
+
+2. **The two collection readers disagree on the `kSTLp` version threshold.**
+   `TStreamerInfoActions.cxx:845` uses `>= 8` where
+   `TStreamerInfoReadBuffer.cxx:1167` uses `>= 9`, so for a `kSTLp` member
+   written at `TStreamerInfo` level 8 the two paths differ by one 2-byte word.
+   No such file has been constructed here; verify before reporting.
+   `Collections.md` section 6.
+
+3. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
+
 ## 8. Immediate next steps
 
 1. Write `spec/00-conventions.md` and `spec/01-container/FileHeader.md` as the style

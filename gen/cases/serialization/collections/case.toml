@@ -1,0 +1,395 @@
+id   = "serialization/collections"
+file = "data/serialization/collections.root"
+size = 2124
+
+description = """
+STL containers: the object-wise and member-wise framings side by side.
+
+Nine members, chosen so that each lands in a different branch of the member-wise
+gate. Two are member-wise and six are object-wise, and the difference is a single
+bit in the version word.
+
+What this case pins down:
+
+- Every collection member is framed `byteCount version`, where the version is
+  TStreamerInfo's own class version, 10 -- not the collection's, and not a count.
+- kStreamedMemberWise is bit 14 of that version word, so a member-wise frame
+  reads 0x400A where an object-wise one reads 0x000A.
+- Object-wise is `count` then each element in full. Member-wise is a *second*
+  version word for the value class, then `count`, then one column per member of
+  the value class: all the x, then all the y.
+- A map is a pair-of-columns when member-wise and interleaved key/value when
+  object-wise. The value class is pair<K,V>, whose streamer info ROOT does not
+  write into the file even though the member-wise frame names its checksum.
+- fCtype does not determine the layout. fNested, fWords and fMap all have
+  fCtype 61, and they are respectively a nested bare collection, a counted
+  string, and a pair. Only fTypeName distinguishes them.
+- fSTLtype for std::set is 6, not 5. The shipped ROOT documentation has set and
+  multimap the other way round.
+- A std::string member is a TStreamerSTLstring: the same frame, then a bare
+  counted string with no count and no element loop.
+
+fOne is not a collection. It exists so that Hit's streamer info reaches the file;
+without it ROOT writes the vector<Hit> bytes and records nothing about Hit, and
+the file cannot be read back even by ROOT.
+"""
+
+spec = [
+  "spec/02-serialization/Collections.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 194
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 294
+nbytes = 235
+class  = "Coll"
+role   = "the object; the record this case is about"
+
+[[records]]
+offset = 529
+nbytes = 1381
+class  = "TList"
+role   = "StreamerInfo; carries Coll and Hit, but not pair<int,int>"
+
+[[records]]
+offset = 1910
+nbytes = 121
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 2031
+nbytes = 93
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Key at 294, fKeyLen 34, so the payload starts at 328. Coll is interpreted and
+# so foreign: version word 0, then a checksum.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "Coll byte count, kByteCountMask | 197"
+offset = 328
+type = "u32"
+value = 1073742021
+[[bytes]]
+name = "version word: 0, foreign"
+offset = 332
+type = "i16"
+value = 0
+[[bytes]]
+name = "Coll checksum"
+offset = 334
+type = "u32"
+value = 3013113861
+
+# --- fInts: vector<int>, object-wise ---------------------------------------
+
+[[bytes]]
+name = "fInts byte count, kByteCountMask | 18"
+offset = 338
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "fInts version word: 10, TStreamerInfo's own class version, bit 14 clear"
+offset = 342
+type = "u16"
+value = 10
+[[bytes]]
+name = "fInts element count"
+offset = 344
+type = "i32"
+value = 3
+[[bytes]]
+name = "fInts[0], bare"
+offset = 348
+type = "i32"
+value = 1
+[[bytes]]
+name = "fInts[2], bare: no per-element framing"
+offset = 356
+type = "i32"
+value = 3
+
+# --- fFlags: vector<bool>, one byte per element ----------------------------
+
+[[bytes]]
+name = "fFlags byte count, kByteCountMask | 9"
+offset = 360
+type = "u32"
+value = 1073741833
+[[bytes]]
+name = "fFlags version word"
+offset = 364
+type = "u16"
+value = 10
+[[bytes]]
+name = "fFlags element count"
+offset = 366
+type = "i32"
+value = 3
+[[bytes]]
+name = "fFlags[0]: one byte, not one bit"
+offset = 370
+type = "u8"
+value = 1
+[[bytes]]
+name = "fFlags[1]"
+offset = 371
+type = "u8"
+value = 0
+[[bytes]]
+name = "fFlags[2]"
+offset = 372
+type = "u8"
+value = 1
+
+# --- fSet: set<int>, object-wise, ascending --------------------------------
+
+[[bytes]]
+name = "fSet byte count, kByteCountMask | 14"
+offset = 373
+type = "u32"
+value = 1073741838
+[[bytes]]
+name = "fSet version word"
+offset = 377
+type = "u16"
+value = 10
+[[bytes]]
+name = "fSet element count"
+offset = 379
+type = "i32"
+value = 2
+[[bytes]]
+name = "fSet[0]"
+offset = 383
+type = "i32"
+value = 5
+[[bytes]]
+name = "fSet[1]"
+offset = 387
+type = "i32"
+value = 6
+
+# --- fHits: vector<Hit>, MEMBER-WISE ---------------------------------------
+
+[[bytes]]
+name = "fHits byte count, kByteCountMask | 28"
+offset = 391
+type = "u32"
+value = 1073741852
+[[bytes]]
+name = "fHits version word: 0x400A, kStreamedMemberWise set"
+offset = 395
+type = "u16"
+value = 16394
+[[bytes]]
+name = "the second version word, for the value class Hit: 0 because Hit is foreign"
+offset = 397
+type = "i16"
+value = 0
+[[bytes]]
+name = "Hit's checksum, which selects Hit's streamer info"
+offset = 399
+type = "u32"
+value = 67131857
+[[bytes]]
+name = "fHits element count, after both version words"
+offset = 403
+type = "i32"
+value = 2
+[[bytes]]
+name = "the x column: fHits[0].x"
+offset = 407
+type = "i32"
+value = 10
+[[bytes]]
+name = "the x column: fHits[1].x, immediately after"
+offset = 411
+type = "i32"
+value = 20
+[[bytes]]
+name = "the y column begins only now: fHits[0].y"
+offset = 415
+type = "u32"
+value = 1069547520
+[[bytes]]
+name = "the y column: fHits[1].y"
+offset = 419
+type = "u32"
+value = 1075838976
+
+# --- fNested: vector<vector<int>>, object-wise, inner collections bare ------
+
+[[bytes]]
+name = "fNested byte count, kByteCountMask | 26"
+offset = 423
+type = "u32"
+value = 1073741850
+[[bytes]]
+name = "fNested version word: object-wise, because the value class is a collection"
+offset = 427
+type = "u16"
+value = 10
+[[bytes]]
+name = "outer count"
+offset = 429
+type = "i32"
+value = 2
+[[bytes]]
+name = "inner count of fNested[0]: no byte count, no version word"
+offset = 433
+type = "i32"
+value = 2
+[[bytes]]
+name = "fNested[0][0]"
+offset = 437
+type = "i32"
+value = 1
+[[bytes]]
+name = "fNested[0][1]"
+offset = 441
+type = "i32"
+value = 2
+[[bytes]]
+name = "inner count of fNested[1]"
+offset = 445
+type = "i32"
+value = 1
+[[bytes]]
+name = "fNested[1][0]"
+offset = 449
+type = "i32"
+value = 3
+
+# --- fWords: vector<string>, object-wise, bare counted strings --------------
+
+[[bytes]]
+name = "fWords byte count, kByteCountMask | 12"
+offset = 453
+type = "u32"
+value = 1073741836
+[[bytes]]
+name = "fWords version word: object-wise, because CanSplit refuses a string"
+offset = 457
+type = "u16"
+value = 10
+[[bytes]]
+name = "fWords element count"
+offset = 459
+type = "i32"
+value = 2
+[[bytes]]
+name = "fWords[0]: a counted string with no frame of its own"
+offset = 463
+type = "string"
+value = "pq"
+[[bytes]]
+name = "fWords[1]"
+offset = 466
+type = "string"
+value = "rs"
+
+# --- fMap: map<int,int>, MEMBER-WISE, keys then values ----------------------
+
+[[bytes]]
+name = "fMap byte count, kByteCountMask | 28"
+offset = 469
+type = "u32"
+value = 1073741852
+[[bytes]]
+name = "fMap version word: 0x400A, member-wise"
+offset = 473
+type = "u16"
+value = 16394
+[[bytes]]
+name = "the value class version word: 0, pair<int,int> being foreign"
+offset = 475
+type = "i16"
+value = 0
+[[bytes]]
+name = "pair<int,int>'s checksum, for which this file has no streamer info"
+offset = 477
+type = "u32"
+value = 2516086102
+[[bytes]]
+name = "fMap entry count"
+offset = 481
+type = "i32"
+value = 2
+[[bytes]]
+name = "the key column: both keys first"
+offset = 485
+type = "i32"
+value = 1
+[[bytes]]
+name = "the key column"
+offset = 489
+type = "i32"
+value = 2
+[[bytes]]
+name = "the value column begins only now"
+offset = 493
+type = "i32"
+value = 100
+[[bytes]]
+name = "the value column"
+offset = 497
+type = "i32"
+value = 200
+
+# --- fStr: std::string, a TStreamerSTLstring --------------------------------
+
+[[bytes]]
+name = "fStr byte count, kByteCountMask | 6"
+offset = 501
+type = "u32"
+value = 1073741830
+[[bytes]]
+name = "fStr version word: 10 again, and not std::string's class version of 2"
+offset = 505
+type = "u16"
+value = 10
+[[bytes]]
+name = "fStr: a counted string directly, with no count and no element loop"
+offset = 507
+type = "string"
+value = "abc"
+
+# --- fOne: an ordinary embedded Hit, kAny (62) ------------------------------
+
+[[bytes]]
+name = "fOne byte count, kByteCountMask | 14"
+offset = 511
+type = "u32"
+value = 1073741838
+[[bytes]]
+name = "fOne version word: 0, Hit being foreign"
+offset = 515
+type = "i16"
+value = 0
+[[bytes]]
+name = "Hit's checksum again, here in an ordinary embedded object"
+offset = 517
+type = "u32"
+value = 67131857
+[[bytes]]
+name = "fOne.x"
+offset = 521
+type = "i32"
+value = 30
+[[bytes]]
+name = "fOne.y, ending the payload"
+offset = 525
+type = "u32"
+value = 1080033280

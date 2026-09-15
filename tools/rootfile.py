@@ -615,6 +615,7 @@ class Element:
     max_index: list[int]
     type_name: str
     tail: dict               # subclass-specific members
+    fsize_offset: int = -1   # where fSize sits in the buffer; see normalize.py
 
     @property
     def has_range(self) -> bool:
@@ -698,12 +699,14 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
         return Element(cls=cls, version=outer.version, name=el.name, title=el.title,
                        bits=el.bits, ftype=el.ftype, fsize=el.fsize,
                        array_length=el.array_length, array_dim=el.array_dim,
-                       max_index=el.max_index, type_name=el.type_name, tail=el.tail)
+                       max_index=el.max_index, type_name=el.type_name, tail=el.tail,
+                       fsize_offset=el.fsize_offset)
 
     # The TStreamerElement base.
     elem = read_frame(buf, o)
     eo = elem.body
     name, title, bits, eo = _skip_named(buf, eo)
+    fsize_offset = eo + 4
     ftype, fsize, array_length, array_dim = struct.unpack_from(">iiii", buf, eo)
     eo += 16
     max_index = list(struct.unpack_from(">5i", buf, eo))
@@ -728,7 +731,7 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
     return Element(cls=cls, version=outer.version, name=name, title=title, bits=bits,
                    ftype=ftype, fsize=fsize, array_length=array_length,
                    array_dim=array_dim, max_index=max_index, type_name=type_name,
-                   tail=tail)
+                   tail=tail, fsize_offset=fsize_offset)
 
 
 def read_streamer_info(buf: bytes, rec: Record, slot: Slot,
@@ -906,6 +909,10 @@ class Decoder:
         for info in infos:
             self.infos.setdefault(info.name, {})[info.class_version] = info
         self.classes: dict[int, str] = {}
+        # (member name, value class, frame offset) for each member-wise
+        # collection reached, recorded before it is decoded so that it survives
+        # a failure to decode it.
+        self.member_wise: list[tuple[str, str, int]] = []
 
     def info_for(self, cls: str, version: int) -> StreamerInfo:
         if cls in CUSTOM_STREAMER:
@@ -1074,13 +1081,153 @@ class Decoder:
             self.read_members(cls, version, body, slot.end)
             return done(slot.end, type_name=cls)
 
-        if t in (500, 501) or t == 71:                # collections, custom streamers
+        if t == 500 and el.cls in ("TStreamerSTL", "TStreamerSTLstring"):
+            end = self.read_collection(el, offset)
+            return done(end)
+
+        if t in (500, 501) or t == 71:                # a genuine custom streamer
             frame = read_frame(buf, offset)
             if frame.end is None:
                 raise FormatError(f"element {el.name} type {t} has no byte count")
             return done(frame.end, note="skipped by byte count")
 
         raise UnsupportedClass(f"type code {t}")
+
+
+    # -- collections ------------------------------------------------------
+
+    def read_collection(self, el, offset: int) -> int:
+        """One TStreamerSTL or TStreamerSTLstring member. Returns the end.
+
+        The frame is `byteCount version`, where version is TStreamerInfo's own
+        class version and bit 14 is kStreamedMemberWise (Collections.md 2).
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"collection {el.name} has no byte count")
+        stl = el.tail.get("fSTLtype", 0)
+        if stl == STL_STRING:
+            _, end = _counted_string(self.buf, frame.body)
+            if end != frame.end:
+                raise FormatError(
+                    f"std::string {el.name} ends at {end}, byte count says "
+                    f"{frame.end}")
+            return frame.end
+        if stl == STL_BITSET:
+            raise UnsupportedClass("std::bitset has no fixture here")
+        if stl >= OFFSET_P:
+            raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
+
+        value = value_type_name(el.type_name)
+        if frame.member_wise:
+            self.member_wise.append((el.name, value, offset))
+            pos = self.read_member_wise(value, frame.body, el)
+        else:
+            pos = self.read_object_wise(value, stl, frame.body)
+        if pos != frame.end:
+            raise FormatError(
+                f"collection {el.name} consumed to {pos}, byte count says "
+                f"{frame.end}")
+        return frame.end
+
+    def read_object_wise(self, value: str, stl: int, offset: int) -> int:
+        """`count`, then each element in full (Collections.md 3)."""
+        count = _i32(self.buf, offset)
+        pos = offset + 4
+        for _ in range(max(count, 0)):
+            if stl in PAIRED:
+                key, val = template_args(value)
+                pos = self.read_value(key, pos)
+                pos = self.read_value(val, pos)
+            else:
+                pos = self.read_value(value, pos)
+        return pos
+
+    def read_value(self, name: str, offset: int) -> int:
+        """One element of a collection, written in full."""
+        if name in FUNDAMENTAL:
+            return offset + SCALAR_WIDTH[FUNDAMENTAL[name]]
+        bare = name[5:] if name.startswith("std::") else name
+        if bare in ("string", "TString"):
+            return _counted_string(self.buf, offset)[1]
+        if is_collection_name(bare):
+            # A nested collection is bare: a count and its elements, with no
+            # byte count and no version word of its own.
+            inner = value_type_name(bare)
+            head = bare[:bare.index("<")]
+            stl = STL_MAP if head.endswith("map") else STL_VECTOR
+            return self.read_object_wise(inner, stl, offset)
+        if bare.endswith("*"):
+            return read_slot(self.buf, offset, self.base).end
+        return self.read_object(bare, offset).end
+
+    def read_member_wise(self, value: str, offset: int, el) -> int:
+        """A second version word, a count, then one column per member."""
+        version, pos = self.resolve_bare_version(value, offset)
+        count = _i32(self.buf, pos)
+        pos += 4
+        for element in self.value_info(value, version).elements:
+            pos = self.read_column(element, count, pos)
+        return pos
+
+    def resolve_bare_version(self, cls: str, offset: int) -> tuple[int, int]:
+        """ReadVersionForMemberWise: a Version_t with no byte count.
+
+        As with an ordinary version word, 0 or less is followed by a checksum
+        for a foreign class (Buffer.md 4), and the checksum selects the info.
+        """
+        version = _i16(self.buf, offset)
+        if version > 0:
+            return version, offset + 2
+        checksum = _u32(self.buf, offset + 2)
+        for candidate, info in self.infos.get(cls, {}).items():
+            if info.checksum == checksum:
+                return candidate, offset + 6
+        if cls.startswith("pair<"):
+            return 0, offset + 6      # synthesised below; the checksum is moot
+        raise UnsupportedClass(
+            f"member-wise collection of {cls}, whose checksum {checksum:#010x} "
+            f"matches no streamer info in this file")
+
+    def value_info(self, cls: str, version: int):
+        if cls.startswith("pair<"):
+            return synthesise_pair(cls)
+        return self.info_for(cls, version)
+
+    def read_column(self, element, count: int, offset: int) -> int:
+        """One member of the value class, for every element of the collection."""
+        t = element.ftype
+        if t in SCALAR_WIDTH:
+            return offset + count * SCALAR_WIDTH[t]
+        if t == 66:                                   # a TObject base column
+            pos = offset
+            for _ in range(count):
+                pos = read_tobject(self.buf, pos).end
+            return pos
+        if t in (61, 62):                             # each element framed
+            pos = offset
+            for _ in range(count):
+                pos = self.read_object(_bare_class(element.type_name), pos).end
+            return pos
+        raise UnsupportedClass(f"member-wise column of type code {t}")
+
+
+def decode_record_verbose(buf: bytes, rec: Record,
+                          infos: list[StreamerInfo]) -> tuple[Decoder, Value | None]:
+    """decode_record, but hand back the Decoder even when the read fails.
+
+    A checker needs what the decoder saw on the way to the failure -- notably
+    which collections were member-wise, which is only in the data.
+    """
+    start, end = payload_range(rec)
+    decoder = Decoder(buf, rec.offset, infos)
+    try:
+        value = decoder.read_object(rec.class_name, start)
+    except (FormatError, struct.error, IndexError, ValueError):
+        return decoder, None
+    if value.end != end:
+        return decoder, None
+    return decoder, value
 
 
 def decode_record(buf: bytes, rec: Record, infos: list[StreamerInfo]) -> Value:
@@ -1187,3 +1334,94 @@ def read_rule_list(buf: bytes, rec: Record, slot: Slot) -> tuple[str, list[str]]
         o = entry.end
         o += 1 + buf[o]          # the list entry's option string
     return name, rules
+
+
+# ---------------------------------------------------------------------------
+# STL collections (spec/02-serialization/Collections.md).
+# ---------------------------------------------------------------------------
+
+# ROOT::ESTLType, root/core/foundation/inc/ESTLType.h.
+STL_VECTOR, STL_LIST, STL_DEQUE = 1, 2, 3
+STL_MAP, STL_MULTIMAP, STL_SET, STL_MULTISET = 4, 5, 6, 7
+STL_BITSET, STL_FORWARD_LIST = 8, 9
+STL_UNORDERED_SET, STL_UNORDERED_MULTISET = 10, 11
+STL_UNORDERED_MAP, STL_UNORDERED_MULTIMAP = 12, 13
+STL_STRING = 365
+
+PAIRED = {STL_MAP, STL_MULTIMAP, STL_UNORDERED_MAP, STL_UNORDERED_MULTIMAP}
+
+# Type names as they appear in fTypeName, mapped to element type codes.
+FUNDAMENTAL = {
+    "bool": 18, "char": 1, "signed char": 1, "unsigned char": 11,
+    "short": 2, "unsigned short": 12, "int": 3, "unsigned int": 13,
+    "long": 4, "unsigned long": 14, "long long": 16,
+    "unsigned long long": 17, "float": 5, "double": 8,
+    "Bool_t": 18, "Char_t": 1, "UChar_t": 11, "Short_t": 2, "UShort_t": 12,
+    "Int_t": 3, "UInt_t": 13, "Long_t": 4, "ULong_t": 14,
+    "Long64_t": 16, "ULong64_t": 17, "Float_t": 5, "Double_t": 8,
+}
+
+COLLECTION_PREFIXES = ("vector<", "list<", "deque<", "set<", "multiset<",
+                       "map<", "multimap<", "forward_list<", "bitset<",
+                       "unordered_set<", "unordered_multiset<",
+                       "unordered_map<", "unordered_multimap<")
+
+
+def template_args(name: str) -> list[str]:
+    """The top-level template arguments of a type name, as text."""
+    start = name.index("<")
+    depth = 0
+    args: list[str] = []
+    current = ""
+    for ch in name[start + 1:]:
+        if ch == ">" and depth == 0:
+            break
+        if ch == "," and depth == 0:
+            args.append(current.strip())
+            current = ""
+            continue
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        current += ch
+    args.append(current.strip())
+    return [a for a in args if a]
+
+
+def is_collection_name(name: str) -> bool:
+    bare = name.strip()
+    if bare.startswith("std::"):
+        bare = bare[5:]
+    return bare.startswith(COLLECTION_PREFIXES)
+
+
+def value_type_name(type_name: str) -> str:
+    """The element type of a sequence, or `pair<K,V>` for an associative one."""
+    bare = type_name.strip().rstrip("*").strip()
+    if bare.startswith("std::"):
+        bare = bare[5:]
+    args = template_args(bare)
+    head = bare[:bare.index("<")]
+    if head in ("map", "multimap", "unordered_map", "unordered_multimap"):
+        return f"pair<{args[0]},{args[1]}>"
+    return args[0]
+
+
+def synthesise_pair(name: str) -> StreamerInfo:
+    """A streamer info for `pair<K,V>`, built from the type name alone.
+
+    ROOT does not write one into the file even when a member-wise map names its
+    checksum, so a reader has to construct it. Collections.md section 8.
+    """
+    key, value = template_args(name)
+    elements = []
+    for member, type_name in (("first", key), ("second", value)):
+        if type_name not in FUNDAMENTAL:
+            raise UnsupportedClass(f"cannot synthesise {name}: {type_name}")
+        elements.append(Element(
+            cls="TStreamerBasicType", version=2, name=member, title="", bits=0,
+            ftype=FUNDAMENTAL[type_name], fsize=0, array_length=0, array_dim=0,
+            max_index=[0] * 5, type_name=type_name, tail={}))
+    return StreamerInfo(name=name, title="", version=10, bits=0, checksum=0,
+                        class_version=0, elements=elements)

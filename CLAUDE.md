@@ -104,12 +104,22 @@ These cost time this session. Most are not discoverable by reading the code.
   the target is written — `spec/00-conventions.md` §6.5 has the rule, and the
   remaining inline-code references are the working list of what is missing.
 - **A fixture can pass every byte assertion and still not be portable.** An
-  element's `fSize` in a streamer info is `sizeof` on the writing machine, and
-  `sizeof(std::string)` is 24 with libc++ but 32 with libstdc++. That drifts the
-  normalized digest between macOS and Linux CI while the file size and every
-  assertion stay identical, so the only symptom is `DRIFT` in the regenerate job.
-  Avoid `std::string` members in fixtures, and assert every `fSize` so a future
-  case fails as an assertion rather than as opaque drift.
+  element's `fSize` in a streamer info is `sizeof` on the writing machine, and it
+  differs between standard libraries for several ordinary types:
+  `sizeof(std::string)` is 24 with libc++ and 32 with libstdc++,
+  `sizeof(std::map<int,int>)` 24 and 48. That drifts the normalized digest
+  between macOS and Linux CI while the file size and every assertion stay
+  identical, so the only symptom is `DRIFT` in the regenerate job.
+  `tools/normalize.py` now masks every `fSize` for exactly this reason, which is
+  what makes a `std::map` or `std::string` fixture possible at all. Because the
+  digest can no longer see `fSize`, a case SHOULD assert it directly for members
+  whose `sizeof` is standard-library independent (`std::vector` is 24
+  everywhere), so a change in *which* value ROOT stores still fails an assertion.
+- **A fixture can also be one ROOT cannot read.** `serialization/collections`
+  needs its `fOne` member for that reason; see `PLAN.md` 7.1. When a generated
+  fixture is meant to round-trip, check it:
+  `root -l -b -q -e 'auto f=TFile::Open("data/.../x.root"); f->Get("a");'` and
+  look for `CheckByteCount` errors.
 - **Never assume `root/io/doc/TFile/*.md` is correct.** It is the 3.02.06-era
   documentation. Roughly 37 errata against it are already recorded. Treat it as a
   source of questions, not answers.

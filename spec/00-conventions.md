@@ -140,7 +140,7 @@ byteCount:u32 (| 0x40000000)   version:i16   counted string
 
 An empty `std::string` member is therefore 7 bytes, not 1. Details, including which
 class the version word actually refers to, are in
-`02-serialization/Collections.md`.
+[Collections](02-serialization/Collections.md).
 
 ### 5.4 `char*` members
 

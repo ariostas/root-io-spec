@@ -404,7 +404,7 @@ for each of fArrayLength blocks:  c objects, or c object references if
 
 ## 9. `kSTL` (300) and `kSTLstring` (365) — framing only
 
-The contents belong in `02-serialization/Collections.md`. The framing is:
+The contents belong in [Collections](Collections.md). The framing is:
 
 ```
 bc  ver

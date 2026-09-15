@@ -17,7 +17,17 @@ Masking strategy (deliberately blunt, and stated here because it is a tradeoff):
     value found above;
   * every canonical UUID *string*, found by pattern. A `TProcessID` record
     carries its process UUID as 36 ASCII characters in both the key title and
-    the payload, and that UUID is unrelated to the file's own.
+    the payload, and that UUID is unrelated to the file's own;
+  * every `TStreamerElement::fSize` in an uncompressed `StreamerInfo` record.
+    `fSize` is `sizeof` on the *writing* machine, and it differs between standard
+    libraries for several ordinary types -- `sizeof(std::string)` is 24 with
+    libc++ and 32 with libstdc++, `sizeof(std::map<int,int>)` 24 and 48. Without
+    this, a fixture containing a `std::map` or `std::string` member drifts between
+    macOS and Linux CI while every byte assertion passes and the file size is
+    identical. A reader MUST NOT use `fSize` for anything, so masking it costs no
+    coverage of the format -- but it does stop the digest noticing if ROOT ever
+    changed *which* value it stores there, so cases SHOULD assert `fSize`
+    directly for members whose `sizeof` is standard-library independent.
 
 The last rule catches further copies without this tool having to chase them. It
 can in principle mask a coincidentally equal run of payload bytes; for the small,
@@ -67,6 +77,19 @@ def normalize(buf: bytes) -> bytes:
         for value in (directory.datime_c, directory.datime_m):
             if value:
                 volatile.append(struct.pack(">I", value))
+
+    info = next((r for r in rootfile.read_records(buf, header)
+                 if not r.free and r.name == "StreamerInfo"
+                 and r.class_name == "TList" and not rootfile.is_compressed(r)), None)
+    if info is not None:
+        try:
+            for streamer in rootfile.read_streamer_infos(buf, info):
+                for element in streamer.elements:
+                    at = element.fsize_offset
+                    if at >= 0:
+                        out[at : at + 4] = b"\0" * 4
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            pass    # an unparseable record is a failure for check_invariants
 
     for match in UUID_TEXT.finditer(buf):
         out[match.start() : match.end()] = b"0" * (match.end() - match.start())

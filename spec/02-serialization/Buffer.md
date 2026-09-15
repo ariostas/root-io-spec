@@ -139,7 +139,7 @@ set for a collection streamed member-wise
 (`root/io/io/inc/TBufferFile.h:70`, `root/io/io/src/TBufferFile.cxx:3203`).
 
 A reader MUST mask `0x4000` out of a version word before comparing it with a
-class version. Collections are specified in `02-serialization/Collections.md`.
+class version. Collections are specified in [Collections](Collections.md).
 
 ## 4. A version word of 0 has two different meanings
 
@@ -420,7 +420,7 @@ To read a version word at the current position:
 2. Read an `i16`.
 3. If it is 0, apply §4 to decide whether a `u32` checksum follows.
 4. Mask off `kStreamedMemberWise` (`0x4000`) before comparing with a class
-   version, and treat it as specified in `02-serialization/Collections.md`.
+   version, and treat it as specified in [Collections](Collections.md).
 
 ## 9. Invariants
 
@@ -479,4 +479,4 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 
 No fixture covers a buffer written without byte counts, which needs a file older
 than any ROOT release that can still be built here, or a member-wise collection,
-which belongs with `02-serialization/Collections.md`.
+which belongs with [Collections](Collections.md).
