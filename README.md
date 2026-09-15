@@ -26,9 +26,10 @@ the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
-| Standard classes — everything else, `TTree`, RNTuple | not started |
+| `TTree` — `TBasket` | written |
+| Standard classes and `TTree` — everything else, RNTuple | not started |
 
-23 reference files, 494 byte-level assertions, 425 checked source citations.
+24 reference files, 530 byte-level assertions, 448 checked source citations.
 See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
 every known gap — in each case the behaviour is specified and cited, and what is
 missing is a reference file proving it.

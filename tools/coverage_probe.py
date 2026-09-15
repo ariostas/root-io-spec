@@ -77,7 +77,11 @@ def probe(path: Path) -> tuple[collections.Counter, collections.Counter]:
         start, end = rootfile.payload_range(rec)
         decoder = rootfile.Decoder(data, rec.offset, infos, tolerant=True)
         try:
-            value = decoder.read_object(rec.class_name, start)
+            # A basket is not a serialized object; it has its own reader.
+            if rec.class_name == "TBasket":
+                value = rootfile.basket_value(buf, rec, data)
+            else:
+                value = decoder.read_object(rec.class_name, start)
         except (rootfile.FormatError, IndexError, ValueError, struct.error) as exc:
             outcome["blocked"] += 1
             reasons[str(exc)] += 1

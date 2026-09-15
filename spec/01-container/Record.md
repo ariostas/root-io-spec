@@ -106,7 +106,7 @@ for overflow when building a key, only when reading one back
 
 For a `TBasket`, `fKeylen` covers the basket-specific fields streamed *after* the
 ten fields above, not just the key (`root/tree/tree/src/TBasket.cxx:89`). See
-`04-ttree/TBasket.md`.
+§3.7, and [TBasket](../04-ttree/TBasket.md).
 
 ### 3.4 `fVersion`
 
@@ -244,6 +244,33 @@ Truncated to `kTitleMax = 32000` characters when the key is built
 (`root/io/io/src/TKey.cxx:71`, `:459`), before `fKeylen` is computed, so the
 truncation is reflected in `fKeylen`. No truncation is applied on read.
 
+### 3.7 A key can be longer than its strings
+
+§3.3 notes that a `TBasket`'s `fKeylen` covers more than the key. This section
+states the consequence, because it is the one that breaks readers.
+
+`fKeylen` is measured *after* the key has been written
+(`root/io/io/src/TKey.cxx:254`), so it is not defined as "the fixed part plus the
+three strings" — that is merely what it comes to for a class that adds nothing. A
+`TKey` **subclass** whose `Streamer` writes more lengthens the key rather than the
+payload.
+
+`TBasket` is the one such subclass in practice, appending 19 bytes — its class
+version, four `Int_t`s and a flag — or 20 when it also carries `fIOBits`. A basket
+key with a one-character branch name is therefore 65 bytes where an ordinary key
+with the same strings would be 46. See [TBasket](../04-ttree/TBasket.md).
+
+> A reader MUST take `fKeylen` from the key and MUST NOT compute it from the
+> strings. Computing it puts the payload 19 bytes early on every basket in the
+> file, which is to say on almost all of the data.
+
+> Demonstrated by `ttree/basket`: both basket keys have `fKeylen` 65 and three
+> strings totalling 12 bytes after a 34-byte fixed part.
+
+**Baskets also always use the large key layout.** Both fixtures' keys have
+`fVersion` 1004 and 8-byte `fSeekKey` and `fSeekPdir` in an 18 kB file, so the
+large form is not driven by file size here (§3.5).
+
 ## 4. Cycles
 
 Writing an object under a name that already exists in a directory does not
@@ -331,7 +358,9 @@ Apart from the large layout, the fixed part of the key has not changed since
 1. `fSeekKey` equals the offset at which the key was read.
 2. `fNbytes >= fKeylen`, and both are positive.
 3. `fKeylen` equals the actual length of the key: 26 or 34 plus the three counted
-   strings, with the `"TDirectory"` substitution applied.
+   strings, with the `"TDirectory"` substitution applied — **except for a `TKey`
+   subclass that appends fields of its own**, where it is larger by exactly those
+   fields. `TBasket` is the case that occurs; see §3.7.
 4. `fSeekKey + fNbytes <= fEND`.
 5. `fObjlen >= 0` and `fKeylen <= INT_MAX - fObjlen`
    (`root/io/io/src/TKey.cxx:84-93`).

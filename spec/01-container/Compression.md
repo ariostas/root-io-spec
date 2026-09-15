@@ -225,7 +225,7 @@ helps:
   StreamerInfo record, and `TTree` baskets.
 
 `TBasket` performs its own splitting with the same constants
-(`root/tree/tree/src/TBasket.cxx:1300-1355`); see `04-ttree/TBasket.md`.
+(`root/tree/tree/src/TBasket.cxx:1300-1355`); see [TBasket](../04-ttree/TBasket.md).
 
 ## 9. Invariants
 

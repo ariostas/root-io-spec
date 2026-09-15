@@ -34,7 +34,11 @@ nav = [
       { "References" = "02-serialization/References.md" },
   ] },
   { "Standard classes" = [
+      { "Overview" = "03-classes/index.md" },
       { "TArray" = "03-classes/TArray.md" },
+  ] },
+  { "TTree" = [
+      { "TBasket" = "04-ttree/TBasket.md" },
   ] },
 ]
 

@@ -1528,6 +1528,23 @@ class Decoder:
         raise UnsupportedClass(f"member-wise column of type code {t}")
 
 
+def basket_value(buf: bytes, rec: Record, data: bytes) -> Value:
+    """A basket record as a Value, so the probe and the checkers can treat it
+    like any other record. A basket is not a serialized object: its payload is
+    entry data plus an optional offset array, so the Value's members are the
+    entries. spec/04-ttree/TBasket.md."""
+    basket = read_basket(buf, rec, data)
+    start, end = payload_range(rec)
+    members = []
+    for index in range(basket.nev_buf):
+        lo, hi = basket_entry_range(rec, basket, index)
+        members.append(Value(name=f"entry{index}", ftype=0, start=lo, end=hi))
+    return Value(name="TBasket", ftype=61, start=start, end=end,
+                 type_name="TBasket", members=members,
+                 note=f"{basket.nev_buf} entries, "
+                      f"{'offsets' if basket.has_offsets else 'fixed width'}")
+
+
 def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
                           tolerant: bool = False) -> tuple[Decoder, Value | None]:
     """decode_record, but hand back the Decoder even when the read fails.
@@ -1537,6 +1554,11 @@ def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
     """
     start, end = payload_range(rec)
     decoder = Decoder(buf, rec.offset, infos, tolerant=tolerant)
+    if rec.class_name == "TBasket":
+        try:
+            return decoder, basket_value(buf, rec, buf)
+        except (FormatError, struct.error, IndexError, ValueError):
+            return decoder, None
     try:
         value = decoder.read_object(rec.class_name, start)
     except (FormatError, struct.error, IndexError, ValueError):
@@ -1749,3 +1771,145 @@ TARRAY_WIDTH = {
     "TArrayC": 1, "TArrayS": 2, "TArrayI": 4, "TArrayL": 8,
     "TArrayL64": 8, "TArrayF": 4, "TArrayD": 8,
 }
+
+
+# ---------------------------------------------------------------------------
+# Baskets (spec/04-ttree/TBasket.md).
+#
+# A TBasket is a TKey subclass whose own fields are written inside the key, so
+# its header is found by skipping the ordinary key rather than at the payload.
+# ---------------------------------------------------------------------------
+
+BASKET_HEADER = 19        # version, four Int_t, and the flag byte
+BASKET_HEADER_IOBITS = 20  # the same, plus a UChar_t fIOBits
+
+# TBasket::EIOBits, root/tree/tree/inc/TBasket.h:97-102.
+IO_GENERATE_OFFSET_MAP = 0x01
+IO_SUPPORTED = IO_GENERATE_OFFSET_MAP
+IO_RESERVED = 0x80
+
+# root/tree/tree/src/TBasket.cxx:32. The top byte of an entry offset.
+DISPLACEMENT_MASK = 0xFF000000
+
+
+@dataclass
+class Basket:
+    """One basket record, parsed. Offsets are absolute file offsets."""
+
+    version: int
+    buffer_size: int
+    nev_buf_size: int
+    nev_buf: int
+    last: int             # measured from the start of the RECORD, not the payload
+    flag: int
+    io_bits: int          # 0 unless fNevBufSize was written negative
+    header_offset: int    # where the basket's own fields begin, inside the key
+    data_start: int       # first entry byte
+    data_end: int         # one past the last entry byte
+    entry_offsets: list[int] | None    # record-relative, fNevBuf of them
+
+    @property
+    def has_offsets(self) -> bool:
+        return self.entry_offsets is not None
+
+
+def _standard_key_length(buf: bytes, rec: Record) -> int:
+    """The length of the ordinary TKey part: the fixed fields plus three strings."""
+    fixed = 34 if rec.key_version > LARGE_KEY_VERSION else 26
+    o, total = rec.offset + fixed, fixed
+    for _ in range(3):
+        n = buf[o]
+        if n == 255:
+            n = 1 + 4 + _i32(buf, o + 1)
+        else:
+            n = 1 + n
+        o += n
+        total += n
+    return total
+
+
+def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
+    """Parse a basket record. `data` is the object_data buffer if compressed.
+
+    The header is in the key, which is never compressed, so it is always read from
+    `buf`; the entry offsets are in the payload and come from `data`.
+    """
+    if data is None:
+        data = buf
+    header = rec.offset + _standard_key_length(buf, rec)
+    spare = rec.offset + rec.key_len - header
+    if spare not in (BASKET_HEADER, BASKET_HEADER_IOBITS):
+        raise FormatError(
+            f"basket at {rec.offset}: fKeylen {rec.key_len} leaves {spare} bytes "
+            f"for the basket header, which is {BASKET_HEADER} or "
+            f"{BASKET_HEADER_IOBITS}")
+    version = _i16(buf, header)
+    buffer_size = _i32(buf, header + 2)
+    # The sign of fNevBufSize is a flag: negative means a UChar_t fIOBits
+    # follows, which is how IO features were added without a version bump.
+    nev_buf_size = _i32(buf, header + 6)
+    o = header + 10
+    io_bits = 0
+    if nev_buf_size < 0:
+        nev_buf_size = -nev_buf_size
+        io_bits = buf[o]
+        o += 1
+        if io_bits == 0 or io_bits & IO_RESERVED:
+            raise FormatError(
+                f"basket at {rec.offset}: fIOBits {io_bits:#04x} is zero or uses "
+                f"the reserved bit 7")
+        if io_bits & ~IO_SUPPORTED:
+            raise FormatError(
+                f"basket at {rec.offset}: fIOBits {io_bits:#04x} sets flags this "
+                f"specification does not cover")
+    nev_buf = _i32(buf, o)
+    last = _i32(buf, o + 4)
+    flag = buf[o + 8]
+
+    payload_start = rec.offset + rec.key_len
+    data_end = rec.offset + last
+    offsets = None
+    if data_end < payload_start + rec.obj_len:
+        # An entry-offset array follows the data. It is written with a leading
+        # count of fNevBuf + 1; the extra value is not an offset.
+        count = _i32(data, data_end)
+        if count != nev_buf + 1:
+            raise FormatError(
+                f"basket at {rec.offset}: offset array count {count}, expected "
+                f"fNevBuf + 1 = {nev_buf + 1}")
+        offsets = list(struct.unpack_from(f">{nev_buf}i", data, data_end + 4))
+        if io_bits & IO_GENERATE_OFFSET_MAP:
+            # The array was converted to sizes before writing, with a leading 0;
+            # turn it back into record-relative offsets.
+            running = rec.key_len
+            restored = []
+            for size in offsets:
+                running += size
+                restored.append(running)
+            offsets = restored
+        else:
+            offsets = [v & ~DISPLACEMENT_MASK if flag and 20 < flag < 40 else v
+                       for v in offsets]
+    if o + 9 != rec.offset + rec.key_len:
+        raise FormatError(
+            f"basket at {rec.offset}: header ends at {o + 9}, key ends at "
+            f"{rec.offset + rec.key_len}")
+    return Basket(version=version, buffer_size=buffer_size,
+                  nev_buf_size=nev_buf_size, nev_buf=nev_buf, last=last,
+                  flag=flag, io_bits=io_bits, header_offset=header,
+                  data_start=payload_start, data_end=data_end,
+                  entry_offsets=offsets)
+
+
+def basket_entry_range(rec: Record, basket: Basket, index: int) -> tuple[int, int]:
+    """The absolute byte range of entry `index`. spec/04-ttree/TBasket.md."""
+    if not 0 <= index < basket.nev_buf:
+        raise FormatError(f"entry {index} outside [0, {basket.nev_buf})")
+    if basket.entry_offsets is None:
+        width = basket.nev_buf_size
+        start = basket.data_start + index * width
+        return start, start + width
+    start = rec.offset + basket.entry_offsets[index]
+    if index + 1 < basket.nev_buf:
+        return start, rec.offset + basket.entry_offsets[index + 1]
+    return start, basket.data_end

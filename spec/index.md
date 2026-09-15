@@ -29,7 +29,8 @@ own streamer info. The remaining layers are not started. See the repository's
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
 | Standard classes — everything else | not yet written |
-| `TTree` | not yet written |
+| `TTree` — `TBasket` | written |
+| `TTree` — everything else | not yet written |
 | RNTuple | not yet imported |
 
 ## How to read it

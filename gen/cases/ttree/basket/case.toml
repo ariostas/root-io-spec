@@ -1,0 +1,281 @@
+id   = "ttree/basket"
+file = "data/ttree/basket.root"
+size = 18198
+
+description = """
+Two baskets, one of each shape, small enough to assert byte for byte.
+
+A TBasket is a TKey subclass, and its own fields are written into the key: the
+key of each basket here is 65 bytes where an ordinary key with the same three
+strings would be 46. These are also the first keys in the corpus to use the
+large layout -- fVersion 1004, with 8-byte fSeekKey and fSeekPdir -- which a
+basket uses unconditionally, whatever the file's size. A reader that computes the key length from the strings, as
+Record.md section 8 invariant 3 says it can, is wrong for every basket.
+
+The two shapes:
+
+- Branch "n" is one Int_t per entry. Every entry is the same length, so
+  fLast - fKeyLen equals fObjlen exactly and there is no entry-offset array.
+- Branch "v" is a std::vector<float> whose length grows with the entry number.
+  Its basket carries an entry-offset array after the data, and fObjlen exceeds
+  fLast - fKeyLen by the size of that array.
+
+What this case pins down:
+
+- fLast is measured from the start of the *record*, not the payload: for "n" it
+  is 77 and the record is at 268, so the data ends at 345, which is where the
+  next record begins.
+- The entry offsets are record-relative too. The first is 65, which is fKeyLen.
+- The array is written with a leading count of fNevBuf + 1, and the extra
+  trailing value is 0 -- not an offset. A reader that treats it as one places a
+  fourth entry at the start of the file.
+- The last entry's end is fLast, not an entry in the array.
+- The flag byte is 0 in both baskets, including the one that has an offset
+  array, so the flag is not what announces it.
+"""
+
+spec = [
+  "spec/04-ttree/TBasket.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 168
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 268
+nbytes = 77
+class  = "TBasket"
+role   = "branch n: fixed-size entries, no offset array"
+
+[[records]]
+offset = 345
+nbytes = 139
+class  = "TBasket"
+role   = "branch v: variable-size entries, with an offset array"
+
+[[records]]
+offset = 484
+nbytes = 1372
+class  = "TTree"
+role   = "the tree, which holds the basket seeks"
+
+[[records]]
+offset = 1856
+nbytes = 16147
+class  = "TList"
+role   = "StreamerInfo; the whole TTree class hierarchy"
+
+[[records]]
+offset = 18003
+nbytes = 115
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 18118
+nbytes = 80
+class  = "TFile"
+role   = "free segments"
+
+# ---------------------------------------------------------------------------
+# Basket "n". Key at 268, fKeyLen 65. The three key strings end at 314, and the
+# basket's own fields occupy the remaining 19 bytes of the key.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "key fVersion 1004: a basket always uses the large key layout"
+offset = 272
+type = "i16"
+value = 1004
+[[bytes]]
+name = "fKeyLen: 19 bytes more than the 46 the three key strings account for"
+offset = 282
+type = "i16"
+value = 65
+[[bytes]]
+name = "fSeekPdir, 8 bytes here, with a zero fPidOffset in its top 16 bits"
+offset = 294
+type = "i64"
+value = 100
+[[bytes]]
+name = "fClassName, at offset 34 because the key is the large form"
+offset = 302
+type = "string"
+value = "TBasket"
+[[bytes]]
+name = "TBasket class version, the first field after the ordinary key"
+offset = 314
+type = "i16"
+value = 3
+[[bytes]]
+name = "fBufferSize"
+offset = 316
+type = "i32"
+value = 32000
+[[bytes]]
+name = "fNevBufSize: the fixed entry length, because there is no offset array"
+offset = 320
+type = "i32"
+value = 4
+[[bytes]]
+name = "fNevBuf: three entries"
+offset = 324
+type = "i32"
+value = 3
+[[bytes]]
+name = "fLast, measured from the start of the record: 268 + 77 = 345"
+offset = 328
+type = "i32"
+value = 77
+[[bytes]]
+name = "the flag byte"
+offset = 332
+type = "u8"
+value = 0
+[[bytes]]
+name = "entry 0"
+offset = 333
+type = "i32"
+value = 10
+[[bytes]]
+name = "entry 1"
+offset = 337
+type = "i32"
+value = 11
+[[bytes]]
+name = "entry 2"
+offset = 341
+type = "i32"
+value = 12
+[[bytes]]
+name = "the next record begins at fLast: the data fills the payload exactly"
+offset = 345
+type = "u32"
+value = 139
+
+# ---------------------------------------------------------------------------
+# Basket "v". Key at 345, fKeyLen 65, header at 391, payload at 410.
+# ---------------------------------------------------------------------------
+
+[[bytes]]
+name = "TBasket class version"
+offset = 391
+type = "i16"
+value = 3
+[[bytes]]
+name = "fBufferSize"
+offset = 393
+type = "i32"
+value = 32000
+[[bytes]]
+name = "fNevBufSize: with an offset array this is its allocated length, not an entry size"
+offset = 397
+type = "i32"
+value = 1000
+[[bytes]]
+name = "fNevBuf"
+offset = 401
+type = "i32"
+value = 3
+[[bytes]]
+name = "fLast: 345 + 119 = 464, where the data ends and the offset array begins"
+offset = 405
+type = "i32"
+value = 119
+[[bytes]]
+name = "the flag byte is 0 here too, though this basket does have an offset array"
+offset = 409
+type = "u8"
+value = 0
+
+# --- the three entries, each an object-wise vector<float> -------------------
+
+[[bytes]]
+name = "entry 0 byte count, kByteCountMask | 10"
+offset = 410
+type = "u32"
+value = 1073741834
+[[bytes]]
+name = "entry 0 version word: TStreamerInfo's 10, as for any collection"
+offset = 414
+type = "u16"
+value = 10
+[[bytes]]
+name = "entry 0 element count"
+offset = 416
+type = "i32"
+value = 1
+[[bytes]]
+name = "entry 0 element, binary32 for 0.0"
+offset = 420
+type = "u32"
+value = 0
+[[bytes]]
+name = "entry 1 byte count, kByteCountMask | 14"
+offset = 424
+type = "u32"
+value = 1073741838
+[[bytes]]
+name = "entry 1 element count"
+offset = 430
+type = "i32"
+value = 2
+[[bytes]]
+name = "entry 1 element 0, binary32 for 1.0"
+offset = 434
+type = "u32"
+value = 1065353216
+[[bytes]]
+name = "entry 2 byte count, kByteCountMask | 18"
+offset = 442
+type = "u32"
+value = 1073741842
+[[bytes]]
+name = "entry 2 element count"
+offset = 448
+type = "i32"
+value = 3
+[[bytes]]
+name = "entry 2 element 0, binary32 for 2.0"
+offset = 452
+type = "u32"
+value = 1073741824
+
+# --- the entry-offset array, at fLast --------------------------------------
+
+[[bytes]]
+name = "the array's count: fNevBuf + 1, not fNevBuf"
+offset = 464
+type = "i32"
+value = 4
+[[bytes]]
+name = "offset of entry 0: 65, which is fKeyLen, so offsets are record-relative"
+offset = 468
+type = "i32"
+value = 65
+[[bytes]]
+name = "offset of entry 1: 65 + 14"
+offset = 472
+type = "i32"
+value = 79
+[[bytes]]
+name = "offset of entry 2: 79 + 18. Its end is fLast, 119, not an array entry"
+offset = 476
+type = "i32"
+value = 97
+[[bytes]]
+name = "the extra value, which is not an offset"
+offset = 480
+type = "i32"
+value = 0
+[[bytes]]
+name = "the next record begins here: the array ends the payload"
+offset = 484
+type = "u32"
+value = 1372

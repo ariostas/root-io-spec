@@ -226,7 +226,15 @@ class Checker:
             for _ in range(3):
                 n = counted_string_len(self.buf, o)
                 o, total = o + n, total + n
-            if total != rec.key_len:
+            # A TKey subclass may append its own fields inside the key, so the
+            # strings give a lower bound rather than the length. TBasket adds 19
+            # bytes; Record.md 3.7.
+            if rec.class_name == "TBasket":
+                # 19 bytes, or 20 when the basket carries fIOBits.
+                if rec.key_len not in (total + 19, total + 20):
+                    self.bad("Record 8.3",
+                             f"TBasket fKeylen {rec.key_len} != {total} + 19 or 20")
+            elif total != rec.key_len:
                 self.bad("Record 8.3",
                          f"fKeylen {rec.key_len} != computed key length {total}")
 
@@ -253,7 +261,7 @@ class Checker:
     # no byte count. A TArray has neither a byte count nor a version word; its
     # payload starts with the element count. See Buffer.md 2.3; they are checked
     # by check_references and check_tarray.
-    UNFRAMED = {"TFile", "TDirectory", "TRef"} | set(rootfile.TARRAY_WIDTH)
+    UNFRAMED = {"TFile", "TDirectory", "TRef", "TBasket"} | set(rootfile.TARRAY_WIDTH)
 
     def check_buffer_framing(self) -> None:
         for rec in self.records:
@@ -779,6 +787,83 @@ class Checker:
                          f"{rec.class_name} at {rec.offset} has fObjlen "
                          f"{rec.obj_len}, but fN {count} needs {want}")
 
+    def check_basket(self) -> None:
+        """TBasket.md invariants."""
+        for rec in self.records:
+            if rec.free or rec.class_name != "TBasket":
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                basket = rootfile.read_basket(self.buf, rec, data)
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError) as exc:
+                self.bad("TBasket 6.1", str(exc))
+                continue
+
+            # 6.2 cannot be corruption-tested in isolation: lowering the key
+            # version shifts fSeekKey and fSeekPdir by 8 bytes, so the record
+            # chain and the class name break first and the file is rejected by
+            # Record 8.1/8.3/8.6 before reaching here.
+            if rec.key_version <= rootfile.LARGE_KEY_VERSION:
+                self.bad("TBasket 6.2",
+                         f"basket at {rec.offset} has key fVersion "
+                         f"{rec.key_version}, not a large-key form")
+            if basket.nev_buf < 0:
+                self.bad("TBasket 6.3",
+                         f"basket at {rec.offset} has fNevBuf {basket.nev_buf}")
+                continue
+            if basket.last < rec.key_len:
+                self.bad("TBasket 6.3",
+                         f"basket at {rec.offset} has fLast {basket.last}, below "
+                         f"fKeylen {rec.key_len}")
+                continue
+
+            tail = rec.obj_len - (basket.last - rec.key_len)
+            if basket.has_offsets:
+                want = 4 + 4 * (basket.nev_buf + 1)
+                if tail != want:
+                    self.bad("TBasket 6.4",
+                             f"basket at {rec.offset} has {tail} bytes after the "
+                             f"data, expected {want} for fNevBuf "
+                             f"{basket.nev_buf}")
+                offsets = basket.entry_offsets
+                if offsets and offsets[0] != rec.key_len:
+                    self.bad("TBasket 6.5",
+                             f"basket at {rec.offset}: first entry offset "
+                             f"{offsets[0]} != fKeylen {rec.key_len}")
+                if any(b < a for a, b in zip(offsets, offsets[1:])):
+                    self.bad("TBasket 6.5",
+                             f"basket at {rec.offset}: entry offsets decrease")
+                if offsets and offsets[-1] >= basket.last:
+                    self.bad("TBasket 6.5",
+                             f"basket at {rec.offset}: last entry offset "
+                             f"{offsets[-1]} is not below fLast {basket.last}")
+            else:
+                if tail != 0:
+                    self.bad("TBasket 6.4",
+                             f"basket at {rec.offset} has {tail} unaccounted "
+                             f"bytes and no offset array")
+                want = basket.nev_buf * basket.nev_buf_size
+                if rec.obj_len != want:
+                    self.bad("TBasket 6.6",
+                             f"basket at {rec.offset} has fObjlen {rec.obj_len}, "
+                             f"but fNevBuf {basket.nev_buf} x fNevBufSize "
+                             f"{basket.nev_buf_size} is {want}")
+
+            for index in range(basket.nev_buf):
+                try:
+                    start, end = rootfile.basket_entry_range(rec, basket, index)
+                except rootfile.FormatError as exc:
+                    self.bad("TBasket 6.7", str(exc))
+                    break
+                if not basket.data_start <= start <= end <= basket.data_end:
+                    self.bad("TBasket 6.7",
+                             f"basket at {rec.offset}: entry {index} spans "
+                             f"{start}..{end}, outside {basket.data_start}.."
+                             f"{basket.data_end}")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
@@ -958,6 +1043,7 @@ class Checker:
         self.check_schema_evolution()
         self.check_collections()
         self.check_tarray()
+        self.check_basket()
         return self.failures
 
 

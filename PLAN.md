@@ -650,9 +650,12 @@ hand-review by family: hist → graf → func → math → misc. The generated p
 mechanical and cheap; the review is where the time goes, and it can be
 interleaved with later phases or accept contributions.
 
-**☐ Phase 5 — TTree**
-All of `04-ttree/`, with the full split/type matrix of fixtures. Largest single
-phase; likely to want its own sub-plan.
+**◐ Phase 5 — TTree**
+✅ `04-ttree/TBasket.md`, done early because the coverage probe named it the last
+blocker on an ordinary file. The rest of `04-ttree/`, with the full split/type
+matrix of fixtures, is untouched. Largest single phase; still wants its own
+sub-plan (§7 item 5), which should now be written around what `TBasket.md`
+already settles.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
@@ -679,6 +682,7 @@ Settled 2026-09-14:
 | 3 | Write support | Reading normative. Writing specified as per-layer invariants, not algorithms. Free-space policy, basket sizing and key ordering deliberately unspecified. | §2.8 |
 | 4 | Upstream relationship | Standalone repo, not blocking on review. RNTuple errata go upstream as PRs immediately. Open a conversation with the ROOT I/O team early about eventually replacing `io/doc/TFile/` wholesale. | §2.6, §7 |
 | 5 | Fixture distribution | Core current-version corpus committed (<10 MB). Legacy-ROOT and >2 GB cases published as release artifacts with a committed manifest. | §3.3, §3.5 |
+| 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises, and `03-classes/` points at it. `TObject` belongs with buffer framing because the framing layer cannot be explained without it; `TList` and `TObjArray` belong with streamer information because they *are* the bootstrap; `TClonesArray` belongs with collections because it is the comparison that makes member-wise streaming legible; `TRef` and friends belong in `References.md`. Moving them would separate each from the argument that motivates it, and would duplicate rather than replace. `03-classes/` therefore holds hand-written text only for classes with no natural home in layers 01–02 — `TArray.md` is the first — plus an index mapping every divergent class to wherever it is specified. Settled 2026-09-15. | §2.4, §9.7 |
 
 ## 7. Remaining open items
 
@@ -753,10 +757,9 @@ Phases 0–2 are done (§5). The next things, in order:
 3. **Continue phase 3.** `TArray*` is done. By the §9.7 measurement the classes
    that diverge at *every* version are `TObject`, `TString`, `TList`, `TObjArray`,
    `TClonesArray`, `TRef`, `TRefArray`, `TCollection` and `TArray*` — and all but
-   `TCollection` are now specified, though the first seven live in
-   `spec/02-serialization/` rather than `spec/03-classes/`. **Decide whether
-   `03-classes/` re-homes them, cross-references them, or stays thin.**
-   `TArray.md` took the cross-reference route and reads well that way.
+   `TCollection` are now specified. Per decision 6 below, `03-classes/` does not
+   re-home them: it cross-references. What remains is `TCollection` and an
+   `03-classes/index.md` that says where each divergent class is specified.
 4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
 
 Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on, and the
@@ -788,7 +791,7 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 | Gap | Document |
 |---|---|
 | The large `TFree` entry form, and `fLast` above 2000000000 | `01-container/FreeSegments.md` |
-| A large key | `01-container/Record.md` — a `TBasket` fixture supplies this, since baskets always use the large layout |
+| ~~A large key~~ | ✅ `ttree/basket` — a basket always uses the large layout (`fVersion += 1000` unconditionally), so this closed as predicted |
 | Everything else past 2 GB | §2.2, `LargeFiles.md` |
 
 ### 9.3 Needs a compiled dictionary — **✅ unblocked**
@@ -824,6 +827,7 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Document |
 |---|---|
 | A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
+| A compressed basket, a multi-block basket, a displacement array, `fIOBits` in either form, and the embedded (non-record) form of a basket | `04-ttree/TBasket.md` §11 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
 | `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
@@ -834,7 +838,7 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Where | State |
 |---|---|---|
 | No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
-| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ☐ |
+| `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ◐ baskets are read and checked; branches and leaves are not |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
 | Two upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
 
@@ -848,13 +852,23 @@ branches, a `TNamed`, default compression — 12 records come out as 3 container
 | Blocker | Records | Note | State |
 |---|---|---|---|
 | `TArray*` | 7 | Every histogram embeds two: `TH1::fContour` and `fSumw2` are `TArrayD` by value, and `TH1D` has a `TArrayD` base | ✅ `03-classes/TArray.md` |
-| `TBasket` | 3 | Phase 5; a basket has no streamer info in the file at all | ☐ |
+| `TBasket` | 3 | A basket has no streamer info in the file at all, and its own fields are inside `fKeylen` | ✅ `04-ttree/TBasket.md` |
+
+**What the probe cannot tell us** is now the important caveat. It checks that every
+record's bytes are *accounted for*, not that the values are right, and it was run
+on one file of our own construction. A split `TTree`, a `TProfile`, an `THnSparse`
+or a file from another producer could still block on something. The next probe
+should use a file this project did not write — §3.5's note about cataloguing
+`scikit-hep-testdata` and `root.cern/files/` is the way to get one.
 
 **`TArray*` was therefore the single highest-value thing left** — and it is now
-done (`spec/03-classes/TArray.md`, `classes/tarray`). Re-running the probe on the
-same file: **6 decoded, 0 partial, 3 blocked**, and the only blocker left is
-`TBasket`. `TH1D`, `TH2F`, `TGraph` and `TTree` all decode in full, as does
-`serialization/version-zero`'s `TH1L`.
+done (`spec/03-classes/TArray.md`, `classes/tarray`), as is `TBasket`
+(`spec/04-ttree/TBasket.md`, `ttree/basket`).
+
+**The probe file now reads in full: 3 container, 9 decoded, 0 partial, 0
+blocked.** Histograms, a graph, a `TTree` and its baskets — including the
+compressed ones — are all readable from the specification alone. That is the
+milestone the probe was built to measure, reached in two steps.
 
 Two corrections the probe forced, both recorded where they belong:
 

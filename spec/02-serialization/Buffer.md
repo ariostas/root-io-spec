@@ -93,7 +93,10 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
   word is a version;
 - a class whose hand-written streamer writes no version word either. A `TArray`
   payload begins with its element **count**
-  ([TArray §1](../03-classes/TArray.md#1-layout)).
+  ([TArray §1](../03-classes/TArray.md#1-layout));
+- a `TBasket`, whose payload is not a serialized object at all. It is the
+  concatenated entry data of one branch, and what frames each entry — if
+  anything — is decided by that branch. See [TBasket](../04-ttree/TBasket.md).
 
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
 > `fObjLen` 12 and its payload begins `00 01` — the `TObject` version word —
