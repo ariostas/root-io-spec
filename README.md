@@ -29,7 +29,7 @@ the file's own streamer info. `spec/03-classes/`, `spec/04-ttree/` and
 | `TTree` — `TBasket` | written |
 | Standard classes and `TTree` — everything else, RNTuple | not started |
 
-24 reference files, 530 byte-level assertions, 448 checked source citations.
+24 reference files, 525 byte-level assertions, 448 checked source citations.
 See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
 every known gap — in each case the behaviour is specified and cited, and what is
 missing is a reference file proving it.

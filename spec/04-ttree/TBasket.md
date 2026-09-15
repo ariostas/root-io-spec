@@ -70,7 +70,7 @@ The second is a writer's capacity, unrelated to `fNevBuf`, and a reader needs it
 only for the first case.
 
 > Demonstrated by `ttree/basket`: branch `n` is one `Int_t` per entry and has
-> `fNevBufSize` 4; branch `v` is a `std::vector<float>` and has 1000, which is the
+> `fNevBufSize` 4; branch `a` is a counted array and has 1000, which is the
 > branch's default `fEntryOffsetLen`.
 
 ### 2.2 The sign of `fNevBufSize` carries `fIOBits`
@@ -116,8 +116,8 @@ fObjlen == (fLast - fKeylen) + size of the offset array
 
 > Demonstrated by `ttree/basket`: branch `n`'s basket is at 268 with `fLast` 77,
 > so its data ends at 345 — which is exactly where the next record begins, and
-> `fObjlen` is 12. Branch `v`'s basket is at 345 with `fLast` 119, so its data
-> ends at 464 and the remaining 20 bytes of its 74-byte payload are the array.
+> `fObjlen` is 12. Branch `a`'s basket is at 345 with `fLast` 89, so its data
+> ends at 434 and the remaining 20 bytes of its 44-byte payload are the array.
 
 ## 4. The flag byte, and the two shapes of a basket
 
@@ -184,10 +184,10 @@ count:i32   count × i32
   `[offset[i], offset[i+1])` for *i* < `fNevBuf` − 1, and entry `fNevBuf` − 1 spans
   `[offset[fNevBuf - 1], fLast)`.
 
-> Demonstrated by `ttree/basket`: branch `v`'s array is `4` then
-> `65, 79, 97, 0`. `fNevBuf` is 3, `fKeylen` is 65, and the fourth value is 0 —
-> a reader that treats it as an offset places a fourth entry at the start of the
-> file.
+> Demonstrated by `ttree/basket`: branch `a`'s array is `4` then `65, 69, 77, 0`.
+> `fNevBuf` is 3, `fKeylen` is 65, and the fourth value is 0 — a reader that
+> treats it as an offset places a fourth entry at the start of the file. The three
+> entries are 4, 8 and 12 bytes, and the last ends at `fLast` = 89.
 
 Note that the embedded form of §4 writes `count == fNevBuf` instead
 (`root/tree/tree/src/TBasket.cxx:1155`), and the read path there asserts exactly

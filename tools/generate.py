@@ -110,6 +110,15 @@ def main(argv: list[str]) -> int:
     for message in drift:
         label = "ACCEPTED" if accept else "DRIFT"
         print(f"{label} {message}", file=sys.stderr)
+    if drift and not accept:
+        # Say which record moved. Without this a cross-platform drift is a bare
+        # pair of hashes, and the cause has to be guessed at.
+        for message in drift:
+            rel = message.split(":", 1)[0]
+            print(f"  per-record digests for {rel}:", file=sys.stderr)
+            data = normalize.normalize((REPO / rel).read_bytes())
+            for offset, cls, name, d in normalize.record_digests(data):
+                print(f"    {offset:9} {cls:14} {name[:24]:24} {d}", file=sys.stderr)
 
     if not check_only and (accept or not drift):
         # Merge rather than replace: running on a subset of the cases must not

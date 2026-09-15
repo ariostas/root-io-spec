@@ -840,6 +840,7 @@ No external blocker; these are simply cases nobody has added yet.
 | No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
 | `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ◐ baskets are read and checked; branches and leaves are not |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
+| **A `TTree` with a `TBranchElement` branch is not digest-portable.** A fixture with a `std::vector<float>` branch drifted between macOS and Linux CI while all 530 of its byte assertions passed on both, so the difference is in a region no case asserts — most likely the order of entries in the `StreamerInfo` record, which `02-serialization/StreamerInfo.md` §3 says is not guaranteed. Worked around by making `ttree/basket` leaflist-only. **Cause not identified.** `tools/generate.py` now prints per-record digests on drift, so the next occurrence names the record | §3.3, §9.7 | ◐ worked around, not understood |
 | Two upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
 
 ### 9.7 What the coverage probe found

@@ -102,11 +102,34 @@ def normalize(buf: bytes) -> bytes:
     return bytes(out)
 
 
+def record_digests(buf: bytes) -> list[tuple[int, str, str, str]]:
+    """A digest per record of an already-normalized buffer.
+
+    Used to explain a drift: comparing these against another machine's tells you
+    which record differs, which is otherwise guesswork.
+    """
+    header = rootfile.read_header(buf)
+    out = []
+    for rec in rootfile.read_records(buf, header):
+        end = rec.offset + abs(rec.nbytes)
+        d = hashlib.sha256(buf[rec.offset:end]).hexdigest()[:16]
+        out.append((rec.offset, rec.class_name or "<free>", rec.name or "", d))
+    return out
+
+
 def digest(path) -> str:
     with open(path, "rb") as fh:
         return hashlib.sha256(normalize(fh.read())).hexdigest()
 
 
 if __name__ == "__main__":
-    for path in sys.argv[1:]:
-        print(f"{digest(path)}  {path}")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if "--per-record" in sys.argv:
+        for path in args:
+            print(path)
+            with open(path, "rb") as fh:
+                for offset, cls, name, d in record_digests(normalize(fh.read())):
+                    print(f"  {offset:9} {cls:14} {name[:24]:24} {d}")
+    else:
+        for path in args:
+            print(f"{digest(path)}  {path}")
