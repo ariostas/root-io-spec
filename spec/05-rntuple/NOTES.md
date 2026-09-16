@@ -109,14 +109,25 @@ copy is tracked at all — has so far covered:
 |---|---|
 | ROOT File embedding, Anchor schema | audited — ERRATA 1, 2, 3 |
 | Compression Block | audited — §2 above |
-| Frames | audited, nothing found |
+| Basic Types, Feature Flags | audited, clean |
+| Frames | audited, clean |
 | Locators and Envelope Links | audited — ERRATA 4 |
 | Envelopes, the envelope header and checksum | audited — ERRATA 5 |
+| Header Envelope: field, column, alias column, extra type info | audited — ERRATA 6 |
+| Footer Envelope: schema extension, cluster groups, attribute sets | audited, clean |
+| Page List Envelope: cluster summaries, page locations, suppressed columns | audited, clean |
 
-**Not yet audited**: the contents of the Header, Footer and Page List envelopes,
-Linked Attribute Sets, the C++ type mapping (*Mapping of C++ Types to Fields and
-Columns* and everything under it), Limits, and Naming. Those are the bulk of the
-document and where a reader spends most of its time.
+**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, the
+whole C++ type mapping (*Mapping of C++ Types to Fields and Columns* and
+everything under it — type name normalization, the stdlib collections, streamed
+types, untyped collections), *Limits*, *Naming specification*, *Defaults*, and
+*Notes on Backward and Forward Compatibility*.
+
+That is now the second half of the document rather than the bulk of it, and it is
+a different kind of material: the envelope sections describe byte layouts, which
+can be checked field by field against the serializer; the type mapping describes
+which columns a given C++ type produces, which needs a written RNTuple per type
+to check properly.
 
 The frames section came out clean. Its size field is a signed 64-bit
 little-endian integer whose sign selects record (positive) from list (negative),
@@ -124,6 +135,18 @@ exactly as the prose says, and `SerializeFramePostscript` writes
 `marker * size` to set it (`root/tree/ntuple/src/RNTupleSerialize.cxx:973-980`);
 the read side recovers `nitems` only for a list frame and negates the size back
 (`root/tree/ntuple/src/RNTupleSerialize.cxx:996-1007`).
+
+So did the footer and page list, which is worth recording because they are where
+a reader does its work. Checked field by field against `SerializeFooter`,
+`SerializeClusterGroup`, `SerializeAttributeSet`, `SerializePageList` and
+`SerializeClusterSummary`: the cluster summary really does pack `nEntries` into
+56 bits with 8 bits of flags above it and refuses more
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:1191-1193`); the suppressed-column
+marker really is `INT64_MIN`
+(`root/tree/ntuple/inc/ROOT/RNTupleSerialize.hxx:85`); and the claim that "the
+page size stored in the locator does _not_ include the checksum" is exactly what
+the reader relies on — it adds the eight bytes back itself
+(`root/tree/ntuple/src/RPageStorage.cxx:297`).
 
 Nothing here should be read as a statement that the unaudited sections are
 correct. They are simply not yet checked, which is the same standard the rest of

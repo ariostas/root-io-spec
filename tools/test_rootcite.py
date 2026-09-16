@@ -41,6 +41,16 @@ class CitationURL(unittest.TestCase):
             self.url("root/io/io/inc/TFile.h:278"),
             f"{BASE}/blob/{COMMIT}/io/io/inc/TFile.h#L278")
 
+    def test_javascript_file(self):
+        # JSROOT is a second RNTuple reader shipped in the same repository, and
+        # spec/05-rntuple/ERRATA.md cites it where the two disagree.
+        self.assertEqual(
+            self.url("root/js/build/jsroot.js:179651"),
+            f"{BASE}/blob/{COMMIT}/js/build/jsroot.js#L179651")
+        self.assertEqual(
+            self.url("root/js/modules/io.mjs:22"),
+            f"{BASE}/blob/{COMMIT}/js/modules/io.mjs#L22")
+
     def test_non_citations(self):
         for text in ["TFile.cxx:2679", "root/io/io/src", "fNbytesName",
                      "kStartBigFile", "root", "spec/01-container/FileHeader.md"]:

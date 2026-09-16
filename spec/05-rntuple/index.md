@@ -39,10 +39,17 @@ and everything below it from the tracked copy, and the three errata in between.
 
 ## Status
 
-**Five errata**, all verified against both the pinned submodule and the bytes of
-`RNTuple.root`: three in the anchor and the ROOT file embedding, one in the
-locator type table, and one in the envelope header. The audit has reached the end
-of the *Envelopes* section; the contents of the header, footer and page list
-envelopes and the whole C++ type mapping are **not yet audited**, and
+**Six errata**, each verified against the pinned submodule and, where there are
+bytes to check, against `RNTuple.root`. Three are in the anchor and the ROOT file
+embedding, one in the locator type table, one in the envelope header, and one in
+the column type table — where the document lists a column encoding, `0x17
+SplitReal16`, that ROOT's C++ implementation does not have and **ROOT's own
+JavaScript reader does**.
+
+The audit now covers every envelope: the header's field, column, alias column and
+extra-type-info records, the footer's schema extension, cluster groups and
+attribute sets, and the page list's cluster summaries and page locations. The
+remaining half of the document — the C++ type mapping, limits, naming and the
+compatibility notes — is **not yet audited**, and
 [NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) says so plainly rather than
 leaving the silence to be read as approval.

@@ -33,7 +33,7 @@ NOT_OURS = {REPO / "spec/05-rntuple/BinaryFormatSpecification.md"}
 # Citations appear inside inline code spans; see tools/rootcite.py for the
 # rendering side. Both must recognise the same shape.
 CITATION = re.compile(
-    r"`root/(?P<path>[A-Za-z0-9_./+-]+\.(?:cxx|cxx\.in|hxx|h|c|cpp|cu|py|md|txt|yml))"
+    r"`root/(?P<path>[A-Za-z0-9_./+-]+\.(?:cxx|cxx\.in|hxx|h|c|cpp|cu|py|js|mjs|md|txt|yml))"
     r"(?::(?P<line>\d+)(?:-(?P<end>\d+))?)?`"
 )
 

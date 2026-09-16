@@ -698,8 +698,8 @@ with each other. **The CI step for this existed but was guarded by
 `hashFiles(...) != ''` and had therefore never run**; the guard is gone and the
 step is real.
 
-◐ The audit, through the end of the *Envelopes* section. **Five errata**, each
-verified against the pinned submodule *and* against the bytes of `RNTuple.root`
+◐ The audit, through **every envelope**. **Six errata**, each verified against
+the pinned submodule and, where there are bytes to check, against `RNTuple.root`
 (ROOT 6.35/01, from §9.9's corpus):
 
 | # | Section | What |
@@ -709,20 +709,36 @@ verified against the pinned submodule *and* against the bytes of `RNTuple.root`
 | 3 | Anchor schema | The checksum is "the XXH3 hash of all the (serialized) fields". It is not: the byte count and class version are excluded (`RMiniFile.cxx:580-583`), and the checksum sits **outside the byte count**, so the object is eight bytes longer than it claims |
 | 4 | Locators | Locator type **`0x02` is assigned and implemented** (DAOS, with a variable-length Object64 payload the document does not describe), and `0x7e` is taken by ROOT's own tests — where the document says "0x02 - 0x7f is reserved for future use" |
 | 5 | Envelopes | **"Envelope" means two different things two lines apart.** The length includes the trailing checksum; the checksum covers everything *except* itself. Confirmed by running ROOT's own `VerifyXxHash3` over both ranges of a real header envelope: `[0, 332-8)` verifies, `[0, 332)` does not |
+| 6 | Column Description | **Column type `0x17 SplitReal16` does not exist in ROOT's C++ implementation** — not in the serializer, the deserializer, `ENTupleColumnType` or the bit-width table, and the string does not occur under `tree/ntuple/` at all. The other 29 rows match exactly on name and bit width. **JSROOT implements it** (`js/build/jsroot.js:179651`), so two RNTuple readers shipped in the same repository disagree about the set of column types, and the specification is why |
 
-Frames came out clean.
+Frames, the footer and the page list came out clean, which is worth recording
+because the last two are where a reader does its work: the cluster summary really
+does pack `nEntries` into 56 bits with 8 bits of flags above it, the
+suppressed-column marker really is `INT64_MIN`, and the page locator's size
+really does exclude the page checksum — the reader adds the eight bytes back
+itself.
+
+`tools/rootcite.py` and `check_citations.py` now accept `.js`/`.mjs` citations,
+so the JSROOT claim in erratum 6 is verified like every other.
 
 Plus three implementation notes where the document is right but a reader arriving
 from the TFile side goes wrong — chiefly that an `RBlob` key's `fObjLen` is
 decorative, which is the same observation that produced the `Compression.md`
 erratum in §9.9.
 
-☐ **Not yet audited**: the contents of the Header, Footer and Page List
-envelopes, Linked Attribute Sets, the whole C++ type mapping, Limits and Naming —
-the bulk of the document, and where a reader spends most of its time.
-`spec/05-rntuple/NOTES.md` §4 carries the same table so the state is visible in
-the specification rather than only here. Upstream PRs for the five open errata
-are the next step, and are the natural opening for §7 item 1.
+☐ **Not yet audited**: the whole C++ type mapping (*Mapping of C++ Types to
+Fields and Columns* and everything under it), *Limits*, *Naming*, *Defaults* and
+the compatibility notes — now the second half of the document rather than the
+bulk of it, and a different kind of material. The envelope sections describe byte
+layouts, which can be checked field by field against the serializer; the type
+mapping describes which columns a given C++ type produces, which needs a written
+RNTuple per type to check properly — i.e. a fixture harness like `gen/cases/`,
+not more reading. `spec/05-rntuple/NOTES.md` §4 carries the same table so the
+state is visible in the specification rather than only here.
+
+Upstream PRs for the six open errata are the next step, and are the natural
+opening for §7 item 1. Erratum 6 is the one to lead with: it is the only one that
+has already caused two ROOT readers to diverge.
 
 **◐ Phase 7 — legacy versions and reference reader**
 `gen/legacy/`, historical fixtures, and (optionally) the pure-Python reference
@@ -906,7 +922,7 @@ Phases 0–2 are done (§5). The next things, in order:
    re-home them: it cross-references. What remains is `TCollection` and an
    `03-classes/index.md` that says where each divergent class is specified.
 4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
-5. **Report the five RNTuple errata upstream** (§5 phase 6). They are against a
+5. **Report the six RNTuple errata upstream** (§5 phase 6). They are against a
    document the ROOT team owns and maintains, which makes them a friendlier first
    contact than §7.1's bug candidates — and they can carry those.
 

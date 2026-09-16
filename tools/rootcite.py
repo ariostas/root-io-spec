@@ -25,7 +25,7 @@ from markdown.treeprocessors import Treeprocessor
 #: `root/<path>` with an optional `:<line>` or `:<line>-<line>` suffix.
 CITATION = re.compile(
     r"""^root/
-        (?P<path>[A-Za-z0-9_./+-]+\.(?:cxx|cxx\.in|hxx|h|c|cpp|cu|py|md|txt|yml))
+        (?P<path>[A-Za-z0-9_./+-]+\.(?:cxx|cxx\.in|hxx|h|c|cpp|cu|py|js|mjs|md|txt|yml))
         (?::(?P<line>\d+)(?:-(?P<end>\d+))?)?$""",
     re.VERBOSE,
 )

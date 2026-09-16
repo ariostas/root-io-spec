@@ -16,6 +16,7 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 3 | Anchor schema | open | — |
 | 4 | Locators and Envelope Links | open | — |
 | 5 | Envelopes | open | — |
+| 6 | Header Envelope → Column Description | open | — |
 
 Bytes below are from `RNTuple.root`, 2 514 bytes, written by ROOT 6.35/01 and
 published at <https://root.cern/files/>; `gen/cern/README.md` lists it and
@@ -37,6 +38,14 @@ versioning is for reporting only" — but it means **the version in the document
 not the version in the files**, which is a confusing thing for a format
 specification to do. A reader comparing the two has no way to tell whether it is
 looking at a stale file or a stale document.
+
+**And it is about to matter.** The feature-flag table under *Feature Flags* says
+flag bit 0, *Nested Deferred Columns*, was "Introduced in 1.0.2.1" — a version no
+writer stamps. The flag is declared
+(`root/tree/ntuple/inc/ROOT/RNTupleDescriptor.hxx:780`) and nothing sets it yet,
+so no file carries it today; when one does, its anchor will say 1.0.2.0 while the
+document says the feature belongs to 1.0.2.1. Either the constant or the table
+has to move.
 
 Already noted in `PLAN.md` §2.6 when this directory was first planned.
 
@@ -228,3 +237,59 @@ The same word is also doing double duty against the anchor, which is worth
 stating in the fix: `Len Header` and `Len Footer` in the anchor are the envelope
 length in **this** sense — 332 and 148 in the same file — so the two agree once
 "envelope" is pinned down.
+
+---
+
+## 6. Column type `0x17` does not exist, and ROOT's own JavaScript reader implements it
+
+> **The document**, in the column type table under *Header Envelope → Column
+> Description*, lists thirty types. One of them is
+>
+> | Type | Bits | Name | Contents |
+> |------|------|------|----------|
+> | 0x17 |   16 | SplitReal16 | Like Real16 but in split encoding |
+
+**There is no such column type in ROOT's C++ implementation.** Not in the
+serializer, not in the deserializer, and not in the enumeration:
+
+- `SerializeColumnType` goes from `kSplitUInt64` → `0x16` straight to
+  `kSplitReal32` → `0x18` (`root/tree/ntuple/src/RNTupleSerialize.cxx:756-757`);
+- `DeserializeColumnType` has no `case 0x17`, so the value falls through to
+  `kUnknown` (`root/tree/ntuple/src/RNTupleSerialize.cxx:799-800`);
+- `ENTupleColumnType` has `kSplitReal64`, `kSplitReal32`, `kSplitInt16` and
+  `kSplitUInt16` but **no `kSplitReal16`**
+  (`root/tree/ntuple/inc/ROOT/RNTupleTypes.hxx:86-96`);
+- `RColumnElementBase::GetValidBitRange` has no entry for it either
+  (`root/tree/ntuple/src/RColumnElement.cxx:29-67`).
+
+The string `kSplitReal16` does not occur anywhere under `root/tree/ntuple/`.
+
+**The rest of the table is exact.** Comparing all thirty rows against
+`SerializeColumnType` and `GetValidBitRange` mechanically, twenty-nine match on
+both name and bit width — including the two variable-width types, `Real32Trunc`
+at 10–31 and `Real32Quant` at 1–32. `0x17` is the single row with no counterpart.
+
+### Why this one is not a documentation nit
+
+**JSROOT implements it**, because the specification says it exists:
+
+```js
+kSplitUInt64 = 0x16,
+kSplitReal16 = 0x17,
+kSplitReal32 = 0x18,
+```
+
+`root/js/build/jsroot.js:179651`, with the decoder at
+`root/js/build/jsroot.js:179792` treating it as a two-byte split-encoded column.
+
+So two RNTuple readers **shipped in the same repository** disagree about the set
+of column types, and the document is the reason. Nothing is corrupted today —
+the C++ writer cannot emit `0x17`, so no file contains one — but the
+specification is being treated as normative by ROOT's own developers, which is
+exactly what it is for, and here it sent one of them somewhere the other will not
+follow.
+
+The fix is a choice upstream, not a correction here: implement `kSplitReal16` in
+C++, or drop the row. The encoding is meaningful either way — `kSplitInt16` and
+`kSplitUInt16` exist and split encoding on a two-byte type is well defined — so
+this reads like a row written in anticipation that was never built.
