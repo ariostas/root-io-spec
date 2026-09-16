@@ -1,0 +1,213 @@
+id   = "ttree/split-clones"
+file = "data/ttree/split-clones.root"
+size = 21198
+
+description = """
+A split TClonesArray: fType 3 and fType 31, which no other fixture has.
+
+TClonesArray predates STL streaming and splits through its own pair of branch
+types. The arrangement mirrors the STL one of ttree/split-nested exactly, with 3
+where that has 4 and 31 where it has 41 -- and one addition:
+
+  ke                   fType 0, fID -2   the split node
+  ke/fHits             fType 3           the count branch
+  ke/fHits/fUniqueID   fType 31          KHit's TObject base, flattened
+  ke/fHits/fBits       fType 31          likewise
+  ke/fHits/fId         fType 31
+  ke/fHits/fE          fType 31
+
+What this case pins down:
+
+- **A TObject base is flattened into columns, not into an fType 1 node.** A
+  TClonesArray element must derive from TObject, and the split gives its two
+  members their own fType 31 branches. Their fClassName is TObject and their
+  fCheckSum is TObject's, while fId and fE carry KHit's -- the fClassName rule
+  of TBranchElement.md section 5 applied within one array.
+- fBits has fStreamerType 15, kBits, which ElementTypes.md section 2.3 says
+  occurs only in TObject's own streamer info. It occurs on a branch here.
+- The count branch is fType 3 with fStreamerType 64 (kObjectP, because the
+  member is a TClonesArray*), fClonesName KHit and fMaximum 3. Its fClassName is
+  KEv, the class that declares the member -- unlike a *top-level* TClonesArray
+  branch, where fClassName is TClonesArray itself and fStreamerType is -1 (16
+  such branches in the corpora; none here).
+- Every fType 31 member records the same fBranchCount tag, 463, which against a
+  record starting at 832 names position 832 + 463 - 2 = 1293, the count branch.
+- The title convention is identical to the STL one: fHits_ on the count branch,
+  fId[fHits_] on the members.
+
+Three entries with arrays of 2, 0 and 3 elements. ROOT reads the file back and
+reports those values.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 192
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 292
+nbytes = 81
+class  = "TBasket"
+role   = "basket of 'fHits'"
+[[records]]
+offset = 373
+nbytes = 119
+class  = "TBasket"
+role   = "basket of 'fHits.fUniqueID'"
+[[records]]
+offset = 492
+nbytes = 115
+class  = "TBasket"
+role   = "basket of 'fHits.fBits'"
+[[records]]
+offset = 607
+nbytes = 113
+class  = "TBasket"
+role   = "basket of 'fHits.fId'"
+[[records]]
+offset = 720
+nbytes = 112
+class  = "TBasket"
+role   = "basket of 'fHits.fE'"
+[[records]]
+offset = 832
+nbytes = 3723
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 4555
+nbytes = 16410
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 20965
+nbytes = 141
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 21106
+nbytes = 92
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "ke: the split node"
+offset = 4454
+type = "i32"
+value = -2
+
+[[bytes]]
+name = "fHits: fType 3, the TClonesArray count branch"
+offset = 4100
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fHits: fStreamerType 64, kObjectP -- the member is a TClonesArray*"
+offset = 4104
+type = "i32"
+value = 64
+
+[[bytes]]
+name = "fHits: fClonesName is the element class"
+offset = 4085
+type = "string"
+value = "KHit"
+
+[[bytes]]
+name = "fHits: fClassName is the class declaring the member, not TClonesArray"
+offset = 4077
+type = "string"
+value = "KEv"
+
+[[bytes]]
+name = "fHits: fMaximum, the largest array in the file"
+offset = 4108
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fHits: the count-branch title convention"
+offset = 1335
+type = "string"
+value = "fHits_"
+
+[[bytes]]
+name = "fHits: fLeaves nobjects is 1, and that entry is a back-reference"
+offset = 3828
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fUniqueID: fType 31, a member of the array's content"
+offset = 2107
+type = "i32"
+value = 31
+
+[[bytes]]
+name = "fUniqueID: fClassName is TObject -- the base is flattened into columns"
+offset = 2083
+type = "string"
+value = "TObject"
+
+[[bytes]]
+name = "fUniqueID: and fCheckSum is TObject's, not KHit's"
+offset = 2097
+type = "u32"
+value = 2417737773
+
+[[bytes]]
+name = "fUniqueID: fStreamerType 13, UInt_t"
+offset = 2111
+type = "i32"
+value = 13
+
+[[bytes]]
+name = "fUniqueID: fBranchCount names 832 + 463 - 2 = 1293, the count branch"
+offset = 2119
+type = "u32"
+value = 463
+
+[[bytes]]
+name = "fUniqueID: the bracket title"
+offset = 1508
+type = "string"
+value = "fUniqueID[fHits_]"
+
+[[bytes]]
+name = "fId: fType 31 as well"
+offset = 3236
+type = "i32"
+value = 31
+
+[[bytes]]
+name = "fId: but fClassName is KHit, and fID 1 indexes KHit's element list"
+offset = 3215
+type = "string"
+value = "KHit"
+
+[[bytes]]
+name = "fId: fID 1 -- element 0 of KHit is its TObject base"
+offset = 3232
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fId: fCheckSum is KHit's"
+offset = 3226
+type = "u32"
+value = 2761519401
+
+[[bytes]]
+name = "fId: the same fBranchCount tag as every other member"
+offset = 3248
+type = "u32"
+value = 463

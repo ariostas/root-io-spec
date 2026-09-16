@@ -1364,6 +1364,24 @@ class Checker:
                          f"{name}: fID {br.element_id} past the "
                          f"{len(info.elements)} elements of {br.class_name!r}")
 
+        # 10. fStreamerType agrees with the element fID indexes, apart from the
+        #     two divergences of TBranchElement.md 5.2.
+        if br.element_id is not None and br.element_id >= 0:
+            info = self.element_info(br)
+            if info is not None and br.element_id < len(info.elements):
+                want = info.elements[br.element_id].ftype
+                # -1 is kNoType: the branch declares no element type at all,
+                # so there is nothing to compare. 300 against 500 is the STL
+                # divergence of TBranchElement.md 5.2.
+                ok = (br.streamer_type == want
+                      or br.streamer_type == -1
+                      or (br.streamer_type == 300 and want == 500))
+                if not ok:
+                    self.bad("TBranchElement 10.10",
+                             f"{name}: fStreamerType {br.streamer_type} but "
+                             f"element {br.element_id} of {br.class_name!r} has "
+                             f"fType {want}")
+
         # 9. fBranchCount refers to a count branch written earlier.
         if br.count_slot >= 0:
             target = by_slot.get(br.count_slot)

@@ -1,0 +1,198 @@
+id   = "ttree/split-unsplit"
+file = "data/ttree/split-unsplit.root"
+size = 20639
+
+description = """
+The same class written twice into one tree, split and unsplit, with the same
+data.
+
+TTree::Branch at split level 0 does not produce a branch tree: it produces one
+branch whose entries are whole serialised objects. This case puts both forms
+side by side so the difference can be read off the bytes.
+
+  sp    fID -2, fBranches nobjects 3, fWriteBasket 0
+  un    fID -1, fBranches nobjects 0, fWriteBasket 1
+
+What this case pins down:
+
+- **fID is the discriminator, not fSplitLevel.** Both branches have the same
+  fClassName (UEv), the same fCheckSum (0x1e7526d6), the same fType (0) and the
+  same fStreamerType (-1). What separates them is fID: -2 means the columns are
+  in fBranches, -1 means the whole object is in this branch's baskets. See
+  Splitting.md section 6.
+- The split branch has **no baskets of its own** (fWriteBasket 0) and the
+  unsplit one has no sub-branches (fBranches nobjects 0). Each holds exactly one
+  of the two things.
+- fEntryOffsetLen tells them apart a second way: 1000 on the split node, which
+  takes the tree's fDefaultEntryOffsetLen, and 12 on the unsplit branch, whose
+  entries are variable-size serialised objects and so need an offset array.
+  A fixed-width member branch such as fB has 0.
+- fSplitLevel is 99 and 0 here and does match what was asked for -- but that is
+  a coincidence of this case, not a rule; Splitting.md section 4.2 has a tree
+  where it does not.
+
+Three entries with identical values written through both branches, so a reader
+can check that the two forms yield the same numbers.
+"""
+
+spec = [
+  "spec/04-ttree/Splitting.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 218
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 318
+nbytes = 78
+class  = "TBasket"
+role   = "basket of 'fB'"
+[[records]]
+offset = 396
+nbytes = 78
+class  = "TBasket"
+role   = "basket of 'fI'"
+[[records]]
+offset = 474
+nbytes = 90
+class  = "TBasket"
+role   = "basket of 'fD'"
+[[records]]
+offset = 564
+nbytes = 152
+class  = "TBasket"
+role   = "basket of 'un'"
+[[records]]
+offset = 716
+nbytes = 3479
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 4195
+nbytes = 16175
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 20370
+nbytes = 164
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 20534
+nbytes = 105
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "sp: fID -2, the split node"
+offset = 3576
+type = "i32"
+value = -2
+
+[[bytes]]
+name = "un: fID -1, the same class held whole"
+offset = 4098
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "sp: fType 0"
+offset = 3580
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "un: fType 0 as well -- fType does not distinguish them"
+offset = 4102
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "sp: fStreamerType -1"
+offset = 3584
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "un: fStreamerType -1 as well"
+offset = 4106
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "sp: fClassName"
+offset = 3564
+type = "string"
+value = "UEv"
+
+[[bytes]]
+name = "un: the same fClassName"
+offset = 4086
+type = "string"
+value = "UEv"
+
+[[bytes]]
+name = "sp: fCheckSum"
+offset = 3570
+type = "u32"
+value = 510994134
+
+[[bytes]]
+name = "un: the same fCheckSum"
+offset = 4092
+type = "u32"
+value = 510994134
+
+[[bytes]]
+name = "sp: fBranches nobjects -- three children"
+offset = 1189
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "un: fBranches nobjects -- none"
+offset = 3748
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "sp: fWriteBasket 0 -- the split node holds no data"
+offset = 1105
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "un: fWriteBasket 1 -- the unsplit branch holds all of it"
+offset = 3664
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "sp: fEntryOffsetLen from the tree's fDefaultEntryOffsetLen"
+offset = 1101
+type = "i32"
+value = 1000
+
+[[bytes]]
+name = "un: an offset array, because whole objects vary in size"
+offset = 3660
+type = "i32"
+value = 12
+
+[[bytes]]
+name = "fB: and none, because a fixed-width member does not"
+offset = 1419
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fB: fClassName is UBase, following fID as always"
+offset = 1858
+type = "string"
+value = "UBase"

@@ -51,7 +51,7 @@ The eleven members follow the `TBranch` base in declaration order
 | 5 | `fClassVersion` | 2 | `Version_t` | on-file version of `fClassName`'s class |
 | 6 | `fID` | 3 | `Int_t` | element index, or a sentinel (§3) |
 | 7 | `fType` | 3 | `Int_t` | which kind of node this is (§3) |
-| 8 | `fStreamerType` | 3 | `Int_t` | the element type code, or −1 |
+| 8 | `fStreamerType` | 3 | `Int_t` | the element type code — but **not the one the file's streamer info records**, see §5.2 |
 | 9 | `fMaximum` | 3 | `Int_t` | upper bound on the collection count (§7) |
 | 10 | `fBranchCount` | 64 | `TBranchElement*` | back-reference to the count branch (§6) |
 | 11 | `fBranchCount2` | 64 | `TBranchElement*` | the second dimension; never set (§6) |
@@ -192,6 +192,46 @@ means the class had no version to record, and the streamer info must be matched
 by `fCheckSum` instead — the foreign-class path of
 [Streamer information](../02-serialization/StreamerInfo.md).
 
+### 5.2 `fStreamerType` disagrees with the streamer info, by design
+
+`fStreamerType` is the element's type code, sampled when the branch was created
+(`root/tree/tree/src/TBranchElement.cxx:351`). The streamer info in the same file
+records a different code for the same member, and both are correct.
+
+The cause is `TStreamerSTL::Streamer`'s write path. It does not write the element
+it holds: it builds a temporary copy with `fType` set to `kStreamer` — *"To
+enable forward compatibility we actually save with the old value"* — and writes
+that (`root/core/meta/src/TStreamerElement.cxx:2140-2146`). The in-memory
+element, which the branch sampled, keeps `kSTL`.
+
+So for a `std::vector` member:
+
+```
+the branch's fStreamerType          300   kSTL
+the streamer element's fType        500   kStreamer
+```
+
+Measured over both corpora, the two disagree on exactly **2004 branches and no
+others**, in two groups:
+
+| Branch `fStreamerType` | Element `fType` | Count | What it is |
+|---|---|---|---|
+| 300 (`kSTL`) | 500 (`kStreamer`) | 1988 | every STL member, at `fType` 0, 4, 31 and 41 alike |
+| −1 (`kNoType`) | 0 (`kBase`) | 16 | top-level `TClonesArray` branches — `fType` 3 with `fClassName` `TClonesArray` |
+
+Every other branch with `fID ≥ 0` agrees with its element exactly.
+`ttree/split-nested` asserts both halves of the first row — the branch
+`fDet.fHits` at `fStreamerType` 300, and `NDet`'s element `fHits` at `fType` 500.
+
+The second row is a different thing: −1 is `kNoType`, which means the branch
+declares no element type at all, so there is nothing for it to agree with. A
+reader should treat −1 as "ask `fType` instead", not as a type code.
+
+The practical consequence: **`fStreamerType` cannot be looked up in the
+[element-type table](../02-serialization/ElementTypes.md#1-the-type-codes)
+without this caveat.** That table says code 300 never reaches a file, which is
+true of a streamer element and false of a branch.
+
 ## 6. `fBranchCount` is a back-reference, and `fBranchCount2` is never set
 
 Both are declared `TBranchElement*` and both are persistent. Neither holds an
@@ -324,6 +364,9 @@ content of each procedure in step 7 is `ReadingEntries.md`.
 9. `fBranchCount`, when set, refers to a branch written earlier in the same
    record which is either `fType` 3 or 4, or `fType` ≤ 2 with `fStreamerType` 6
    (`kCounter`).
+10. If `fID ≥ 0` and `fStreamerType` is not −1, it equals the `fType` of the
+    element it indexes — **except** `fStreamerType` 300 against an element
+    `fType` of 500, which is the STL divergence of §5.2.
 
 ## 11. Errata
 
@@ -332,6 +375,7 @@ content of each procedure in step 7 is `ReadingEntries.md`.
 | 1 | `root/tree/tree/inc/TBranchElement.h:72`: "`fID==-1` for the former" | Incomplete. `fID` has two negative sentinels, and the one the header omits — −2, the split node — occurs on 176 branches in the corpora. ROOT's own code tests for it at `root/tree/tree/src/TBranchElement.cxx:2279` and `root/tree/tree/src/TBranchElement.cxx:3812` |
 | 2 | `root/tree/tree/inc/TBranchElement.h:75-78`: `fType` 3 and 4 are "branch count of a split TClonesArray / STL Collection" | True but incomplete in the way that matters: those branches carry the count *in their own baskets*, and they have no leaf. Every other data-bearing branch in a tree is described by a leaf |
 | 3 | The name `fBranchCount` suggests a pointer to a branch | It is a four-byte buffer back-reference, like `fLeaves` and `fLeafCount`. Nothing in the header says so |
+| 4 | `root/tree/tree/inc/TBranchElement.h:79`: "branch streamer type" — implying the type code the file records | It is the code the element had **in memory**, which for an STL member differs from the one the same file's streamer info gives (§5.2). 1988 branches in the corpora disagree with their element this way, and none of them is an error |
 
 ## 12. Class versions
 
@@ -370,10 +414,16 @@ across 178 files. Whether a current ROOT can still be made to write one is open.
 | Case | What it covers |
 |---|---|
 | `ttree/split-object` | `fType` 0 with `fID` −2 and with `fID` ≥ 0, `fType` 1, the empty `fLeaves` of an interior node, `fClassName`/`fCheckSum` following `fID` rather than the branch, and `fEntryOffsetLen` taken from `fDefaultEntryOffsetLen` on the interior nodes and reset to 0 on the members |
+| `ttree/split-counter` | `fType` 0 with `fStreamerType` 6 (`kCounter`) and with an `fBranchCount`; `fMaximum` on the counter rather than the counted branch |
+| `ttree/split-nested` | `fType` 2, `fType` 4 with `fID` ≥ 0, `fType` 41, and the `fStreamerType` 300-against-500 divergence of §5.2 on both sides |
+| `ttree/split-clones` | `fType` 3 and `fType` 31, and a `TObject` base flattened into two member branches whose `fClassName` is `TObject` |
+| `ttree/split-stl-toplevel` | `fType` 4 with `fID` −1, where `fClassName` is the collection type and `fStreamerType` is −1 |
+| `ttree/split-ptr-collection` | `fSplitLevel` ≥ 100 and a `TBranchSTL`; see [Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) |
 
-Not covered by any fixture yet, and tracked in `PLAN-ttree.md` §5: `fType` 2, 3,
-4, 31, 41 and −1; a non-null `fBranchCount`; a non-null `fBranchCount2`;
-`fSplitLevel ≥ 100`; `TBranchObject`; `TBranchClones`; `TBranchSTL`.
+Seven of the eight `fType` values now have a fixture. Not covered, and tracked in
+`PLAN-ttree.md` §5: **`fType` −1**, which needs a class with a hand-written
+`Streamer`; a non-null `fBranchCount2`, which no file in 178 has;
+`TBranchObject`; and `TBranchClones`.
 
 Eight of the nine invariants of §10 were confirmed by corrupting a copy of
 `ttree/split-object` and checking that the intended invariant is what rejects

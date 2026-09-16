@@ -1,0 +1,179 @@
+id   = "ttree/split-stl-toplevel"
+file = "data/ttree/split-stl-toplevel.root"
+size = 18838
+
+description = """
+A collection as the branch itself, rather than as a member of one.
+
+ttree/split-nested has an fType 4 count branch that is a *member* of a split
+class, so its fID indexes that class and its fClassName names the parent. This
+is the other form of the same node, and the two are read differently:
+
+  v            fType 4, fID -1, fClassName vector<SHit>, fClassVersion 6
+    v.fId      fType 41
+    v.fE       fType 41
+
+What this case pins down:
+
+- **fID -1 changes what fClassName means.** Here it is the collection's own
+  type, `vector<SHit>`, and fClassVersion 6 is the STL collection's version
+  rather than SHit's. That is the rule of TBranchElement.md section 5 seen from
+  its other side; the corpora hold 34 branches of this form against 50 of the
+  member form.
+- There is **no fType 0 split node above it**. A top-level collection branch is
+  itself the root of its sub-tree, which makes this the shortest split
+  arrangement ROOT produces -- three branches for a two-member value class.
+- fStreamerType is -1, kNoType: with no element to index there is no element
+  type to record. A reader must not look -1 up in the element-type table.
+- The title and fBranchCount conventions are unchanged from the member form:
+  `v_` on the count branch and `fId[v_]` on the members, and every member
+  carries the tag 310, which against a record starting at 620 names position
+  620 + 310 - 2 = 928.
+
+A `SHitHolder` class appears in classes.h and is never instantiated. It is there
+so ACLiC emits a collection proxy for `vector<SHit>`: without one TTree::Branch
+refuses the collection outright, and a class *containing* the vector is the
+portable way to ask for the proxy from a header alone.
+
+Three entries with collections of 2, 0 and 1 elements. ROOT reads the file back
+and reports those values.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 222
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 322
+nbytes = 97
+class  = "TBasket"
+role   = "basket of 'v'"
+[[records]]
+offset = 419
+nbytes = 101
+class  = "TBasket"
+role   = "basket of 'v.fId'"
+[[records]]
+offset = 520
+nbytes = 100
+class  = "TBasket"
+role   = "basket of 'v.fE'"
+[[records]]
+offset = 620
+nbytes = 2017
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 2637
+nbytes = 15929
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 18566
+nbytes = 165
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 18731
+nbytes = 107
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "v: fType 4, a collection count branch"
+offset = 2552
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "v: fID -1, so fClassName names its own type"
+offset = 2548
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "v: and that type is the collection"
+offset = 2523
+type = "string"
+value = "vector<SHit>"
+
+[[bytes]]
+name = "v: fClassVersion 6 is the STL collection's, not SHit's"
+offset = 2546
+type = "i16"
+value = 6
+
+[[bytes]]
+name = "v: fClonesName is the value type"
+offset = 2537
+type = "string"
+value = "SHit"
+
+[[bytes]]
+name = "v: fStreamerType -1, kNoType -- there is no element to index"
+offset = 2556
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "v: fMaximum, the largest collection in the file"
+offset = 2560
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "v: the count-branch title convention, on a one-character name"
+offset = 981
+type = "string"
+value = "v_"
+
+[[bytes]]
+name = "v: fSplitLevel as requested -- this branch is the top of its sub-tree"
+offset = 1037
+type = "i32"
+value = 99
+
+[[bytes]]
+name = "v.fId: fType 41"
+offset = 1698
+type = "i32"
+value = 41
+
+[[bytes]]
+name = "v.fId: fClassName is the value class"
+offset = 1677
+type = "string"
+value = "SHit"
+
+[[bytes]]
+name = "v.fId: fClassVersion 1, SHit's own"
+offset = 1692
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "v.fId: fBranchCount names 620 + 310 - 2 = 928, the count branch"
+offset = 1710
+type = "u32"
+value = 310
+
+[[bytes]]
+name = "v.fId: the bracket title"
+offset = 1140
+type = "string"
+value = "fId[v_]"
+
+[[bytes]]
+name = "v.fId: the name is prefixed even though the branch name has no dot"
+offset = 1134
+type = "string"
+value = "v.fId"

@@ -302,10 +302,12 @@ does with the result:
 | `ttree/split-naming` | §3.1 in full — the same class under a plain and a dotted branch name, 26 assertions, twelve of which are the pairs that differ and do not |
 | `ttree/split-counter` | A counted array: `fBranchCount` on an `fType` 0 branch, `fMaximum` on the counter, and the `member[count]` title in its oldest form |
 | `ttree/split-nested` | Three levels, `fType` 2, an `fType` 4 count branch with `fType` 41 members, the `name_`/`[name_]` convention, and the `fSplitLevel` table of §4.2 |
+| `ttree/split-unsplit` | §6 in one file: the same class split and unsplit side by side, with `fID` −2 against −1 as the only field that separates them |
+| `ttree/split-clones` | The `TClonesArray` half of the same shapes: `fType` 3 and 31, and a `TObject` base flattened into columns rather than becoming an `fType` 1 node |
+| `ttree/split-stl-toplevel` | A collection as the branch itself: three branches, no split node above them, and the shortest arrangement ROOT produces |
 | `ttree/split-ptr-collection` | All of §5: `fSplitLevel` above 100, a `TBranchSTL`, and an `fType` 4 branch with `fID` −1 |
 
-Not covered: a split `TClonesArray` (`fType` 3 and 31), which `split-clones` is
-planned for; `TBranchClones`, which appears in no file and has no known way to
+Not covered: `TBranchClones`, which appears in no file and has no known way to
 produce one; and the `ReadLeavesCollectionSplitPtrMember` half of §5, which needs
 a non-`vector` collection of pointers.
 
