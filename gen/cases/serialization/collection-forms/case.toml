@@ -1,0 +1,212 @@
+id   = "serialization/collection-forms"
+file = "data/serialization/collection-forms.root"
+size = 1669
+
+description = """
+Three forms `Collections.md` describes and no file demonstrated: `std::array`, a
+fixed array of collections, and a member-wise collection whose value class has a
+`ClassDef`.
+
+**`std::array<T,N>` is not a collection.** ROOT maps it to a fixed C array before
+the element is ever built, so `fArrInt` is a `TStreamerBasicType` at code **23**
+(`kInt + kOffsetL`) and `fArrHit` a `TStreamerObjectAny` at **82**. Their bytes
+are the bytes of ElementTypes.md 3 and 7.2: three bare `i32` with no prefix, and
+two self-framing objects with nothing around them. Nothing distinguishes a
+`std::array<Int_t,3>` on disk from an `Int_t[3]`.
+
+**A fixed array of collections shares one frame.** `std::vector<Int_t>
+fVecArr[2]` is a single `bc ver` followed by *two* complete collections, each
+with its own count -- not two framed members and not one flattened collection.
+The stored `fType` is **500** with `fArrayLength` 2; `kOffsetL` appears only after
+the read-time recompute of StreamerInfo.md 10
+(`root/core/meta/src/TStreamerElement.cxx:2124-2128`), so **`fArrayLength` is the
+only thing in the file that says there are two.** Collections.md 11.1.
+
+**A value class with a `ClassDef` gets a plain version word.** `fHits` is
+`vector<CHit>` written member-wise, and the second version word is `00 02` --
+`CHit`'s class version -- where `serialization/collections`' interpreted `Hit`
+gives `00 00` and a checksum. Both forms are legal and only the file's own
+streamer infos tell them apart (Buffer.md 4).
+
+`fCtype` is 61 for `fHits` even though `CHit` does not derive from `TObject`,
+which is one more instance of Collections.md 7: `fCtype` does not determine the
+layout.
+"""
+
+spec = [
+  "spec/02-serialization/Collections.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 208
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 308
+nbytes = 145
+class  = "CollectionForms"
+role   = "the object, four members"
+[[records]]
+offset = 453
+nbytes = 977
+class  = "TList"
+role   = "StreamerInfo"
+
+[[bytes]]
+name = "the object's byte count"
+offset = 353
+type = "u32"
+value = 0x40000060
+
+[[bytes]]
+name = "CollectionForms' class version"
+offset = 357
+type = "u16"
+value = 1
+
+# --- std::array<Int_t,3>: code 23, bare values ----------------------------
+
+[[bytes]]
+name = "fArrInt: the first value, with no count and no frame before it"
+offset = 359
+type = "i32"
+value = 7
+
+[[bytes]]
+name = "fArrInt: the second"
+offset = 363
+type = "i32"
+value = 8
+
+[[bytes]]
+name = "fArrInt: the third, and the member is over -- twelve bytes in all"
+offset = 367
+type = "i32"
+value = 9
+
+# --- std::array<CHit,2>: code 82, two self-framing objects ----------------
+
+[[bytes]]
+name = "fArrHit: the FIRST OBJECT's byte count; nothing frames the array"
+offset = 371
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fArrHit: CHit's class version, 2"
+offset = 375
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "fArrHit: CHit[0].fId"
+offset = 377
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fArrHit: CHit[1] follows directly"
+offset = 385
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fArrHit: CHit[1].fId"
+offset = 391
+type = "i32"
+value = 2
+
+# --- std::vector<Int_t> fVecArr[2]: ONE frame, then two collections -------
+#
+# 40 00 00 16 00 0a | 00 00 00 02 0b 0c | 00 00 00 01 0d
+# one shared frame    first vector        second vector
+
+[[bytes]]
+name = "fVecArr: one byte count for both collections"
+offset = 399
+type = "u32"
+value = 0x40000016
+
+[[bytes]]
+name = "fVecArr: object-wise -- kStreamedMemberWise is clear"
+offset = 403
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "fVecArr: the first collection's own count"
+offset = 405
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fVecArr: its two values"
+offset = 409
+type = "i32"
+value = 11
+
+[[bytes]]
+name = "fVecArr: the SECOND collection's count, inside the same frame"
+offset = 417
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fVecArr: its single value, and the frame ends"
+offset = 421
+type = "i32"
+value = 13
+
+# --- std::vector<CHit>: member-wise, versioned value class ----------------
+
+[[bytes]]
+name = "fHits: the frame's byte count"
+offset = 425
+type = "u32"
+value = 0x40000018
+
+[[bytes]]
+name = "fHits: kStreamedMemberWise set on version 10"
+offset = 429
+type = "u16"
+value = 0x400a
+
+[[bytes]]
+name = "fHits: a PLAIN version word for the value class -- no 0, no checksum"
+offset = 431
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "fHits: two entries"
+offset = 433
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fHits: the fId column, both values"
+offset = 437
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fHits: and the second"
+offset = 441
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fHits: then the fE column"
+offset = 445
+type = "f32"
+value = 2.5
+
+[[bytes]]
+name = "fHits: its second value, and the record ends at 453"
+offset = 449
+type = "f32"
+value = 3.5

@@ -132,7 +132,13 @@ occupies one contiguous column.
 
 > Demonstrated by `serialization/collections`: `fHits` is
 > `40 0a | 00 00 | 040059d1 | 00000002 | 0000000a 00000014 | 3fc00000 40200000`
-> — both `x` values, then both `y` values.
+> — both `x` values, then both `y` values. Its `Hit` is interpreted, hence the
+> `00 00` and the checksum.
+>
+> `serialization/collection-forms` is the other half: its `CHit` has a real
+> `ClassDef`, so `fHits` reads `40 0a | 00 02 | 00000002 | ...` — **a plain
+> version word, with no checksum after it.** Both forms are legal in the same
+> position, and only the file's own streamer infos tell them apart.
 
 ### 4.1 The columns are not uniformly framed
 
@@ -456,13 +462,42 @@ first (`root/io/io/src/TGenCollectionStreamer.cxx:1400-1402`). `fSize` is
 `sizeof(std::bitset<N>)` and has nothing to do with the payload.
 
 **`std::array<T,N>` is not a collection at all.** ROOT maps it to a fixed C
-array: the element is a `TStreamerBasicType` or `TStreamerObject` with
-`kOffsetL` added, and the bytes are those of
-[Element types §3](ElementTypes.md#3-koffsetl-t-20-t-fixed-size-array) — no
-byte count, no version word, no count.
+array: the element is a `TStreamerBasicType`, a `TStreamerObject` or a
+`TStreamerObjectAny` with `kOffsetL` added, and the bytes are those of
+[Element types §3](ElementTypes.md#3-koffsetl-t-20-t-fixed-size-array) and
+[§7.2](ElementTypes.md#72-the-array-forms-are-not-uniform) — no byte count, no
+version word, no count. **Nothing on disk distinguishes a `std::array<Int_t,3>`
+from an `Int_t[3]`.**
+
+> Demonstrated by `serialization/collection-forms`: `fArrInt`, a
+> `std::array<Int_t,3>`, is code 23 and twelve bare bytes, and `fArrHit`, a
+> `std::array<CHit,2>`, is code 82 — two self-framing objects with nothing
+> around them.
 
 **Nested collections** are always object-wise (§5), and the inner ones are bare:
 a count and its elements, with no framing of their own, at every depth.
+
+### 11.1 A fixed array of collections shares one frame
+
+```
+byteCount  version   <collection>  ×  fArrayLength
+```
+
+A member declared `std::vector<T> m[N]` is **one** `bc ver` followed by *N*
+complete collections, each with its own count. Not *N* framed members, and not
+one flattened collection.
+
+> **`fArrayLength` is the only thing in the file that says so.** The stored
+> `fType` is 500 like any other `TStreamerSTL`, and the `kOffsetL` that would
+> mark it appears only after the read-time recompute of
+> [Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
+> (`root/core/meta/src/TStreamerElement.cxx:2124-2128`). A reader that switches
+> on the stored code alone reads the first collection and stops eight bytes
+> short of the byte count.
+>
+> Demonstrated by `serialization/collection-forms`: `fVecArr` is
+> `std::vector<Int_t> fVecArr[2]`, one frame of 22 bytes holding `{11, 12}` and
+> then `{13}`.
 
 ## 12. `TClonesArray`
 
@@ -592,15 +627,13 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 | `serialization/pairs` | The six shapes a `pair<K,V>` member takes (§8.1), the empty member-wise collection (§4.3), and three distinct pairs sharing one checksum (§8.2) |
 
-`std::bitset` is covered from the other side: `ttree/split-bitset` has one as a
-member of a split branch, which is an ordinary object-wise collection and
-confirms §11's byte-per-bit layout and its bit order against real bytes.
+| `serialization/collection-forms` | `std::array` of a scalar and of a class (§11), a fixed array of collections (§11.1), and a member-wise collection whose value class has a `ClassDef` (§4) |
 
-No fixture covers `std::array`, a collection of pointers, a fixed array of
-collections, a member-wise collection whose value class has a `ClassDef` (and so
-a plain version word rather than a checksum), `TClonesArray` at class version 3,
-or the pre-version-8 layouts.
+Two more are covered from the `TTree` side: `ttree/split-bitset` has a
+`std::bitset` as a member of a split branch, which is an ordinary object-wise
+collection and confirms §11's byte-per-bit layout and its bit order against real
+bytes, and `ttree/split-ptr-collection` has a `std::vector<PHit*>` — a collection
+of pointers, which `serialization/pairs` also reaches through a map value.
 
-The `ClassDef` case is no longer blocked: `serialization/clones-array` shows how a
-case compiles a dictionary (`gen/common/README.md`), and the same mechanism would
-produce a versioned value class for a `std::vector`.
+No fixture covers `TClonesArray` at class version 3 or the pre-version-8 layouts;
+both need a legacy ROOT (`PLAN.md` §9.1).

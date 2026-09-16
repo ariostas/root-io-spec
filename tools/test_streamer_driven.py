@@ -423,3 +423,31 @@ class ArrayLengthWithoutOffsetL(unittest.TestCase):
         buf = b"\x00\x00\x00\x00"
         decoder = rootfile.Decoder(buf, 0, [info(el, name="C")])
         self.assertEqual(decoder.read_element_value(el, 0, {}).end, 4)
+
+
+class FixedArrayOfCollections(unittest.TestCase):
+    """Collections.md 11.1. One frame, then fArrayLength collections."""
+
+    def stl(self, array_length):
+        return rootfile.Element(
+            cls="TStreamerSTL", version=4, name="fVecArr", title="", bits=0,
+            ftype=500, fsize=24, array_length=array_length, array_dim=1,
+            max_index=[array_length, 0, 0, 0, 0], type_name="vector<int>",
+            tail={"fSTLtype": 1, "fCtype": 3})
+
+    BUF = (b"\x40\x00\x00\x16\x00\x0a"                  # one shared frame
+           b"\x00\x00\x00\x02\x00\x00\x00\x0b\x00\x00\x00\x0c"
+           b"\x00\x00\x00\x01\x00\x00\x00\x0d")
+
+    def test_both_collections_are_inside_the_one_frame(self):
+        el = self.stl(2)
+        decoder = rootfile.Decoder(self.BUF, 0, [info(el, name="C")])
+        self.assertEqual(decoder.read_collection(el, 0), len(self.BUF))
+
+    def test_reading_only_the_first_is_caught(self):
+        # What a reader that switches on the stored fType alone would do: the
+        # code is 500 either way, and only fArrayLength says there are two.
+        el = self.stl(0)
+        decoder = rootfile.Decoder(self.BUF, 0, [info(el, name="C")])
+        with self.assertRaises(rootfile.FormatError):
+            decoder.read_collection(el, 0)

@@ -955,7 +955,7 @@ No external blocker; these are simply cases nobody has added yet.
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | ~~`kCharStar` (7), `kStreamLoop` (501), the 81/82 array forms~~ | ✅ `serialization/element-types`. `kBits` (15) was already covered from the tree side and the row was stale; `kAnyPnoVT` (70) has **no producer** and cannot be reached, now stated in `ElementTypes.md` §7.3 |
 | ~~`TStreamerLoop`~~ | ✅ the same case, three forms of it |
-| `std::array`, a fixed array of collections | `02-serialization/Collections.md` (`std::bitset` is covered from the tree side by `ttree/split-bitset`, and a collection of pointers by `serialization/pairs`) |
+| ~~`std::array`, a fixed array of collections~~ | ✅ `serialization/collection-forms`, which also closes the `ClassDef` value class of `Collections.md` §16 and found that a fixed array of collections shares **one** frame (§11.1) |
 | The `kHasUUID` form of `TRef`, and a `TExec` index in a `TRef`'s `fBits` | `02-serialization/References.md` |
 
 **Two findings came out of that case**, both from the independent reader

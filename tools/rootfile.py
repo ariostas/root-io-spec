@@ -1635,11 +1635,18 @@ class Decoder:
             raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
 
         value = value_type_name(el.type_name)
-        if frame.member_wise:
-            self.member_wise.append((el.name, value, offset))
-            pos = self.read_member_wise(value, frame.body, el, frame.version)
-        else:
-            pos = self.read_object_wise(value, stl, frame.body)
+        # A fixed array of collections shares ONE frame and then repeats the
+        # collection fArrayLength times. The stored fType is still 500, and
+        # kOffsetL only appears after the read-time recompute of
+        # StreamerInfo.md 10, so fArrayLength is the only thing that says so.
+        # Collections.md 11.1.
+        pos = frame.body
+        for _ in range(max(el.array_length, 1)):
+            if frame.member_wise:
+                self.member_wise.append((el.name, value, offset))
+                pos = self.read_member_wise(value, pos, el, frame.version)
+            else:
+                pos = self.read_object_wise(value, stl, pos)
         if pos != frame.end:
             raise FormatError(
                 f"collection {el.name} consumed to {pos}, byte count says "
