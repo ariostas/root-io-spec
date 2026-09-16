@@ -31,8 +31,7 @@ the tree record, branches, leaves and baskets — are written and checked. See t
 | Standard classes — `TArray` | written |
 | Standard classes — everything else | not yet written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket` | written |
-| `TTree` — split branches (`TBranchElement`), splitting | written |
-| `TTree` — reading entries, auxiliary classes | not yet written |
+| `TTree` — all of it | written |
 | RNTuple | not yet imported |
 
 ## How to read it

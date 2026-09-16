@@ -1,0 +1,109 @@
+id   = "ttree/tree-ntuple"
+file = "data/ttree/tree-ntuple.root"
+size = 19406
+
+description = """
+TNtuple and TNtupleD: what a TTree subclass adds on disk.
+
+Almost nothing. Each adds exactly one persistent Int_t, fNvar, after the TTree
+base (root/tree/tree/inc/TNtuple.h:31, root/tree/tree/inc/TNtupleD.h:31); fArgs
+is transient. Their branches are ordinary single-leaf TBranches carrying TLeafF
+and TLeafD leaves respectively.
+
+The case exists for the reason TTree.md section 1 gives: a reader must find
+trees by walking the base-class chain, because the key's class name is not
+"TTree". Here the two keys say TNtuple and TNtupleD, and both records begin with
+a TTree base-class frame at class version 20.
+
+ttree/ntuple already covers a TNtuple on its own. This pairs it with TNtupleD so
+that the two class versions -- 2 and 1 -- and the TLeafF/TLeafD difference are
+visible in one file.
+"""
+
+spec = [
+  "spec/04-ttree/Auxiliary.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 164
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 264
+nbytes = 85
+class  = "TBasket"
+role   = "basket of 'x'"
+[[records]]
+offset = 349
+nbytes = 85
+class  = "TBasket"
+role   = "basket of 'y'"
+[[records]]
+offset = 434
+nbytes = 85
+class  = "TBasket"
+role   = "basket of 'z'"
+[[records]]
+offset = 519
+nbytes = 1802
+class  = "TNtuple"
+role   = "TNtuple"
+[[records]]
+offset = 2321
+nbytes = 105
+class  = "TBasket"
+role   = "basket of 'u'"
+[[records]]
+offset = 2426
+nbytes = 105
+class  = "TBasket"
+role   = "basket of 'v'"
+[[records]]
+offset = 2531
+nbytes = 1343
+class  = "TNtupleD"
+role   = "TNtupleD"
+[[records]]
+offset = 3874
+nbytes = 15275
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 19149
+nbytes = 179
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 19328
+nbytes = 78
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "n: fNvar, the one member TNtuple adds to TTree"
+offset = 2317
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "d: and TNtupleD's, with two variables"
+offset = 3870
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "n: fTotBytes"
+offset = 663
+type = "i64"
+value = 255
+
+[[bytes]]
+name = "d: fTotBytes, larger for the same entry count at double precision"
+offset = 2676
+type = "i64"
+value = 210

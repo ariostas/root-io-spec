@@ -368,9 +368,9 @@ spend most of their effort.
 | ✅ `TLeaf.md` | `TLeaf` family, `fLen`/`fLenType`/`fOffset`/`fIsRange`/`fIsUnsigned`, leaf counts, `TLeafC` strings, `TLeafElement`, `TLeafD32`/`TLeafF16` |
 | ✅ `TBasket.md` | The basket record, `fNevBufSize` sign trick → `fIOBits`, the `flag >= 80` "generate offsets" path, `flag % 10 == 2`, entry-offset arrays and the offset/size conversion, displacement arrays, `fLast` |
 | ✅ `Splitting.md` | Split levels and what `fSplitLevel` does not mean, how a class becomes a branch tree, the trailing-dot naming divergence, the `name_`/`[name_]` count convention, `kSplitCollectionOfPointers` and `TBranchSTL`, the unsplit fallback |
-| `ReadingEntries.md` | End-to-end normative procedure: entry number → basket → byte range → value |
+| ✅ `ReadingEntries.md` | End-to-end normative procedure: entry number → basket → byte range → value, for the unsplit path and all eleven split read procedures |
 | ~~`Double32.md`~~ | **Dropped** — already written and distributed: the grammar and the three encodings are `02-serialization/ElementTypes.md` §5.1-5.3, the leaf classes and the 3-versus-4-byte asymmetry are `TLeaf.md` §7. Per decision 6, cross-referenced rather than re-homed (`PLAN-ttree.md` §4) |
-| `Auxiliary.md` | `TTreeIndex`, `TFriendElement`, `TBranchRef`/`TRefTable`, `TEntryList`, `TEventList`, `TNtuple`/`TNtupleD`, `TChain` |
+| ✅ `Auxiliary.md` | `TTreeIndex` — which publishes no streamer info — `TFriendElement`, `TBranchRef`/`TRefTable`, `TEntryList`/`TEntryListBlock`, `TEventList`, `TNtuple`/`TNtupleD`, `TChain` |
 
 `TBasket.md` is deliberately prominent: `TBasket` has **no streamer info at all**
 (ROOT does not write one), its streamer is entirely hand-coded, and it contains at
@@ -663,14 +663,16 @@ remains is the split half. The sub-plan §7 item 5 asked for is written:
 procedures of which two have zero coverage in 178 files — and turns phase 5 into
 four documents (not five) plus a fifteen-case fixture matrix.
 
-✅ `TBranchElement.md` and ✅ `Splitting.md` are the first two of the four, with
-five new fixtures — `split-object`, `split-naming`, `split-counter`,
-`split-nested`, `split-ptr-collection` — and fourteen new invariants, all clean
-over both corpora. `split-ptr-collection` reaches three things no file in either
-corpus does: `fSplitLevel` above 100, the two pointer-collection read
-procedures, and a `TBranchSTL`. `ReadingEntries.md` and `Auxiliary.md` remain;
-`Double32.md` was dropped as already-written and distributed
-(`PLAN-ttree.md` §4).
+**All four are written**: ✅ `TBranchElement.md`, ✅ `Splitting.md`,
+✅ `ReadingEntries.md` and ✅ `Auxiliary.md`, with fourteen new fixtures and
+twenty-six new invariants, all clean over both corpora. `Double32.md` was
+dropped as already-written and distributed (`PLAN-ttree.md` §4).
+
+Phase 5's deliverable is met: the reading path is specified end to end for both
+the unsplit and the split case, and `tools/rootfile.py` implements it
+independently. What remains of the phase is coverage rather than specification —
+`fType` −1, `TBranchObject`, `TBranchClones`, `TChain`, and the entry-level
+decoder that would close out `ReadingEntries.md` invariant 5.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;

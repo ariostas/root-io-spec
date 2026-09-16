@@ -1170,6 +1170,17 @@ class Decoder:
             return self.read_tarray(cls, offset)
         if cls in STD_STRING_NAMES:
             return read_std_string(self.buf, offset)
+        if cls == "TTreeIndex":
+            # No streamer info for it is ever written, so the streamer-driven
+            # path cannot read it. Its layout is hand-coded in read_tree_index;
+            # here the object is framed by its byte count and left to that.
+            # Auxiliary.md section 2.
+            frame = read_frame(self.buf, offset)
+            if frame.end is None:
+                raise FormatError("TTreeIndex with no byte count")
+            return Value(name=cls, ftype=61, start=offset, end=frame.end,
+                         type_name=cls,
+                         note="TTreeIndex: read with read_tree_index")
         if cls == "TDatime":
             # A hand-written streamer that writes fDatime and nothing else: no
             # version word and no byte count. Record.md section 3.7.
@@ -2109,6 +2120,10 @@ class Tree:
     leaf_objects: int                      # entries written in full, not as a reference
     pointers: dict                         # fAliases etc -> "null" | "object" | "reference"
     branches: list["Branch"]
+    # Optional because a test may build a Tree to exercise the cluster maths
+    # alone. Both are read from the file when there is one.
+    branch_ref: "Branch | None" = None     # fBranchRef, which is NOT in fBranches
+    index_slot: int = -1                   # fTreeIndex's object slot; -1 if null
 
 
 @dataclass
@@ -2418,6 +2433,92 @@ def _int_member(buf: bytes, value: Value) -> int:
     raise FormatError(f"{value.name}: unexpected type code {value.ftype}")
 
 
+@dataclass
+class TreeIndex:
+    """A decoded TTreeIndex. Auxiliary.md section 2.
+
+    Hand-coded, and it has to be: TTreeIndex::Streamer never calls
+    ReadClassBuffer, so no streamer info for it is ever written to a file and
+    the streamer-driven algorithm cannot reach it.
+    """
+
+    version: int
+    major_name: str
+    minor_name: str
+    n: int
+    values: list[int]
+    values_minor: list[int]      # empty below class version 2
+    index: list[int]
+
+
+def read_tree_index(buf: bytes, offset: int) -> TreeIndex:
+    """Read a TTreeIndex from the object slot at `offset`. Auxiliary.md 2.
+
+    `offset` is the start of the object *slot*, as the fTreeIndex member gives
+    it: a byte count, then a class tag, then the object. The tag is resolved
+    here rather than by the caller because there is no streamer info to look the
+    class up in.
+    """
+    tag = _u32(buf, offset + 4)
+    if tag == NEW_CLASS_TAG:
+        o = offset + 8
+        while buf[o]:                    # the NUL-terminated class name
+            o += 1
+        o += 1
+    elif tag & CLASS_MASK:
+        o = offset + 8
+    else:
+        raise FormatError(f"TTreeIndex slot at {offset} has tag {tag:#x}")
+    frame = read_frame(buf, o)
+    o = frame.body
+    base = read_frame(buf, o)            # TVirtualIndex
+    o = base.body
+    named = read_frame(buf, o)           # TNamed
+    o = skip_tobject(buf, named.body)
+    _, o = _counted_string(buf, o)       # fName
+    _, o = _counted_string(buf, o)       # fTitle
+    major, o = _counted_string(buf, o)
+    minor, o = _counted_string(buf, o)
+    n = _i64(buf, o)
+    o += 8
+    if n < 0:
+        raise FormatError(f"TTreeIndex fN {n}")
+
+    def longs(at):
+        # WriteFastArray: no is-present flag, unlike a streamer-info [fN].
+        return [_i64(buf, at + 8 * i) for i in range(n)], at + 8 * n
+
+    values, o = longs(o)
+    minor_values: list[int] = []
+    if frame.version >= 2:
+        minor_values, o = longs(o)
+    index, o = longs(o)
+    # The arrays carry no count of their own, so a wrong fN is invisible inside
+    # the object. The byte count is the only redundancy there is: the three
+    # arrays must fill the frame exactly. Auxiliary.md invariant 1.
+    if frame.end is not None and o != frame.end:
+        raise FormatError(
+            f"TTreeIndex at {offset}: fN {n} accounts for {o - frame.body} "
+            f"bytes of {frame.end - frame.body}")
+    return TreeIndex(version=frame.version, major_name=major, minor_name=minor,
+                     n=n, values=values, values_minor=minor_values, index=index)
+
+
+def element_width(element: Element) -> int | None:
+    """One value of this element, in bytes, or None when it is not fixed.
+
+    The widths are ElementTypes.md; the Double32_t/Float16_t cases take theirs
+    from the element's title, which is the only place a split branch records it
+    (ReadingEntries.md section 5.2).
+    """
+    t = element.ftype
+    if t in (9, 19):
+        return quantised_width(t, element.title)
+    if t in SCALAR_WIDTH:
+        return SCALAR_WIDTH[t]
+    return None
+
+
 def derives_from(infos: list[StreamerInfo], name: str, ancestor: str) -> bool:
     """Is `ancestor` in `name`'s base-class chain, per the file's own infos?
 
@@ -2495,7 +2596,25 @@ def read_tree(buf: bytes, value: Value, base: int) -> Tree:
         leaf_objects=sum(1 for e in leaves if e.reference is None),
         pointers={name: read_slot(buf, m[name].start, base).kind
                   for name in TREE_POINTERS if name in m},
-        branches=branches)
+        branches=branches,
+        branch_ref=_read_branch_ref(buf, m, base),
+        index_slot=(m["fTreeIndex"].start
+                    if "fTreeIndex" in m and m["fTreeIndex"].type_name else -1))
+
+
+def _read_branch_ref(buf: bytes, m: dict, base: int) -> "Branch | None":
+    """fBranchRef, when the tree has one. TTree.md section 4.
+
+    It is a TBranch and it holds data, but it is not in fBranches, so a walk
+    over a tree's branches misses it unless it is asked for by name.
+    """
+    slot = m.get("fBranchRef")
+    if slot is None or not slot.members:
+        return None
+    try:
+        return _read_branch(buf, slot, base)
+    except (FormatError, KeyError, struct.error, IndexError, ValueError):
+        return None
 
 
 def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:

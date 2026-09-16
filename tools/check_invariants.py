@@ -1265,6 +1265,7 @@ class Checker:
         self._all_branches = [tree.branches for _, _, tree in found]
         for data, rec, tree in found:
             self.check_tree(data, rec, tree)
+            self.check_auxiliary(data, rec, tree)
             top = tree.branches
             leaves = []
             for b in rootfile.walk_branches(top):
@@ -1279,6 +1280,7 @@ class Checker:
                 self.check_branch(data, branch)
                 self.check_branch_element(branch, by_slot)
                 self.check_splitting(branch, by_slot)
+                self.check_reading(branch, by_slot)
                 self.check_leaves(data, branch, leaves)
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
@@ -1441,6 +1443,89 @@ class Checker:
                          f"{name}: title {br.title!r} does not end in "
                          f"[{target.title}]")
 
+    def check_reading(self, br, by_slot) -> None:
+        """The Invariants of spec/04-ttree/ReadingEntries.md."""
+        ft = br.element_type
+        if ft is None or br.file_name:
+            return
+        name = f"branch {br.name!r}"
+
+        # 1 and 4. A count branch's entry is one Int_t, bounded by fMaximum.
+        if ft in (3, 4):
+            for i, payload, span in self.entries_of(br):
+                if span is None:
+                    continue
+                lo, hi = span
+                if hi - lo != 4:
+                    self.bad("ReadingEntries 8.1",
+                             f"{name}: a count entry of {hi - lo} bytes")
+                    return
+                count = int.from_bytes(payload[lo:hi], "big", signed=True)
+                if count < 0 or count > br.maximum:
+                    self.bad("ReadingEntries 8.4",
+                             f"{name}: count {count} outside [0, {br.maximum}]")
+                    return
+
+        # 3. A member column of a fixed-width element is n * w bytes.
+        if ft in (31, 41) and br.count_slot >= 0:
+            counter = by_slot.get(br.count_slot)
+            info = self.element_info(br)
+            if counter is None or info is None:
+                return
+            if br.element_id is None or br.element_id >= len(info.elements):
+                return
+            width = rootfile.element_width(info.elements[br.element_id])
+            if width is None:
+                return
+            counts = {i: (p, sp) for i, p, sp in self.entries_of(counter)}
+            for i, payload, span in self.entries_of(br):
+                if span is None or i not in counts:
+                    continue
+                cpayload, cspan = counts[i]
+                if cspan is None:
+                    continue
+                clo, chi = cspan
+                if chi - clo != 4:
+                    continue
+                n = int.from_bytes(cpayload[clo:chi], "big", signed=True)
+                lo, hi = span
+                if hi - lo != n * width:
+                    self.bad("ReadingEntries 8.3",
+                             f"{name}: entry {i} is {hi - lo} bytes, count {n} "
+                             f"x width {width} is {n * width}")
+                    return
+
+    def entries_of(self, br):
+        """(entry number, payload, (start, end)) for every entry, sampled.
+
+        The payload is the entry's *own basket*, decompressed. It is returned
+        alongside the span because a span means nothing without it: on an
+        uncompressed file every buffer happens to be the same bytes, and on a
+        compressed one they are not.
+        """
+        out = []
+        for i in range(min(br.write_basket, len(br.basket_seek))):
+            rec = self.basket_record(br.basket_seek[i])
+            if rec is None or rec.class_name != "TBasket":
+                continue
+            payload = self.data(rec)
+            if payload is None:
+                continue
+            try:
+                basket = self.basket(rec, payload)
+            except (rootfile.FormatError, struct.error, IndexError, ValueError):
+                continue
+            if basket.generated:
+                continue             # TBasket 5.2.1 offsets, not stored
+            for e in self.entry_sample(basket.nev_buf):
+                try:
+                    span = rootfile.basket_entry_range(rec, basket, e)
+                except (rootfile.FormatError, struct.error, IndexError,
+                        ValueError):
+                    span = None
+                out.append((br.basket_entry[i] + e, payload, span))
+        return out
+
     def element_info(self, br):
         """The streamer info fClassName/fClassVersion/fCheckSum select."""
         _, _, all_infos = self.streamer_infos()
@@ -1456,17 +1541,123 @@ class Checker:
                 return i
         return None
 
+    def check_auxiliary(self, data, rec, tree) -> None:
+        """The Invariants of spec/04-ttree/Auxiliary.md."""
+        name = f"tree {tree.name!r}"
+
+        # 5. A TBranchRef's identity is fixed by its constructor.
+        if tree.branch_ref is not None and tree.branch_ref.name != "TRefTable":
+            self.bad("Auxiliary 8.5",
+                     f"{name}: fBranchRef is named "
+                     f"{tree.branch_ref.name!r}, not 'TRefTable'")
+
+        slot = tree.index_slot
+        if slot < 0:
+            return
+        try:
+            ix = rootfile.read_tree_index(data, slot)
+        except rootfile.FormatError as exc:
+            if "TTreeIndex at" in str(exc):
+                self.bad("Auxiliary 8.1", f"{name}: {exc}")
+            return                       # otherwise a TChainIndex, or unreadable
+        except (struct.error, IndexError, ValueError):
+            return
+        where = f"{name}: TTreeIndex"
+
+        # 1. The three arrays each hold fN values. read_tree_index would have
+        #    raised before now if they did not, so this checks the count itself.
+        if ix.n < 0 or len(ix.values) != ix.n or len(ix.index) != ix.n:
+            self.bad("Auxiliary 8.1",
+                     f"{where}: fN {ix.n} against {len(ix.values)} values and "
+                     f"{len(ix.index)} index entries")
+            return
+        if ix.version >= 2 and len(ix.values_minor) != ix.n:
+            self.bad("Auxiliary 8.1",
+                     f"{where}: {len(ix.values_minor)} minor values for fN "
+                     f"{ix.n}")
+
+        # 2. fIndexValues is the sort key, so it is non-decreasing.
+        for i in range(1, ix.n):
+            if ix.values[i] < ix.values[i - 1]:
+                self.bad("Auxiliary 8.2",
+                         f"{where}: fIndexValues[{i}] {ix.values[i]} is below "
+                         f"[{i - 1}] {ix.values[i - 1]}")
+                break
+
+        # 3. Every entry number it names exists in the tree.
+        for i, e in enumerate(ix.index):
+            if e < 0 or e >= tree.entries:
+                self.bad("Auxiliary 8.3",
+                         f"{where}: fIndex[{i}] is {e}, outside "
+                         f"[0, {tree.entries})")
+                break
+
+    def check_entry_lists(self) -> None:
+        """Auxiliary.md invariants 6 and 7, over the records of this file."""
+        _, _, infos = self.streamer_infos()
+        if not infos:
+            return
+        for rec in self.records:
+            if rec.free or not rec.key_len:
+                continue
+            if rec.class_name not in ("TEntryList", "TEventList",
+                                      "TEntryListArray"):
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                value = rootfile.decode_record(data, rec, infos)
+            except (rootfile.FormatError, rootfile.UnsupportedClass,
+                    struct.error, IndexError, ValueError):
+                continue
+            if rec.class_name == "TEventList":
+                self.check_event_list(data, rec, value)
+            else:
+                for block in rootfile.walk(value):
+                    if block.type_name == "TEntryListBlock":
+                        self.check_entry_block(data, rec, block)
+
+    def check_entry_block(self, data, rec, block) -> None:
+        m = rootfile._named(data, block.members or [])
+        if not {"fN", "fNPassed", "fType"} <= set(m):
+            return
+        n = struct.unpack_from(">i", data, m["fN"].start)[0]
+        passed = struct.unpack_from(">i", data, m["fNPassed"].start)[0]
+        kind = struct.unpack_from(">i", data, m["fType"].start)[0]
+        where = f"{rec.name!r} block at {block.start}"
+        if kind == 0 and n != 4000:
+            self.bad("Auxiliary 8.6",
+                     f"{where}: fType 0 with fN {n}, expected 4000")
+        if kind == 1 and n != passed:
+            self.bad("Auxiliary 8.6",
+                     f"{where}: fType 1 with fN {n} and fNPassed {passed}")
+
+    def check_event_list(self, data, rec, value) -> None:
+        m = rootfile._named(data, value.members or [])
+        if not {"fN", "fSize", "fList"} <= set(m):
+            return
+        n = struct.unpack_from(">i", data, m["fN"].start)[0]
+        size = struct.unpack_from(">i", data, m["fSize"].start)[0]
+        where = f"TEventList {rec.name!r}"
+        if n < 0 or n > size:
+            self.bad("Auxiliary 8.7",
+                     f"{where}: fN {n} against fSize {size}")
+
     def check_tree(self, data, rec, tree) -> None:
         """The Invariants of spec/04-ttree/TTree.md."""
         name = f"tree {tree.name!r}"
         branches = list(rootfile.walk_branches(tree.branches))
 
         # 1. The byte counters are the sums over every branch, at every depth.
+        # fBranchRef is a branch, holds data, and is not in fBranches, so it
+        # has to be added by name. TTree.md 4.
+        ref = [tree.branch_ref] if tree.branch_ref is not None else []
         for label, got, want in (
                 ("fTotBytes", tree.tot_bytes,
-                 sum(b.tot_bytes for b in branches)),
+                 sum(b.tot_bytes for b in branches + ref)),
                 ("fZipBytes", tree.zip_bytes,
-                 sum(b.zip_bytes for b in branches))):
+                 sum(b.zip_bytes for b in branches + ref))):
             if got != want:
                 self.bad("TTree 11.1",
                          f"{name}: {label} {got}, sum over {len(branches)} "
@@ -1888,6 +2079,7 @@ class Checker:
         self.check_tarray()
         self.check_basket()
         self.check_branches()
+        self.check_entry_lists()
         return self.failures
 
 

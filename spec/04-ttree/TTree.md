@@ -156,6 +156,18 @@ the two are equal.
 > specification: the recursive sum is exact on **every one**, and the top-level
 > sum is wrong on the 59 that have split branches.
 
+> **`fBranchRef` counts too, and it is not in `fBranches`.** A tree created with
+> `TTree::BranchRef` has a `TBranchRef` in its `fBranchRef` member (§8). It is an
+> ordinary branch with baskets of its own, and its bytes are in the tree's
+> counters — but a walk over `fBranches` never reaches it, so the sum comes out
+> short. `ttree/tree-branchref` has `fTotBytes` 546 against 365 over `fBranches`,
+> and the missing 181 are the `TBranchRef`'s.
+>
+> That branch is also **compressed in an uncompressed file**: its constructor
+> hard-codes `fCompress = 1` (`root/tree/tree/src/TBranchRef.cxx:62`), so it is
+> the one branch whose `fZipBytes` can be below its `fTotBytes` when nothing else
+> in the file is compressed — 124 against 181 in that fixture.
+
 ## 5. `fLeaves` holds references, not leaves
 
 Every leaf belongs to a branch, and the tree keeps a flat list of all of them so
@@ -398,7 +410,8 @@ To read a tree:
 
 1. `fEntries`, `fTotBytes` and `fZipBytes` are not negative, and `fTotBytes` and
    `fZipBytes` are the sums of the like-named members over **every** branch of the
-   tree at every depth (§4).
+   tree at every depth — `fBranches` recursively, **plus `fBranchRef` when the
+   tree has one**, which is not in `fBranches` (§4).
 2. `0 <= fSavedBytes <= fZipBytes` and `0 <= fFlushedBytes <= fZipBytes`.
 3. `fNClusterRange >= 0`; `fClusterRangeEnd` and `fClusterSize` each hold exactly
    `fNClusterRange` values; and each one's *is present* flag is set if and only if
@@ -437,7 +450,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 2 | `ttree.md:14-17`: `fEntries`, `fTotBytes`, `fZipBytes`, `fSavedBytes` are `Stat_t`, type 8 | All four are `Long64_t`, code 16, since class version 13. A reader following the old table reads them as IEEE doubles |
 | 3 | `ttree.md:21-24`: `fMaxEntryLoop`, `fMaxVirtualSize`, `fAutoSave`, `fEstimate` are `Int_t` | All four are `Long64_t` since version 13 |
 | 4 | — | Nothing says the record's class need not be `TTree`, so a reader that matches the key's class name misses every `TNtuple` in the file (§1) |
-| 5 | `ttree.md:15`: `fTotBytes` is "Total number of bytes in all branches before compression" | It is a sum over every branch at every depth, and it counts basket keys as well as payloads, so it is larger than the data (§4) |
+| 5 | `ttree.md:15`: `fTotBytes` is "Total number of bytes in all branches before compression" | It is a sum over every branch at every depth, and it counts basket keys as well as payloads, so it is larger than the data (§4). "All branches" also includes `fBranchRef`, which is not in `fBranches` and which a walk over the branch tree therefore misses |
 | 6 | — | Nothing says `fLeaves` contains back-references rather than leaves. A reader that expects objects there fails on every tree (§5) |
 | 7 | `ttree.md:23`: `fAutoSave` is "Autosave tree when fAutoSave bytes produced" | The sign selects bytes or entries, and the stored value is rewritten by the writer on the first flush, so it is often neither what the caller asked for nor a byte count (§6.3) |
 | 8 | — | Clusters do not appear at all: not the two arrays, not the inclusive range ends, and not the fact that a negative `fAutoFlush` means the boundaries are unrecorded (§6) |

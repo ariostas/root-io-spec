@@ -44,6 +44,8 @@ nav = [
       { "Splitting" = "04-ttree/Splitting.md" },
       { "Leaves" = "04-ttree/TLeaf.md" },
       { "TBasket" = "04-ttree/TBasket.md" },
+      { "Reading entries" = "04-ttree/ReadingEntries.md" },
+      { "Auxiliary classes" = "04-ttree/Auxiliary.md" },
   ] },
 ]
 

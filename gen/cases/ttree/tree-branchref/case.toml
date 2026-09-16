@@ -1,0 +1,139 @@
+id   = "ttree/tree-branchref"
+file = "data/ttree/tree-branchref.root"
+size = 19609
+
+description = """
+A TBranchRef and its TRefTable: the branch that is not in fBranches.
+
+TTree::BranchRef creates a branch with a fixed identity -- name "TRefTable",
+title "List of branch numbers with referenced objects"
+(root/tree/tree/src/TBranchRef.cxx:58-59) -- and hangs it off TTree::fBranchRef
+rather than adding it to fBranches. Three things follow, and all three are
+assertions here.
+
+**It counts towards the tree's byte totals but a walk over fBranches misses
+it.** The tree records fTotBytes 546 and fZipBytes 489; the two ordinary
+branches sum to 365 and 365. The missing 181 and 124 are the TBranchRef's. This
+is why TTree.md invariant 1 has to add fBranchRef by name, and this fixture is
+what caught the omission.
+
+**It is compressed in an uncompressed file.** Its constructor hard-codes
+fCompress = 1 (root/tree/tree/src/TBranchRef.cxx:62), so it is the only branch
+here whose fZipBytes is below its fTotBytes, and its basket is the only one
+beginning with a ZL block header while every other basket in the file is raw.
+
+**Its basket is written only because the generator asks.**
+TTree::FlushBasketsImpl iterates GetListOfBranches
+(root/tree/tree/src/TTree.cxx:5255-5265), which does not contain fBranchRef, so
+TTree::Write never flushes it. Without the explicit FlushBaskets() in gen.C the
+file has a TBranchRef with fWriteBasket 0 and the references cannot be resolved
+at all -- which is what an ordinary small file written by a user looks like.
+"""
+
+spec = [
+  "spec/04-ttree/Auxiliary.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 202
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 302
+nbytes = 155
+class  = "TProcessID"
+role   = "TProcessID"
+[[records]]
+offset = 457
+nbytes = 124
+class  = "TBasket"
+role   = "basket of 'TRefTable'"
+[[records]]
+offset = 581
+nbytes = 180
+class  = "TBasket"
+role   = "basket of 'obj'"
+[[records]]
+offset = 761
+nbytes = 185
+class  = "TBasket"
+role   = "basket of 'ref'"
+[[records]]
+offset = 946
+nbytes = 2017
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 2963
+nbytes = 16327
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 19290
+nbytes = 222
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 19512
+nbytes = 97
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "the tree's fTotBytes, which fBranches alone does not account for"
+offset = 1072
+type = "i64"
+value = 546
+
+[[bytes]]
+name = "and its fZipBytes, lower because one branch is compressed"
+offset = 1080
+type = "i64"
+value = 489
+
+[[bytes]]
+name = "fBranchRef: a TBranchRef written in full, not a null pointer"
+offset = 2355
+type = "bytes"
+value = "TBranchRef"
+
+[[bytes]]
+name = "TBranchRef: its name is fixed by the constructor"
+offset = 2394
+type = "string"
+value = "TRefTable"
+
+[[bytes]]
+name = "TBranchRef: and so is its title"
+offset = 2404
+type = "string"
+value = "List of branch numbers with referenced objects"
+
+[[bytes]]
+name = "TBranchRef: fCompress is 1 though the file was opened with 0"
+offset = 2461
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "TBranchRef: fWriteBasket 1, because gen.C flushed it explicitly"
+offset = 2473
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "TBranchRef: fTotBytes -- 546 minus the 365 of the two real branches"
+offset = 2524
+type = "i64"
+value = 181
+
+[[bytes]]
+name = "TBranchRef: fZipBytes, below fTotBytes because it is compressed"
+offset = 2532
+type = "i64"
+value = 124

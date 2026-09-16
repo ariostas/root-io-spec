@@ -1,0 +1,125 @@
+id   = "ttree/tree-friend"
+file = "data/ttree/tree-friend.root"
+size = 17140
+
+description = """
+Two friend trees in the parent tree's own file.
+
+TTree::AddFriend records three strings and the mapping onto them is not obvious:
+fName is the alias or, failing that, the tree name; fTitle is the *filename*, or
+empty when the friend is in the same file; fTreeName is the real tree name.
+
+Both friends here are in the same file, so fTitle is empty and fOwnFile is false
+(root/tree/tree/src/TFriendElement.cxx:199-203). The second was added as
+"alias=t2", which splits at the '='
+(root/tree/tree/src/TFriendElement.cxx:59-69) -- the only way to make fName and
+fTreeName differ, and therefore the only way to see that they are separate
+fields at all.
+
+The second element also shows the class-tag economy of Buffer.md section 6: it
+does not repeat the string "TFriendElement" but carries the back-reference
+0x80000353 instead.
+"""
+
+spec = [
+  "spec/04-ttree/Auxiliary.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 188
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 288
+nbytes = 86
+class  = "TBasket"
+role   = "basket of 'x'"
+[[records]]
+offset = 374
+nbytes = 949
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 1323
+nbytes = 86
+class  = "TBasket"
+role   = "basket of 'y'"
+[[records]]
+offset = 1409
+nbytes = 822
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 2231
+nbytes = 14643
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 16874
+nbytes = 176
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 17050
+nbytes = 90
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "the class record, written in full for the first friend"
+offset = 1227
+type = "bytes"
+value = "TFriendElement"
+
+[[bytes]]
+name = "TFriendElement class version"
+offset = 1246
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "friend 1: fName is the tree name, there being no alias"
+offset = 1264
+type = "string"
+value = "t2"
+
+[[bytes]]
+name = "friend 1: fTitle is empty -- the friend is in this same file"
+offset = 1267
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "friend 1: fTreeName"
+offset = 1268
+type = "string"
+value = "t2"
+
+[[bytes]]
+name = "friend 1: fOwnFile is false for a same-file friend"
+offset = 1271
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "friend 2: the class is a back-reference, not a repeated name"
+offset = 1277
+type = "u32"
+value = 2147484499
+
+[[bytes]]
+name = "friend 2: fName is the alias"
+offset = 1303
+type = "string"
+value = "alias"
+
+[[bytes]]
+name = "friend 2: but fTreeName is still the real tree"
+offset = 1310
+type = "string"
+value = "t2"

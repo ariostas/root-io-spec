@@ -1,0 +1,199 @@
+id   = "ttree/tree-entrylist"
+file = "data/ttree/tree-entrylist.root"
+size = 14079
+
+description = """
+Both TEntryListBlock encodings and the TEventList they replaced, in one file.
+
+A TEntryList stores entry numbers in blocks of 64000, in one of two encodings
+chosen by fType:
+
+  fType 0   a bit vector: fN is always 4000, and entry e of the block is
+            selected iff bit (e % 16) of fIndices[e / 16] is set -- least
+            significant bit first, inside a 16-bit big-endian word, so the bit
+            order runs opposite to the byte order
+  fType 1   a sorted array: fN == fNPassed, holding local entry numbers
+
+`sparse` holds entries 0, 3, 5 and 64001 -- two blocks -- and was optimised into
+the array form. `dense` holds every third entry from 0 to 99 and was left in
+bits, so its single block is 8 KB of mostly zeros and begins 92 49 49 24: 0x9249
+is bits 0, 3, 6, 9, 12 and 15. The writer converts to the array form only below
+4000 or above 60000 passing entries
+(root/tree/tree/src/TEntryListBlock.cxx:546-556), so a reader must handle both.
+
+**The four-argument constructor is essential and the case would otherwise not be
+reproducible.** TEntryList(name, title, tree) takes the filename from the tree's
+open file and prepends the process's working directory
+(root/tree/tree/src/TEntryList.cxx:1311-1322), baking this checkout's absolute
+path into the fixture. The (name, title, treename, filename) form stores the
+string verbatim.
+
+TEventList is the older, flat form: a sorted Long64_t array with no blocks. Note
+that its fList **does** carry the one-byte is-present flag of an ordinary [fN]
+member -- the contrast with TTreeIndex in ttree/tree-index, whose arrays are
+written by a hand-written streamer and carry none.
+"""
+
+spec = [
+  "spec/04-ttree/Auxiliary.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 178
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 278
+nbytes = 285
+class  = "TEntryList"
+role   = "TEntryList"
+[[records]]
+offset = 563
+nbytes = 8233
+class  = "TEntryList"
+role   = "TEntryList"
+[[records]]
+offset = 8796
+nbytes = 229
+class  = "TEventList"
+role   = "TEventList"
+[[records]]
+offset = 9025
+nbytes = 4728
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 13753
+nbytes = 241
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 13994
+nbytes = 85
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "sparse: TEntryList class version"
+offset = 337
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "sparse: fLists is null -- this list is for one tree, not a chain"
+offset = 373
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "sparse: fNBlocks, because entry 64001 falls in the second block"
+offset = 377
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "sparse block 0: TEntryListBlock class version"
+offset = 452
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "sparse block 0: fNPassed"
+offset = 464
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "sparse block 0: fN equals fNPassed in the array form"
+offset = 468
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "sparse block 0: the [fN] is-present flag"
+offset = 472
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "sparse block 0: fIndices[1], the second selected entry"
+offset = 475
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "sparse block 0: fType 1, the array form"
+offset = 479
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "sparse block 0: fPassing -- these are the entries in the list"
+offset = 483
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "dense block 0: fNPassed, every third entry from 0 to 99"
+offset = 743
+type = "i32"
+value = 34
+
+[[bytes]]
+name = "dense block 0: fN is always 4000 in the bit form"
+offset = 747
+type = "i32"
+value = 4000
+
+[[bytes]]
+name = "dense block 0: fIndices[0] = 0x9249, bits 0 3 6 9 12 15"
+offset = 752
+type = "u16"
+value = 37449
+
+[[bytes]]
+name = "dense block 0: fIndices[1] = 0x4924, bits 2 5 8 11 14 -> entries 18..30"
+offset = 754
+type = "u16"
+value = 18724
+
+[[bytes]]
+name = "ev: TEventList class version"
+offset = 8855
+type = "i16"
+value = 4
+
+[[bytes]]
+name = "ev: fN"
+offset = 8891
+type = "i32"
+value = 15
+
+[[bytes]]
+name = "ev: fSize is the allocated size and exceeds fN"
+offset = 8895
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "ev: fReapply"
+offset = 8903
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "ev: fList's is-present flag -- which TTreeIndex's arrays do not have"
+offset = 8904
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "ev: fList[1]"
+offset = 8913
+type = "i64"
+value = 7
