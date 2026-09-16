@@ -349,6 +349,43 @@ Two preconditions, both enforced by ROOT and both worth checking:
 > branches ever carry a non-zero `fIOBits`, and a reader will meet the feature
 > only on those. Recorded as a probable defect in `PLAN.md` §7.1.
 
+### 5.3 The displacement array, which the flag does not announce in a record
+
+```
+count:i32 (= fNevBuf + 1)   count × i32        in a record
+count:i32 (= fNevBuf)       count × i32        embedded
+```
+
+A displacement array holds each entry's offset **as it was before the entries
+were moved within the buffer**, and it is written directly after the entry-offset
+array in the same count-prefixed form. It comes from `TBasket::MoveEntries`
+(`root/tree/tree/src/TBasket.cxx:311-352`), which is reached from a circular tree
+(`root/tree/tree/src/TTree.cxx:6527-6533`) or a branch filled out of order, and it
+is built **only when there is an entry-offset array** — a fixed-width branch in
+the same tree never gets one.
+
+Every displacement exceeds its offset by the same constant, the number of bytes
+the surviving entries moved down.
+
+> **In a record the flag is 0 and says nothing about it.** A basket destined for
+> a record is streamed with `fHeaderOnly` set, so its flag is 0 or 80 (§4)
+> whatever `WriteBuffer` appended to the payload — and `WriteBuffer` appends the
+> displacement array and then clears `fDisplacement`
+> (`root/tree/tree/src/TBasket.cxx:1281-1285`), so the header-only write can no
+> longer see it. **The only way to find it is arithmetic**: the bytes after the
+> data are `4 + 4 × (fNevBuf + 1)` for one array and twice that for two.
+>
+> `flag > 40` therefore occurs **only** in the embedded form, and a reader of
+> ordinary files that switches on the flag will never read a displacement array
+> at all — it will read past the end of the offset array instead, if it assumes
+> the offset array is the whole tail.
+
+> Demonstrated by `ttree/basket-displacement`, which has both forms of the same
+> data. Branch `s` of the record tree has flag **0**, offsets `68, 74, 81` and
+> displacements `73, 79, 86`; the embedded copy has flag **51** — 1 for the
+> offset array, 10 for the data, 40 for the displacements — with the same shift
+> of 5. Branch `n` is fixed-width and has neither, in both trees.
+
 ## 6. Fixed-length entries
 
 When there is no entry-offset array **and the flag is not 80**, every entry is
@@ -442,7 +479,8 @@ These are the invariants of a basket **record**. An embedded basket satisfies 1,
    present, and the header ends exactly at `fKeylen`.
 2. The key's `fVersion` is above 1000.
 3. `fNevBuf >= 0` and `fLast >= fKeylen`.
-4. `fObjlen - (fLast - fKeylen)` is either 0 or `4 + 4 × (fNevBuf + 1)`.
+4. `fObjlen - (fLast - fKeylen)` is 0, or `4 + 4 × (fNevBuf + 1)`, or **twice**
+   that when a displacement array follows the entry-offset array (§5.3).
 5. Where an entry-offset array is present, its first element is `fKeylen`, the
    elements do not decrease, and the last of the first `fNevBuf` is **at most**
    `fLast` — equal when the last entry is empty, which `TLeafC::ReadBasket` tests
@@ -454,6 +492,8 @@ These are the invariants of a basket **record**. An embedded basket satisfies 1,
    **empty**, so a range may start at `fLast`.
 8. `fIOBits`, where present, is non-zero and has neither bit 7 nor any
    unsupported bit set.
+9. Where a displacement array is present, every element exceeds the entry offset
+   at the same index by one constant, non-negative shift (§5.3).
 
 Invariant 2 is not corruption-testable in isolation: lowering the key version
 shifts `fSeekKey` and `fSeekPdir` by eight bytes, so the record chain breaks and
@@ -498,5 +538,6 @@ and **the version is not how a reader detects `fIOBits`** — the sign of
 | `ttree/basket-embedded` | The embedded form of §4.1, for the same two branches: flag 12 and flag 11, an offset array counted by `fNevBuf`, a stale `fObjlen`, and no `TBasket` record in the file |
 | `ttree/basket-iofeatures` | `fIOBits` in both of its consequences: the negated `fNevBufSize` and 20-byte header of §2.2, and the flag-80 basket of §5.2 that stores no offsets at all |
 
-No fixture covers a compressed basket, a multi-block basket, or a displacement
-array. A displacement array needs an out-of-order fill or a circular tree.
+| `ttree/basket-displacement` | A displacement array in both forms: flag 0 in a record, where only arithmetic finds it, and flag 51 embedded (§5.3) |
+
+No fixture covers a compressed basket or a multi-block basket.

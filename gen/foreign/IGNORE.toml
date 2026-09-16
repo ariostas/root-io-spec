@@ -45,7 +45,7 @@ Two departures, both diagnosed:
     StreamerDriven.md 6's case, caused by the writer. It shows up as NOT CHECKED
     rather than as a failure.
 """
-skip = ["TBasket 6.2"]
+skip = ["TBasket 9.2"]
 
 ["uproot-issue261.root"]
 reason = """

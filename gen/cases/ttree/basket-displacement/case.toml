@@ -1,0 +1,240 @@
+id   = "ttree/basket-displacement"
+file = "data/ttree/basket-displacement.root"
+size = 18447
+
+description = """
+A displacement array, in both of the forms it takes. TBasket.md 4 said `flag > 40`
+"requires `TBasket::Update` to be called with a skip count, which happens only for
+a branch filled entry-by-entry out of order or for a circular tree". A circular
+tree is the reachable one, and it turns out only half the story was true.
+
+`TTree::SetCircular(3)` then seven fills makes `TTree::KeepCircular` call
+`TBasket::MoveEntries`, which saves each entry's **pre-move** offset into
+`fDisplacement` and rewrites the offsets lower by a constant. It does so **only
+when there is an entry-offset array**, so the string branch `s` gets one and the
+fixed-width branch `n` never does -- in either tree.
+
+**In a record the flag is 0 and nothing announces the array.** A basket destined
+for a record is streamed with `fHeaderOnly`, so its flag is 0 or 80 whatever
+`WriteBuffer` appended; and `WriteBuffer` appends the displacement array and then
+clears `fDisplacement`, so the header-only write can no longer see it
+(`root/tree/tree/src/TBasket.cxx:1281-1285`). Tree `circ`'s `s` basket has flag
+**0**, `fObjlen` 61, and a payload of 21 data bytes followed by **two**
+count-prefixed arrays of 20 bytes each. Only the arithmetic finds the second.
+
+So `flag > 40` occurs **only** embedded. Tree `emb`, written with
+`WriteTObject` so no basket reaches a record, has flag **51** on the same branch:
+1 for the offset array, 10 for the data, 40 for the displacements.
+
+The two forms also disagree on the count, exactly as TBasket.md 5.1 says of the
+offset array: the record writes `fNevBuf + 1` = 4 for **both** arrays and the
+embedded one writes `fNevBuf` = 3.
+
+**The extra element is not an offset, twice over.** `ttree/basket` shows the
+record's trailing value as 0; here it is **-14** in the offset array and **-9** in
+the displacement array. Two files, two different values, neither of them a
+position -- which is why a reader must use only the first `fNevBuf`.
+
+`fKeylen` differs by one between the trees because their titles do ("written to
+records" against "kept in memory" makes no difference, but the basket's fTitle is
+the tree name, `circ` against `emb`). That is why the record's offsets are
+`68, 74, 81` and the embedded copy's are `67, 73, 80`: the same entries, one byte
+of key apart.
+"""
+
+spec = [
+  "spec/04-ttree/TBasket.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 204
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 304
+nbytes = 80
+class  = "TBasket"
+role   = "circ branch n -- fixed width, so no arrays at all"
+[[records]]
+offset = 384
+nbytes = 129
+class  = "TBasket"
+role   = "circ branch s -- flag 0, and two arrays in the payload"
+[[records]]
+offset = 513
+nbytes = 1331
+class  = "TTree"
+role   = "circ, whose baskets went to records"
+[[records]]
+offset = 1844
+nbytes = 1662
+class  = "TTree"
+role   = "emb, whose baskets are embedded in it"
+[[records]]
+offset = 3506
+nbytes = 14644
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- the record form: flag 0, and the array is found only by arithmetic ---
+#
+# key ends at 452, fLast = 89, so the data is 452..473 and the tail is 40
+# bytes: 4 + 4 x 4 twice over.
+
+[[bytes]]
+name = "circ/s: the flag byte is 0 -- a record basket is written header-only"
+offset = 451
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "circ/s: fNevBuf is 3, the circular window"
+offset = 443
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "circ/s: fLast, where the data ends"
+offset = 447
+type = "i32"
+value = 89
+
+[[bytes]]
+name = "circ/s: the three surviving entries, one character longer each"
+offset = 452
+type = "bytes"
+value = [5, 0x34, 0x34, 0x34, 0x34, 0x34]
+
+[[bytes]]
+name = "circ/s: the offset array's count is fNevBuf + 1"
+offset = 473
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "circ/s: the first offset is fKeylen"
+offset = 477
+type = "i32"
+value = 68
+
+[[bytes]]
+name = "circ/s: the second"
+offset = 481
+type = "i32"
+value = 74
+
+[[bytes]]
+name = "circ/s: the third"
+offset = 485
+type = "i32"
+value = 81
+
+[[bytes]]
+name = "circ/s: the fourth is NOT an offset -- -14 here, 0 in ttree/basket"
+offset = 489
+type = "i32"
+value = -14
+
+[[bytes]]
+name = "circ/s: a SECOND count-prefixed array follows, with flag 0 saying nothing"
+offset = 493
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "circ/s: displacement 0 -- the offset before MoveEntries, 68 + 5"
+offset = 497
+type = "i32"
+value = 73
+
+[[bytes]]
+name = "circ/s: displacement 1, 74 + 5"
+offset = 501
+type = "i32"
+value = 79
+
+[[bytes]]
+name = "circ/s: displacement 2, 81 + 5 -- one constant shift"
+offset = 505
+type = "i32"
+value = 86
+
+[[bytes]]
+name = "circ/s: and its fourth element is junk too, a different junk"
+offset = 509
+type = "i32"
+value = -9
+
+# --- the fixed-width branch in the same tree gets neither array -----------
+
+[[bytes]]
+name = "circ/n: flag 0 as well"
+offset = 371
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "circ/n: and a payload of exactly three Int_t -- no arrays follow"
+offset = 372
+type = "i32"
+value = 4
+
+# --- the embedded form: flag 51 = 1 + 10 + 40 ----------------------------
+
+[[bytes]]
+name = "emb/s: the embedded basket begins with its class name, not a byte count"
+offset = 3088
+type = "string"
+value = "TBasket"
+
+[[bytes]]
+name = "emb/s: fNevBuf"
+offset = 3112
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "emb/s: fLast"
+offset = 3116
+type = "i32"
+value = 88
+
+[[bytes]]
+name = "emb/s: flag 51 -- 1 offset array, 10 data follows, 40 displacements"
+offset = 3120
+type = "u8"
+value = 51
+
+[[bytes]]
+name = "emb/s: the count is fNevBuf here, not fNevBuf + 1"
+offset = 3121
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "emb/s: the first offset is this basket's fKeylen, one less than circ's"
+offset = 3125
+type = "i32"
+value = 67
+
+[[bytes]]
+name = "emb/s: the displacement array's count, also fNevBuf"
+offset = 3137
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "emb/s: displacement 0, 67 + 5 -- the same shift as the record form"
+offset = 3141
+type = "i32"
+value = 72
+
+[[bytes]]
+name = "emb/n: the fixed-width branch is flag 12 -- no offsets, no displacements"
+offset = 2489
+type = "u8"
+value = 12

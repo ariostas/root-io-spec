@@ -2204,6 +2204,7 @@ class Basket:
     data_start: int       # first entry byte
     data_end: int         # one past the last entry byte
     entry_offsets: list[int] | None    # record-relative, fNevBuf of them
+    displacements: list[int] | None = None   # TBasket.md 5.3, fNevBuf of them
 
     @property
     def has_offsets(self) -> bool:
@@ -2266,6 +2267,7 @@ def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
     payload_start = rec.offset + rec.key_len
     data_end = rec.offset + last
     offsets = None
+    displacements = None
     if data_end < payload_start + rec.obj_len:
         # An entry-offset array follows the data. It is written with a leading
         # count of fNevBuf + 1; the extra value is not an offset.
@@ -2287,6 +2289,16 @@ def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
         else:
             offsets = [v & ~DISPLACEMENT_MASK if flag and 20 < flag < 40 else v
                        for v in offsets]
+        # A displacement array may follow, in the same count-prefixed form and
+        # with NOTHING in the flag to announce it: a record basket is always
+        # written header-only, so its flag is 0 or 80 whatever WriteBuffer
+        # appended. Only the arithmetic finds it. TBasket.md 5.3.
+        after = data_end + 4 + 4 * (nev_buf + 1)
+        if after < payload_start + rec.obj_len:
+            count = _i32(data, after)
+            if count == nev_buf + 1:
+                displacements = list(
+                    struct.unpack_from(f">{nev_buf}i", data, after + 4))
     if o + 9 != rec.offset + rec.key_len:
         raise FormatError(
             f"basket at {rec.offset}: header ends at {o + 9}, key ends at "
@@ -2297,7 +2309,7 @@ def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
                   generated=offsets is None and flag >= FLAG_GENERATE,
                   key_len=rec.key_len, header_offset=header,
                   data_start=payload_start, data_end=data_end,
-                  entry_offsets=offsets)
+                  entry_offsets=offsets, displacements=displacements)
 
 
 def generate_entry_offsets(key_len: int, nev_buf: int, len_type: int,

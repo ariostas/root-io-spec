@@ -1041,7 +1041,7 @@ class Checker:
                 basket = rootfile.read_basket(self.buf, rec, data)
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError) as exc:
-                self.bad("TBasket 6.1", str(exc))
+                self.bad("TBasket 9.1", str(exc))
                 continue
 
             # 6.2 cannot be corruption-tested in isolation: lowering the key
@@ -1049,49 +1049,60 @@ class Checker:
             # chain and the class name break first and the file is rejected by
             # Record 8.1/8.3/8.6 before reaching here.
             if rec.key_version <= rootfile.LARGE_KEY_VERSION:
-                self.bad("TBasket 6.2",
+                self.bad("TBasket 9.2",
                          f"basket at {rec.offset} has key fVersion "
                          f"{rec.key_version}, not a large-key form")
             if basket.nev_buf < 0:
-                self.bad("TBasket 6.3",
+                self.bad("TBasket 9.3",
                          f"basket at {rec.offset} has fNevBuf {basket.nev_buf}")
                 continue
             if basket.last < rec.key_len:
-                self.bad("TBasket 6.3",
+                self.bad("TBasket 9.3",
                          f"basket at {rec.offset} has fLast {basket.last}, below "
                          f"fKeylen {rec.key_len}")
                 continue
 
             tail = rec.obj_len - (basket.last - rec.key_len)
             if basket.has_offsets:
-                want = 4 + 4 * (basket.nev_buf + 1)
+                one = 4 + 4 * (basket.nev_buf + 1)
+                # One array, or two when a displacement array follows -- which
+                # the flag never says, because a record basket is written
+                # header-only. TBasket.md 5.3.
+                want = one * (2 if basket.displacements is not None else 1)
                 if tail != want:
-                    self.bad("TBasket 6.4",
+                    self.bad("TBasket 9.4",
                              f"basket at {rec.offset} has {tail} bytes after the "
                              f"data, expected {want} for fNevBuf "
                              f"{basket.nev_buf}")
+                if basket.displacements is not None:
+                    moved = [d - o for o, d in
+                             zip(basket.entry_offsets, basket.displacements)]
+                    if len(set(moved)) != 1 or moved[0] < 0:
+                        self.bad("TBasket 9.9",
+                                 f"basket at {rec.offset}: displacements minus "
+                                 f"offsets are {moved}, not one constant shift")
                 offsets = basket.entry_offsets
                 if offsets and offsets[0] != rec.key_len:
-                    self.bad("TBasket 6.5",
+                    self.bad("TBasket 9.5",
                              f"basket at {rec.offset}: first entry offset "
                              f"{offsets[0]} != fKeylen {rec.key_len}")
                 if any(b < a for a, b in zip(offsets, offsets[1:])):
-                    self.bad("TBasket 6.5",
+                    self.bad("TBasket 9.5",
                              f"basket at {rec.offset}: entry offsets decrease")
                 if offsets and offsets[-1] > basket.last:
-                    self.bad("TBasket 6.5",
+                    self.bad("TBasket 9.5",
                              f"basket at {rec.offset}: last entry offset "
                              f"{offsets[-1]} is above fLast {basket.last}")
             else:
                 if tail != 0:
-                    self.bad("TBasket 6.4",
+                    self.bad("TBasket 9.4",
                              f"basket at {rec.offset} has {tail} unaccounted "
                              f"bytes and no offset array")
                 want = basket.nev_buf * basket.nev_buf_size
                 if basket.generated:
                     want = rec.obj_len      # 6.6 does not apply, TBasket.md 5.2
                 if rec.obj_len != want:
-                    self.bad("TBasket 6.6",
+                    self.bad("TBasket 9.6",
                              f"basket at {rec.offset} has fObjlen {rec.obj_len}, "
                              f"but fNevBuf {basket.nev_buf} x fNevBufSize "
                              f"{basket.nev_buf_size} is {want}")
@@ -1105,10 +1116,10 @@ class Checker:
                 try:
                     start, end = rootfile.basket_entry_range(rec, basket, index)
                 except rootfile.FormatError as exc:
-                    self.bad("TBasket 6.7", str(exc))
+                    self.bad("TBasket 9.7", str(exc))
                     break
                 if not basket.data_start <= start <= end <= basket.data_end:
-                    self.bad("TBasket 6.7",
+                    self.bad("TBasket 9.7",
                              f"basket at {rec.offset}: entry {index} spans "
                              f"{start}..{end}, outside {basket.data_start}.."
                              f"{basket.data_end}")
