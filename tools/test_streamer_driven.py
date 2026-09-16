@@ -338,3 +338,88 @@ class PairInfoLookup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def elem(name, ftype, cls="TStreamerElement", type_name="int",
+         count_name="", array_length=0):
+    tail = {"fCountName": count_name} if count_name else {}
+    return rootfile.Element(cls=cls, version=4, name=name, title="", bits=0,
+                            ftype=ftype, fsize=4, array_length=array_length,
+                            array_dim=0, max_index=[0] * 5,
+                            type_name=type_name, tail=tail)
+
+
+class StreamLoop(unittest.TestCase):
+    """ElementTypes.md 8. A counted array of objects, the count never stored."""
+
+    POINT = info(elem("fI", 3), name="P")
+
+    def decode(self, buf, el, count):
+        decoder = rootfile.Decoder(buf, 0, [self.POINT, info(el, name="C")])
+        return decoder.read_element_value(el, 0, {"fN": count})
+
+    def test_one_star_is_bare_objects(self):
+        el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
+                  count_name="fN")
+        buf = (b"\x40\x00\x00\x16\x00\x0a"                  # bc 22, version 10
+               b"\x40\x00\x00\x06\x00\x01\x00\x00\x00\x01"  # P{1}
+               b"\x40\x00\x00\x06\x00\x01\x00\x00\x00\x02")  # P{2}
+        self.assertEqual(self.decode(buf, el, 2).end, len(buf))
+
+    def test_a_count_of_zero_leaves_the_frame_alone(self):
+        el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
+                  count_name="fN")
+        buf = b"\x40\x00\x00\x02\x00\x0a"
+        self.assertEqual(self.decode(buf, el, 0).end, 6)
+
+    def test_an_older_version_word_is_accepted(self):
+        # A file written before ROOT 6.36 carries 9 here, not 10. Nothing may
+        # compare the word to 10. ElementTypes.md 8.1.
+        el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
+                  count_name="fN")
+        buf = b"\x40\x00\x00\x02\x00\x09"
+        self.assertEqual(self.decode(buf, el, 0).end, 6)
+
+    def test_a_byte_count_that_disagrees_is_an_error(self):
+        el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
+                  count_name="fN")
+        buf = (b"\x40\x00\x00\x0d\x00\x0a"                  # one byte too many
+               b"\x40\x00\x00\x06\x00\x01\x00\x00\x00\x01\x00")
+        with self.assertRaises(rootfile.FormatError):
+            self.decode(buf, el, 1)
+
+    def test_a_missing_counter_is_an_error(self):
+        el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
+                  count_name="fNope")
+        with self.assertRaises(rootfile.FormatError):
+            self.decode(b"\x40\x00\x00\x02\x00\x0a", el, 0)
+
+    def test_a_tstring_loop_is_bare_counted_strings(self):
+        # TString::Streamer writes no frame of its own, so the loop is just the
+        # strings back to back. ElementTypes.md 7.1, and the shape TFormula's
+        # fExpr takes in a real file.
+        el = elem("fExpr", 501, cls="TStreamerLoop", type_name="TString*",
+                  count_name="fN")
+        buf = b"\x40\x00\x00\x0a\x00\x09" + b"\x02ab" + b"\x04pol5"
+        self.assertEqual(self.decode(buf, el, 2).end, len(buf))
+
+
+class ArrayLengthWithoutOffsetL(unittest.TestCase):
+    """ElementTypes.md 7.2. 63, 64, 68 and 69 never gain kOffsetL."""
+
+    def test_two_slots_under_the_scalar_code_69(self):
+        # EPoint *fPtrArr[2], the second one null: the code stays 69 and only
+        # fArrayLength says there are two.
+        el = elem("fPtrArr", 69, type_name="P*", array_length=2)
+        buf = (b"\x40\x00\x00\x10\xff\xff\xff\xffP\x00"
+               b"\x40\x00\x00\x06\x00\x01\x00\x00\x00\x01"
+               b"\x00\x00\x00\x00")
+        decoder = rootfile.Decoder(buf, 0, [info(elem("fI", 3), name="P"),
+                                            info(el, name="C")])
+        self.assertEqual(decoder.read_element_value(el, 0, {}).end, len(buf))
+
+    def test_a_scalar_is_still_one_slot(self):
+        el = elem("fPtr", 69, type_name="P*", array_length=0)
+        buf = b"\x00\x00\x00\x00"
+        decoder = rootfile.Decoder(buf, 0, [info(el, name="C")])
+        self.assertEqual(decoder.read_element_value(el, 0, {}).end, 4)

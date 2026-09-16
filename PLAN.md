@@ -953,10 +953,23 @@ No external blocker; these are simply cases nobody has added yet.
 | ~~The embedded form of a basket~~ | ✅ `04-ttree/TBasket.md` §4.1, `ttree/basket-embedded` |
 | A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
-| `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
-| `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
+| ~~`kCharStar` (7), `kStreamLoop` (501), the 81/82 array forms~~ | ✅ `serialization/element-types`. `kBits` (15) was already covered from the tree side and the row was stale; `kAnyPnoVT` (70) has **no producer** and cannot be reached, now stated in `ElementTypes.md` §7.3 |
+| ~~`TStreamerLoop`~~ | ✅ the same case, three forms of it |
 | `std::array`, a fixed array of collections | `02-serialization/Collections.md` (`std::bitset` is covered from the tree side by `ttree/split-bitset`, and a collection of pointers by `serialization/pairs`) |
 | The `kHasUUID` form of `TRef`, and a `TExec` index in a `TRef`'s `fBits` | `02-serialization/References.md` |
+
+**Two findings came out of that case**, both from the independent reader
+disagreeing with a real file once it stopped skipping 501 by byte count:
+
+- **The version word in a 500/501/85/86/87 frame is not the constant 10.** It is
+  `TStreamerInfo`'s class version in the writing ROOT, which was 8 before 5.26, 9
+  until 6.35, and 10 only from 6.36.00 (`a5d03de7e67`, 2024-11-25). Of the 226
+  files in the two corpora exactly **one** was written by 6.36 or later, so the
+  real-world value is 9. `ElementTypes.md` §8.1 and `Collections.md` §2 now say
+  so; the spec had hardcoded 10 in four places.
+- **A `kStreamLoop` of `TString` is bare counted strings**, because
+  `TString::Streamer` writes no frame wherever it appears. `TFormula::fExpr` is
+  the real case, and `rootfile.py` was reading it as a framed object.
 
 ### 9.6 Structural, not a missing fixture
 

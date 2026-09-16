@@ -37,7 +37,7 @@ are **added to** a base code.
 | 16–19 | `kLong64` `kULong64` `kBool` `kFloat16` | yes |
 | 61–67 | `kObject` `kAny` `kObjectp` `kObjectP` `kTString` `kTObject` `kTNamed` | yes |
 | 68, 69 | `kAnyp`, `kAnyP` | yes |
-| 70 | `kAnyPnoVT` | a write path exists but no reader; no producer |
+| 70 | `kAnyPnoVT` | **no** — a write path with no reader and no producer; §7.3 |
 | 71 | `kSTLp` | **no** — written as 500 |
 | 100, 120, 140 | `kSkip`, `kSkipL`, `kSkipP` | no |
 | 200, 220, 240 | `kConv`, `kConvL`, `kConvP` | no |
@@ -143,6 +143,10 @@ No terminator and no `255` escape — this is not the counted string of
 [Conventions §5.1](../00-conventions.md#51-counted-string)
 (`root/io/io/src/TBufferFile.cxx:285-317`). **A null pointer and an empty string
 are both four zero bytes** and cannot be distinguished.
+
+> Demonstrated by `serialization/element-types`: `fText` is `00 00 00 02` then
+> `68 69`, and `fNull` is `00 00 00 00` — the same bytes an empty string would
+> have written.
 
 ### 2.3 `kBits` (15)
 
@@ -405,18 +409,46 @@ agree with each other** (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1070-1072`)
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1414-1433` for 85/86/87. The pointer
 codes omit `kOffsetL` deliberately
 (`root/core/meta/src/TStreamerElement.cxx:1578-1581`,
-`root/core/meta/src/TStreamerElement.cxx:1681-1684`).
+`root/core/meta/src/TStreamerElement.cxx:1681-1684`), while the base class adds it
+for everything else (`root/core/meta/src/TStreamerElement.cxx:510-515`).
 
-> **The version word in the 85/86/87 form is `TStreamerInfo`'s own class version,
-> 10** — not the member class's version and not a count.
+> **A reader MUST take the element count from `fArrayLength`, never from whether
+> the code carries `kOffsetL`.** The last row is the reason: the code alone does
+> not say the member is an array.
+>
+> Demonstrated by `serialization/element-types`: `fObjArr` (81, two elements) and
+> `fAnyArr` (82, three) are bare sequences of self-framing objects, while
+> `fPtrArr` is declared `EPoint *fPtrArr[2]`, keeps the scalar code **69**, and
+> still occupies two object slots — the second of them a null, four zero bytes.
+
+> **The version word in the 85/86/87 form is `TStreamerInfo`'s own class version**
+> — not the member class's version and not a count. It is whatever that version
+> was in the ROOT that wrote the file, so it is **not a constant**: see §8.1.
 >
 > Demonstrated by `serialization/pointer-forms`: `fS1` is code 65 and occupies 2
 > bytes, while `fS2`, code 85 with two elements, is `40 00 00 06 00 0a` followed
 > by the two strings. Treating 85 as "65, twice" loses six bytes.
 
+### 7.3 `kAnyPnoVT` (70) has no producer
+
+The code is listed for completeness and a reader will never meet it. ROOT has a
+write path for it (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:456-457`) and no
+read path, but more to the point **nothing constructs an element with `fType`
+70**: the only class that could is `TStreamerObjectAnyPointer`, whose constructor
+sets 69 and downgrades to 68 for a `->` comment and never anything else
+(`root/core/meta/src/TStreamerElement.cxx:1628-1630`), and `Build` reaches for
+that class for every non-`TObject` pointer member without a counter
+(`root/io/io/src/TStreamerInfo.cxx:744`).
+
+Its documented meaning — a pointer to a class with no virtual table
+(`root/core/meta/inc/TVirtualStreamerInfo.h:115`) — is therefore not a case a
+reader has to distinguish. `serialization/element-types` is where this was
+settled: it declares exactly such a member and gets 69.
+
 ## 8. `kStreamer` (500) and `kStreamLoop` (501)
 
-Both are framed `bc ver`, where `ver` is `TStreamerInfo`'s class version 10.
+Both are framed `bc ver`, where `ver` is `TStreamerInfo`'s own class version —
+**not a constant**, see §8.1.
 
 **`kStreamer` (500)** marks a member serialized by C++ the reader does not have
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1436-1460`). The payload is opaque,
@@ -440,6 +472,42 @@ for each of fArrayLength blocks:  c objects, or c object references if
 `c` comes from the counter member, and as with `kOffsetP` **no length is stored**
 — the commented-out length write is still visible in ROOT's source
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:731`).
+
+The two payload forms are chosen by a `strstr` for `**` in `fTypeName`
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:700`), so `Cls *m; //[n]` is *c*
+objects and `Cls **m; //[n]` is *c* object slots. Whatever framing each object
+carries is its own class's doing: a `TString*` loop is *c* bare counted strings,
+because `TString::Streamer` writes no version word and no byte count (§7.1).
+
+**A count of zero writes the frame and nothing else.** ROOT's writer guards the
+whole loop with `if (vlen)` (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:730`),
+so the byte count is 2 — the version word alone.
+
+> Demonstrated by `serialization/element-types`, which has all three forms:
+> `fLoop` (`EPoint*`) is two framed objects with no count between them, `fLoopP`
+> (`EPoint**`) is two object slots with a class record and a back-reference, and
+> `fEmptyLoop` is `40 00 00 02 00 0a` and nothing more.
+
+### 8.1 The version word is not a constant
+
+`b.WriteVersion(this->IsA(), kTRUE)` writes **the `TStreamerInfo` class version of
+the ROOT that wrote the file**, and that number has changed:
+
+| Written by | `ver` |
+|---|---|
+| ROOT 6.36.00 and later | 10 |
+| ROOT 5.26 to 6.35 | 9 |
+| earlier | 8 or less |
+
+10 arrived in `a5d03de7e67` (2024-11-25), first released in 6.36.00; 9 in
+`40d8dd3552d`. All three are in the corpora — 8 in a 5.21 file, 9 in files from
+5.34 to 6.26, 10 only in the one 6.36 file and in the fixtures — so **every
+real-world file predating 6.36 carries 9 or 8, not 10.**
+
+> **A reader MUST mask `kStreamedMemberWise` and treat the rest as a version
+> number, never compare the word to 10.** The same applies to the 85/86/87 form
+> of §7.2 and to the collection frames of
+> [Collections §2](Collections.md#2-the-frame).
 
 ## 9. `kSTL` (300) and `kSTLstring` (365) — framing only
 
@@ -538,6 +606,13 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/double32` | All three quantised encodings and the `nbits >= 15` cliff |
 | `serialization/streamer-info` | The element records that carry these codes, and `fType` 500 on a collection |
 | `serialization/version-zero` | `kBase` with a byte count, and code 66 without one |
+| `serialization/element-types` | 7 including a null, 501 in all three forms, 81 and 82, and 69 with `fArrayLength` 2 |
 
-No fixture covers `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82
-array forms, or `kAnyPnoVT` (70).
+`kBits` (15) is covered from the `TTree` side rather than here: a split branch
+turns a `TObject` base into `fUniqueID` and `fBits` sub-branches whose elements
+carry code 15, which `ttree/split-bitset` and `ttree/split-double32` both have,
+and the encoding itself — `fBits` plus a `pidf` when `kIsReferenced` is set — is
+asserted in eleven cases through the `TObject` base, `serialization/references`
+among them.
+
+`kAnyPnoVT` (70) has no fixture because it has no producer (§7.3).

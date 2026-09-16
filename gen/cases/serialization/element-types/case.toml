@@ -1,0 +1,340 @@
+id   = "serialization/element-types"
+file = "data/serialization/element-types.root"
+size = 2912
+
+description = """
+The four element type codes no other fixture reaches -- `kCharStar` (7),
+`kStreamLoop` (501), and the 81/82 fixed-array-of-object forms -- plus a negative
+result about a fifth.
+
+**`kCharStar` is not a counted string.** `fText` is `n:i32` then `n` raw bytes
+with no terminator and no `255` escape, so it is not the counted string of
+Conventions 5.1. `fNull` is the trap: a null `char*` and an empty string are both
+four zero bytes, and **nothing in the file distinguishes them**.
+
+**`kStreamLoop` stores no length.** The count comes from the counter member, the
+same rule as `kOffsetP`, and the frame is `bc ver` with `ver` = 10, which is
+`TStreamerInfo`'s own class version rather than the value class's. Three forms
+are here, and the type name decides between the first two
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:700`):
+
+| Member | `fTypeName` | Payload |
+|---|---|---|
+| `fLoop` | `EPoint*` | *c* objects, each with its own byte count and version |
+| `fLoopP` | `EPoint**` | *c* object slots, with class records and back-references |
+| `fEmptyLoop` | `EPoint*` | a counter of 0 writes the frame and **nothing else** |
+
+`fEmptyLoop`'s byte count is 2 -- the version word alone -- because ROOT's writer
+guards the whole loop with `if (vlen)`
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:730`).
+
+**81 and 82 have no outer framing**, unlike 85/86/87. The array's elements follow
+each other directly, each carrying whatever framing its own class gives it:
+`fObjArr` is two `EMark`s, each `bc ver` plus a `TObject` base, and `fAnyArr` is
+three `EPoint`s. A reader that expects the `bc ver` of the 85/86/87 form
+mis-reads the first four bytes as a byte count that is really an object's own.
+
+**`fPtrArr` is the negative result**, and it is the reason `fArrayLength` cannot
+be inferred from the code. It is `EPoint *fPtrArr[2]`, a fixed array, and its code
+is **69, not 89**: `TStreamerObjectAnyPointer::SetArrayDim` does not add
+`kOffsetL` (`root/core/meta/src/TStreamerElement.cxx:1681-1684`) the way the base
+class does (`root/core/meta/src/TStreamerElement.cxx:510-515`). Two object slots
+are still written. **A reader MUST take the element count from `fArrayLength` and
+not from whether the code carries `kOffsetL`.** ElementTypes.md 7.2.
+
+**`kAnyPnoVT` (70) is not here because it cannot be**, and this case is what
+settles it: `TStreamerObjectAnyPointer`'s constructor sets only 69 or 68
+(`root/core/meta/src/TStreamerElement.cxx:1628-1630`), and no other line in ROOT
+constructs an element with `fType` 70. The code has a write path and no producer.
+ElementTypes.md 1.
+"""
+
+spec = [
+  "spec/02-serialization/ElementTypes.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 206
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 306
+nbytes = 273
+class  = "ElementZoo"
+role   = "the object, one member per code"
+[[records]]
+offset = 579
+nbytes = 2101
+class  = "TList"
+role   = "StreamerInfo"
+
+[[bytes]]
+name = "the object's byte count and version"
+offset = 346
+type = "u32"
+value = 0x400000e5
+
+[[bytes]]
+name = "ElementZoo's class version"
+offset = 350
+type = "u16"
+value = 1
+
+# --- kCharStar (7) --------------------------------------------------------
+#
+# 00 00 00 02 68 69   n = 2, then "hi": no terminator, no 255-escape
+# 00 00 00 00         fNull, and an empty string would be identical
+
+[[bytes]]
+name = "fText: the length, as a full four-byte i32"
+offset = 352
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fText: the bytes, with nothing after them"
+offset = 356
+type = "bytes"
+value = [0x68, 0x69]
+
+[[bytes]]
+name = "fNull: a null char* is four zero bytes, exactly like an empty string"
+offset = 358
+type = "i32"
+value = 0
+
+# --- kStreamLoop (501), one star: c objects -------------------------------
+#
+# 00 00 00 02         fN, the counter, written as an ordinary member
+# 40 00 00 1e 00 0a   the frame: TStreamerInfo's version 10, not EPoint's
+# 40 00 00 0a 00 01 ...   two EPoints, each framed, with no count between them
+
+[[bytes]]
+name = "fN: the counter is an ordinary kCounter member"
+offset = 362
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fLoop: the frame's byte count"
+offset = 366
+type = "u32"
+value = 0x4000001e
+
+[[bytes]]
+name = "fLoop: the version word is TStreamerInfo's 10, not EPoint's 1"
+offset = 370
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "fLoop: the first object starts immediately -- no count is written"
+offset = 372
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fLoop: and it carries EPoint's own version"
+offset = 376
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fLoop: EPoint[0].fI"
+offset = 378
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fLoop: EPoint[0].fX"
+offset = 382
+type = "f32"
+value = 0.5
+
+[[bytes]]
+name = "fLoop: the second object follows directly"
+offset = 386
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fLoop: EPoint[1].fI"
+offset = 392
+type = "i32"
+value = 2
+
+# --- kStreamLoop (501), two stars: c object slots -------------------------
+#
+# The "**" in fTypeName is the whole difference: object slots, so a class
+# record for the first and a back-reference for the second.
+
+[[bytes]]
+name = "fM: the second counter"
+offset = 400
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fLoopP: the frame's byte count, larger for the same two objects"
+offset = 404
+type = "u32"
+value = 0x40000035
+
+[[bytes]]
+name = "fLoopP: version 10 again"
+offset = 408
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "fLoopP: the first slot's byte count"
+offset = 410
+type = "u32"
+value = 0x40000019
+
+[[bytes]]
+name = "fLoopP: kNewClassTag -- a slot, not a bare object"
+offset = 414
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "fLoopP: the class name, null-terminated -- not a counted string"
+offset = 418
+type = "bytes"
+value = [69, 80, 111, 105, 110, 116, 0]
+
+[[bytes]]
+name = "fLoopP: the second slot"
+offset = 439
+type = "u32"
+value = 0x40000012
+
+[[bytes]]
+name = "fLoopP: a back-reference to the class record, not a second name"
+offset = 443
+type = "u32"
+value = 0x8000006e
+
+# --- kStreamLoop (501) with a zero counter --------------------------------
+
+[[bytes]]
+name = "fZ: the counter is zero"
+offset = 461
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fEmptyLoop: byte count 2 -- the version word and nothing else"
+offset = 465
+type = "u32"
+value = 0x40000002
+
+[[bytes]]
+name = "fEmptyLoop: that version word"
+offset = 469
+type = "i16"
+value = 10
+
+# --- 81 = kObject + kOffsetL ----------------------------------------------
+#
+# No outer bc/ver. Each EMark frames itself, and inside it the TObject base
+# is code 66: a version word with no byte count.
+
+[[bytes]]
+name = "fObjArr: the array begins with the FIRST ELEMENT's byte count"
+offset = 471
+type = "u32"
+value = 0x40000010
+
+[[bytes]]
+name = "fObjArr: EMark's version"
+offset = 475
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fObjArr: the TObject base, code 66 -- a version word, no byte count"
+offset = 477
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fObjArr: EMark[0].fK"
+offset = 487
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "fObjArr: EMark[1] follows directly; nothing frames the pair"
+offset = 491
+type = "u32"
+value = 0x40000010
+
+[[bytes]]
+name = "fObjArr: EMark[1].fK"
+offset = 507
+type = "i32"
+value = 11
+
+# --- 82 = kAny + kOffsetL -------------------------------------------------
+
+[[bytes]]
+name = "fAnyArr: again the first element's own byte count, not the array's"
+offset = 511
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fAnyArr: EPoint[0].fI"
+offset = 517
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fAnyArr: EPoint[1]"
+offset = 525
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fAnyArr: EPoint[2]"
+offset = 539
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fAnyArr: EPoint[2].fI, the last of the three"
+offset = 545
+type = "i32"
+value = 7
+
+# --- 69 with fArrayLength 2: the code does not say it is an array ---------
+
+[[bytes]]
+name = "fPtrArr: a full object slot, though the code is the scalar 69"
+offset = 553
+type = "u32"
+value = 0x40000012
+
+[[bytes]]
+name = "fPtrArr: a back-reference to EPoint's class record at 110"
+offset = 557
+type = "u32"
+value = 0x8000006e
+
+[[bytes]]
+name = "fPtrArr: EPoint[0].fI"
+offset = 567
+type = "i32"
+value = 8
+
+[[bytes]]
+name = "fPtrArr: the null second element -- four zero bytes, and the record ends"
+offset = 575
+type = "i32"
+value = 0

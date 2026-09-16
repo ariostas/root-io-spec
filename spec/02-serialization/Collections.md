@@ -78,6 +78,14 @@ explains.
 > Demonstrated by `serialization/collections`: `fInts` at 342 reads `00 0a` and
 > `fHits` at 395 reads `40 0a`.
 
+> **The `0A` is not part of the format.** It is `TStreamerInfo`'s class version in
+> the ROOT that wrote the file, and it was 9 from ROOT 5.26 until 6.35 and 8
+> before that — so a frame written by any release before 6.36.00 reads `00 09` or
+> `40 09`. **Mask `kStreamedMemberWise` and read the rest as a version number;
+> never compare the word to 10.**
+> [Element types §8.1](ElementTypes.md#81-the-version-word-is-not-a-constant)
+> has the history and the corpus counts.
+
 ## 3. Object-wise
 
 ```

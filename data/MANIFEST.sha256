@@ -1,12 +1,5 @@
 # Normalized SHA-256 digests of the reference files.
 # Timestamps and UUIDs are masked first; see tools/normalize.py.
-#
-# A case may be absent from this list. `digest = false` in its case.toml opts it
-# out, and a `digest_reason` is then required and printed on every run as
-# NO DIGEST, so the opt-out is as loud as a failure would be. The bar is that no
-# masking could give the file a portable digest -- in practice that means the two
-# standard libraries write it at different LENGTHS, which a mask cannot undo. Its
-# byte assertions still run everywhere. PLAN.md 9.6.
 7bb13cc10d87e766a31d363dc749f2e1bc0b4071defc9667d5ba86b067197938  data/classes/tarray.root
 f4d52fe4c1dd83d740685e32f84db3a8ea57d3cb23b5e1e0dfb96a9099d588ad  data/container/compress-lz4.root
 d6ab80a630fa472b038c1333a56ce7629fafd9a38d1c87419d80c7d87facdc8b  data/container/compress-lzma.root
@@ -23,6 +16,7 @@ d21c3d183c2717ca814ec5fe9d780c3d5494274adca2fe94e5166bdb86a9dcbc  data/serializa
 c7f4180abfc3f18ad4240712e85ba2dc562dd0128562563bd2b638c4eca157a7  data/serialization/clones-array.root
 5332ee654e1f494f97ec7597933eb5d3cf28131e70d49e76a796f8b236022f88  data/serialization/collections.root
 d1a73b949ac4fcbfcc35908e00298cf82fe590644d22e90074da1426ca054561  data/serialization/double32.root
+890547aa18e2839170ff119d5492bbeba2f2f1bb119a0cbbe1edc0d52a443746  data/serialization/element-types.root
 095fe550d02cbd50e40cde99e3c7978102bad62162eacc5717d212b3d3a1815e  data/serialization/object-tags.root
 2170aeb3e002185ac363ba71d3d2ed73ef70293444cd6f4fb78a05eaa3e96fb1  data/serialization/objects.root
 120676d16e23b40098507fd6e997db00c084e2dfcb50fa36050cbb766f50a0c1  data/serialization/pointer-forms.root

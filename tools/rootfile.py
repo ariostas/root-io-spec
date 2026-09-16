@@ -1191,6 +1191,15 @@ class Decoder:
             return Value(name=cls, ftype=61, start=offset, end=frame.end,
                          type_name=cls,
                          note="TTreeIndex: read with read_tree_index")
+        if cls == "TString":
+            # TString::Streamer writes a bare counted string -- no version word
+            # and no byte count -- wherever the class appears, not only under
+            # element code 65. A kStreamLoop of TString reaches here, and so
+            # does an object slot whose class is TString.
+            # ElementTypes.md 7.1.
+            _, end = _counted_string(self.buf, offset)
+            return Value(name="TString", ftype=65, start=offset, end=end,
+                         type_name="TString")
         if cls == "TDatime":
             # A hand-written streamer that writes fDatime and nothing else: no
             # version word and no byte count. Record.md section 3.7.
@@ -1383,30 +1392,76 @@ class Decoder:
                 return done(offset + 1 + n * quantised_width(inner, el.title))
             raise UnsupportedClass(f"counted pointer of type code {inner}")
 
+        # 63, 64, 68 and 69 never gain kOffsetL: a fixed array of them keeps the
+        # scalar code and says its length in fArrayLength instead
+        # (ElementTypes.md 7.2). Take the count from fArrayLength, never from
+        # whether the code carries kOffsetL.
         if t in (61, 62, 63, 68):                     # embedded or `->` pointer
-            nested = self.read_object(_bare_class(el.type_name), offset)
-            return done(nested.end, members=nested.members)
+            pos, members = offset, None
+            for _ in range(max(el.array_length, 1)):
+                nested = self.read_object(_bare_class(el.type_name), pos)
+                pos, members = nested.end, nested.members
+            return done(pos, members=members)
 
         if t in (64, 69):                             # pointer with a class record
-            slot = read_slot(buf, offset, self.base)
-            if slot.kind == "null":
-                return done(slot.end, note="null")
-            if slot.kind == "reference":
-                return done(slot.end, note=f"reference to {slot.reference}")
-            cls, body_at = resolve_class(slot, self.classes)
-            # Go through read_object, not read_members, so that a class with a
-            # hand-written reader here -- TList, TObjArray, TClonesArray -- gets
-            # it. Reading TList through its streamer info instead produces a
-            # TSeqCollection base that its streamer never writes: the divergence
-            # of StreamerDriven.md section 7, in a real file.
-            nested = self.read_object(cls, body_at)
-            return done(slot.end, type_name=cls, members=nested.members)
+            pos, note, cls, members = offset, None, None, None
+            for _ in range(max(el.array_length, 1)):
+                slot = read_slot(buf, pos, self.base)
+                pos = slot.end
+                if slot.kind == "null":
+                    note = "null"
+                    continue
+                if slot.kind == "reference":
+                    note = f"reference to {slot.reference}"
+                    continue
+                cls, body_at = resolve_class(slot, self.classes)
+                # Go through read_object, not read_members, so that a class with a
+                # hand-written reader here -- TList, TObjArray, TClonesArray -- gets
+                # it. Reading TList through its streamer info instead produces a
+                # TSeqCollection base that its streamer never writes: the divergence
+                # of StreamerDriven.md section 7, in a real file.
+                nested = self.read_object(cls, body_at)
+                members = nested.members
+            if cls is None:
+                return done(pos, note=note)
+            return done(pos, type_name=cls, members=members)
 
         if t == 500 and el.cls in ("TStreamerSTL", "TStreamerSTLstring"):
             end = self.read_collection(el, offset)
             return done(end)
 
-        if t in (500, 501) or t == 71:                # a genuine custom streamer
+        if t == 501:                                  # kStreamLoop
+            frame = read_frame(buf, offset)
+            if frame.end is None:
+                raise FormatError(f"element {el.name} type 501 has no byte count")
+            count = counters.get(el.count_name)
+            if count is None:
+                raise FormatError(
+                    f"{el.name} names counter {el.count_name!r}, not yet seen")
+            # No length is written: the counter is the only source (ElementTypes.md
+            # 8). A counter of 0 writes the frame and nothing else, so the loop
+            # below simply does not run. Two stars in the type name means object
+            # slots rather than bare objects.
+            slots = "**" in el.type_name
+            cls = _bare_class(el.type_name)
+            pos = frame.body
+            for _ in range(max(el.array_length, 1)):
+                for _ in range(count):
+                    if slots:
+                        slot = read_slot(buf, pos, self.base)
+                        if slot.kind == "object":
+                            name, body_at = resolve_class(slot, self.classes)
+                            self.read_object(name, body_at)
+                        pos = slot.end
+                    else:
+                        pos = self.read_object(cls, pos).end
+            if pos != frame.end:
+                raise FormatError(
+                    f"element {el.name} type 501 ends at {pos}, "
+                    f"but its byte count says {frame.end}")
+            return done(frame.end)
+
+        if t == 500 or t == 71:                       # a genuine custom streamer
             frame = read_frame(buf, offset)
             if frame.end is None:
                 raise FormatError(f"element {el.name} type {t} has no byte count")
