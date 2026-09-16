@@ -103,11 +103,27 @@ an `RUInt16BE` (`root/tree/ntuple/src/RMiniFile.cxx:547-560`).
 
 This directory is new. The field-by-field audit of the document against
 `RNTupleSerialize.cxx` — which is the actual work of phase 6 and the reason the
-copy is tracked at all — has covered the anchor, the ROOT file embedding, and the
-compression block. **Everything from *Basic Types* onward is unaudited**: frames,
-locators and envelope links, the header, footer and page list envelopes, the
-C++ type mapping, and the limits. The sections are listed in `PLAN.md` §5 phase 6
-in the order they are worth doing.
+copy is tracked at all — has so far covered:
+
+| Section | State |
+|---|---|
+| ROOT File embedding, Anchor schema | audited — ERRATA 1, 2, 3 |
+| Compression Block | audited — §2 above |
+| Frames | audited, nothing found |
+| Locators and Envelope Links | audited — ERRATA 4 |
+| Envelopes, the envelope header and checksum | audited — ERRATA 5 |
+
+**Not yet audited**: the contents of the Header, Footer and Page List envelopes,
+Linked Attribute Sets, the C++ type mapping (*Mapping of C++ Types to Fields and
+Columns* and everything under it), Limits, and Naming. Those are the bulk of the
+document and where a reader spends most of its time.
+
+The frames section came out clean. Its size field is a signed 64-bit
+little-endian integer whose sign selects record (positive) from list (negative),
+exactly as the prose says, and `SerializeFramePostscript` writes
+`marker * size` to set it (`root/tree/ntuple/src/RNTupleSerialize.cxx:973-980`);
+the read side recovers `nitems` only for a list frame and negates the size back
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:996-1007`).
 
 Nothing here should be read as a statement that the unaudited sections are
 correct. They are simply not yet checked, which is the same standard the rest of

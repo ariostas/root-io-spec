@@ -39,8 +39,10 @@ and everything below it from the tracked copy, and the three errata in between.
 
 ## Status
 
-Three errata, all in the anchor and the ROOT file embedding, all verified against
-both the pinned submodule and the bytes of `RNTuple.root`. The rest of the
-document — frames, locators, envelopes, the C++ type mapping — is **not yet
-audited**; [NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) says so plainly
-rather than leaving the silence to be read as approval.
+**Five errata**, all verified against both the pinned submodule and the bytes of
+`RNTuple.root`: three in the anchor and the ROOT file embedding, one in the
+locator type table, and one in the envelope header. The audit has reached the end
+of the *Envelopes* section; the contents of the header, footer and page list
+envelopes and the whole C++ type mapping are **not yet audited**, and
+[NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) says so plainly rather than
+leaving the silence to be read as approval.
