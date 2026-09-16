@@ -54,7 +54,7 @@ Those files are **not** reference files and are not committed;
 standing result.
 
 The invariant checks run over the same corpus, and that is where format errors have
-actually been found — thirteen of them so far:
+actually been found — thirteen of them so far, plus the legacy `CS` codec:
 
 ```sh
 tools/check_invariants.py --ignore gen/foreign/IGNORE.toml build/foreign/*.root

@@ -327,6 +327,12 @@ class Checker:
     # class named, never passed over silently.
     UNSPECIFIED_STREAMERS = ("TMatrixT", "TMatrixTSym", "TVectorT",
                              "RooLinkedList", "RooAbsCollection",
+                             # A base whose streamer info has NO elements. The
+                             # file carries a TQObject info with zero elements and
+                             # TVirtualPad v2 lists it as a kBase, yet the bytes
+                             # for it appear to be absent entirely. Diagnosed only
+                             # this far; see PLAN.md 9.9.
+                             "TQObject",
                              # ReadClassBuffer, then an 8-byte XXH3-64 checksum
                              # outside the byte count
                              # (root/tree/ntuple/src/RNTuple.cxx:25-49).

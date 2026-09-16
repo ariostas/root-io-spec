@@ -438,7 +438,7 @@ side; see [TLeaf §3.2](TLeaf.md#32-foffset-is-a-position-in-the-entry).
 | 6 | the oldest version the `v > 5` legacy path reads (`root/tree/tree/src/TBranch.cxx:3035-3108`) |
 | 7 | `fSplitLevel` added |
 | 8 | the `TAttFill` base added |
-| 9 | `fBasketSeek` widened from `Seek_t` to `Long64_t`, marked by a flag byte of **2** rather than 1 on that member |
+| 9 | `fBasketSeek` widened from `Seek_t` to `Long64_t`, marked by a flag byte of **2** rather than 1 on that member (§13.1) |
 | 10 | `fEntryNumber` `Int_t` → `Long64_t`; `fEntries`, `fTotBytes`, `fZipBytes` `Stat_t` (a `double`) → `Long64_t`; `fBasketEntry` `Int_t*` → `Long64_t*`. First version read by the streamer info |
 | 11 | `fFirstEntry` added |
 | 12 | two transient members dropped; no change on disk |
@@ -453,6 +453,36 @@ the legacy layouts, which this document does not give; see `PLAN.md` §9.1.
 The threshold is 9 and not some other number because version 10 is where the
 widths settled: below it the same member name has a different width, which is
 the one thing schema evolution of that era could not express.
+
+### 13.1 At version 9 the streamer info is not authoritative
+
+A `TBranch` at class version 9 carries a streamer info declaring `fBasketSeek` as
+`Long64_t*`, element code 56. **The values on disk may still be four bytes each.**
+The *is present* flag byte of that one member doubles as a width selector
+(`root/tree/tree/src/TBranch.cxx:3062-3066`):
+
+```
+b >> isArray;
+for (i = 0; i < fMaxBaskets; i++) {
+   if (isArray == 2) b >> fBasketSeek[i];                       // 8 bytes
+   else              { Int_t bsize; b >> bsize; ... }            // 4 bytes
+}
+```
+
+So a flag of 2 means 8-byte values and any other non-zero flag means 4-byte ones,
+regardless of what the info says. This is the concrete reason the generic algorithm
+cannot be used below version 10, and the reason `TBranch::Streamer` hand-codes the
+read: the recorded info describes the *class*, and at this version the class had
+outgrown what the file could say about it.
+
+> Measured on `stock.root` in the corpus of `PLAN.md` §9.9, ROOT 4.00/07: its ten
+> trees all carry `TBranch` v9 with `fBasketSeek`'s flag byte **1**, and reading
+> that member as the declared `Long64_t*` overruns every branch by exactly
+> `fMaxBaskets × 4` bytes. Reading it as four-byte values makes all ten records
+> parse to their byte count exactly.
+
+`tools/rootfile.py` refuses `TBranch` below version 10 rather than guessing, and
+reports it as a named `NOT CHECKED`.
 
 ## 14. Reference files
 

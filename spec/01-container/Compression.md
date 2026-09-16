@@ -105,8 +105,38 @@ order ZSTD, ZLIB, LZ4, LZMA, legacy (`root/core/zip/src/RZip.cxx:278-295`); the
 order is irrelevant to a correct reader, since the magics are distinct. Note that
 `ZL` and `ZS` differ in one byte, as do `ZS` and `CS`.
 
-`CS` is the original algorithm — the initials of its authors — and predates ZLIB
-in ROOT. Files old enough to contain it are rare but readable.
+`CS` is the original algorithm — the initials of its authors,
+`root/core/zip/src/RZip.cxx:156` — and predates ROOT's use of the zlib library. It
+is **not** a different algorithm from `ZL`; see §3.1.
+
+### 3.1 `CS` is raw DEFLATE, and `ZL` is zlib-wrapped
+
+Both carry method byte 8 and both hold a DEFLATE stream. They differ in one thing:
+the **wrapper**.
+
+| magic | Stream | Python |
+|---|---|---|
+| `ZL` | zlib (RFC 1950): a two-byte header, DEFLATE data, an Adler-32 trailer | `zlib.decompress(block)` |
+| `CS` | raw DEFLATE (RFC 1951) and nothing else | `zlib.decompressobj(-zlib.MAX_WBITS).decompress(block)` |
+
+ROOT's two paths say so directly. A `ZL` block goes to `R__unzipZLIB`, which calls
+`inflateInit` — the zlib-wrapped entry point
+(`root/core/zip/src/RZip.cxx:409-422`). A `CS` block falls past every named
+algorithm to ROOT's own bundled inflate under the comment "Old zlib format"
+(`root/core/zip/src/RZip.cxx:391-392`), and that function begins decoding blocks
+immediately with an empty bit buffer, consuming no header and checking no trailer
+(`root/core/zip/src/ZInflate.c:1048-1090`). Its tables are PKZIP's
+(`root/core/zip/src/ZInflate.c:291-308`).
+
+So a reader that already has zlib needs no new algorithm for `CS` — only the
+`-MAX_WBITS` window size that selects the raw stream. A reader that treats `CS` as
+zlib gets an "incorrect header check" and, if it concludes the algorithm is
+unavailable, rejects every record of a file that is entirely readable.
+
+> Demonstrated by `pippa.root` in the corpus of `PLAN.md` §9.9, written by ROOT
+> 2.24/00: **all 468** of its compressed records decompress with raw DEFLATE, each
+> producing exactly the block header's uncompressed size. Before this was
+> understood, every one of them was reported as "no codec".
 
 A reader encountering an unknown magic MUST NOT attempt to decompress. It cannot
 skip the block either, since it cannot trust the sizes; it should reject the

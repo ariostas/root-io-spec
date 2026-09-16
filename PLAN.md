@@ -821,7 +821,8 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 | Directory record versions 1, 2, 3 | `01-container/Directory.md` |
 | A buffer written with no byte counts | `02-serialization/Buffer.md` |
 | `TStreamerElement` versions below 4, including the version-3 `fXmin`/`fXmax`/`fFactor` form | `02-serialization/StreamerInfo.md` |
-| A file old enough to take the `BuildEmulated` path | `02-serialization/SchemaEvolution.md` — `pippa.root` in §9.9 is one: ROOT 2.24/00 with **zero streamer infos**. Blocked behind the `CS` codec, which this specification does not describe |
+| A file old enough to take the `BuildEmulated` path | `02-serialization/SchemaEvolution.md` — **✅ available**: `pippa.root` in §9.9, ROOT 2.24/00 with **zero streamer infos**, now fully decompressed (§9.9, the `CS` codec) |
+| `TBranch` class versions 6 to 9 | `04-ttree/TBranch.md` §13 — **reproducer available**: `stock.root` in §9.9, ROOT 4.00/07, ten trees at v9. §13.1 now gives the one fact that makes the generic algorithm inapplicable, byte-verified |
 | Collection layouts below `TStreamerInfo` version 8 | `02-serialization/Collections.md` |
 | `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `02-serialization/Collections.md` |
 
@@ -1212,25 +1213,72 @@ layout at all**, and it discharges most of §9.2:
 is therefore **measured**, though still not asserted by a committed fixture, and
 `LargeFiles.md` can now be written against something real.
 
+#### One lead left open
+
+`H1display.root` (ROOT 3.05/07) has a `TPad` whose `TVirtualPad` v2 base lists
+**five** `kBase` elements, the last being `TQObject`. The file does carry a
+`TQObject` streamer info — **with zero elements**, since every member of that class
+is transient (`root/core/base/inc/TQObject.h:50-53`). Counting the bytes of the
+`TVirtualPad` frame, `TObject` + `TAttLine` + `TAttFill` + `TAttPad` appear to
+exhaust it, leaving `TQObject` contributing nothing at all, and the reader then
+takes the following bytes for a version word.
+
+So the open question is narrow: **what does a `kBase` element whose class has no
+persistent members occupy on disk — nothing, or a bare framed version word?** If it
+is nothing, that is a rule `StreamerDriven.md` should state, and it would follow
+from the same place as §7's "a hand-written streamer's recorded info can be
+fiction". Not diagnosed further; `TQObject` is named in the `NOT CHECKED` output
+meanwhile, so nothing is hidden and nothing is assumed.
+
 #### Standing result
 
 `tools/check_invariants.py` over tier `all`: **24 files, 0 failures.** The probe:
-1388 decoded, 264 container, 31 partial, 202 blocked, 495 no codec — the 495 all
-`CS`, and 197 of the 202 RooFit. `--headers`: 8 files, 0 failures.
+1396 decoded, 264 container, 515 partial, 205 blocked, **0 no codec**. Of the
+blocked, 197 are RooFit classes in the two `stressRooFit_*` files and the rest are
+RNTuple's `RBlob` and anchor; the partial are overwhelmingly ROOT 2.x histogram
+records in files that carry no streamer infos at all, which is
+`StreamerDriven.md` §6's case rather than a gap. `--headers`: 8 files, 0 failures.
 
 Both corpora together are now **178 files, 0 failures, ROOT 2.24/00 to 6.36/02.**
 
-#### The gap it exposes and this project cannot close cheaply
+#### The `CS` codec, closed
 
-**The legacy `CS` codec is not implementable from `Compression.md`.** The document
-names the magic and says such files are "rare but readable", but never says what is
-inside a `CS` block, and `tools/rootfile.py` refuses it. That is **495 of 1759
-non-container records** in the core tier: all 468 of `pippa.root`, and some of every
-file at ROOT 5.05 and below. Either specify the algorithm from
-`root/core/zip/src/` or stop claiming such files are readable.
+The corpus initially reported **495 of 1759 non-container records** as "no codec" —
+all of `pippa.root` and some of every file at ROOT 5.05 and below — because
+`Compression.md` named the `CS` magic, called such files "rare but readable", and
+never said what was inside a block. That looked like a research project into a
+bespoke LZ77 and was written up here as a gap this project could not close cheaply.
 
-`pippa.root` is also worth its own note: ROOT 2.24/00, 517 records, **24 nested
-directories**, and **zero streamer infos** — it predates automatic schema evolution
-entirely. It is the only file in reach that exercises §9.1's "a file old enough to
-take the `BuildEmulated` path", and everything in it is `CS`-compressed, so the two
-gaps are locked together.
+**That was wrong, and by a wide margin.** `CS` is not a different algorithm from
+`ZL`. Both are DEFLATE with method byte 8; they differ only in the **wrapper**.
+`ZL` blocks go to `R__unzipZLIB`, which calls `inflateInit`, the zlib-wrapped entry
+point (`root/core/zip/src/RZip.cxx:409-422`). `CS` blocks fall past every named
+algorithm to ROOT's bundled inflate under the comment "Old zlib format"
+(`root/core/zip/src/RZip.cxx:391-392`), and that function starts decoding blocks
+with an empty bit buffer, consuming no header and checking no trailer
+(`root/core/zip/src/ZInflate.c:1048-1090`). It is raw DEFLATE, RFC 1951.
+
+In Python the whole codec is `zlib.decompressobj(-zlib.MAX_WBITS)`. All **468**
+compressed records of `pippa.root` decompress with it, each producing exactly the
+block header's declared size. Written up as `Compression.md` §3.1; the corpus now
+reports **zero** "no codec" records.
+
+The lesson is the cheaper one: the claim "rare but readable" was true, and had
+been sitting in the document unverified for long enough that its cost was assumed
+rather than measured.
+
+#### And what that uncovered underneath
+
+Decompressing `stock.root` (ROOT 4.00/07) exposed ten trees whose branches are
+`TBranch` **class version 9**, and every one overran its byte count by exactly
+`fMaxBaskets × 4`. The cause is a claim `TBranch.md` §13 had made since it was
+written but nothing had ever demonstrated: at version 9 the *is present* flag byte
+of `fBasketSeek` is a **width selector** — 2 means 8-byte values, any other
+non-zero means 4-byte — regardless of the `Long64_t*` its streamer info declares
+(`root/tree/tree/src/TBranch.cxx:3062-3066`). Reading it that way makes all ten
+records parse to their byte count exactly.
+
+Now byte-verified and written up as `TBranch.md` §13.1. `tools/rootfile.py` refuses
+`TBranch` below version 10 rather than guessing, and says so by name. Writing the
+legacy layouts is still §9.1's job, but it now has a reproducer instead of a
+hypothesis.

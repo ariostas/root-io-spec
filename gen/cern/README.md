@@ -43,10 +43,10 @@ does.
 
 | File | ROOT | Why it is here |
 |---|---|---|
-| `pippa.root` | **2.24/00** | The oldest file in reach, by fifteen years. 517 records, **24 nested directories**, **zero streamer infos** — it predates schema evolution entirely — and every payload in the legacy `CS` codec. Found [FileHeader erratum 2](../../spec/01-container/FileHeader.md#11-errata): four bytes past `fEND` in a cleanly closed file |
+| `pippa.root` | **2.24/00** | The oldest file in reach, by fifteen years. 517 records, **24 nested directories**, **zero streamer infos** — it predates schema evolution entirely — and every payload in the legacy `CS` codec, which it is what led to specifying. Found [FileHeader erratum 2](../../spec/01-container/FileHeader.md#11-errata): four bytes past `fEND` in a cleanly closed file |
 | `mlpHiggs.root` | 3.04/02 | `TTree` records from before automatic schema evolution; `CS` |
 | `H1display.root` | 3.05/07 | ROOT 3.05 at 8.5 KB |
-| `stock.root` | 4.00/07 | Ten `TTree` records, no streamer infos, `CS` — the legacy `TTree` layout `TTree.md` §13 declines to give |
+| `stock.root` | 4.00/07 | Ten `TTree` records at **`TBranch` class version 9**, the only sub-10 branches in reach. Byte-verified [TBranch §13.1](../../spec/04-ttree/TBranch.md#131-at-version-9-the-streamer-info-is-not-authoritative): `fBasketSeek`'s flag byte is a width selector |
 | `lhcb_mag.root` | 4.03/04 | ROOT 4.03 |
 | `galaxy.root` | 5.01/01 | ROOT 5.01; a `TASImage` payload |
 | `linearIO.root` | 5.05/01 | `TMatrixT<float>` **and** `TMatrixTSym<float>` in 3.8 KB — the divergent classes `PLAN.md` §9.8 named, at the cheapest possible size |
@@ -114,21 +114,30 @@ Run 2026-09-15, tier `all`:
 
 - `tools/check_invariants.py`: **24 files, 0 failures**, with twelve `NOT CHECKED`
   reasons, each naming a class or a codec rather than passing anything over.
-- `tools/coverage_probe.py`: 1388 decoded, 264 container, 31 partial, 202 blocked,
-  495 no codec. The 495 are all the legacy `CS` algorithm; of the 202 blocked, 197
-  are RooFit classes in the two `stressRooFit_*` files and 5 are RNTuple's `RBlob`
-  and anchor.
+- `tools/coverage_probe.py`: 1396 decoded, 264 container, 515 partial, 205 blocked,
+  **0 no codec**. Of the blocked, 197 are RooFit classes in the two
+  `stressRooFit_*` files; the partial are overwhelmingly ROOT 2.x histograms in
+  files with no streamer infos.
 - `tools/fetch_cern.py --headers`: **8 files, 0 failures**.
 
 ## Known gaps this corpus exposes
 
-- **The legacy `CS` codec is not implementable from `Compression.md`.** The
-  document names the magic and says such files are "rare but readable", but never
-  says what is inside a `CS` block, and `tools/rootfile.py` refuses it. That is
-  495 of 1759 non-container records in the core tier — everything in `pippa.root`,
-  and some of every file at ROOT 5.05 and below.
+- **`TBranch` class versions 6 to 9** are not specified. `stock.root` (ROOT
+  4.00/07) has ten trees at v9 and is the reproducer; `TBranch.md` §13.1 now gives
+  the fact that makes the generic algorithm inapplicable there, byte-verified on
+  this file. `tools/rootfile.py` refuses them by name.
 - `RooAbsCollection` and `ROOT::RNTuple` are hand-written streamers this
-  specification does not describe; both are now named in `check_invariants.py`'s
+  specification does not describe; both are named in `check_invariants.py`'s
   `NOT CHECKED` output rather than counted as failures.
 - `RBlob`, RNTuple's page container, has no streamer info by design. It belongs to
   `spec/05-rntuple/`.
+- ROOT 2.x and 3.x files carry **no streamer infos at all**, so their `TH1F`/`TH2F`
+  records cannot be decoded by anything. That is
+  [StreamerDriven §6](../../spec/02-serialization/StreamerDriven.md)'s case, not a
+  gap in this specification — and `pippa.root` is the file `PLAN.md` §9.1 wanted
+  for the `BuildEmulated` path.
+
+The legacy **`CS`** codec was on this list and is not any more: it turned out to be
+plain raw DEFLATE, written up as
+[Compression §3.1](../../spec/01-container/Compression.md#31-cs-is-raw-deflate-and-zl-is-zlib-wrapped).
+All 468 compressed records of `pippa.root` decompress with it.

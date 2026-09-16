@@ -569,7 +569,9 @@ def _lz4(payload: bytes, nout: int) -> bytes:
 
 
 def _legacy(payload: bytes, nout: int) -> bytes:
-    raise MissingCodec("the legacy 'CS' algorithm has no Python implementation")
+    """The `CS` block of Compression.md 3.1: raw deflate, no zlib wrapper."""
+    import zlib
+    return zlib.decompressobj(-zlib.MAX_WBITS).decompress(payload, nout)
 
 
 # Magic -> (expected method byte, decompressor). Compression.md section 3.
@@ -1220,6 +1222,19 @@ class Decoder:
             base = read_tobject(self.buf, offset)
             return [Value(name="TObject", ftype=66, start=offset, end=base.end,
                           tobject=base)]
+        if cls == "TBranch" and version < 10:
+            # Below version 10 the file's own streamer info is not authoritative:
+            # TBranch::Streamer hand-codes the read, and fBasketSeek's "is present"
+            # flag doubles as a WIDTH selector -- 2 means 8-byte values, any other
+            # non-zero means 4-byte, whatever the info says
+            # (root/tree/tree/src/TBranch.cxx:3062-3066). Byte-verified on
+            # stock.root, ROOT 4.00/07, where reading it as the declared Long64_t*
+            # overruns every branch by exactly fMaxBaskets x 4 bytes.
+            # TBranch.md section 13 does not give these layouts; refuse rather than
+            # guess. PLAN.md section 9.1.
+            raise UnsupportedClass(
+                f"TBranch class version {version}: the legacy layout below 10, "
+                f"see TBranch.md 13")
         info = self.info_for(cls, version)
         values: list[Value] = []
         pos = offset

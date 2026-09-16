@@ -112,6 +112,35 @@ class FreeList(unittest.TestCase):
         self.assertEqual(rootfile.parse_free_list(b"\x00" * 8, 8, 0), [])
 
 
+class LegacyCodec(unittest.TestCase):
+    """Compression.md 3.1. `CS` is raw DEFLATE; `ZL` is zlib-wrapped."""
+
+    PAYLOAD = b"ROOT" * 64
+
+    def test_a_cs_block_is_raw_deflate(self):
+        import zlib
+        raw = zlib.compressobj(6, zlib.DEFLATED, -zlib.MAX_WBITS)
+        block = raw.compress(self.PAYLOAD) + raw.flush()
+        self.assertEqual(rootfile._legacy(block, len(self.PAYLOAD)), self.PAYLOAD)
+
+    def test_a_zlib_stream_is_not_a_cs_block(self):
+        # The wrapper is the whole difference: feeding a ZL block to the CS
+        # decoder must fail rather than quietly return the wrong bytes.
+        import zlib
+        with self.assertRaises(zlib.error):
+            rootfile._legacy(zlib.compress(self.PAYLOAD), len(self.PAYLOAD))
+
+    def test_the_two_codecs_are_registered_with_method_byte_8(self):
+        for magic in (b"ZL", b"CS"):
+            self.assertEqual(rootfile.CODECS[magic][0], 8, magic)
+
+    def test_a_cs_block_no_longer_raises_missingcodec(self):
+        import zlib
+        raw = zlib.compressobj(6, zlib.DEFLATED, -zlib.MAX_WBITS)
+        block = raw.compress(b"x" * 300) + raw.flush()
+        self.assertEqual(len(rootfile.CODECS[b"CS"][1](block, 300)), 300)
+
+
 class EntrySample(unittest.TestCase):
     """check_invariants' entry sampling: it must keep both ends."""
 
