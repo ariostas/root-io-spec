@@ -938,20 +938,39 @@ must carry real class versions, so it is worth having landed early.
 | A non-zero `pidf`, a non-zero `fPidOffset`, and a `fUniqueID` whose top byte survives to disk | `02-serialization/References.md` |
 | Two streamer infos for one class distinguished by checksum | `02-serialization/SchemaEvolution.md` |
 | A negative in-memory class version reaching disk as 1 | `02-serialization/SchemaEvolution.md` |
+| A branch with a non-empty `fFileName`, which names the file its baskets went to | `04-ttree/TBranch.md` §14 |
 
 `fPidOffset` specifically arises when a key is copied between files, so a
 `TTreeCloner` or `TFile::Cp` case would produce several of these at once.
 
-### 9.5 Reachable now, just not written
+### 9.5 Reachable now, just not written — **closed 2026-09-16**
 
-No external blocker; these are simply cases nobody has added yet.
+Every row is done. Seven new cases, and **eight of the twenty-odd items in the
+list turned out to be covered already or not to exist at all** — which is the
+second result of the exercise and the reason the list had drifted:
+
+| Item | What it actually was |
+|---|---|
+| `kBits` (15) | Covered. A split branch turns a `TObject` base into `fUniqueID` and `fBits` sub-branches whose elements carry code 15 |
+| `kAnyPnoVT` (70) | **Has no producer.** Nothing in ROOT constructs an element with `fType` 70 |
+| `TLeafObject`, `TLeafElement` | Covered — one in `tree-branchref`, 52 in the split cases |
+| a collection of pointers | Covered by `split-ptr-collection` and `pairs` |
+| a split branch | Covered by every `split-*` case |
+| a non-zero `fIOBits` | Covered by `basket-iofeatures` |
+| "a `TH2F` produces one" (`TArray`) | **False.** A `TH2F` in a `TTree` branch does; a `TH2F` does not |
+| a multi-block basket | Believed too large to commit. 16.8 MB of one repeated `Double_t` is 7 920 bytes under LZMA 9 |
+
+Three items moved rather than closed: a non-empty `fFileName` to §9.4, and the
+legacy leaf and `TBranch` versions stay under §9.1.
+
+The original list follows, with the outcome of each row.
 
 | Gap | Document |
 |---|---|
 | ~~A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte~~ | ✅ `classes/tarray-histogram`. **A `TH2F` does not produce one** — the row said it did. A `TH2F` in a `TTree` branch does, and 16 of the 39 histogram files across both corpora carry one |
 | ~~A compressed basket, a multi-block basket, a displacement array~~ | ✅ `ttree/basket-compressed`, `ttree/basket-multiblock`, `ttree/basket-displacement`. `fIOBits` was already covered by `ttree/basket-iofeatures` and the row was stale. **A multi-block basket is committable after all** — 16.8 MB of one repeated `Double_t` is 7 920 bytes under LZMA 9 |
 | ~~The embedded form of a basket~~ | ✅ `04-ttree/TBasket.md` §4.1, `ttree/basket-embedded` |
-| A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
+| ~~A branch whose `fFirstEntry` is not 0~~ | ✅ `ttree/branch-first-entry`. A split branch and a non-zero `fIOBits` were already covered by the `split-*` cases and `basket-iofeatures`; a non-empty `fFileName` moved to §9.4 (it needs a second file) and class version 9 or below stays under §9.1 |
 | ~~`TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape~~ | ✅ `ttree/leaf-forms`. `TLeafObject` and `TLeafElement` were already covered — `tree-branchref` has one and the split cases have 52 — so only the legacy versions remain, under §9.1 |
 | ~~`kCharStar` (7), `kStreamLoop` (501), the 81/82 array forms~~ | ✅ `serialization/element-types`. `kBits` (15) was already covered from the tree side and the row was stale; `kAnyPnoVT` (70) has **no producer** and cannot be reached, now stated in `ElementTypes.md` §7.3 |
 | ~~`TStreamerLoop`~~ | ✅ the same case, three forms of it |

@@ -250,6 +250,23 @@ On an ordinary tree all three agree with
 `fFirstEntry` 0 and `fEntryNumber == fEntries`. They diverge for a branch added
 to a tree that already had entries, and for a friend tree.
 
+**A branch can be born part way through the tree without anyone asking.** Apart
+from a user calling `TBranch::SetFirstEntry`, ROOT sets it in exactly one place:
+`TBranchSTL::Fill` creates a sub-branch the first time it meets a new object
+class in the collection, and gives it the entry number it was born at
+(`root/tree/tree/src/TBranchSTL.cxx:281-285`). Such a branch holds fewer entries
+than the tree and its entry 0 is not the tree's.
+
+> **A reader that maps basket entry *i* to tree entry *i* gets every entry of
+> such a branch wrong**, and nothing about the basket says so — only
+> `fFirstEntry` does.
+>
+> Demonstrated by `ttree/branch-first-entry`: the tree has 4 entries, the
+> top-level `v` has `fEntries` 4 and `fFirstEntry` 0, and its sub-branch
+> `v.FHit` has `fEntries` **2** and `fFirstEntry` **2**, because the first two
+> entries held an empty vector. §10 step 1 rejects entries 0 and 1 for it, which
+> is the right answer.
+
 **And they diverge on the parent of a split branch**, which is the common case in
 a real file. When a `TBranchElement` has sub-branches and is not a collection
 counter — `fType` 3 or 4 — its fill path is a bare `++fEntries`
@@ -493,8 +510,12 @@ reports it as a named `NOT CHECKED`.
 | `ttree/leaf` | One branch with thirteen leaves, for `fLeaves` order |
 | `ttree/basket-embedded` | A branch whose only basket is still in memory: `fWriteBasket` 0, the arrays and `fTotBytes`/`fZipBytes` all zero, a non-null `fBaskets` slot, and no terminator in `fBasketEntry` |
 
-No fixture covers a split branch (`fBranches` non-empty), a non-empty
-`fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, or a
-`TBranch` at class version 9 or below. The foreign corpus of `PLAN.md` §9.8 has
-files for the last of those, and `tools/rootfile.py` refuses them explicitly
-rather than guessing at the legacy layout.
+| `ttree/branch-first-entry` | A sub-branch created part way through the tree: `fFirstEntry` 2 against the tree's 4 entries (§7), and `fSplitLevel` decrementing across a `TBranchSTL` |
+
+A split branch (`fBranches` non-empty) is covered by every `ttree/split-*` case,
+and a non-zero `fIOBits` by `ttree/basket-iofeatures`.
+
+No fixture covers a non-empty `fFileName`, which needs a second file
+(`PLAN.md` §9.4), or a `TBranch` at class version 9 or below. The foreign corpus
+of `PLAN.md` §9.8 has files for the latter, and `tools/rootfile.py` refuses them
+explicitly rather than guessing at the legacy layout.
