@@ -91,7 +91,13 @@ Two traps around `Long_t`:
 
 `Double32_t` and `Float16_t` are **not** primitive types with fixed widths. They are
 `Double_t`/`Float_t` in memory and a configurable number of bits on disk, controlled
-by an annotation in the member's comment. See `04-ttree/Double32.md`.
+by an annotation in the member's comment. See
+[Element types §5](02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16) for
+the annotation grammar and the three encodings,
+[Leaves §7](04-ttree/TLeaf.md#7-tleaff16-and-tleafd32) for the leaf classes that
+carry them in a tree, and
+[Reading entries §5.2](04-ttree/ReadingEntries.md#52-the-width-can-depend-on-a-title-the-branch-does-not-have)
+for the trap that the width is recorded only on the streamer element.
 
 ## 5. String encodings
 
@@ -295,7 +301,9 @@ passage of time.
 | **Streamer** | The routine that serializes one class. Either generated from a `TStreamerInfo` or hand-written in C++. |
 | **Streamer info** | A `TStreamerInfo`: the recorded member list of one version of one class. Files carry their own. |
 | **Class version** | The small integer in a class's `ClassDef`, identifying which member layout was written. Not a ROOT version. |
-| **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written. Listed in `99-appendix/Bootstrap.md`. |
+| **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because the description is made of it. Listed in [Bootstrap classes](99-appendix/Bootstrap.md). |
 | **Free segment** | A byte range in the file not occupied by any record. |
 
-See `99-appendix/Glossary.md` for the full list, including RNTuple terms.
+See [Glossary](99-appendix/Glossary.md) for the full list. RNTuple's own
+vocabulary is defined in ROOT's specification for that format and is not
+duplicated here; `PLAN.md` phase 6 is the audit of it.

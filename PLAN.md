@@ -815,9 +815,19 @@ Verified against the pinned submodule and real bytes; not yet reported.
 
 Phases 0–2 are done (§5). The next things, in order:
 
-1. **`99-appendix/Bootstrap.md` and `Glossary.md`.** Small, and they close the last
-   two inline-code forward references in `00-conventions.md` §9 — which by the
-   §6.5 convention are the working list of what is missing.
+1. ~~**`99-appendix/Bootstrap.md` and `Glossary.md`.**~~ ✅ Both written, and with
+   them **every inline-code forward reference to an unwritten document is gone** —
+   by the §6.5 convention that was the working list of what is missing, and it is
+   now empty. The third reference in `00-conventions.md` was to `Double32.md`,
+   which §2.5 had dropped; it is repointed at the three places the material
+   actually lives.
+
+   `Bootstrap.md` turned out to be worth more than its size. It is the list
+   `StreamerInfo.md` §1 promised and did not deliver — that section said "§11
+   lists it" and §11 is Checksums — and it is the only document organised as a
+   work order rather than by layer. `tools/test_bootstrap.py` checks its class
+   lists against what `tools/rootfile.py` hardcodes, in both directions, because
+   a list like that rots without anything failing.
 2. **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
    authoritative class/version list. It turns the phase-3 scope from an estimate
    into a checked-in file, and phase 3 cannot be planned properly without it.

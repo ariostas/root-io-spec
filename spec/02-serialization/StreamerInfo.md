@@ -20,7 +20,10 @@ file does not reliably describe them.
 
 Two things make this less bad than it sounds:
 
-- The set is small and has been stable for twenty years. §11 lists it.
+- The set is small: six classes, plus the eleven element subclasses that can
+  appear in a file.
+  [Bootstrap classes §3](../99-appendix/Bootstrap.md#3-group-a-needed-before-anything-can-be-read)
+  lists it, and §4–§8 below give the layouts.
 - Once parsed, it describes everything else, including classes the reader has
   never heard of.
 

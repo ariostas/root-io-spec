@@ -3,7 +3,14 @@
 Most ROOT classes need no text here. They are described by the streamer info in
 the file that contains them, and
 [Streamer-driven reading](../02-serialization/StreamerDriven.md) is enough to
-decode them — including every class a user defines.
+decode them — including, in the ordinary case, every class a user defines.
+
+> "Ordinary" is doing work in that sentence. A class that keeps the `Streamer`
+> `ClassDef` generates is streamer-info driven whatever else it does, and that is
+> almost all of them; a class that replaces it need not be, and nothing in the
+> file says which is which. See
+> [Bootstrap classes §6](../99-appendix/Bootstrap.md#6-the-list-cannot-be-closed)
+> for the case that showed this, and what a reader can do about it.
 
 This layer covers only the classes whose recorded streamer info does **not**
 describe their bytes, because their `Streamer` is hand-written.

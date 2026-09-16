@@ -18,9 +18,10 @@ This is intended to be the shared, testable artifact those projects can rely on.
 
 The container and object serialization layers are written and checked — enough to
 locate any object in a ROOT file and decode any user-defined class from the file's
-own streamer info. On top of them, `TArray` and the unsplit `TTree` reading path —
-the tree record, branches, leaves and baskets — are written and checked. See the repository's
-`PLAN.md` for the phasing, and its §9 for every known gap.
+own streamer info. On top of them, `TArray` and the whole `TTree` reading path — the tree record,
+branches, leaves, baskets, splitting and decoding one entry — are written and
+checked. See the repository's `PLAN.md` for the phasing, and its §9 for every
+known gap.
 
 | Layer | State |
 |---|---|
@@ -30,8 +31,8 @@ the tree record, branches, leaves and baskets — are written and checked. See t
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — `TArray` | written |
 | Standard classes — everything else | not yet written |
-| `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket` | written |
-| `TTree` — all of it | written |
+| `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
+| Appendix — bootstrap classes, glossary | written |
 | RNTuple | not yet imported |
 
 ## How to read it
@@ -53,6 +54,12 @@ Then the layers, in order. They build on each other:
    recorded streamer info.
 4. **`TTree`** — branches, leaves, baskets, splitting, and reading an entry.
 5. **RNTuple** — a tracked copy of the upstream specification, plus errata.
+
+[Bootstrap classes](99-appendix/Bootstrap.md) cuts across all of them, and is the
+one to read if the question is "what do I have to implement before anything
+works?" The layers are organised for describing the format; that appendix is
+organised as a work order. [Glossary](99-appendix/Glossary.md) defines every term
+used with a meaning it does not have in ordinary English.
 
 ## Two things to know before implementing
 
