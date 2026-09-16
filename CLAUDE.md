@@ -107,6 +107,18 @@ so it is never silent about it. `--all-entries` forces the exhaustive check; bot
 modes give 0 failures over the fixtures and `gen/foreign/`, which is what justifies
 the default.
 
+**And it skips every split branch, which it now says out loud.** `entry_spans` is
+leaf-driven and `TLeafElement` has no fixed element width, so the entry check
+cannot run on a `TBranchElement` at all. It used to return silently; it now prints
+`SKIPPED n branch-basket(s)` per reason. Over the two corpora that is 2284 —
+2266 for the width and 18 because a counter's own basket was unreadable — out of
+21913 the check reaches, so **19629 verified, 89.6%**. The sharp number is the
+other cut: 2282 of the 2284 sit on `TLeafElement` branches, which is *every*
+`TLeafElement` branch-basket in both corpora. Read a `0 failure(s)` line against
+that: it means zero failures among the things checked, and split branches are not
+yet among them. `PLAN-ttree.md` is the plan for closing it, and the count is the
+measure of progress.
+
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
 

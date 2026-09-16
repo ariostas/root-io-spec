@@ -115,6 +115,7 @@ class Checker:
         self.path = path
         self.all_entries = all_entries
         self.sampled = 0
+        self.skipped: dict[str, int] = {}
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
@@ -1597,8 +1598,14 @@ class Checker:
                 counts = self.leaf_counts(br, leaves, entry)
                 rootfile.entry_spans(payload, basket_rec, basket, br, e,
                                      counts, leaves)
-            except rootfile.UnsupportedClass:
-                return                  # TLeafElement and friends: not specified
+            except rootfile.UnsupportedClass as exc:
+                # Not a pass. The entry check simply cannot run here, and saying
+                # nothing would let the split branches of PLAN-ttree.md 1 sit
+                # inside a "0 failures" line unexamined. Counted, reported, and
+                # expected to fall as 04-ttree/ grows.
+                reason = str(exc)
+                self.skipped[reason] = self.skipped.get(reason, 0) + 1
+                return
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError) as exc:
                 self.bad("TLeaf 10.7", f"branch {br.name!r}: {exc}")
@@ -1714,11 +1721,14 @@ def main(argv: list[str]) -> int:
     failures = []
     no_codec: set[str] = set()
     sampled = 0
+    skipped: dict[str, int] = {}
     for path in paths:
         checker = Checker(path, all_entries=all_entries)
         failures += checker.run()
         no_codec |= checker.no_codec
         sampled += checker.sampled
+        for reason, n in checker.skipped.items():
+            skipped[reason] = skipped.get(reason, 0) + n
 
     suppressed: dict[tuple[str, str], int] = {}
     kept = []
@@ -1742,6 +1752,9 @@ def main(argv: list[str]) -> int:
     # streamer spec/ has not written up.
     for reason in sorted(no_codec):
         print(f"NOT CHECKED {reason}", file=sys.stderr)
+    for reason, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"SKIPPED {n:5} branch-basket(s): the entry check of TLeaf 10.7 "
+              f"could not run -- {reason}", file=sys.stderr)
     if sampled:
         print(f"SAMPLED {sampled} basket(s) held more than "
               f"{Checker.ENTRY_SAMPLE_ABOVE} entries, so TLeaf 10.7 checked the "
