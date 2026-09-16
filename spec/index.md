@@ -33,7 +33,7 @@ known gap.
 | Standard classes — everything else | not yet written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Appendix — bootstrap classes, glossary | written |
-| RNTuple | not yet imported |
+| RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
 
 ## How to read it
 
@@ -53,7 +53,11 @@ Then the layers, in order. They build on each other:
    determine, because their streamers are hand-written and diverge from their
    recorded streamer info.
 4. **`TTree`** — branches, leaves, baskets, splitting, and reading an entry.
-5. **RNTuple** — a tracked copy of the upstream specification, plus errata.
+5. **[RNTuple](05-rntuple/index.md)** — a **verbatim tracked copy** of ROOT's own
+   RNTuple specification, which this project does not fork, plus the errata and
+   implementation notes its audit has produced so far. Read the copy for the
+   format and [ERRATA](05-rntuple/ERRATA.md) for where it and ROOT's code
+   disagree; three entries so far, all in the anchor.
 
 [Bootstrap classes](99-appendix/Bootstrap.md) cuts across all of them, and is the
 one to read if the question is "what do I have to implement before anything

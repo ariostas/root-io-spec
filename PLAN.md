@@ -688,9 +688,36 @@ independently. What remains of the phase is coverage rather than specification �
 `fType` −1, `TBranchObject`, `TBranchClones`, `TChain`, and the five gaps in
 `PLAN-ttree.md` §10.
 
-**☐ Phase 6 — RNTuple audit**
-Import, sync tooling, and the field-by-field spec-vs-implementation audit;
-upstream PRs for anything found.
+**◐ Phase 6 — RNTuple audit**
+✅ Import and sync tooling. `spec/05-rntuple/` holds a **verbatim tracked copy** of
+`root/tree/ntuple/doc/BinaryFormatSpecification.md` (1271 lines, 73 872 bytes)
+plus `UPSTREAM.md`, `ERRATA.md` and `NOTES.md`; `tools/sync_rntuple.py --check`
+fails on drift and also asserts that the commit `UPSTREAM.md` records is the one
+`root/` is pinned to, so a stale copy and a stale provenance note cannot agree
+with each other. **The CI step for this existed but was guarded by
+`hashFiles(...) != ''` and had therefore never run**; the guard is gone and the
+step is real.
+
+◐ The audit. **Three errata so far, all in the anchor and the ROOT file
+embedding**, each verified against the pinned submodule *and* against the bytes of
+`RNTuple.root` (ROOT 6.35/01, from §9.9's corpus):
+
+| # | What |
+|---|---|
+| 1 | The title says format version **1.0.2.1**; the writer stamps **1.0.2.0** (`RNTuple.hxx:79-82`) |
+| 2 | The anchor schema starts at `Version Epoch` and omits the **byte count and class version word** that precede it on disk — they are the first two members of `RTFNTuple` (`RMiniFile.cxx:548-549`). A reader following the schema is six bytes out from its first field |
+| 3 | The checksum is "the XXH3 hash of all the (serialized) fields". It is not: the byte count and class version are excluded (`RMiniFile.cxx:580-583`), and the checksum sits **outside the byte count**, so the object is eight bytes longer than it claims |
+
+Plus three implementation notes where the document is right but a reader arriving
+from the TFile side goes wrong — chiefly that an `RBlob` key's `fObjLen` is
+decorative, which is the same observation that produced the `Compression.md`
+erratum in §9.9.
+
+☐ **Everything from *Basic Types* onward is unaudited**: frames, locators and
+envelope links, the header, footer and page list envelopes, the C++ type mapping,
+and the limits. `spec/05-rntuple/NOTES.md` §4 says so in the document rather than
+leaving the silence to be read as approval. Upstream PRs for the three open
+errata are the next step, and are the natural opening for §7 item 1.
 
 **◐ Phase 7 — legacy versions and reference reader**
 `gen/legacy/`, historical fixtures, and (optionally) the pure-Python reference
@@ -874,6 +901,9 @@ Phases 0–2 are done (§5). The next things, in order:
    re-home them: it cross-references. What remains is `TCollection` and an
    `03-classes/index.md` that says where each divergent class is specified.
 4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
+5. **Report the three RNTuple errata upstream** (§5 phase 6). They are against a
+   document the ROOT team owns and maintains, which makes them a friendlier first
+   contact than §7.1's bug candidates — and they can carry those.
 
 Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on.
 

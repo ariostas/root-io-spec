@@ -35,7 +35,6 @@ jobs:
           python-version: "3.12"
       - name: RNTuple specification has not drifted from upstream
         run: tools/sync_rntuple.py --check
-        if: hashFiles('tools/sync_rntuple.py') != ''
       - name: Citation commit matches the pinned submodule
         run: tools/check_pin.py
       - name: Class version tables match ClassDef in the submodule

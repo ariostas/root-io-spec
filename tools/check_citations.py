@@ -22,6 +22,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SUBMODULE = REPO / "root"
 
+# Documents this project does not write and must not edit. `spec/05-rntuple/`
+# holds a verbatim tracked copy of ROOT's own RNTuple specification; a citation
+# inside it is upstream's text, so a stale one here would fail a check against a
+# file nothing in this repository is allowed to change -- see
+# spec/05-rntuple/UPSTREAM.md. tools/sync_rntuple.py is what keeps that file
+# honest instead.
+NOT_OURS = {REPO / "spec/05-rntuple/BinaryFormatSpecification.md"}
+
 # Citations appear inside inline code spans; see tools/rootcite.py for the
 # rendering side. Both must recognise the same shape.
 CITATION = re.compile(
@@ -65,7 +73,8 @@ def main(argv: list[str]) -> int:
         print("root/ submodule is not checked out; run "
               "`git submodule update --init root`", file=sys.stderr)
         return 1
-    paths = [Path(a).resolve() for a in argv] or sorted((REPO / "spec").rglob("*.md"))
+    paths = [Path(a).resolve() for a in argv] or [
+        p for p in sorted((REPO / "spec").rglob("*.md")) if p not in NOT_OURS]
     failures = check(paths)
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)

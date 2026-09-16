@@ -23,6 +23,7 @@ tools/check_invariants.py      # the Invariants sections of spec/01-container/
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists (needs submodule)
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
+tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream (needs submodule)
 PYTHONPATH=. zensical build --clean --strict          # site; fails on broken links
 PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
 ```
@@ -123,6 +124,19 @@ has no streamer info in it (49), a branch or class whose `Streamer` is
 hand-written (18), and a basket whose codec is not available here (7). There is
 no longer a category that is merely unimplemented. `PLAN-ttree.md` §10 tracks
 what that leaves.
+
+**`spec/05-rntuple/` is not ours to edit.** `BinaryFormatSpecification.md` there
+is a byte-for-byte copy of ROOT's own RNTuple specification, and
+`tools/sync_rntuple.py --check` fails if it drifts from the submodule — in CI, on
+every push. A correction goes in `ERRATA.md` beside it, never in the copy, or the
+copy stops being evidence of what upstream says. `check_citations.py` skips that
+one file for the same reason: a stale citation inside it could not be fixed
+without editing it.
+
+```sh
+tools/sync_rntuple.py          # re-copy after a submodule bump, then audit the diff
+tools/sync_rntuple.py --check  # what CI runs
+```
 
 `check_versions.py` is the companion to `check_citations.py`. The latter proves a
 cited line exists; it cannot prove the line still says what the citing sentence

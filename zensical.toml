@@ -47,6 +47,13 @@ nav = [
       { "Reading entries" = "04-ttree/ReadingEntries.md" },
       { "Auxiliary classes" = "04-ttree/Auxiliary.md" },
   ] },
+  { "RNTuple" = [
+      { "Overview" = "05-rntuple/index.md" },
+      { "Binary format specification" = "05-rntuple/BinaryFormatSpecification.md" },
+      { "Provenance and sync" = "05-rntuple/UPSTREAM.md" },
+      { "Errata" = "05-rntuple/ERRATA.md" },
+      { "Implementation notes" = "05-rntuple/NOTES.md" },
+  ] },
   { "Appendix" = [
       { "Bootstrap classes" = "99-appendix/Bootstrap.md" },
       { "Glossary" = "99-appendix/Glossary.md" },
