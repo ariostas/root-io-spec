@@ -129,6 +129,13 @@ class SectionBoundaries(unittest.TestCase):
         self.assertEqual(claims("# x\n\n## 1. Layout\n\ntext\n"), [])
 
 
+#: The docs workflow checks out without submodules and still runs every test
+#: here, so anything that reads the pinned ROOT source has to say it needs it
+#: rather than fail. unittest reports the skip, so it is not silent.
+HAVE_SUBMODULE = (check_versions.SUBMODULE / "io" / "io" / "src").is_dir()
+
+
+@unittest.skipUnless(HAVE_SUBMODULE, "the pinned submodule is not checked out")
 class SubmoduleExtraction(unittest.TestCase):
     """The ClassDef side, against the real submodule."""
 
