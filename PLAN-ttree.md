@@ -2,7 +2,9 @@
 
 `PLAN.md` §7 item 5. Written 2026-09-16 against the pinned submodule (`v6-40-04`)
 and measured against both corpora — `gen/foreign/` (§9.8, 154 files) and
-`gen/cern/` (§9.9, 24 files).
+`gen/cern/` (§9.9, 24 files), 178 files in total. Uncurated downloads left in
+`build/cern/` are excluded: the 48 `TGeoManager` demos `gen/cern/README.md`
+deliberately does not list hold one tree and one plain `TBranch` between them.
 
 Phase 5 closed the unsplit reading path: `TTree.md` → `TBranch.md` → `TBasket.md`
 → `TLeaf.md`, checked end to end by `rootfile.entry_spans`. What is left is the
@@ -15,7 +17,7 @@ Everything in §3 is a measurement over the 178 corpus files, not an estimate.
 
 ## 1. Why this is the next thing
 
-**6736 of 11158 branches in the two corpora are not `TBranch`.** They are spread
+**6736 of 11157 branches in the two corpora are not `TBranch`.** They are spread
 over 56 files. The specification covers the other 4422.
 
 Every one of those 6736 carries a `TLeafElement`, which `TLeaf.md` §8 declines to
@@ -71,7 +73,7 @@ Measured by walking every record whose class derives from `TTree`, then every
 
 | Class | Count | |
 |---|---|---|
-| `TBranch` | 4422 | specified |
+| `TBranch` | 4421 | specified |
 | `TBranchElement` | 6734 | class version 10 (`root/tree/tree/inc/TBranchElement.h:255`) |
 | `TBranchObject` | 2 | class version 1, carrying the only two `TLeafObject`s |
 | `TBranchClones` | **0** | class version 2 |
@@ -212,7 +214,7 @@ is what `Splitting.md` has to state.
 
 ### 3.7 `fSplitLevel`
 
-Values seen: 0 (5672), 1 (192), 2 (30), 3 (213), 4 (18), 97 (3), 98 (322), 99 (286).
+Values seen: 0 (5670), 1 (192), 2 (30), 3 (213), 4 (18), 97 (3), 98 (322), 99 (286).
 **Maximum 99 across both corpora.**
 
 The field packs two things: `splitlevel % 100` is the depth countdown, and the
