@@ -177,6 +177,7 @@ The known-hard part. Must cover:
 - `std::map` streamed as a pair-of-vectors vs. a vector-of-pairs, per version.
 - `std::string` as `kSTLstring` vs. `TString` vs. `char*` (`kCharStar`).
 - `std::bitset`, `std::array`, nested collections, `vector<bool>`.
+  (`std::bitset` is specified and has a fixture; the other three do not.)
 - `TClonesArray`'s bespoke split-one-level format, which predates all of this.
 
 ### 2.4 `spec/03-classes/` — per-class layouts
@@ -664,15 +665,26 @@ procedures of which two have zero coverage in 178 files — and turns phase 5 in
 four documents (not five) plus a fifteen-case fixture matrix.
 
 **All four are written**: ✅ `TBranchElement.md`, ✅ `Splitting.md`,
-✅ `ReadingEntries.md` and ✅ `Auxiliary.md`, with fourteen new fixtures and
-twenty-six new invariants, all clean over both corpora. `Double32.md` was
+✅ `ReadingEntries.md` and ✅ `Auxiliary.md`, with fifteen new fixtures and
+twenty-seven new invariants, all clean over both corpora. `Double32.md` was
 dropped as already-written and distributed (`PLAN-ttree.md` §4).
+
+✅ **And the split-branch decoder**, `rootfile.TreeReader`, which closes
+`ReadingEntries.md` invariant 5 — the one invariant in `04-ttree/` that could be
+stated but not checked. The entry checks now reach **25873 of 25984
+branch-baskets over both corpora, 99.6%, at 0 failures**, against 89.6% before
+it; the 111 they cannot reach are named and counted individually.
+
+Writing it found five things, listed in `PLAN-ttree.md` §10 — among them that the
+§5.3 header is shared across a whole column rather than written per value, and
+that `StreamerDriven.md` §7's claim that a user-defined class's streamer info is
+authoritative is false.
 
 Phase 5's deliverable is met: the reading path is specified end to end for both
 the unsplit and the split case, and `tools/rootfile.py` implements it
 independently. What remains of the phase is coverage rather than specification —
-`fType` −1, `TBranchObject`, `TBranchClones`, `TChain`, and the entry-level
-decoder that would close out `ReadingEntries.md` invariant 5.
+`fType` −1, `TBranchObject`, `TBranchClones`, `TChain`, and the five gaps in
+`PLAN-ttree.md` §10.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
@@ -897,7 +909,7 @@ No external blocker; these are simply cases nobody has added yet.
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
-| `std::bitset`, `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` |
+| `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` (`std::bitset` is covered from the tree side by `ttree/split-bitset`) |
 | The `kHasUUID` form of `TRef`, and a `TExec` index in a `TRef`'s `fBits` | `02-serialization/References.md` |
 
 ### 9.6 Structural, not a missing fixture

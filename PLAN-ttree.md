@@ -254,7 +254,8 @@ be weaker than the rest of the phase.
 
 ## 5. The fixture matrix
 
-Ten cases for the split half, four for `Auxiliary.md`. Each exercises something no
+Ten cases for the split half, four for `Auxiliary.md`, and one the decoder
+added afterwards. Each exercises something no
 existing fixture does; the "covers" column names the rows of §2 and the facts of §3.
 
 | Case under `gen/cases/ttree/` | Covers |
@@ -274,6 +275,7 @@ existing fixture does; the "covers" column names the rows of §2 and the facts o
 | ✅ `tree-friend` | `TFriendElement` via `AddFriend` |
 | ✅ `tree-entrylist` | `TEntryList` and `TEventList` |
 | ✅ `tree-branchref` | `TBranchRef`/`TRefTable` via `BranchRef` |
+| ✅ `split-bitset` | Added after the matrix, by the decoder: a `std::bitset` member, which is an ordinary object-wise collection of `bool` here and *no bytes at all* before ROOT 6.08/06. 12 assertions |
 
 All ten split cases need a `classes.h` and an ACLiC dictionary; `gen/common/README.md`
 covers that, and on macOS the `SDKROOT` override in `CLAUDE.md` applies. Two
@@ -295,12 +297,16 @@ In rough dependency order:
    `fClassVersion`, `fMaximum`, and `fBranchCount` resolved as a back-reference.
    The decoder does not populate `Value.reference` for that slot today (§3.4); that
    is the first fix.
-2. **`rootfile.py`: split entry reading.** `entry_spans` handles the leaf-driven
-   path; the nine procedures of §2 need the equivalent, and four of the eight
-   `fType` values have no leaf to drive it (§3.3).
-3. **`coverage_probe.py`: an entry-reading mode.** Today it measures record
-   decoding, which is why a split file scores 99.9% while being unreadable (§1).
-   Until this exists the project has no honest number for the split path.
+2. ✅ **`rootfile.py`: split entry reading.** `rootfile.TreeReader` decodes one
+   entry of one `TBranchElement` and reports where the decode stopped, which is
+   `ReadingEntries.md` invariant 5. `entry_spans` still handles the leaf-driven
+   path for a plain `TBranch`; the two together reach 25873 of 25984
+   branch-baskets over both corpora, 99.6%, at 0 failures.
+3. **`coverage_probe.py`: an entry-reading mode.** It still measures record
+   decoding only, which is why a split file scores 99.9% while being unreadable
+   (§1). `check_invariants.py`'s `ENTRIES` line now gives the honest number for
+   the split path, so this is no longer blocking; it would put the same figure
+   per file rather than per run.
 4. **`check_invariants.py`**: the new invariants, each corruption-tested against a
    fixture per `CLAUDE.md`. The measurements of §3 are the source — the leaf
    bipartition (§3.3), `fClonesName` iff `fType` ∈ {3, 4}, `fClassName` always
@@ -319,7 +325,7 @@ Item 3 is the one that changes what we can claim. It should land with
 2. `Splitting.md`, with `split-nested`, `split-counter`, `split-ptr-collection`.
    It depends on `TBranchElement.md` for the vocabulary, and it is where the
    zero-coverage procedures get reached.
-3. Tooling 2 and 3, then `split-double32`.
+3. ✅ Tooling 2, then `split-double32`. Tooling 3 is still open.
 4. `ReadingEntries.md`. Last of the three, deliberately: written earlier it would
    duplicate `TBranch.md` §10 and `TLeaf.md` §5, and the §9.8 triage already showed
    what duplication costs.
@@ -363,3 +369,52 @@ Item 3 is the one that changes what we can claim. It should land with
   corruption, and both corpora still at 0 failures.
 - `PLAN.md` §2.5 updated: `Double32.md` dropped with its cross-reference recorded,
   and §5 phase 5 marked complete.
+
+
+## 10. What the decoder found, and what it left
+
+Written after tooling 2 landed, because a reader is only a completeness check if
+what it could not read is recorded as plainly as what it could.
+
+**Found, and now specified:**
+
+- The header of `ReadingEntries.md` §5.3 is shared across a whole *column*, not
+  written per value — for `kStreamer`, `kSTL` and `kStreamLoop` alike, and a
+  member-wise column shares its value-class version word too. Nothing anywhere
+  said so; it is errata rows 4 and 5 there.
+- A column of `std::string` is the shared frame and then *n* bare counted
+  strings, with no count of their own.
+- A `std::bitset` member is an ordinary object-wise collection of `bool` —
+  except before ROOT 6.08/06, where the branch was written with no bytes in it
+  at all. `ttree/split-bitset` pins the modern form and fixes the bit order,
+  which its third entry is needed to settle; `uproot-mc10events.root` (ROOT
+  6.08/04) is the empty form.
+- `StreamerDriven.md` §7 claimed that for a user-defined class the streamer info
+  is authoritative. That is false and is now corrected there: KM3NeT's Jpp DAQ
+  classes have hand-written `Streamer`s and their recorded infos are fiction.
+  `gen/foreign/IGNORE.toml` gained a `custom_streamer` key for exactly this — it
+  supplies the out-of-band list §7 says a reader needs, and suppresses no
+  invariant.
+
+**Left, in order of how much of the corpora they account for:**
+
+1. **`pair<K,V>` whose members are not fundamental types** — 34 branch-baskets,
+   the largest thing that can be fixed. `synthesise_pair` builds the missing info from the
+   type name (`Collections.md` §8) and handles only scalars today. Extending it
+   to a `std::string`, a `TString` or a class member needs the encoding of each
+   inside a member-wise pair column verified against bytes; the corpus has the
+   cases to do it with.
+2. **A collection whose value class has no streamer info in the file** — 52,
+   the largest group and not a gap at all.
+   `Collections.md` §9 already says this is unreadable by anyone, ROOT included.
+   Nothing to fix; it stays a skip.
+3. **`fType` −1**, a branch whose class writes its own `Streamer` — 9. Still no
+   fixture; still needs a class with a hand-written `Streamer`.
+4. **A basket whose record could not be read** — 7, all of them a missing
+   codec or a counter branch whose own basket was unavailable.
+5. **`kStreamLoop` contents.** The column's *extent* is checked from its byte
+   count, but its values need the per-element counts from a sibling branch's
+   column. 4 branch-baskets, all in one file.
+6. **`TBranchSTL` entries.** `split-ptr-collection` has one and it holds data,
+   but it is not a `TBranchElement` and has no leaf, so neither entry check
+   reaches it. `Splitting.md` §5 describes the branch; its entries are undecoded.

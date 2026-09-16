@@ -111,11 +111,20 @@ def info_list_failures(infos) -> list[tuple[str, str]]:
 
 
 class Checker:
-    def __init__(self, path: Path, all_entries: bool = False):
+    def __init__(self, path: Path, all_entries: bool = False,
+                 custom: "set[str] | None" = None):
         self.path = path
         self.all_entries = all_entries
+        # Classes this file's writer gave a hand-written Streamer, from
+        # gen/foreign/IGNORE.toml. Nothing in a file marks one
+        # (StreamerDriven.md 7), so the list has to come from outside it.
+        self.custom = set(custom or ())
         self.sampled = 0
-        self.skipped: dict[str, int] = {}
+        self.skipped: dict[tuple[str, str], int] = {}
+        #: branch-baskets on which an entry check ran to completion. The
+        #: denominator for the SKIPPED counts, so that "0 failures" can be read
+        #: against how much was actually reached.
+        self.verified = 0
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
@@ -163,6 +172,15 @@ class Checker:
         if out is None or out is self.buf or len(self._data) < 8:
             self._data[rec.offset] = out
         return out
+
+    def skip(self, check: str, reason: str) -> None:
+        """Record that `check` could not run here, and why.
+
+        Not a pass: a check that cannot run must not sit inside a "0 failures"
+        line unexamined. The counts are printed per reason at the end.
+        """
+        key = (check, reason)
+        self.skipped[key] = self.skipped.get(key, 0) + 1
 
     def basket(self, rec, payload):
         """`rec` parsed as a basket, memoised. TBasket.md 8."""
@@ -1276,12 +1294,69 @@ class Checker:
                         # leaf's fLeafCount. TLeaf.md 3.1.
                         leaves.append(lf.counter)
             by_slot = {b.slot: b for b in rootfile.walk_branches(top)}
+            _, _, infos = self.streamer_infos()
+            reader = rootfile.TreeReader(self.buf, tree, infos or [],
+                                         self.fetch_basket, custom=self.custom)
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_branch_element(branch, by_slot)
                 self.check_splitting(branch, by_slot)
                 self.check_reading(branch, by_slot)
                 self.check_leaves(data, branch, leaves)
+                self.check_entry_decode(reader, branch)
+
+    def fetch_basket(self, seek: int):
+        """(record, decompressed buffer) for the basket at `seek`, for a
+        TreeReader. None when the record is missing or its codec is not here."""
+        rec = self.basket_record(seek)
+        if rec is None or rec.class_name != "TBasket":
+            return None
+        payload = self.data(rec)
+        return None if payload is None else (rec, payload)
+
+    def check_entry_decode(self, reader, br) -> None:
+        """ReadingEntries.md invariant 5: the bytes a branch's entry occupies
+        equal the bytes its decoding consumes.
+
+        The general statement of the other four, and the one a third-party reader
+        should test itself against. It needs a decoder rather than a rule, which
+        is what rootfile.TreeReader is.
+        """
+        if br.element_type is None or br.file_name or not reader.holds_data(br):
+            return
+        for i in range(min(br.write_basket, len(br.basket_seek))):
+            got = self.fetch_basket(br.basket_seek[i])
+            if got is None:
+                self.skip("ReadingEntries 8.5", "basket unavailable")
+                continue
+            rec, payload = got
+            try:
+                basket = self.basket(rec, payload)
+            except (rootfile.FormatError, struct.error, IndexError, ValueError):
+                continue
+            if basket.generated:
+                continue                # TBasket 5.2.1 offsets, not stored
+            for e in self.entry_sample(basket.nev_buf):
+                entry = br.basket_entry[i] + e
+                try:
+                    start, end, consumed = reader.entry_end(br, entry)
+                except rootfile.UnsupportedClass as exc:
+                    # Not a pass: the decode could not run. Counted and named,
+                    # never silent -- see the SKIPPED report.
+                    self.skip("ReadingEntries 8.5", str(exc))
+                    return
+                except (rootfile.FormatError, struct.error, IndexError,
+                        ValueError, KeyError) as exc:
+                    self.bad("ReadingEntries 8.5",
+                             f"branch {br.name!r} entry {entry}: {exc}")
+                    return
+                if consumed != end:
+                    self.bad("ReadingEntries 8.5",
+                             f"branch {br.name!r} entry {entry}: the basket "
+                             f"gives it {end - start} bytes, decoding consumed "
+                             f"{consumed - start}")
+                    return
+            self.verified += 1
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
     ELEMENT_TYPES = {-1, 0, 1, 2, 3, 4, 31, 41}
@@ -1988,13 +2063,18 @@ class Checker:
                 # nothing would let the split branches of PLAN-ttree.md 1 sit
                 # inside a "0 failures" line unexamined. Counted, reported, and
                 # expected to fall as 04-ttree/ grows.
-                reason = str(exc)
-                self.skipped[reason] = self.skipped.get(reason, 0) + 1
+                if br.element_type is not None:
+                    # A TBranchElement: entry_spans is leaf-driven and a
+                    # TLeafElement has no fixed width, but check_entry_decode
+                    # reads the entry properly and owns the accounting for it.
+                    return
+                self.skip("TLeaf 10.7", str(exc))
                 return
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError) as exc:
                 self.bad("TLeaf 10.7", f"branch {br.name!r}: {exc}")
                 return
+        self.verified += 1
 
     # A basket with at most this many entries is checked entry by entry. Above
     # it, only the ends and a stride through the middle are, because the check
@@ -2083,23 +2163,29 @@ class Checker:
         return self.failures
 
 
-def load_ignores(path: Path) -> dict[str, list[str]]:
-    """Per-file invariant skips, from gen/foreign/IGNORE.toml.
+def load_ignores(path: Path) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Per-file invariant skips and custom-streamer lists, from IGNORE.toml.
 
-    Only for files this project did not write and has diagnosed as the file's
-    fault rather than the specification's. See the header of that file.
+    `skip` is for files this project did not write and has diagnosed as the
+    file's fault rather than the specification's. `custom_streamer` is the other
+    thing a reader cannot get from a file: which of its classes have a
+    hand-written Streamer, so that their streamer info is not to be trusted
+    (StreamerDriven.md 7). See the header of that file.
     """
     import tomllib
     with open(path, "rb") as fh:
         data = tomllib.load(fh)
-    return {name: entry.get("skip", []) for name, entry in data.items()}
+    return ({name: entry.get("skip", []) for name, entry in data.items()},
+            {name: entry.get("custom_streamer", [])
+             for name, entry in data.items()})
 
 
 def main(argv: list[str]) -> int:
     ignores: dict[str, list[str]] = {}
+    customs: dict[str, list[str]] = {}
     if "--ignore" in argv:
         at = argv.index("--ignore")
-        ignores = load_ignores(Path(argv[at + 1]))
+        ignores, customs = load_ignores(Path(argv[at + 1]))
         argv = argv[:at] + argv[at + 2:]
     all_entries = "--all-entries" in argv
     argv = [a for a in argv if a != "--all-entries"]
@@ -2107,12 +2193,15 @@ def main(argv: list[str]) -> int:
     failures = []
     no_codec: set[str] = set()
     sampled = 0
+    verified = 0
     skipped: dict[str, int] = {}
     for path in paths:
-        checker = Checker(path, all_entries=all_entries)
+        checker = Checker(path, all_entries=all_entries,
+                          custom=set(customs.get(path.name, [])))
         failures += checker.run()
         no_codec |= checker.no_codec
         sampled += checker.sampled
+        verified += checker.verified
         for reason, n in checker.skipped.items():
             skipped[reason] = skipped.get(reason, 0) + n
 
@@ -2139,8 +2228,14 @@ def main(argv: list[str]) -> int:
     for reason in sorted(no_codec):
         print(f"NOT CHECKED {reason}", file=sys.stderr)
     for reason, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])):
-        print(f"SKIPPED {n:5} branch-basket(s): the entry check of TLeaf 10.7 "
-              f"could not run -- {reason}", file=sys.stderr)
+        print(f"SKIPPED {n:5} branch-basket(s): {reason[0]} could not run -- "
+              f"{reason[1]}", file=sys.stderr)
+    total = verified + sum(skipped.values())
+    if total:
+        print(f"ENTRIES  {verified} of {total} branch-basket(s) had their "
+              f"entries decoded and checked "
+              f"({100 * verified / total:.1f}%); the rest are the SKIPPED lines "
+              f"above", file=sys.stderr)
     if sampled:
         print(f"SAMPLED {sampled} basket(s) held more than "
               f"{Checker.ENTRY_SAMPLE_ABOVE} entries, so TLeaf 10.7 checked the "

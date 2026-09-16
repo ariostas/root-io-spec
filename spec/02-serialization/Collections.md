@@ -492,10 +492,14 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/collections` | Object-wise and member-wise side by side; `vector<int>`, `vector<bool>`, `set<int>`, `vector<Hit>`, `vector<vector<int>>`, `vector<string>`, `map<int,int>`, `std::string`, and the missing `pair<int,int>` info |
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 
-No fixture covers `std::bitset`, `std::array`, a collection of pointers, a fixed
-array of collections, a member-wise collection whose value class has a `ClassDef`
-(and so a plain version word rather than a checksum), `TClonesArray` at class
-version 3, or the pre-version-8 layouts.
+`std::bitset` is covered from the other side: `ttree/split-bitset` has one as a
+member of a split branch, which is an ordinary object-wise collection and
+confirms §11's byte-per-bit layout and its bit order against real bytes.
+
+No fixture covers `std::array`, a collection of pointers, a fixed array of
+collections, a member-wise collection whose value class has a `ClassDef` (and so
+a plain version word rather than a checksum), `TClonesArray` at class version 3,
+or the pre-version-8 layouts.
 
 The `ClassDef` case is no longer blocked: `serialization/clones-array` shows how a
 case compiles a dictionary (`gen/common/README.md`), and the same mechanism would

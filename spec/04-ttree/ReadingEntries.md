@@ -48,7 +48,7 @@ exists only to be descended through; ROOT names exactly that set in
 
 ## 3. What an entry contains
 
-Five shapes, and the first four are short enough to give in full.
+Six shapes, and the first four are short enough to give in full.
 
 ### 3.1 A count branch: one `Int_t` and nothing else
 
@@ -139,6 +139,36 @@ with a four-byte byte count with bit 30 set and a two-byte version, but the
 specification cannot say more: the whole point of `fType` −1 is that the class
 does not follow the streamer-info layout. No fixture covers it; see §8.
 
+### 3.6 A `std::bitset`: an ordinary collection, or nothing at all
+
+A `std::bitset<N>` member reaches a split branch as a `TStreamerSTL` with
+`fSTLtype` 8 and `fCtype` 0, and its entry is the object-wise collection
+[Collections §11](../02-serialization/Collections.md#11-other-containers)
+describes: a byte count and version word, an `Int_t` count of **N**, then N
+single-byte values, **bit 0 first**. The bits are not packed and the count is
+written although the width is already in the type name. From
+`ttree/split-bitset`, whose member is a `bitset<16>` holding `0xA5A5`:
+
+```
+40 00 00 16  00 0a  00 00 00 10  01 00 01 00 00 01 00 01 01 00 01 00 00 01 00 01
+byte count   ver    count 16     sixteen bools, bit 0 first
+```
+
+Sixteen bits cost twenty-six bytes.
+
+**But before ROOT 6.08/06 the entry is empty.** The collection proxy did not
+work in this path, and ROOT created the branch and wrote no bytes into it at
+all — every entry zero-length, and the basket's `fLast` equal to its `fKeylen`,
+so there is not even a byte of payload to point at. The fix is ROOT-8574, root
+commit `2caaf15c2f0` of 2017-02-24, released in 6.08/06 and backported to
+5.34/38. `uproot-mc10events.root` in `gen/foreign/` was written by 6.08/04 —
+one patch release short of it — and has eleven such branches, in both the
+scalar and the `fType` 31 column form, every one of them empty.
+
+A reader has to accept both, and **nothing on the branch says which it is
+looking at**: `fStreamerType`, `fEntryOffsetLen` and the leaf are identical in
+the two files. Only the entry's own length distinguishes them.
+
 ## 4. Where the count comes from
 
 Three different places, and they are not interchangeable.
@@ -199,10 +229,27 @@ For most element types, a column of *n* values is the scalar encoding repeated
 So for those two an entry holding *n* values has **one** header, not *n*. A
 reader that frames each element separately will desynchronise on the second.
 
+`kStreamLoop` (501) — an `int n; T *p; //[n]` member, where the count is another
+member of the same class — is framed the same way: one byte count for the whole
+column. Its *contents* are another matter, because in a split tree the counting
+member is a column on a sibling branch and the lengths differ per element, but
+the byte count fixes the column's extent without them. Byte-verified on
+`uproot-issue433-splitlevel4.root`.
+
+A column of `std::string` (`fSTLtype` 365) is the shared frame followed by *n*
+bare counted strings, with no count of their own — the collection *is* the
+string. Byte-verified on `uproot-issue-214.root`, where a 62-byte entry is the
+six-byte header and 56 empty strings.
+
 The version word of an STL member also carries a flag: bit 14,
 `kStreamedMemberWise` (`root/io/io/inc/TBufferFile.h:70`), which selects the
 member-wise body of [Collections](../02-serialization/Collections.md) and adds a
-value-class version word after it.
+value-class version word after it. In a **column** that version word is also
+read once, outside the loop
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274`), so a column of *n*
+member-wise collections is: the shared frame, one value-class version, then *n*
+times an `Int_t` count and that collection's member-wise body. Three things
+shared across the column, not one.
 
 ## 6. `fMaximum` is a read-time bound, not a statistic
 
@@ -239,6 +286,7 @@ Normative, for one entry of one branch.
    - `fType` 0 with `fID` −1: every element of `fClassName`'s streamer info, in
      order, with no class-level framing (§3.3).
    - `fType` < 0: the class's own streamer (§3.5).
+   - a `std::bitset` member whose byte range is empty: nothing (§3.6).
    - otherwise: the single element `fID` selects.
 6. The bytes consumed must equal the byte range from step 3 exactly. That
    equality is the check worth implementing; it is
@@ -255,12 +303,31 @@ Normative, for one entry of one branch.
 4. A count read from an `fType` 3 or 4 entry is between 0 and `fMaximum`
    inclusive.
 5. The bytes a branch's entry occupies equal the bytes its decoding consumes.
+6. A `std::bitset` member's entry is either empty or a complete object-wise
+   collection; there is no partial form.
 
-Invariants 1, 3 and 4 are checked over every fixture and both corpora.
-Invariant 2 is [Splitting invariant 2](Splitting.md#8-invariants) seen from the
-entry side. Invariant 5 is the general statement of the other four and is what a
-third-party reader should test itself against; it cannot be checked without a
-full decoder, which is why `tools/rootfile.py` exists.
+All six are checked over every fixture and both corpora. Invariant 2 is
+[Splitting invariant 2](Splitting.md#8-invariants) seen from the entry side.
+
+Invariant 5 is the general statement of the others and is the one a third-party
+reader should test itself against. It cannot be checked by a rule — only by
+decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
+reason that reader exists. Over the fixtures and both corpora it holds on 21 802
+branch-baskets. The 111 it cannot reach are named individually in the checker's
+`SKIPPED` report, with a count and a reason each. The two largest groups are a
+collection whose value class has no streamer info in the file (52, which
+[Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
+says nobody can read, ROOT included) and a `pair<K,V>` whose members are not
+fundamental types (34), which is a gap in
+[Collections §8](../02-serialization/Collections.md#8-stdmap) rather than in this
+document.
+
+> Two of the reasons are worth naming here, because neither is a defect and
+> neither can be resolved from inside the file. A class whose `Streamer` is
+> hand-written has a streamer info that does not describe its bytes, and nothing
+> marks it ([Streamer-driven §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes));
+> and a collection whose value class has no streamer info in the file cannot be
+> decoded at all. Both show up as skips rather than failures.
 
 ## 9. Errata
 
@@ -269,6 +336,8 @@ full decoder, which is why `tools/rootfile.py` exists.
 | 1 | `root/io/doc/TFile/README.md:247-287` — the whole `TTree` section | It never says what a basket entry contains. It ends at "The custom written TBasket streamer internally handles the packing of data into fixed size TBasket objects" (`root/io/doc/TFile/README.md:286-287`), which is the last word the shipped documentation has on the subject. Nothing in it would let a reader decode one branch value |
 | 2 | `root/io/doc/TFile/tclonesarray.md:28-40` describes the member-wise layout of a `TClonesArray`, and is easily mistaken for the split-branch layout | None of the framing it lists — byte count, class info, version, `TObject`, `fName`, `"TXxx;1"`, `nObjects`, `fLowerBound` (`root/io/doc/TFile/tclonesarray.md:6-27`) — appears in a split branch. The master branch's entry is four bytes, each member lives in its own branch and basket, and `fLowerBound` never appears in an entry at all |
 | 3 | `root/io/doc/TFile/ttree.md:75`: `fMaximum` is "Maximum entries for a TClonesArray or variable array" | True as far as it goes, but it is also a read-time bound that ROOT enforces (§6). A reader that treats it as a hint accepts entries ROOT rejects |
+| 4 | — | Nothing anywhere states that the header of §5.3 is shared across a *column*. For `kStreamer`, `kSTL` and `kStreamLoop` an entry of *n* values carries one byte count and one version word between them, and a member-wise column carries one value-class version too. A reader that frames each value desynchronises on the second |
+| 5 | — | Nothing states that a `std::bitset` member can be written as a branch with no bytes in it. Before ROOT 6.08/06 it always was (§3.6), and the branch looks identical to one that holds data |
 
 ## 10. Reference files
 
@@ -279,7 +348,11 @@ full decoder, which is why `tools/rootfile.py` exists.
 | `ttree/split-counter` | §3.4: the flag byte, a counter branch with no offset array, and a member column with one |
 | `ttree/split-double32` | §5.2: five members whose widths differ and are recorded nowhere but the streamer element |
 | `ttree/split-clones` | The `TClonesArray` form of §3.1 and §3.2 |
+| `ttree/split-bitset` | §3.6: a `bitset<16>` as twenty-six bytes, and the bit order, which only its third entry fixes |
 
-Not covered: §3.5, which needs a class with a hand-written `Streamer`; and the
-member-wise STL body of §5.3 inside a split branch, which needs a collection of
-collections.
+Not covered by a fixture: §3.5, which needs a class with a hand-written
+`Streamer`; the member-wise STL body of §5.3 inside a split branch, which needs
+a collection of collections; and the pre-6.08/06 empty bitset of §3.6, which
+needs a ROOT older than any this project builds against. The last two are in
+`gen/foreign/` — `uproot-issue433-splitlevel4.root` and `uproot-mc10events.root`
+— and are checked there.

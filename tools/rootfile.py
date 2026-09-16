@@ -1117,9 +1117,14 @@ class Decoder:
     """
 
     def __init__(self, buf: bytes, base: int, infos: list[StreamerInfo],
-                 tolerant: bool = False):
+                 tolerant: bool = False, custom: "set[str] | None" = None):
         self.buf = buf
         self.base = base
+        # StreamerDriven.md section 7: nothing in a file marks a class whose
+        # Streamer is hand-written, so a reader needs a list. CUSTOM_STREAMER is
+        # this specification's; `custom` extends it with classes a caller has
+        # diagnosed in a particular file.
+        self.custom = CUSTOM_STREAMER | set(custom or ())
         # In tolerant mode an object whose class cannot be read is skipped by its
         # byte count and recorded, instead of failing the whole read. That is what
         # StreamerDriven.md section 8 says a partial reader should do; it is off by
@@ -1136,7 +1141,7 @@ class Decoder:
         self.member_wise: list[tuple[str, str, int]] = []
 
     def info_for(self, cls: str, version: int) -> StreamerInfo:
-        if cls in CUSTOM_STREAMER:
+        if cls in self.custom:
             raise UnsupportedClass(f"{cls} has a hand-written Streamer")
         by_version = self.infos.get(cls)
         if not by_version:
@@ -1162,6 +1167,11 @@ class Decoder:
         `counters` is passed down only for a base class, whose counted pointers
         may name a counter in a base of their own.
         """
+        if cls in self.custom and cls not in CUSTOM_STREAMER:
+            # A class a caller has diagnosed as having a hand-written Streamer.
+            # Checked before the dispatch below so that it wins over any reader
+            # this module has of its own.
+            raise UnsupportedClass(f"{cls} has a hand-written Streamer")
         if cls == "TClonesArray":
             return self.read_clones_array(offset)
         if cls in self.SEQUENCES:
@@ -1275,6 +1285,25 @@ class Decoder:
                 f"{cls} v{version} consumed {pos - offset} bytes, "
                 f"byte count says {limit - offset}")
         return values
+
+    def read_elements(self, info, offset: int,
+                      counters: dict[str, int] | None = None) -> int:
+        """Every element of `info` in order, with no class-level framing.
+
+        read_members with the streamer info already chosen and no byte count to
+        check against, which is what an unsplit branch's entry is
+        (ReadingEntries.md 3.3): the members' own serialisations concatenated,
+        with no byte count and no version word for the branch's class.
+        """
+        pos = offset
+        if counters is None:
+            counters = {}
+        for el in info.elements:
+            value = self.read_element_value(el, pos, counters)
+            if el.ftype == 6:                 # kCounter: retain it for later
+                counters[el.name] = _i32(self.buf, pos)
+            pos = value.end
+        return pos
 
     # -- elements ---------------------------------------------------------
 
@@ -1525,10 +1554,21 @@ class Decoder:
         The frame is `byteCount version`, where version is TStreamerInfo's own
         class version and bit 14 is kStreamedMemberWise (Collections.md 2).
         """
+        stl = el.tail.get("fSTLtype", 0)
         frame = read_frame(self.buf, offset)
         if frame.end is None:
             raise FormatError(f"collection {el.name} has no byte count")
-        stl = el.tail.get("fSTLtype", 0)
+        if stl == STL_BITSET:
+            # An ordinary object-wise collection of bool: a count, then one
+            # byte per bit, bit 0 first. The bits are not packed and the count
+            # is written although the width is in the type name.
+            # ReadingEntries.md 3.6.
+            pos = self.read_object_wise("bool", STL_VECTOR, frame.body)
+            if pos != frame.end:
+                raise FormatError(
+                    f"bitset {el.name} consumed to {pos}, byte count says "
+                    f"{frame.end}")
+            return frame.end
         if stl == STL_STRING:
             _, end = _counted_string(self.buf, frame.body)
             if end != frame.end:
@@ -1536,8 +1576,6 @@ class Decoder:
                     f"std::string {el.name} ends at {end}, byte count says "
                     f"{frame.end}")
             return frame.end
-        if stl == STL_BITSET:
-            raise UnsupportedClass("std::bitset has no fixture here")
         if stl >= OFFSET_P:
             raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
 
@@ -1617,22 +1655,106 @@ class Decoder:
             return synthesise_pair(cls)
         return self.info_for(cls, version)
 
-    def read_column(self, element, count: int, offset: int) -> int:
-        """One member of the value class, for every element of the collection."""
+    def read_column(self, element, count: int, offset: int,
+                    counters: dict[str, int] | None = None) -> int:
+        """One member, written `count` times back to back.
+
+        Two things in this specification have that shape and ROOT reads them with
+        the same action: a member-wise collection's column (Collections.md 4) and
+        a split branch's member column (ReadingEntries.md 3.2). They also share
+        the once-per-column header of ReadingEntries.md 5.3, which is the reason
+        this cannot be a loop over read_element_value for every type.
+        """
         t = element.ftype
-        if t in SCALAR_WIDTH:
-            return offset + count * SCALAR_WIDTH[t]
-        if t == 66:                                   # a TObject base column
-            pos = offset
+        width = element_width(element)
+        if width is not None:
+            return offset + count * width
+        if OFFSET_L <= t < OFFSET_P:                  # a C array per element
+            inner = t - OFFSET_L
+            if inner in SCALAR_WIDTH:
+                return offset + count * element.array_length * SCALAR_WIDTH[inner]
+            if inner in (9, 19):
+                return (offset + count * element.array_length
+                        * quantised_width(inner, element.title))
+        if t == 500 and element.cls in ("TStreamerSTL", "TStreamerSTLstring"):
+            return self.read_collection_column(element, count, offset)
+        if t == 501:
+            # kStreamLoop: a pointer whose length is another member of the class
+            # (fCountName). In a split branch that member is a column on a
+            # sibling branch, so the per-element lengths are not reachable from
+            # here -- but the column is framed exactly like 5.3's kStreamer case,
+            # one byte count for the whole of it, so its extent is known even
+            # though its contents are not. Byte-verified on
+            # uproot-issue433-splitlevel4.root.
+            frame = read_frame(self.buf, offset)
+            if frame.end is None:
+                raise FormatError(f"column {element.name} type 501 has no "
+                                  f"byte count")
+            return frame.end
+        # Everything else is the scalar encoding repeated, which is what
+        # ReadingEntries.md 5.3 says is the rule and 5.3's two families are the
+        # exceptions to.
+        pos = offset
+        for _ in range(count):
+            pos = self.read_element_value(element, pos, counters or {}).end
+        return pos
+
+    def read_collection_column(self, el, count: int, offset: int) -> int:
+        """`count` collections of one member, under one shared header.
+
+        ReadingEntries.md 5.3. The version word and byte count are read once for
+        the whole column rather than once per collection
+        (root/io/io/src/TStreamerInfoReadBuffer.cxx:1251-1256), and a member-wise
+        column reads the value class's version once as well, outside the loop
+        (root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274). A reader that
+        frames each collection separately desynchronises on the second.
+        """
+        stl = el.tail.get("fSTLtype", 0)
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"collection column {el.name} has no byte count")
+        if stl == STL_BITSET:
+            pos = frame.body
             for _ in range(count):
-                pos = read_tobject(self.buf, pos).end
-            return pos
-        if t in (61, 62):                             # each element framed
-            pos = offset
+                pos = self.read_object_wise("bool", STL_VECTOR, pos)
+            if pos != frame.end:
+                raise FormatError(
+                    f"bitset column {el.name} consumed to {pos}, byte count "
+                    f"says {frame.end}")
+            return frame.end
+        if stl >= OFFSET_P and stl != STL_STRING:
+            raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
+        pos = frame.body
+        if stl == STL_STRING:
+            # A column of std::string: bare counted strings back to back, with
+            # no count of their own -- the collection is the string.
             for _ in range(count):
-                pos = self.read_object(_bare_class(element.type_name), pos).end
-            return pos
-        raise UnsupportedClass(f"member-wise column of type code {t}")
+                _, pos = _counted_string(self.buf, pos)
+            if pos != frame.end:
+                raise FormatError(
+                    f"string column {el.name} consumed to {pos}, byte count "
+                    f"says {frame.end}")
+            return frame.end
+        value = value_type_name(el.type_name)
+        if frame.member_wise:
+            self.member_wise.append((el.name, value, offset))
+            version = 0
+            if frame.version >= 8:
+                version, pos = self.resolve_bare_version(value, pos)
+            info = self.value_info(value, version)
+            for _ in range(count):
+                n = _i32(self.buf, pos)
+                pos += 4
+                for member in info.elements:
+                    pos = self.read_column(member, max(n, 0), pos)
+        else:
+            for _ in range(count):
+                pos = self.read_object_wise(value, stl, pos)
+        if pos != frame.end:
+            raise FormatError(
+                f"collection column {el.name} consumed to {pos}, byte count "
+                f"says {frame.end}")
+        return frame.end
 
 
 def basket_value(buf: bytes, rec: Record, data: bytes) -> Value:
@@ -2777,6 +2899,240 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
             f"branch {branch.name!r} entry {index}: leaves account for "
             f"{pos - start} bytes of {end - start}")
     return spans
+
+
+# --- decoding one entry, spec/04-ttree/ReadingEntries.md -------------------
+
+
+def branch_streamer_info(infos: list[StreamerInfo], branch: Branch) -> StreamerInfo:
+    """The streamer info a branch's fClassName, fClassVersion and fCheckSum pick.
+
+    TBranchElement.md section 5: fClassName names the class whose element list
+    fID indexes into, not the branch's own type. The choice is made from the
+    branch's fields and never from bytes in the entry -- there is nothing in an
+    entry to identify a class with (ReadingEntries.md 5.1), which is why those
+    two fields are on the branch at all.
+    """
+    if not branch.class_name:
+        raise UnsupportedClass("branch has no fClassName")
+    candidates = [i for i in infos if i.name == branch.class_name]
+    if not candidates:
+        raise UnsupportedClass(
+            f"{branch.class_name} has no streamer info in its own file")
+    if branch.class_version:
+        for info in candidates:
+            if info.class_version == branch.class_version:
+                return info
+    for info in candidates:
+        if info.checksum == branch.check_sum:
+            return info
+    if len(candidates) == 1:
+        return candidates[0]
+    raise UnsupportedClass(
+        f"no streamer info for {branch.class_name} version "
+        f"{branch.class_version}")
+
+
+# fType values that mean "this node holds no bytes of its own", from
+# root/tree/tree/src/TBranchElement.cxx:5692 -- ReadingEntries.md section 2.
+INTERIOR_TYPES = (1, 2)
+SPLIT_NODE_ID = -2
+
+
+class TreeReader:
+    """Decodes entries of a tree's branches. ReadingEntries.md section 7.
+
+    Written from the specification rather than from ROOT's source, like the rest
+    of this module, so that the two disagreeing is a detectable event. What it
+    reports is an end position: the point of the exercise is ReadingEntries.md
+    invariant 5, that the bytes a branch's entry occupies equal the bytes its
+    decoding consumes, and an end position is the only thing that can check it.
+
+    `fetch(seek)` returns `(record, buffer)` for the basket at that file offset,
+    the record's object data uncompressed in place, or None when it cannot be
+    read here. It is a parameter because decompressing a basket is the expensive
+    part of this and a caller normally caches it already.
+    """
+
+    def __init__(self, buf: bytes, tree: Tree, infos: list[StreamerInfo],
+                 fetch=None, tolerant: bool = False,
+                 custom: "set[str] | None" = None):
+        self.buf = buf
+        self.tree = tree
+        self.infos = infos
+        self.tolerant = tolerant
+        self.custom = set(custom or ())
+        self.fetch = fetch if fetch is not None else self._default_fetch
+        self.branches = list(walk_branches(tree.branches))
+        if tree.branch_ref is not None:
+            # Not in fBranches and it holds data all the same -- TTree.md 4.
+            self.branches.append(tree.branch_ref)
+        self.by_slot = {br.slot: br for br in self.branches}
+        self._records: dict[int, Record] | None = None
+        self._info: dict[int, StreamerInfo] = {}
+        self._decoders: dict[int, Decoder] = {}
+        self._baskets: dict[int, Basket] = {}
+        self._counts: dict[tuple[int, int], int] = {}
+
+    def _default_fetch(self, seek: int):
+        raise UnsupportedClass("this TreeReader was given no way to fetch baskets")
+
+    # -- the pieces --------------------------------------------------------
+
+    def info_for_branch(self, br: Branch) -> StreamerInfo:
+        if br.slot not in self._info:
+            self._info[br.slot] = branch_streamer_info(self.infos, br)
+        return self._info[br.slot]
+
+    def basket_for(self, br: Branch, entry: int):
+        """`(record, buffer, basket, index)` for `entry` of `br`."""
+        i = find_basket(br, entry)
+        if i >= len(br.basket_seek):
+            raise FormatError(
+                f"branch {br.name!r}: basket {i} holds entry {entry} but "
+                f"fBasketSeek has {len(br.basket_seek)} entries")
+        got = self.fetch(br.basket_seek[i])
+        if got is None:
+            raise UnsupportedClass(f"basket of branch {br.name!r} unavailable")
+        rec, payload = got
+        if rec.offset not in self._baskets:
+            self._baskets[rec.offset] = read_basket(self.buf, rec, payload)
+        basket = self._baskets[rec.offset]
+        if basket.generated:
+            raise UnsupportedClass(
+                "basket flag 80: the entry offsets are generated, TBasket.md 5.2.1")
+        return rec, payload, basket, entry - br.basket_entry[i]
+
+    def decoder_for(self, rec: Record, payload: bytes) -> Decoder:
+        """A Decoder over one basket.
+
+        The base is the basket record's offset, because that is buffer position
+        0 for everything inside it -- the same convention as every other record
+        (Buffer.md section 1), and what basket_entry_range already assumes.
+        """
+        if rec.offset not in self._decoders:
+            self._decoders[rec.offset] = Decoder(payload, rec.offset, self.infos,
+                                                 tolerant=self.tolerant,
+                                                 custom=self.custom)
+        return self._decoders[rec.offset]
+
+    def count_at(self, br: Branch, entry: int) -> int:
+        """The Int_t a count or counter branch holds for `entry`.
+
+        ReadingEntries.md 3.1 and section 4. fMaximum is a read-time bound and
+        not a statistic: a count outside [0, fMaximum] is rejected and ROOT
+        substitutes 0 (section 6).
+        """
+        key = (br.slot, entry)
+        if key in self._counts:
+            return self._counts[key]
+        rec, payload, basket, index = self.basket_for(br, entry)
+        start, end = basket_entry_range(rec, basket, index)
+        if start == end:
+            # IsMissingCollection: the four bytes are rewound and the entry
+            # consumes nothing. ReadingEntries.md 6.
+            count = 0
+        else:
+            count = int.from_bytes(payload[start:start + 4], "big", signed=True)
+            if br.element_type in (3, 4) and not 0 <= count <= br.maximum:
+                count = 0
+        self._counts[key] = count
+        return count
+
+    def count_for(self, br: Branch, entry: int) -> int:
+        """The count a branch's own entry needs, from the branch fBranchCount
+        names. ReadingEntries.md section 4."""
+        if br.count_slot < 0:
+            raise FormatError(f"branch {br.name!r} has no fBranchCount")
+        counter = self.by_slot.get(br.count_slot)
+        if counter is None:
+            raise FormatError(
+                f"branch {br.name!r}: fBranchCount points at {br.count_slot}, "
+                f"which is no branch of this tree")
+        return self.count_at(counter, entry)
+
+    # -- one entry ---------------------------------------------------------
+
+    def holds_data(self, br: Branch) -> bool:
+        """ReadingEntries.md section 2: a node with sub-branches reads its own
+        basket only when fType is 3 or 4."""
+        ft = br.element_type
+        if ft is None:
+            return True                       # a plain TBranch always does
+        if ft in INTERIOR_TYPES:
+            return False
+        if ft == 0 and br.element_id == SPLIT_NODE_ID:
+            return False
+        return True
+
+    def entry_end(self, br: Branch, entry: int) -> tuple[int, int, int]:
+        """`(start, end, consumed)` for one entry. ReadingEntries.md section 7.
+
+        `start` and `end` are the byte range the basket gives it and `consumed`
+        is where decoding actually stopped. Invariant 5 is that they are equal.
+        """
+        if not self.holds_data(br):
+            raise FormatError(
+                f"branch {br.name!r} is an interior node and holds no entries")
+        rec, payload, basket, index = self.basket_for(br, entry)
+        start, end = basket_entry_range(rec, basket, index)
+        return start, end, self.decode_entry(br, entry, rec, payload, basket,
+                                             index, start, end)
+
+    def decode_entry(self, br: Branch, entry: int, rec: Record, payload: bytes,
+                     basket: Basket, index: int, start: int, end: int) -> int:
+        """Step 5 of ReadingEntries.md section 7, dispatched on fType and fID."""
+        ft = br.element_type
+        if ft is None:
+            raise UnsupportedClass("a plain TBranch: use entry_spans")
+
+        # fType 3 and 4: one Int_t and nothing else, or nothing at all.
+        if ft in (3, 4):
+            return start if start == end else start + 4
+
+        if ft < 0:
+            raise UnsupportedClass(
+                f"fType {ft}: the class writes its own Streamer, "
+                f"ReadingEntries.md 3.5")
+
+        if br.class_name in self.custom:
+            raise UnsupportedClass(
+                f"{br.class_name} has a hand-written Streamer")
+        decoder = self.decoder_for(rec, payload)
+        info = self.info_for_branch(br)
+        fid = br.element_id
+
+        # fID < 0 on a node that holds data: every element of fClassName, in
+        # order, with no class-level framing.
+        if fid is None or fid < 0:
+            return decoder.read_elements(info, start)
+
+        if fid >= len(info.elements):
+            raise FormatError(
+                f"branch {br.name!r}: fID {fid} is past the {len(info.elements)} "
+                f"elements of {info.name} v{info.class_version}")
+        el = info.elements[fid]
+
+        # A std::bitset member written before the ROOT-8574 fix, which landed in
+        # 6.08/06 (root commit 2caaf15c2f0, 2017-02-24) and was backported to
+        # 5.34/38: the collection proxy did not work in this path and ROOT wrote
+        # the branch with no bytes in it at all. Every entry is empty, in both
+        # the scalar and the column form -- ReadingEntries.md 3.6.
+        if (start == end and el.cls == "TStreamerSTL"
+                and el.tail.get("fSTLtype") == STL_BITSET):
+            return start
+
+        # fType 31 and 41: n values of that element, back to back.
+        if ft in (31, 41):
+            return decoder.read_column(el, max(self.count_for(br, entry), 0),
+                                       start)
+
+        # fType <= 2 with fBranchCount: the Int_t n; Float_t *x; //[n] shape,
+        # whose element is kOffsetP + T and whose count is on the other branch.
+        counters: dict[str, int] = {}
+        if br.count_slot >= 0 and el.count_name:
+            counters[el.count_name] = self.count_for(br, entry)
+        return decoder.read_element_value(el, start, counters).end
 
 
 # --- an embedded basket, spec/04-ttree/TBasket.md section 4 ----------------

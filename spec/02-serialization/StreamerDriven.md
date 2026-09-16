@@ -263,10 +263,24 @@ dispatches on, is a transient member (`root/core/meta/inc/TClass.h:285`,
 reader therefore cannot detect a hand-written streamer; it has to know, from a
 list, which classes have one.
 
-That list is the entire content of `spec/03-classes/`, and it is small: the
-divergent classes are essentially `TFile`/`TDirectory`, the collections, the
-reference types, and parts of `TTree`. For everything else — including every
-class a user defines — the streamer info is authoritative.
+For ROOT's own classes that list is the entire content of `spec/03-classes/`,
+and it is small: the divergent classes are essentially `TFile`/`TDirectory`, the
+collections, the reference types, and parts of `TTree`.
+
+**The list cannot be closed, though, because a user class can have one too.**
+`ClassDef` generates a `Streamer` that calls `ReadClassBuffer`, so a class that
+uses it is streamer-info driven whatever else it does — but a class may replace
+that generated body, and experiment frameworks do. In `gen/foreign/`,
+KM3NeT's Jpp DAQ classes are the case: `KM3NETDAQ::JDAQPreamble`'s recorded info
+says a framed `JDAQAbstractPreamble` base and a `TObject` base, and its split
+branch's entry is eight bytes — the base's two `Int_t`, raw, with no frame and no
+`TObject`. Nothing distinguishes it from a class that does follow its info; the
+control is a sibling `kBase` element in the same entry set, which *is* framed
+three levels deep and decodes exactly.
+
+So a reader that meets an unknown class has to accept that its info may be
+fiction and report the mismatch rather than guess, which is §8. For the ordinary
+case — a class with a generated `Streamer` — the streamer info is authoritative.
 
 > The practical symptom of getting this wrong is a byte-count mismatch on the
 > first object of the class, not corrupt values: the loop consumes the wrong

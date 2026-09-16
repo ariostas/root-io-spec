@@ -107,17 +107,19 @@ so it is never silent about it. `--all-entries` forces the exhaustive check; bot
 modes give 0 failures over the fixtures and `gen/foreign/`, which is what justifies
 the default.
 
-**And it skips every split branch, which it now says out loud.** `entry_spans` is
-leaf-driven and `TLeafElement` has no fixed element width, so the entry check
-cannot run on a `TBranchElement` at all. It used to return silently; it now prints
-`SKIPPED n branch-basket(s)` per reason. Over the two corpora that is 2284 —
-2266 for the width and 18 because a counter's own basket was unreadable — out of
-21913 the check reaches, so **19629 verified, 89.6%**. The sharp number is the
-other cut: 2282 of the 2284 sit on `TLeafElement` branches, which is *every*
-`TLeafElement` branch-basket in both corpora. Read a `0 failure(s)` line against
-that: it means zero failures among the things checked, and split branches are not
-yet among them. `PLAN-ttree.md` is the plan for closing it, and the count is the
-measure of progress.
+**And it says out loud what it could not reach.** Two checks decode entries:
+`entry_spans` for a plain `TBranch`, which is leaf-driven, and
+`rootfile.TreeReader` for a `TBranchElement`, which is `ReadingEntries.md`
+invariant 5 — the bytes an entry occupies equal the bytes its decoding consumes.
+Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
+run ends with an `ENTRIES` line giving the fraction it did reach.
+
+Over the two corpora that is **25873 of 25984, 99.6%**, with 0 failures. Read a
+`0 failure(s)` line against the `ENTRIES` line: it means zero failures among the
+things checked. The 111 skips are named individually — a class whose `Streamer`
+is hand-written, a collection whose value class has no streamer info in the file,
+a `pair<K,V>` whose members are not fundamental types (about a quarter of them,
+and the largest remaining gap). `PLAN-ttree.md` tracks what is left.
 
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.

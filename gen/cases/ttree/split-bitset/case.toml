@@ -1,0 +1,171 @@
+id   = "ttree/split-bitset"
+file = "data/ttree/split-bitset.root"
+size = 19383
+
+description = """
+A `std::bitset` member of a split branch, which is neither packed nor, at every
+ROOT version, written at all.
+
+A bitset reaches the file as a `TStreamerSTL` with fSTLtype 8 (kSTLbitset) and
+fCtype 0 -- `TStreamerSTL` sets fCtype to 0 for a bitset and checks nothing
+else (root/core/meta/src/TStreamerElement.cxx:1808-1809). Its branch is an
+ordinary object-wise collection of `bool`:
+
+    40 00 00 16  00 0a  00 00 00 10  01 00 01 00 00 01 00 01 01 00 01 00 00 01 00 01
+    byte count   ver    count 16     sixteen bools, least significant bit first
+
+Sixteen bits cost twenty-six bytes. **The bits are not packed** and the count is
+written even though the width is in the type name.
+
+The bit order is bit 0 first -- `bitset::operator[]` order, not the order the
+literal reads in. Entry 0 alone cannot show that, because 0xA5A5 is symmetric
+under the reversal; entry 2 holds 0xA5A5 >> 2 = 0x2969 and settles it.
+
+The point of the case is the other half. Before the ROOT-8574 fix the collection
+proxy did not work in this path and ROOT wrote the branch with **no bytes in it
+at all** -- every entry zero-length, the basket's fLast equal to its fKeylen.
+That form is in the foreign corpus: `uproot-mc10events.root`, written by ROOT
+6.08/04, has eleven such branches, in both the scalar and the fType 31 column
+form, and every one of them is empty. The fix is root commit 2caaf15c2f0
+(2017-02-24), which is in v6-08-06 and was backported to v5-34-38, so 6.08/04 is
+one patch release short of it.
+
+A reader therefore has to accept both, and cannot tell which it is from the
+branch: only the entry's length says so. ReadingEntries.md 3.6.
+"""
+
+spec = [
+  "spec/04-ttree/ReadingEntries.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 204
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 304
+nbytes = 78
+class  = "TBasket"
+role   = "basket of 'fI'"
+[[records]]
+offset = 382
+nbytes = 167
+class  = "TBasket"
+role   = "basket of 'fBits', twice the size of its neighbours for sixteen bits"
+[[records]]
+offset = 549
+nbytes = 78
+class  = "TBasket"
+role   = "basket of 'fJ'"
+[[records]]
+offset = 627
+nbytes = 2488
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 3115
+nbytes = 16023
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 19138
+nbytes = 147
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 19285
+nbytes = 98
+class  = "TFile"
+role   = "keys list / free segments"
+
+# --- the streamer element -------------------------------------------------
+
+[[bytes]]
+name = "fBits: fSTLtype 8, kSTLbitset"
+offset = 5068
+type = "i32"
+value = 8
+
+[[bytes]]
+name = "fBits: fCtype 0, which TStreamerSTL sets for a bitset and never fills in"
+offset = 5072
+type = "i32"
+value = 0
+
+# --- the branch -----------------------------------------------------------
+
+[[bytes]]
+name = "fBits branch: fType 0, an ordinary member of a split object"
+offset = 2143
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBits branch: fID 1, the second element of BEv"
+offset = 2139
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fBits branch: fStreamerType 300, kSTL -- not the element's 500"
+offset = 2147
+type = "i32"
+value = 300
+
+[[bytes]]
+name = "fBits branch: fEntryOffsetLen 12, so the basket carries an offset array"
+offset = 1692
+type = "i32"
+value = 12
+
+# --- one entry, in full ---------------------------------------------------
+#
+# 40 00 00 16 | 00 0a | 00 00 00 10 | 01 00 01 00 00 01 00 01 01 00 01 00 00 01 00 01
+# byte count    ver     count 16      sixteen bools, least significant bit first
+#
+# 0xA5A5 is 1010 0101 1010 0101, whose bit pattern is symmetric enough that the
+# bit order cannot be read off entry 0. Entry 2 settles it: 0xA5A5 >> 2 = 0x2969
+# = 0010 1001 0110 1001, and the bytes are its reverse. The order is bit 0
+# first, which is bitset::operator[] order and not the order the literal reads
+# in.
+
+[[bytes]]
+name = "entry 0: the byte count, 0x16 = 22, with bit 30 set"
+offset = 451
+type = "u32"
+value = 0x40000016
+
+[[bytes]]
+name = "entry 0: the version word, TStreamerInfo's own class version"
+offset = 455
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "entry 0: the count, 16 -- written although the width is in the type name"
+offset = 457
+type = "i32"
+value = 16
+
+[[bytes]]
+name = "entry 0: the sixteen bits of 0xA5A5, one byte each, least significant first"
+offset = 461
+type = "bytes"
+value = [1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1]
+
+[[bytes]]
+name = "entry 1: 0xA5A5 >> 1 = 0x52D2, the same sixteen bytes shifted"
+offset = 487
+type = "bytes"
+value = [0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0]
+
+[[bytes]]
+name = "entry 2: 0xA5A5 >> 2 = 0x2969, which is what fixes the bit order"
+offset = 513
+type = "bytes"
+value = [1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0]

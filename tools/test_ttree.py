@@ -356,3 +356,135 @@ class DerivesFrom(unittest.TestCase):
 
     def test_a_class_the_file_does_not_describe(self):
         self.assertFalse(self.derives("Unknown"))
+
+
+def element(name="m", cls="TStreamerBasicType", ftype=3, type_name="int",
+            title="", array_length=0, tail=None):
+    return rootfile.Element(
+        cls=cls, version=2, name=name, title=title, bits=0, ftype=ftype,
+        fsize=0, array_length=array_length, array_dim=0, max_index=[0] * 5,
+        type_name=type_name, tail=tail or {})
+
+
+class MemberColumn(unittest.TestCase):
+    """ReadingEntries.md 3.2 and 5.3. A column of n values of one member.
+
+    The same reader serves a member-wise collection's column (Collections.md 4)
+    and a split branch's, because ROOT reads them with the same action.
+    """
+
+    def column(self, el, count, buf, offset=0):
+        return rootfile.Decoder(buf, 0, []).read_column(el, count, offset)
+
+    def test_a_fixed_width_scalar_is_n_times_w(self):
+        buf = b"\x00" * 64
+        self.assertEqual(self.column(element(ftype=3), 5, buf), 20)
+        self.assertEqual(self.column(element(ftype=8), 5, buf), 40)
+
+    def test_an_empty_column_consumes_nothing(self):
+        self.assertEqual(self.column(element(ftype=8), 0, b"\x00" * 8), 0)
+
+    def test_a_double32_takes_its_width_from_the_element_title(self):
+        # ReadingEntries.md 5.2: nothing on the branch or the leaf records it.
+        el = element(ftype=9, title="x[0,0,8]", type_name="Double32_t")
+        self.assertEqual(self.column(el, 4, b"\x00" * 64), 12)
+        self.assertEqual(self.column(element(ftype=9), 4, b"\x00" * 64), 16)
+
+    def test_a_fixed_c_array_multiplies_by_its_length(self):
+        el = element(ftype=rootfile.OFFSET_L + 3, array_length=3)
+        self.assertEqual(self.column(el, 5, b"\x00" * 128), 60)
+
+
+class BitsetColumn(unittest.TestCase):
+    """ReadingEntries.md 3.6. Not packed, and shared framing across a column."""
+
+    EL = staticmethod(lambda: element(
+        name="fBits", cls="TStreamerSTL", ftype=500, type_name="bitset<4>",
+        tail={"fSTLtype": rootfile.STL_BITSET, "fCtype": 0}))
+
+    @staticmethod
+    def one(bits):
+        return (4).to_bytes(4, "big") + bytes(bits)
+
+    def test_a_single_bitset_is_an_object_wise_collection_of_bool(self):
+        body = self.one([1, 0, 1, 1])
+        buf = (rootfile.BYTE_COUNT_MASK | (2 + len(body))).to_bytes(4, "big") \
+            + (10).to_bytes(2, "big") + body
+        self.assertEqual(
+            rootfile.Decoder(buf, 0, []).read_collection(self.EL(), 0), len(buf))
+
+    def test_a_column_shares_one_frame_for_every_bitset(self):
+        body = self.one([1, 0, 1, 1]) + self.one([0, 0, 1, 0])
+        framed = (rootfile.BYTE_COUNT_MASK | (2 + len(body))).to_bytes(4, "big") \
+            + (10).to_bytes(2, "big") + body
+        # Padded, so that a wrong count reads zeros rather than running off the
+        # end: the byte count is what has to catch it, not the buffer's length.
+        decoder = rootfile.Decoder(framed + b"\x00" * 16, 0, [])
+        self.assertEqual(decoder.read_column(self.EL(), 2, 0), len(framed))
+        # The byte count covers the whole column, so a wrong count is caught by
+        # it. A reader that framed each bitset separately would not notice.
+        with self.assertRaises(rootfile.FormatError):
+            decoder.read_column(self.EL(), 3, 0)
+        with self.assertRaises(rootfile.FormatError):
+            decoder.read_column(self.EL(), 1, 0)
+
+
+class BranchStreamerInfo(unittest.TestCase):
+    """TBranchElement.md 5 / ReadingEntries.md 5.1. Chosen from the branch's
+    own fields, because nothing in an entry identifies a class."""
+
+    @staticmethod
+    def info(version, checksum):
+        return rootfile.StreamerInfo(name="C", title="", version=9, bits=0,
+                                     checksum=checksum, class_version=version,
+                                     elements=[])
+
+    @staticmethod
+    def branch(version=0, checksum=0, name="C"):
+        br = object.__new__(rootfile.Branch)
+        br.class_name, br.class_version, br.check_sum = name, version, checksum
+        return br
+
+    def test_the_version_selects(self):
+        infos = [self.info(2, 0xaa), self.info(3, 0xbb)]
+        got = rootfile.branch_streamer_info(infos, self.branch(version=3))
+        self.assertEqual(got.class_version, 3)
+
+    def test_a_version_of_zero_falls_back_to_the_checksum(self):
+        infos = [self.info(0, 0xaa), self.info(0, 0xbb)]
+        got = rootfile.branch_streamer_info(infos, self.branch(checksum=0xbb))
+        self.assertEqual(got.checksum, 0xbb)
+
+    def test_an_unknown_class_is_not_a_failure_of_the_file(self):
+        with self.assertRaises(rootfile.UnsupportedClass):
+            rootfile.branch_streamer_info([], self.branch(name="Missing"))
+
+
+class InteriorNodes(unittest.TestCase):
+    """ReadingEntries.md 2. Which branches hold bytes of their own."""
+
+    @staticmethod
+    def reader():
+        return object.__new__(rootfile.TreeReader)
+
+    @staticmethod
+    def branch(ftype, fid=0):
+        br = object.__new__(rootfile.Branch)
+        br.element_type, br.element_id = ftype, fid
+        return br
+
+    def test_the_three_interior_shapes_hold_nothing(self):
+        holds = rootfile.TreeReader.holds_data
+        self.assertFalse(holds(self.reader(), self.branch(1)))
+        self.assertFalse(holds(self.reader(), self.branch(2)))
+        self.assertFalse(holds(self.reader(), self.branch(0, fid=-2)))
+
+    def test_a_count_branch_and_a_member_do(self):
+        holds = rootfile.TreeReader.holds_data
+        for ftype in (0, 3, 4, 31, 41):
+            self.assertTrue(holds(self.reader(), self.branch(ftype)), ftype)
+
+    def test_a_plain_tbranch_always_does(self):
+        self.assertTrue(
+            rootfile.TreeReader.holds_data(self.reader(),
+                                           self.branch(None, fid=None)))

@@ -8,10 +8,18 @@
 # why the skip is per file and per invariant, with a reason, rather than a change
 # to the check.
 #
-# The bar for an entry: the failure has been diagnosed, and the conclusion is that
-# the FILE is wrong rather than the specification. `tools/check_invariants.py
-# --ignore` reports how many failures each entry suppressed, so an entry that
-# stops mattering shows up as suppressing nothing.
+# The bar for a `skip` entry: the failure has been diagnosed, and the conclusion
+# is that the FILE is wrong rather than the specification.
+# `tools/check_invariants.py --ignore` reports how many failures each entry
+# suppressed, so an entry that stops mattering shows up as suppressing nothing.
+#
+# A `custom_streamer` entry is a different thing and is not a suppression. It
+# names classes in that file whose Streamer is hand-written, so that their
+# recorded streamer info does not describe their bytes. StreamerDriven.md 7 says
+# a reader cannot discover that from a file and needs a list; CUSTOM_STREAMER in
+# tools/rootfile.py is this specification's list of ROOT's own, and this is where
+# a *user* class goes. It disables no invariant: the classes named become
+# SKIPPED with a reason, and every other branch in the file is still checked.
 #
 # Nothing here affects `data/`. Our own fixtures are never ignored.
 
@@ -53,3 +61,48 @@ Record.md 1 now says so. Skipped here because an unwalkable chain stops every
 other check on the file, and one defective file must not hide the rest.
 """
 skip = ["structure"]
+
+["uproot-issue433-splitlevel2.root"]
+reason = """
+KM3NeT's Jpp DAQ classes have hand-written Streamers, and their streamer infos
+-- which ROOT wrote, and which are in the file -- are fiction. This is exactly
+StreamerDriven.md 7, reached for the first time in a *split branch* and in a
+user-defined class rather than one of ROOT's own.
+
+KM3NETDAQ::JDAQPreamble is the clearest case. Its recorded info says two base
+classes: JDAQAbstractPreamble (two Int_t, and framed, so fourteen bytes) and
+TObject. Its branch entry is eight bytes:
+
+    00 00 00 57  00 00 07 d1        length 87, type 2001
+
+-- the two Int_t of the base, raw, with no byte count, no version word, and no
+TObject. Nothing in the entry would let a reader work that out.
+
+The diagnosis is not guesswork, because the same entry set contains the control:
+KM3NETDAQ::JDAQSummarysliceHeader is also a kBase element on an fType 0 branch
+with fStreamerType 0, in the same tree of the same file, and it IS framed --
+three nested frames for SummarysliceHeader, JDAQHeader and JDAQChronometer --
+and decodes to the byte exactly. So kBase framing is not the issue; these
+particular classes are.
+
+Listed rather than skipped, so that the rest of the file is still checked.
+"""
+custom_streamer = [
+  "KM3NETDAQ::JDAQPreamble",
+  "KM3NETDAQ::JDAQSummaryFrame",
+  "KM3NETDAQ::JDAQSuperFrame",
+]
+
+["uproot-issue433-splitlevel4.root"]
+reason = """
+The same file written at a higher split level; see the entry for
+uproot-issue433-splitlevel2.root. The extra splitting reaches one more Jpp
+class, KM3NETDAQ::JDAQFrame, whose `buffer` member is a kStreamLoop (501) column
+-- that one is framed normally and its extent is checked, so only the classes
+below are listed.
+"""
+custom_streamer = [
+  "KM3NETDAQ::JDAQPreamble",
+  "KM3NETDAQ::JDAQSummaryFrame",
+  "KM3NETDAQ::JDAQSuperFrame",
+]
