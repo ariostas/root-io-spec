@@ -157,6 +157,20 @@ sequential read does not need it.
 constant dimensions in the leaflist, so `a[5]/F` gives `fLen` 5 and `a[n][3]/F`
 gives `fLen` 3 with a counter (`root/tree/tree/src/TLeaf.cxx:307-353`).
 
+> **A leaf's rank is not recorded anywhere but its title.** `fLen` holds the
+> product of the constant dimensions and `fLeafCount` names the variable one, so
+> on disk `a[n][3]/F` and a flat `a[m]/F` with `m = 3n` are the same bytes. A
+> reader that wants the shape must parse `fTitle`.
+>
+> Demonstrated by `ttree/leaf-forms`: `a` has `fTitle` `a[n][3]`, `fLen` 3 and a
+> `fLeafCount` reference, and its two entries hold six and three floats.
+
+**`fLen` on a `TLeafC` is not a size.** It is the longest string written so far
+plus its terminator, updated as the branch is filled, so it bounds the entries
+rather than describing them: in `ttree/leaf-forms` it is 301 while the first
+entry occupies three bytes, and it is neither 1 nor the size of the buffer the
+branch was given.
+
 ### 4.1 `fLenType` is not the on-disk width
 
 For every fixed-width type the two agree, and for three classes they do not:
@@ -173,6 +187,11 @@ A reader MUST take the width from the leaf's class, not from `fLenType`.
 > Demonstrated by `ttree/leaf-truncated`, whose four leaves have `fLenType` 4, 4,
 > 8, 8 and occupy 3, 4, 4 and 3 bytes per entry — in that order, so neither the
 > class nor `fLenType` predicts the width on its own.
+>
+> And by `ttree/leaf-forms`, whose `TLeafG` occupies 8 bytes per entry. Its
+> `fLenType` is 8 here because the writer is 64-bit and not Windows; the payload
+> would be the same 8 bytes if it were 4. `fMinimum` and `fMaximum` follow the
+> same rule and take 8 bytes each in the leaf record, where a `TLeafC`'s take 4.
 
 ### 4.2 `fLen` can be −1
 
@@ -352,6 +371,12 @@ bytes with no terminator; a length of 255 or more is written as the byte `0xFF`
 followed by a big-endian `Int_t`. This is the counted string of
 [Conventions §5.1](../00-conventions.md#51-counted-string).
 
+> Demonstrated by `ttree/leaf-forms`, whose one `TLeafC` basket holds **both**
+> forms: entry 0 is `02 "ab"` and entry 1 is `ff` then `0000012c` then 300
+> bytes — 305 bytes for a 300-character string. A reader that implements only
+> the short form desynchronises on the second entry, and the entry-offset array
+> agrees: 65 and 68.
+
 **An empty string occupies zero bytes** — `WriteFastArrayString` returns before
 writing even the length byte (`root/io/io/src/TBufferFile.cxx:2038`) — while
 `ReadFastArrayString` always reads one (`root/io/io/src/TBufferFile.cxx:1306`).
@@ -472,7 +497,10 @@ unreadable by ROOT through that path. No fixture demonstrates it; see `PLAN.md`
 | `ttree/leaf` | Thirteen leaves in one branch: every scalar code, a fixed-size array, `fOffset` across a packed entry, and a `TLeafC` whose second entry is the empty string |
 | `ttree/leaf-truncated` | All four truncated-float encodings, and the 3-versus-4-byte asymmetry between `TLeafF16` and `TLeafD32` in both the data and the leaf record |
 | `ttree/basket` | A counter leaf and a counted array in two different branches, with `fLeafCount` as a cross-branch object reference |
+| `ttree/leaf-forms` | `TLeafG` at 8 bytes, `a[n][3]/F` with `fLen` 3, and a `TLeafC` with both string forms in one basket |
 
-No fixture covers `TLeafObject`, `TLeafElement`, `TLeafG`, a leaf with two
-dimensions (`a[n][3]/F`), a `TLeafC` needing the 255-escape, or any leaf class at
-a legacy version.
+`TLeafObject` and `TLeafElement` are covered elsewhere: `ttree/tree-branchref`
+has a `TLeafObject`, and the split cases hold 52 `TLeafElement`s between them.
+
+No fixture covers a leaf class at a legacy version, which needs a legacy ROOT
+(`PLAN.md` §9.1).

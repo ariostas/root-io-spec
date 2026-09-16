@@ -1,0 +1,261 @@
+id   = "ttree/leaf-forms"
+file = "data/ttree/leaf-forms.root"
+size = 19002
+
+description = """
+Three of the six leaf forms TLeaf.md 13 listed as uncovered. The other three --
+`TLeafObject`, `TLeafElement`, and a leaf at a legacy class version -- were not
+all missing: `tree-branchref` has a real `TLeafObject` and the split cases have
+**52** `TLeafElement`s between them, so only the legacy versions are still
+blocked, on `PLAN.md` 9.1.
+
+**`TLeafG` is eight bytes on disk.** `fLenType` is the writer's
+`sizeof(Long_t)`, 8 here and 4 on a 32-bit or Windows writer, and the on-disk
+width is 8 either way (TLeaf.md 4.1). `fMinimum` and `fMaximum` are `Long_t` too
+and take 8 bytes each in the leaf record, where `TLeafC`'s take 4. A reader must
+size the payload from the leaf's **class**, never from `fLenType`.
+
+**A two-dimensional leaf puts only the constant dimensions in `fLen`.** `a[n][3]/F`
+has `fTitle` `a[n][3]`, **`fLen` 3**, and a `fLeafCount` reference to the `n`
+leaf. The entry's element count is `counter x fLen` (TLeaf.md 5.3), so entry 0
+with `n` = 2 is six floats and entry 1 with `n` = 1 is three. **Nothing in the
+leaf says the array is two-dimensional**: on disk `a[n][3]` and a flat
+`a[m]` with `m = 3n` are the same bytes, and only the title's text recovers the
+shape.
+
+**`TLeafC` uses the 255-escape.** Entry 0's string is `02 "ab"`, the short form
+of Conventions 5.1. Entry 1 is 300 characters, so it is `ff` then an `i32` 300
+then the bytes -- 305 bytes for a 300-character string. Both forms are in the
+same basket, which is the case a reader that implements only one of them gets
+wrong.
+
+**`fLen` on a `TLeafC` is the longest string seen plus one**, here 301, not 1 and
+not the size of the `char[400]` the branch was given. `fMaximum` is 301 as well.
+So `fLen x fLenType` is 301 while the first entry occupies 3 bytes: for a
+`TLeafC` that product is an upper bound, not a size (TLeaf.md 3).
+"""
+
+spec = [
+  "spec/04-ttree/TLeaf.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 168
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 268
+nbytes = 81
+class  = "TBasket"
+role   = "branch g, two Long_t"
+[[records]]
+offset = 349
+nbytes = 73
+class  = "TBasket"
+role   = "branch n, the counter"
+[[records]]
+offset = 422
+nbytes = 117
+class  = "TBasket"
+role   = "branch a, nine floats over two entries"
+[[records]]
+offset = 539
+nbytes = 389
+class  = "TBasket"
+role   = "branch s, one short string and one escaped one"
+[[records]]
+offset = 928
+nbytes = 2307
+class  = "TTree"
+role   = "the tree, four branches"
+[[records]]
+offset = 3235
+nbytes = 15568
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- TLeafG: the leaf record ----------------------------------------------
+
+[[bytes]]
+name = "g: fLen is 1, a scalar"
+offset = 1428
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "g: fLenType is sizeof(Long_t) on THIS writer -- 4 on a Windows one"
+offset = 1432
+type = "i32"
+value = 8
+
+[[bytes]]
+name = "g: fMinimum is a Long_t, so eight bytes"
+offset = 1446
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "g: and fMaximum begins eight bytes later, not four"
+offset = 1454
+type = "i64"
+value = 0
+
+# --- TLeafG: the payload, 8 bytes per entry regardless of fLenType --------
+
+[[bytes]]
+name = "g: entry 0, eight bytes"
+offset = 333
+type = "i64"
+value = 0x0102030405060708
+
+[[bytes]]
+name = "g: entry 1, -1 in eight bytes -- the basket is 16 bytes for two entries"
+offset = 341
+type = "i64"
+value = -1
+
+# --- a[n][3]/F: only the constant dimension is in fLen --------------------
+
+[[bytes]]
+name = "a: fTitle carries the whole declaration, which is the only record of the shape"
+offset = 2410
+type = "string"
+value = "a[n][3]"
+
+[[bytes]]
+name = "a: fLen is 3 -- the product of the CONSTANT dimensions, not 3n"
+offset = 2418
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "a: fLenType 4, sizeof(Float_t)"
+offset = 2422
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "a: fLeafCount is an object reference to the n leaf at map position 948"
+offset = 2432
+type = "u32"
+value = 948
+
+[[bytes]]
+name = "n: entry 0's counter is 2"
+offset = 414
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "n: entry 1's is 1"
+offset = 418
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "a: entry 0's first float; 2 x 3 = 6 of them follow"
+offset = 487
+type = "f32"
+value = 1.0
+
+[[bytes]]
+name = "a: its fifth"
+offset = 503
+type = "f32"
+value = 5.0
+
+[[bytes]]
+name = "a: entry 1 begins at 511 -- 1 x 3 = 3 floats"
+offset = 511
+type = "f32"
+value = 7.0
+
+[[bytes]]
+name = "a: and ends at 523"
+offset = 519
+type = "f32"
+value = 9.0
+
+[[bytes]]
+name = "a: the offset array's count"
+offset = 523
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "a: entry 0 starts at fKeylen"
+offset = 527
+type = "i32"
+value = 65
+
+[[bytes]]
+name = "a: entry 1 at 65 + 24, the six floats"
+offset = 531
+type = "i32"
+value = 89
+
+# --- TLeafC: both string forms in one basket ------------------------------
+
+[[bytes]]
+name = "s: fLen is the longest string plus one, not 1 and not sizeof(char[400])"
+offset = 2903
+type = "i32"
+value = 301
+
+[[bytes]]
+name = "s: fLenType 1"
+offset = 2907
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "s: fMaximum is the same 301"
+offset = 2925
+type = "i32"
+value = 301
+
+[[bytes]]
+name = "s: entry 0 is the short form -- one length byte"
+offset = 604
+type = "bytes"
+value = [2, 0x61, 0x62]
+
+[[bytes]]
+name = "s: entry 1 opens with the 255 escape"
+offset = 607
+type = "u8"
+value = 255
+
+[[bytes]]
+name = "s: then the real length as an i32"
+offset = 608
+type = "i32"
+value = 300
+
+[[bytes]]
+name = "s: then the bytes, with no length byte of their own"
+offset = 612
+type = "bytes"
+value = "xxxx"
+
+[[bytes]]
+name = "s: 305 bytes for a 300-character string; the offset array's count follows"
+offset = 912
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "s: entry 0 at fKeylen"
+offset = 916
+type = "i32"
+value = 65
+
+[[bytes]]
+name = "s: entry 1 at 65 + 3 -- the short form cost three bytes"
+offset = 920
+type = "i32"
+value = 68
