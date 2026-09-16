@@ -1,0 +1,154 @@
+id   = "ttree/split-double32"
+file = "data/ttree/split-double32.root"
+size = 21591
+
+description = """
+Truncated floats inside a split branch, where no TLeafD32 is involved.
+
+ttree/leaf-truncated covers Double32_t and Float16_t reached through a leaflist,
+where the leaf class is TLeafD32 or TLeafF16 and the annotation lives in the
+*leaf's* title. A split branch never produces those classes: every leaf of a
+TBranchElement is a TLeafElement, and a TLeafElement carries no width at all
+(TLeaf.md section 8).
+
+So for a split Double32_t member the width can only come from the **streamer
+element's** title in the file's StreamerInfo record. That is what this case is
+for: six members, five of them truncated floats, all behind identical
+TLeafElement leaves, and nothing in the branch or the leaf distinguishing them.
+
+  member   element title   fStreamerType   bytes per entry
+  fPlain   (empty)         9               4
+  fRange   [0,100]         9               4
+  fBits    [0,100,12]      9               4
+  fHalf    [0,100]         19              4
+  fHBits   [0,0,10]        19              3
+  fTail    (empty)         3               4
+
+fPlain, fRange and fBits are indistinguishable from the branch record: same
+fStreamerType 9, same leaf class, same fEntryOffsetLen 0. fHalf and fHBits share
+fStreamerType 19 and differ in width. The basket payloads -- three entries each,
+compression off -- are 12, 12, 12, 12, 9 and 12 bytes, which is the only place
+the difference shows without reading the StreamerInfo record.
+
+A reader that takes the width of a split member from the branch, or from the
+leaf, will get four of these six wrong. The rule is
+ElementTypes.md section 5, applied to the element fID indexes.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 224
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 324
+nbytes = 82
+class  = "TBasket"
+role   = "basket of 'fPlain'"
+[[records]]
+offset = 406
+nbytes = 82
+class  = "TBasket"
+role   = "basket of 'fRange'"
+[[records]]
+offset = 488
+nbytes = 81
+class  = "TBasket"
+role   = "basket of 'fBits'"
+[[records]]
+offset = 569
+nbytes = 81
+class  = "TBasket"
+role   = "basket of 'fHalf'"
+[[records]]
+offset = 650
+nbytes = 79
+class  = "TBasket"
+role   = "basket of 'fHBits'"
+[[records]]
+offset = 729
+nbytes = 81
+class  = "TBasket"
+role   = "basket of 'fTail'"
+[[records]]
+offset = 810
+nbytes = 4171
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 4981
+nbytes = 16331
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 21312
+nbytes = 171
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 21483
+nbytes = 108
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "fPlain: fStreamerType 9, kDouble32"
+offset = 1835
+type = "i32"
+value = 9
+
+[[bytes]]
+name = "fBits: the same fStreamerType, though its annotation asks for 12 bits"
+offset = 2913
+type = "i32"
+value = 9
+
+[[bytes]]
+name = "fHalf: fStreamerType 19, kFloat16"
+offset = 3450
+type = "i32"
+value = 19
+
+[[bytes]]
+name = "fHBits: the same, and this one is 3 bytes on disk rather than 4"
+offset = 3991
+type = "i32"
+value = 19
+
+[[bytes]]
+name = "fTail: an ordinary Int_t member for contrast"
+offset = 4528
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fPlain: fEntryOffsetLen 0 -- every truncated float is fixed-width"
+offset = 1365
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fHBits: likewise, even at 3 bytes"
+offset = 3534
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fPlain: fID 0"
+offset = 1827
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fHBits: fID 4, which is what selects the [0,0,10] element"
+offset = 3983
+type = "i32"
+value = 4

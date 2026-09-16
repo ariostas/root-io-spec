@@ -419,6 +419,7 @@ across 178 files. Whether a current ROOT can still be made to write one is open.
 | `ttree/split-clones` | `fType` 3 and `fType` 31, and a `TObject` base flattened into two member branches whose `fClassName` is `TObject` |
 | `ttree/split-stl-toplevel` | `fType` 4 with `fID` −1, where `fClassName` is the collection type and `fStreamerType` is −1 |
 | `ttree/split-ptr-collection` | `fSplitLevel` ≥ 100 and a `TBranchSTL`; see [Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) |
+| `ttree/split-double32` | Five truncated-float members behind identical `TLeafElement` leaves, whose widths differ and are recoverable only from the streamer element's title |
 
 Seven of the eight `fType` values now have a fixture. Not covered, and tracked in
 `PLAN-ttree.md` §5: **`fType` −1**, which needs a class with a hand-written
