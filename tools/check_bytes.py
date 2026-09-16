@@ -57,7 +57,10 @@ def main(case_dirs: list[str]) -> int:
             failures.append(f"{case['id']}: {case['file']} missing; run tools/generate.py")
             continue
         buf = path.read_bytes()
-        if len(buf) != case["size"]:
+        # `size` is optional: a case whose file is not the same length on every
+        # platform cannot assert one. Only serialization/pairs is such a case so
+        # far, and its case.toml says why.
+        if "size" in case and len(buf) != case["size"]:
             failures.append(f"{case['id']}: size {len(buf)}, expected {case['size']}")
         assertions = case.get("bytes", [])
         failures += check(buf, assertions, case["id"])

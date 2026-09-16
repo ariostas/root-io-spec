@@ -91,6 +91,33 @@ def normalize(buf: bytes) -> bytes:
         except (rootfile.FormatError, struct.error, IndexError, ValueError):
             pass    # an unparseable record is a failure for check_invariants
 
+    # Two further sources of drift between standard libraries, both inside a
+    # TTree record, both found by diffing a Linux container's output against a
+    # macOS one. PLAN.md section 9.6 records the diagnosis.
+    if info is not None:
+        try:
+            infos = rootfile.read_streamer_infos(buf, info)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            infos = []
+        for rec in rootfile.read_records(buf, header):
+            if (rec.free or not rec.key_len or rootfile.is_compressed(rec)
+                    or not rootfile.derives_from(infos, rec.class_name or "", "TTree")):
+                # A compressed record is skipped: the offsets a decode reports
+                # are into the decompressed copy and would mask the wrong bytes.
+                continue
+            try:
+                value = rootfile.decode_record(buf, rec, infos)
+            except (rootfile.FormatError, rootfile.UnsupportedClass, struct.error,
+                    IndexError, ValueError, KeyError):
+                continue
+            try:
+                tree = rootfile.read_tree(buf, value, rec.offset)
+            except (rootfile.FormatError, rootfile.UnsupportedClass, struct.error,
+                    IndexError, ValueError, KeyError):
+                tree = None
+            for at, width in _tree_volatile(buf, value, tree):
+                out[at : at + width] = b"\0" * width
+
     for match in UUID_TEXT.finditer(buf):
         out[match.start() : match.end()] = b"0" * (match.end() - match.start())
 
@@ -115,6 +142,59 @@ def record_digests(buf: bytes) -> list[tuple[int, str, str, str]]:
         d = hashlib.sha256(buf[rec.offset:end]).hexdigest()[:16]
         out.append((rec.offset, rec.class_name or "<free>", rec.name or "", d))
     return out
+
+
+#: Offset of fDatime within a TKey: fNbytes, fVersion, fObjlen come first.
+#: spec/01-container/Record.md section 2.
+KEY_DATIME_OFFSET = 10
+
+
+def _tree_volatile(buf: bytes, value, tree=None) -> list[tuple[int, int]]:
+    """Byte ranges inside a decoded TTree record that are not portable.
+
+    Two of them, and neither is reachable by the record walk above:
+
+    * **An embedded basket's `TKey::fDatime`.** A basket streamed into another
+      buffer carries a whole key inside object data
+      (spec/04-ttree/TBasket.md section 4.1), so its fDatime is the fDatime of no
+      record. Its value depends on the writer's time zone -- it read
+      `2033-12-31 19:00:00` at UTC-5 against `2034-01-01 00:00:00` in a
+      container, which is one instant written two ways.
+
+    * **`TBranchElement::fCheckSum`, but only when `fClassName` is an STL type.**
+      A checksum folds in each member's resolved type name, and libc++ and
+      libstdc++ spell those differently, so `vector<SHit>` hashes to 66eb45ed on
+      one and 01c8a81d on the other. Masked for those classes alone: for an
+      ordinary class the checksum is stable across both, and the digest should go
+      on watching it.
+    """
+    spans: list[tuple[int, int]] = []
+
+    def walk(val) -> None:
+        for member in (val.members or []):
+            if member.type_name == "TBranchElement":
+                named = rootfile._named(buf, member.members or [])
+                name_at = named.get("fClassName")
+                sum_at = named.get("fCheckSum")
+                if name_at is not None and sum_at is not None:
+                    cls = rootfile._string_at(buf, name_at)
+                    if rootfile.is_collection_name(cls) or cls.startswith("pair<"):
+                        spans.append((sum_at.start, sum_at.end - sum_at.start))
+            walk(member)
+
+    walk(value)
+    # The embedded baskets, through read_tree rather than by walking the value
+    # tree: the Value that carries the note is the object *slot*, and the key
+    # begins after the class record, which only the basket reader resolves.
+    for branch in (rootfile.walk_branches(tree.branches) if tree else []):
+        for embedded in (branch.embedded or {}).values():
+            spans.append((embedded.start + KEY_DATIME_OFFSET, 4))
+            if embedded.block >= 0:
+                # And once more inside the raw buffer copy, which begins with
+                # the key all over again (spec/04-ttree/TBasket.md 4.1). Two
+                # fDatime per embedded basket, not one.
+                spans.append((embedded.block + KEY_DATIME_OFFSET, 4))
+    return spans
 
 
 def member_lines(buf: bytes, want: str | None = None) -> list[str]:

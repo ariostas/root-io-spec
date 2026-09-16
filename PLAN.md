@@ -965,7 +965,7 @@ No external blocker; these are simply cases nobody has added yet.
 | No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
 | `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ✅ baskets, branches and leaves are read and checked, and `entry_spans` closes the entry → basket → byte range → value path |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
-| **Four fixtures are not digest-portable between macOS and Linux**, and the causes are now identified — three of them, all different. Diagnosed by reproducing CI's exact digests in a `condaforge/miniforge3` container with ROOT 6.40.04 (the drift is libc++ vs libstdc++, **not** architecture: an arm64 container reproduced the x86_64 CI digests byte for byte) and diffing `tools/normalize.py --members` between the two. The standing guess — the order of entries in the `StreamerInfo` record — was **wrong**: that record is byte-identical in every case | §3.3, §9.7 | ◐ understood, not yet fixed |
+| **Four fixtures are not digest-portable between macOS and Linux**, and the causes are now identified — three of them, all different. Diagnosed by reproducing CI's exact digests in a `condaforge/miniforge3` container with ROOT 6.40.04 (the drift is libc++ vs libstdc++, **not** architecture: an arm64 container reproduced the x86_64 CI digests byte for byte) and diffing `tools/normalize.py --members` between the two. The standing guess — the order of entries in the `StreamerInfo` record — was **wrong**: that record is byte-identical in every case | §3.3, §9.7 | ✅ three of four fixed, the fourth exempted with a reason |
 
 The three causes, each needing a different remedy:
 
@@ -978,6 +978,25 @@ The three causes, each needing a different remedy:
 `fSize` also differs everywhere (`sizeof(std::map)` is 24 with libc++ and 48 with
 libstdc++), which is what the existing mask is for, and it is not the cause of any
 of these.
+
+**Resolved as follows**, and verified by regenerating in the container and
+comparing against the committed manifest:
+
+- `tools/normalize.py` now masks an embedded basket's `fDatime` — **twice per
+  basket**, because the raw buffer copy begins with the key all over again, which
+  the first attempt missed and the byte diff caught.
+- It also masks `TBranchElement::fCheckSum`, **but only when `fClassName` is an
+  STL type**. For an ordinary class the checksum is stable across both standard
+  libraries, and narrowing the mask that way costs no coverage: the recomputed
+  manifest moved exactly three digests and left the other 44 untouched.
+- `serialization/pairs` opts out of the digest with `digest = false` and a
+  required `digest_reason`, printed on every run as `NO DIGEST`. It also has no
+  `size`, for the same reason; `size` is now optional in `check_bytes.py`. Its 34
+  byte assertions run everywhere and none of them touches `fTitle`.
+
+The earlier workaround — making `ttree/basket` leaflist-only — is no longer
+needed for this reason, though it has not been reverted; a split-branch `ttree/basket`
+would now be portable.
 | Five upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
 
 ### 9.7 What the coverage probe found

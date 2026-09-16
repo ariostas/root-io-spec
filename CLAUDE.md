@@ -132,6 +132,27 @@ an integer in a `ClassDef` macro. Sixteen of them are checked. It also prints
 `NARROWED` for a table row that names classes it does not spell — a row it can
 only partly check — so a silent narrowing is visible the way `SKIPPED` is.
 
+**Reproducing a cross-platform digest drift.** `DRIFT` from the Linux regenerate
+job used to mean a CI round-trip per guess. It does not have to: the difference is
+**libc++ against libstdc++, not architecture**, so an arm64 container reproduces
+the x86_64 CI digests byte for byte and the loop becomes local and fast.
+
+```sh
+docker run --rm --platform linux/arm64 -v "$PWD":/work -w /work \
+  condaforge/miniforge3:latest bash -lc \
+  'conda install -y -q -c conda-forge root=6.40.04 && python3 tools/generate.py'
+```
+
+Copy `gen/`, `tools/` and `data/` into a scratch directory and mount that, so the
+container's regeneration does not touch the working tree; `docker commit` the
+container afterwards and reruns skip the four-minute ROOT install.
+
+Then `tools/normalize.py --members <file>` on each side and `diff` them: it prints
+one line per decoded member with its path, length and bytes, and no offsets, so a
+member that grows does not bury the one line that matters. That is how the three
+causes in `PLAN.md` §9.6 were found, after `--per-record` had narrowed it to a
+record.
+
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
 

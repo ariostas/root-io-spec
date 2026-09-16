@@ -98,14 +98,28 @@ def main(argv: list[str]) -> int:
                 d, p = line.split(None, 1)
                 known[p.strip()] = d
 
-    lines, drift = [], []
+    lines, drift, undigested = [], [], []
     for case_dir in dirs:
         case = tomllib.loads((case_dir / "case.toml").read_text())
         rel = case["file"]
+        if case.get("digest", True) is False:
+            # A case whose file cannot have a portable digest at all. It must say
+            # why: the reason is printed on every run, so an opt-out is as visible
+            # as a failure would be, and its `[[bytes]]` assertions still check
+            # it. See the header of data/MANIFEST.sha256.
+            reason = case.get("digest_reason", "").strip()
+            if not reason:
+                raise SystemExit(
+                    f"{case_dir}: digest = false needs a digest_reason")
+            undigested.append(f"{case['id']}: {reason}")
+            continue
         d = normalize.digest(REPO / rel)
         lines.append(f"{d}  {rel}")
         if rel in known and known[rel] != d:
             drift.append(f"{rel}: normalized digest changed\n  was {known[rel]}\n  now {d}")
+
+    for message in undigested:
+        print(f"NO DIGEST {message}", file=sys.stderr)
 
     for message in drift:
         label = "ACCEPTED" if accept else "DRIFT"

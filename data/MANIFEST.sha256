@@ -1,5 +1,12 @@
 # Normalized SHA-256 digests of the reference files.
 # Timestamps and UUIDs are masked first; see tools/normalize.py.
+#
+# A case may be absent from this list. `digest = false` in its case.toml opts it
+# out, and a `digest_reason` is then required and printed on every run as
+# NO DIGEST, so the opt-out is as loud as a failure would be. The bar is that no
+# masking could give the file a portable digest -- in practice that means the two
+# standard libraries write it at different LENGTHS, which a mask cannot undo. Its
+# byte assertions still run everywhere. PLAN.md 9.6.
 7bb13cc10d87e766a31d363dc749f2e1bc0b4071defc9667d5ba86b067197938  data/classes/tarray.root
 f4d52fe4c1dd83d740685e32f84db3a8ea57d3cb23b5e1e0dfb96a9099d588ad  data/container/compress-lz4.root
 d6ab80a630fa472b038c1333a56ce7629fafd9a38d1c87419d80c7d87facdc8b  data/container/compress-lzma.root
@@ -18,13 +25,12 @@ c7f4180abfc3f18ad4240712e85ba2dc562dd0128562563bd2b638c4eca157a7  data/serializa
 d1a73b949ac4fcbfcc35908e00298cf82fe590644d22e90074da1426ca054561  data/serialization/double32.root
 095fe550d02cbd50e40cde99e3c7978102bad62162eacc5717d212b3d3a1815e  data/serialization/object-tags.root
 2170aeb3e002185ac363ba71d3d2ed73ef70293444cd6f4fb78a05eaa3e96fb1  data/serialization/objects.root
-4de5cbff887f334caf6f98bb49facab09903063497f30494ee517959a442845c  data/serialization/pairs.root
 120676d16e23b40098507fd6e997db00c084e2dfcb50fa36050cbb766f50a0c1  data/serialization/pointer-forms.root
 20d67eb08872e2d656bcb74a0ea62b86b1cc42b543beecd624682d21ab221c69  data/serialization/references.root
 2bd0569599fd1fba1adb238b8e912386c694b85879163c5958a296b4dfac5257  data/serialization/schema-rules.root
 74c238a89968fd44ac5363cd8a46cc80d4bd550172aa844d3b0374672d137002  data/serialization/streamer-info.root
 da0c8a5269b27c7a38ab87d419b311c9b5b946892984cd83e95b8614f0ed6297  data/serialization/version-zero.root
-2c7dc316f4a5b711143912c00ce250242b6f1c3e44f2bf5e514c17ac6925d153  data/ttree/basket-embedded.root
+8d21a95b6135390940a1bed16bd16add362acb44ff9ff9e89db0154c39b89d35  data/ttree/basket-embedded.root
 5ba8a58423b2591a9e4927959c36743cd8b24a33de654145c98630fe270e4379  data/ttree/basket-iofeatures.root
 7563538d0c5da1a5f021b91e2f0042e19f2a480b9b6b26b770c6d2fe2ca4d72a  data/ttree/basket.root
 ab69c71bb1227917cd1a09c523e4f8e58e7d8e4ff932c854ac8bf70120646101  data/ttree/branch.root
@@ -39,8 +45,8 @@ f6aefe482732686bd3c9d6cb88beb51709fe9a19b79294db6a36d255e82c1c66  data/ttree/spl
 bc8d2a89fe1467a1db6d34d8d8ec6b1c6ca0859efb1b8c1c2c80a57476fc543e  data/ttree/split-naming.root
 e61cd849b44132f63ba2ec18d3770fa76ba04eea4bec8c97741385b3b95a0b47  data/ttree/split-nested.root
 2a29cc68452f34f64cdc6f481c26ae678526198aa25c26d45f843966ce300884  data/ttree/split-object.root
-2c4b2284394157af2f7deb624a7337741ab600d8be84cce5c17e1a6f85f8ee24  data/ttree/split-ptr-collection.root
-966cf390629e52008d76b05b36bdc7b8a2e075be6e683c2b3104490cb4a77b42  data/ttree/split-stl-toplevel.root
+b9f0eb0db302b5044909e71297b9006886a02ea2cfedd43380d47b3118be3d75  data/ttree/split-ptr-collection.root
+163ae1b888c2b31b9451286be6d30e7bc11d853325c4b1b1fc39e1583eb75141  data/ttree/split-stl-toplevel.root
 e39656403d49982b150edfc4cbc17e564c4b6b24a33f679981d2ecfd907739d9  data/ttree/split-unsplit.root
 5b75999cc86af04e254d820b92e2125f91836d702686c5e0d79eb4f93e8f492a  data/ttree/tree-branchref.root
 f5e6e00fc16cc5973a63264703631e71f8fa040b24b7c743dc8f3e92ce8c2109  data/ttree/tree-entrylist.root

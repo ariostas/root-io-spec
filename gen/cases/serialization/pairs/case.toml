@@ -1,6 +1,10 @@
 id   = "serialization/pairs"
 file = "data/serialization/pairs.root"
-size = 3366
+
+# No `size`: this file is 3366 bytes when libc++ wrote it and 3399 when
+# libstdc++ did, for the reason `digest_reason` below gives. Every offset the
+# assertions use is inside the object record, which is identical either way;
+# the divergence is in the StreamerInfo record that follows it.
 
 description = """
 The six shapes a `pair<K,V>` member takes in a member-wise `std::map`, and the
@@ -52,6 +56,23 @@ spec = [
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
 
+# This file cannot have a portable normalized digest, and no masking can give it
+# one. libstdc++ carries doc comments on std::pair's members and libc++ does not,
+# so the synthesised pair<string,int>'s two TStreamerElement titles are "The
+# first member" and "The second member" on Linux and empty on macOS -- 35 bytes
+# against 2. It is a *length* difference, and a mask can restore a value but not
+# a length. PLAN.md section 9.6.
+#
+# Nothing else about the case is exempt: its 34 byte assertions run everywhere,
+# and none of them touches fTitle.
+digest        = false
+digest_reason = """
+libstdc++ gives std::pair's members doc comments and libc++ does not, so the
+synthesised pair<string,int>'s element titles differ in LENGTH between them -- 35
+bytes against 2 -- and a mask cannot restore a length. The byte assertions still
+run. PLAN.md 9.6
+"""
+
 
 [[records]]
 offset = 100
@@ -68,16 +89,20 @@ offset = 572
 nbytes = 2568
 class  = "TList"
 role   = "StreamerInfo"
+# The two records below sit after the StreamerInfo record, so their offsets are
+# the libc++ ones; with libstdc++ they are 3173 and 3303. Nothing checks these
+# entries -- they are here to describe the file -- but the difference is real and
+# is the whole reason this case has no `size` and no digest.
 [[records]]
 offset = 3140
 nbytes = 130
 class  = "TFile"
-role   = "keys list / free segments"
+role   = "keys list / free segments (3173 with libstdc++)"
 [[records]]
 offset = 3270
 nbytes = 96
 class  = "TFile"
-role   = "keys list / free segments"
+role   = "keys list / free segments (3303 with libstdc++)"
 
 # --- fStrKey: map<string,int>, {"ab":1, "cd":2} ---------------------------
 #
