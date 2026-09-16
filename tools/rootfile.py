@@ -1942,17 +1942,35 @@ def read_ref_array(buf: bytes, offset: int) -> RefArray:
                     uids=uids, end=o + 4 * max(nobjects, 0))
 
 
+HAS_UUID = 0x20          # TObject::kHasUUID, BIT(5)
+TREF_EXEC_SHIFT = 16     # the TExec index occupies fBits 16-23
+
+
+def ref_exec_id(bits: int) -> int:
+    """The TExec index in a TRef's fBits, 0 when there is none.
+
+    References.md 3.2. TRef::SetAction stores 1 + the index into the list of
+    execs, so 0 means no action and the number is one-based.
+    """
+    return (bits >> TREF_EXEC_SHIFT) & 0xFF
+
+
 def read_ref(buf: bytes, offset: int) -> TObjectBase:
     """A TRef payload: the TObject layout, with a pidf written unconditionally.
 
     TRef has no byte count and no version word of its own, and its fBits never
     carries kIsReferenced, so read_tobject would stop two bytes early.
+
+    When fBits carries kHasUUID the trailing u16 is a counted string instead
+    (References.md 3.1), the payload is no longer 12 bytes, and there is no
+    pidf: `pidf` is None on the returned value.
     """
     version = _i16(buf, offset)
     unique_id = _u32(buf, offset + 2)
     bits = _u32(buf, offset + 6)
-    if bits & 0x20:          # kHasUUID: a counted string, not a pidf
-        raise FormatError(f"kHasUUID TRef at {offset} is not supported")
+    if bits & HAS_UUID:      # kHasUUID: a counted string, not a pidf
+        _, end = _counted_string(buf, offset + 10)
+        return TObjectBase(version, unique_id, bits, None, end)
     return TObjectBase(version, unique_id, bits, _u16(buf, offset + 10),
                        offset + 12)
 

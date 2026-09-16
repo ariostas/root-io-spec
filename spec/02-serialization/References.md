@@ -145,7 +145,7 @@ The three fields:
   > masking is at `root/core/base/src/TProcessID.cxx:333`.
 
 - **`fBits`** of the `TRef` carries `kHasUUID` (`BIT(5)`) and, in bits 16–23, a
-  `TExec` index for action-on-demand (`root/core/base/src/TRef.cxx:436`).
+  `TExec` index for action-on-demand (§3.1, §3.2).
 - **`pidf`** resolves as §2.
 
 ### 3.1 The `kHasUUID` variant
@@ -158,6 +158,32 @@ variable, and a reader MUST branch on the bit.
 > Demonstrated by `serialization/references`: the `TRef` record's payload is 12
 > bytes beginning at 571 with `00 01`, a version word — the following record's
 > key starts at 583.
+>
+> And by `serialization/ref-variants`: `ruuid` has `fBits = 0x00000020` and a
+> counted string of 36 where the `pidf` would be, so its payload is **47 bytes**
+> and the next record's key starts 47 bytes on.
+
+**`fUniqueID` means something different in this form.** For an ordinary `TRef` it
+is the target's id within a `TProcessID`; for a `kHasUUID` one it indexes
+`gROOT`'s `TProcessUUID` table (`root/core/base/src/TRef.cxx:490-497`). The two
+are both plain `u32` and **nothing but the bit distinguishes them**.
+
+### 3.2 The `TExec` index
+
+Bits 16–23 of a `TRef`'s `fBits` hold **`1 +` the index** of a `TExec` in
+`TRef`'s list of execs, stored by `TRef::SetAction`
+(`root/core/base/src/TRef.cxx:428-437`) and read back into the same bits
+(`root/core/base/src/TRef.cxx:505-509`). Zero means no action, so the numbering
+is one-based.
+
+It is a number, not a flag, and **it does not change the layout**: such a `TRef`
+is still 12 bytes and still ends in a `pidf`. A reader that ignores the field
+reads the reference correctly; one that treats `fBits` as a set of independent
+flags will invent several.
+
+> Demonstrated by `serialization/ref-variants`: `rexec1` has
+> `fBits = 0x00010000` and `rexec2` `0x00020000`, both twelve bytes with
+> `pidf = 0`.
 
 ## 4. `TRefArray`
 
@@ -282,7 +308,9 @@ To turn `pidf` into a process:
    `10 or 12 + |fName| + 1 + 4 + 4 + 2 + 4 × nobjects`, and `nobjects` is not
    negative.
 6. The `fUniqueID` of an object whose `fBits & 0x10` is set has a zero top byte.
-7. A `TRef` payload is exactly 12 bytes, unless its `fBits` carries `kHasUUID`.
+7. A `TRef` payload is exactly 12 bytes when its `fBits` does not carry
+   `kHasUUID`. When it does, the payload is 10 bytes plus a counted string and
+   ends exactly where the record's payload ends (§3.1).
 
 Invariant 6 holds for objects but deliberately **not** for `TRef` or for
 `TRefArray::fUIDs`, which is the whole point of §3 and §4.
@@ -309,8 +337,10 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | Case | Exercises |
 |---|---|
 | `serialization/references` | A `TProcessID` record, a referenced `TObject` with a `pidf`, a `TRef`, and a `TRefArray` |
+| `serialization/ref-variants` | The `kHasUUID` form (§3.1) and a `TExec` index in `fBits`, twice (§3.2) |
 
-No fixture covers a non-zero `pidf`, a non-zero `fPidOffset`, the `kHasUUID`
-form of `TRef`, a `TExec` index, or a `fUniqueID` whose top byte survives to
-disk. The last three all need state from a second ROOT session or a second file,
-which a single generator macro cannot produce.
+No fixture covers a non-zero `pidf`, a non-zero `fPidOffset`, or a `fUniqueID`
+whose top byte survives to disk. Those three do need state from a second ROOT
+session or a second file, which a single generator macro cannot produce — but
+`kHasUUID` and the `TExec` index turned out not to: neither arises from a plain
+`TRef(obj)`, and the generator sets both up directly instead.

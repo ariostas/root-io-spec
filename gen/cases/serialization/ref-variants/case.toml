@@ -1,0 +1,163 @@
+id   = "serialization/ref-variants"
+file = "data/serialization/ref-variants.root"
+size = 2205
+
+description = """
+The two `TRef` variants References.md 3 describes and `serialization/references`
+does not reach: the `kHasUUID` form, and a `TExec` index in `fBits`.
+
+**`kHasUUID` changes the member's length.** `ruuid`'s `fBits` is `0x00000020`
+(`BIT(5)`), and where an ordinary `TRef` has a trailing `u16 pidf` this one has a
+**counted string** holding a UUID -- here 36 characters, so the payload is **47
+bytes, not 12** (`root/core/base/src/TRef.cxx:517-522`). A reader that takes
+`TRef` to be a fixed twelve bytes runs 35 bytes into whatever follows. The
+invariant of References 8.7 already carried the exception in its wording;
+`check_invariants.py` did not implement it until this case existed.
+
+`ruuid`'s `fUniqueID` is 1 and so is `rexec1`'s, and **they do not mean the same
+thing**: for a `kHasUUID` reference it indexes `gROOT`'s `TProcessUUID` table and
+for an ordinary one it is the target's id within a `TProcessID`. Nothing in the
+twelve bytes says which; only the bit does.
+
+**The `TExec` index is a number in bits 16-23**, not a flag. `rexec1` has
+`fBits = 0x00010000` and `rexec2` `0x00020000`, because `TRef::SetAction` stores
+**1 + the index** into the list of execs
+(`root/core/base/src/TRef.cxx:428-437`), so 0 means no action and the numbering
+is one-based. Both are still 12 bytes and still carry a `pidf`: the index does
+not change the layout, and a reader that ignores it reads the reference
+correctly.
+
+Neither variant arises from a plain `TRef(obj)`, so the generator drives both
+directly. The bytes are what a file containing them looks like however it was
+produced.
+
+`kIsReferenced` is clear in every `TRef`'s own `fBits` here, which is what
+References 3 relies on: the `TRef` is not itself a referenced object.
+"""
+
+spec = [
+  "spec/02-serialization/References.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 194
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 294
+nbytes = 155
+class  = "TProcessID"
+role   = "written when the first reference is written"
+[[records]]
+offset = 449
+nbytes = 84
+class  = "TObjString"
+role   = "the target, with kIsReferenced set"
+[[records]]
+offset = 533
+nbytes = 85
+class  = "TRef"
+role   = "the kHasUUID form -- 47 bytes of payload"
+[[records]]
+offset = 618
+nbytes = 51
+class  = "TRef"
+role   = "TExec index 1"
+[[records]]
+offset = 669
+nbytes = 51
+class  = "TRef"
+role   = "TExec index 2"
+[[records]]
+offset = 720
+nbytes = 1040
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- the target ----------------------------------------------------------
+
+[[bytes]]
+name = "the TObjString target has kIsReferenced (BIT(4)) set"
+offset = 525
+type = "u32"
+value = 0x00000018
+
+# --- ruuid: the kHasUUID form --------------------------------------------
+#
+# 00 01 | 00 00 00 01 | 00 00 00 20 | 24 "3f2504e0-..."
+# ver     fUniqueID     fBits         a counted string, not a pidf
+
+[[bytes]]
+name = "ruuid: the version word is TObject's 1, not TRef's"
+offset = 571
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "ruuid: fUniqueID indexes gROOT's TProcessUUID table here, not a TProcessID"
+offset = 573
+type = "u32"
+value = 1
+
+[[bytes]]
+name = "ruuid: fBits is exactly kHasUUID, BIT(5)"
+offset = 577
+type = "u32"
+value = 0x00000020
+
+[[bytes]]
+name = "ruuid: a counted string of 36 replaces the trailing u16"
+offset = 581
+type = "u8"
+value = 36
+
+[[bytes]]
+name = "ruuid: the UUID text"
+offset = 582
+type = "bytes"
+value = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+
+# The payload runs 571..618: 2 + 4 + 4 + 1 + 36 = 47 bytes, not 12. The next
+# record's key begins at 618.
+
+[[bytes]]
+name = "the next record's key starts at 618 -- the payload was 47 bytes"
+offset = 622
+type = "u16"
+value = 4
+
+# --- rexec1 and rexec2: a TExec index in bits 16-23 -----------------------
+
+[[bytes]]
+name = "rexec1: fUniqueID is the target's id, and this one IS a TProcessID id"
+offset = 659
+type = "u32"
+value = 1
+
+[[bytes]]
+name = "rexec1: fBits carries exec index 1 in bits 16-23, and nothing else"
+offset = 663
+type = "u32"
+value = 0x00010000
+
+[[bytes]]
+name = "rexec1: the pidf is still there -- the index does not change the layout"
+offset = 667
+type = "u16"
+value = 0
+
+[[bytes]]
+name = "rexec2: index 2, so the field is a number and not a flag"
+offset = 714
+type = "u32"
+value = 0x00020000
+
+[[bytes]]
+name = "rexec2: twelve bytes again, ending at 720"
+offset = 718
+type = "u16"
+value = 0

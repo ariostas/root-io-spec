@@ -773,17 +773,26 @@ class Checker:
                 continue
 
             if rec.class_name == "TRef":
-                if rec.obj_len != 12:
+                start, end = rootfile.payload_range(rec)
+                bits = rootfile._u32(data, start + 6)
+                if bits & rootfile.HAS_UUID:
+                    # References 3.1: the trailing u16 is a counted string, so
+                    # the payload is not 12 bytes and there is no pidf.
+                    ref = rootfile.read_ref(data, start)
+                    if ref.end != end:
+                        self.bad("References 8.7",
+                                 f"kHasUUID TRef at {rec.offset} ends at "
+                                 f"{ref.end}, payload ends at {end}")
+                elif rec.obj_len != 12:
                     self.bad("References 8.7",
                              f"TRef payload at {rec.offset} is {rec.obj_len} bytes, "
                              f"not 12")
-                    continue
-                start, _ = rootfile.payload_range(rec)
-                ref = rootfile.read_ref(data, start)
-                if not process_exists(ref.pidf, rec):
-                    self.bad("References 8.2",
-                             f"TRef at {rec.offset} names pidf {ref.pidf}, and no "
-                             f"ProcessID{ref.pidf + rec.pid_offset} record exists")
+                else:
+                    ref = rootfile.read_ref(data, start)
+                    if not process_exists(ref.pidf, rec):
+                        self.bad("References 8.2",
+                                 f"TRef at {rec.offset} names pidf {ref.pidf}, and no "
+                                 f"ProcessID{ref.pidf + rec.pid_offset} record exists")
 
             if rec.class_name == "TRefArray":
                 start, end = rootfile.payload_range(rec)

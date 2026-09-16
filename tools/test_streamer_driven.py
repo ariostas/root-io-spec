@@ -451,3 +451,27 @@ class FixedArrayOfCollections(unittest.TestCase):
         decoder = rootfile.Decoder(self.BUF, 0, [info(el, name="C")])
         with self.assertRaises(rootfile.FormatError):
             decoder.read_collection(el, 0)
+
+
+class RefVariants(unittest.TestCase):
+    """References.md 3.1 and 3.2."""
+
+    def test_the_plain_form_is_twelve_bytes(self):
+        buf = b"\x00\x01" + b"\x00\x00\x00\x01" + b"\x00\x00\x00\x00" + b"\x00\x00"
+        ref = rootfile.read_ref(buf, 0)
+        self.assertEqual((ref.end, ref.pidf), (12, 0))
+
+    def test_kHasUUID_replaces_the_pidf_with_a_counted_string(self):
+        buf = b"\x00\x01" + b"\x00\x00\x00\x01" + b"\x00\x00\x00\x20" + b"\x03abc"
+        ref = rootfile.read_ref(buf, 0)
+        self.assertEqual(ref.end, 14)
+        self.assertIsNone(ref.pidf)
+
+    def test_the_exec_index_is_one_based_and_changes_nothing_else(self):
+        buf = b"\x00\x01" + b"\x00\x00\x00\x01" + b"\x00\x02\x00\x00" + b"\x00\x00"
+        ref = rootfile.read_ref(buf, 0)
+        self.assertEqual(ref.end, 12)
+        self.assertEqual(rootfile.ref_exec_id(ref.bits), 2)
+
+    def test_no_action_is_zero(self):
+        self.assertEqual(rootfile.ref_exec_id(0x00000020), 0)
