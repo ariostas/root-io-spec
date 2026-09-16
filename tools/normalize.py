@@ -117,6 +117,66 @@ def record_digests(buf: bytes) -> list[tuple[int, str, str, str]]:
     return out
 
 
+def member_lines(buf: bytes, want: str | None = None) -> list[str]:
+    """One line per decoded member of every record, for explaining a drift.
+
+    `record_digests` says which *record* differs; this says which member of it.
+    CI cannot diff against the other machine's bytes -- it only has the file it
+    just wrote -- so the report has to be a canonical dump that a human diffs
+    against the same command run elsewhere.
+
+    Offsets are deliberately absent: a member that grows shifts everything after
+    it, and a diff full of shifted offsets hides the one line that matters. Each
+    line carries the member's path, its type, its length, and its bytes when they
+    are short enough to read.
+
+    `want` limits the dump to records of one class. The buffer must already be
+    normalized, so a masked field never shows up as a difference.
+    """
+    header = rootfile.read_header(buf)
+    records = rootfile.read_records(buf, header)
+    infos: list = []
+    for rec in records:
+        if not rec.free and rec.key_len and rec.name == "StreamerInfo":
+            try:
+                infos = rootfile.read_streamer_infos(rootfile.object_data(buf, rec), rec)
+            except Exception:
+                pass
+
+    out: list[str] = []
+
+    def walk(value, prefix: str) -> None:
+        for n, member in enumerate(value.members or []):
+            name = member.name or member.type_name or f"[{n}]"
+            path = f"{prefix}.{name}" if prefix else name
+            width = member.end - member.start
+            raw = buf[member.start:member.end]
+            shown = (raw.hex(" ") if 0 < width <= 16
+                     else hashlib.sha256(raw).hexdigest()[:16])
+            out.append(f"    {path:52} t{member.ftype:<4} {width:6} {shown}")
+            walk(member, path)
+
+    for rec in records:
+        if rec.free or not rec.key_len:
+            continue
+        if want is not None and rec.class_name != want:
+            continue
+        if rec.class_name in ("TBasket",):
+            continue                      # entry data, not a member tree
+        try:
+            data = rootfile.object_data(buf, rec)
+            _, value = rootfile.decode_record_verbose(data, rec, infos,
+                                                      tolerant=True)
+        except Exception as exc:
+            out.append(f"    <{rec.class_name} {rec.name!r}: {exc}>")
+            continue
+        if value is None:
+            continue
+        out.append(f"  {rec.class_name} {rec.name!r}:")
+        walk(value, "")
+    return out
+
+
 def digest(path) -> str:
     with open(path, "rb") as fh:
         return hashlib.sha256(normalize(fh.read())).hexdigest()
@@ -124,7 +184,17 @@ def digest(path) -> str:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if "--per-record" in sys.argv:
+    if any(a.startswith("--members") for a in sys.argv[1:]):
+        want = None
+        for a in sys.argv[1:]:
+            if a.startswith("--members="):
+                want = a.split("=", 1)[1]
+        for path in args:
+            print(path)
+            with open(path, "rb") as fh:
+                for line in member_lines(normalize(fh.read()), want):
+                    print(line)
+    elif "--per-record" in sys.argv:
         for path in args:
             print(path)
             with open(path, "rb") as fh:
