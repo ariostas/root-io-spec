@@ -1274,9 +1274,129 @@ class Checker:
                         # A counter leaf whose only full copy is inside this
                         # leaf's fLeafCount. TLeaf.md 3.1.
                         leaves.append(lf.counter)
+            by_slot = {b.slot: b for b in rootfile.walk_branches(top)}
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
+                self.check_branch_element(branch, by_slot)
                 self.check_leaves(data, branch, leaves)
+
+    #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
+    ELEMENT_TYPES = {-1, 0, 1, 2, 3, 4, 31, 41}
+    #: The two interior types carry no leaf; every other type carries one.
+    ELEMENT_NO_LEAF = {1, 2}
+    ELEMENT_ONE_LEAF = {-1, 0, 3, 4, 31, 41}
+    #: On these the single leaf is always a back-reference, never written here.
+    ELEMENT_LEAF_BY_REF = {3, 4}
+    #: The ones whose fClonesName is set, and whose fBranchCount is.
+    ELEMENT_CLONES_NAME = {3, 4}
+    ELEMENT_COUNTED = {31, 41}
+
+    def check_branch_element(self, br, by_slot) -> None:
+        """The Invariants of spec/04-ttree/TBranchElement.md.
+
+        Skipped entirely for a plain TBranch, which carries none of these
+        members; `element_type` is None exactly then.
+        """
+        ft = br.element_type
+        if ft is None:
+            return
+        name = f"branch {br.name!r}"
+
+        # 1. fType is one of the eight values the dispatch accepts.
+        if ft not in self.ELEMENT_TYPES:
+            self.bad("TBranchElement 10.1", f"{name}: fType {ft}")
+            return
+
+        # 2. fClassName is never empty.
+        if not br.class_name:
+            self.bad("TBranchElement 10.2", f"{name}: fClassName is empty")
+
+        # 3. fClassVersion is stored as an absolute value.
+        if br.class_version < 0:
+            self.bad("TBranchElement 10.3",
+                     f"{name}: fClassVersion {br.class_version}")
+
+        # 4. fClonesName is set exactly on the two count branch types.
+        if bool(br.clones_name) != (ft in self.ELEMENT_CLONES_NAME):
+            self.bad("TBranchElement 10.4",
+                     f"{name}: fType {ft} with fClonesName "
+                     f"{br.clones_name!r}")
+
+        # 5. The two interior types carry no leaf; every other type carries
+        #    exactly one. `leaves` already has any back-reference resolved into
+        #    it, so it is the count of leaves however they were written.
+        if ft in self.ELEMENT_NO_LEAF and br.leaves:
+            self.bad("TBranchElement 10.5",
+                     f"{name}: fType {ft} with {len(br.leaves)} leaf/leaves")
+        if ft in self.ELEMENT_ONE_LEAF and len(br.leaves) != 1:
+            self.bad("TBranchElement 10.5",
+                     f"{name}: fType {ft} with {len(br.leaves)} leaf/leaves")
+
+        # 5b. On a count branch that leaf is never written in place: it is a
+        #     back-reference to the copy inside a member leaf's fLeafCount.
+        if ft in self.ELEMENT_LEAF_BY_REF and not br.leaf_refs:
+            self.bad("TBranchElement 10.5",
+                     f"{name}: fType {ft} writes its leaf in full rather than "
+                     f"referencing the copy in a member's fLeafCount")
+
+        # 6. An interior node holds nothing.
+        if ft in (1, 2) and (br.write_basket or br.tot_bytes):
+            self.bad("TBranchElement 10.6",
+                     f"{name}: fType {ft} with fWriteBasket "
+                     f"{br.write_basket} and fTotBytes {br.tot_bytes}")
+
+        # 7. fBranchCount is set on every member of a split container, and on
+        #    nothing but those and a counted fType <= 2 member.
+        if ft in self.ELEMENT_COUNTED and br.count_slot < 0:
+            self.bad("TBranchElement 10.7",
+                     f"{name}: fType {ft} with no fBranchCount")
+        if br.count_slot >= 0 and ft not in self.ELEMENT_COUNTED and ft > 2:
+            self.bad("TBranchElement 10.7",
+                     f"{name}: fType {ft} with an fBranchCount")
+
+        # 8. fID, when not a sentinel, indexes the element list of the streamer
+        #    info fClassName names.
+        if br.element_id is not None and br.element_id >= 0:
+            info = self.element_info(br)
+            if info is not None and br.element_id >= len(info.elements):
+                self.bad("TBranchElement 10.8",
+                         f"{name}: fID {br.element_id} past the "
+                         f"{len(info.elements)} elements of {br.class_name!r}")
+
+        # 9. fBranchCount refers to a count branch written earlier.
+        if br.count_slot >= 0:
+            target = by_slot.get(br.count_slot)
+            if target is None:
+                self.bad("TBranchElement 10.9",
+                         f"{name}: fBranchCount at {br.count_slot} is no branch")
+            elif not (target.element_type in (3, 4)
+                      or (target.element_type is not None
+                          and target.element_type <= 2
+                          and target.streamer_type == 6)):
+                self.bad("TBranchElement 10.9",
+                         f"{name}: fBranchCount points at {target.name!r}, "
+                         f"fType {target.element_type} fStreamerType "
+                         f"{target.streamer_type}: neither a container count "
+                         f"branch nor a kCounter branch")
+            elif target.slot >= br.slot:
+                self.bad("TBranchElement 10.9",
+                         f"{name}: fBranchCount at {br.count_slot} is not "
+                         f"earlier than the branch at {br.slot}")
+
+    def element_info(self, br):
+        """The streamer info fClassName/fClassVersion/fCheckSum select."""
+        _, _, all_infos = self.streamer_infos()
+        infos = [i for i in (all_infos or []) if i.name == br.class_name]
+        if not infos:
+            return None
+        if br.class_version:
+            for i in infos:
+                if i.class_version == br.class_version:
+                    return i
+        for i in infos:
+            if i.checksum == br.check_sum:
+                return i
+        return None
 
     def check_tree(self, data, rec, tree) -> None:
         """The Invariants of spec/04-ttree/TTree.md."""

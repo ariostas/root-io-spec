@@ -657,15 +657,17 @@ interleaved with later phases or accept contributions.
 blocker on an ordinary file. ✅ `TBranch.md`, `TLeaf.md` and `TTree.md`, which
 together close the unsplit reading path from the record down: tree → branch →
 basket → byte range → values, checked end to end by `rootfile.entry_spans`. What
-remains is the split half — `TBranchElement.md`, `Splitting.md`,
-`ReadingEntries.md`, `Double32.md`, `Auxiliary.md` — with the full split/type
-matrix of fixtures. Still the largest single phase, and it still wants its own
-sub-plan (§7 item 5), which should now be written around what these four
-documents settle. **That sub-plan is now written: [`PLAN-ttree.md`](PLAN-ttree.md).**
-It measures the split half across both corpora — 6736 of 11158 branches are
-`TBranchElement`, `fType` selects nine read procedures of which two have zero
-coverage in 178 files — and turns phase 5 into four documents (not five) and a
-fourteen-case fixture matrix.
+remains is the split half. The sub-plan §7 item 5 asked for is written:
+[`PLAN-ttree.md`](PLAN-ttree.md). It measures the split half across both corpora
+— 6736 of 11157 branches are `TBranchElement`, `fType` selects eleven read
+procedures of which two have zero coverage in 178 files — and turns phase 5 into
+four documents (not five) plus a fifteen-case fixture matrix.
+
+✅ `TBranchElement.md` is the first of the four, with `ttree/split-object` as the
+first fixture in the repository to contain a split branch and nine new
+invariants, all of them clean over both corpora. `Splitting.md`,
+`ReadingEntries.md` and `Auxiliary.md` remain; `Double32.md` was dropped as
+already-written and distributed (`PLAN-ttree.md` §4).
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;

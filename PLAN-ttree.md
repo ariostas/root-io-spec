@@ -113,24 +113,32 @@ directly (`root/tree/tree/src/TBranchElement.cxx:2279`,
 `fType` never mentions −2** (`root/tree/tree/inc/TBranchElement.h:67-78`, which
 says only "`fID==-1` for the former"). That is an erratum for the document.
 
-### 3.3 Four of the eight `fType` values have no leaf
+### 3.3 Two `fType` values have no leaf, and two reach theirs only by reference
 
-A perfect bipartition, with no exceptions in 6736 branches:
+No exceptions in 6736 branches:
 
 | | `len(fLeaves)` | Has baskets |
 |---|---|---|
-| `fType` −1, 0, 31, 41 | exactly 1 | yes |
+| `fType` −1, 0, 31, 41 | exactly 1, written in place | yes |
 | `fType` 1, 2 | **0** | **never** — 141/141 and 16/16 have `fWriteBasket == 0` |
-| `fType` 3, 4 | **0** | yes — 16/21 and 69/84 have baskets |
+| `fType` 3, 4 | exactly 1, **always a back-reference** | yes — 16/21 and 69/84 |
 
-This is the most consequential structural fact in the split half, and it is why
-`ReadingEntries.md` cannot simply extend `TLeaf.md` §5:
+> **Corrected 2026-09-16.** The first version of this section said `fType` 3 and
+> 4 have no leaf either. That came from a probe that counted only `fLeaves`
+> entries written in full and silently dropped the ones that are references —
+> which on a count branch is all of them. The invariant written from the wrong
+> claim failed on 121 branches the first time it ran over the corpora, which is
+> what caught it.
+
+This is still the most consequential structural fact in the split half, and it is
+why `ReadingEntries.md` cannot simply extend `TLeaf.md` §5:
 
 - `fType` 1 and 2 are pure interior nodes. No leaf, no basket, no data.
-- `fType` 3 and 4 **hold data with no leaf describing it**. They are the count
-  branches, and `ReadLeavesClones`/`ReadLeavesCollection` read the count straight
-  out of the basket payload. The leaf-driven procedure of `TLeaf.md` §5 does not
-  apply to them at all.
+- `fType` 3 and 4 are the count branches. Their single `fLeaves` entry is a
+  four-byte back-reference to a copy inside a member leaf's `fLeafCount`, so a
+  reader that ignores back-references sees no leaf at all. And the leaf is not
+  how they are read anyway: `ReadLeavesClones`/`ReadLeavesCollection` take the
+  count straight out of the basket payload.
 
 There is also a writer-side wrinkle: ROOT synthesises a missing `TLeafElement` on
 read when `fType == 0` and `fLeaves` is empty
@@ -303,9 +311,10 @@ Item 3 is the one that changes what we can claim. It should land with
 
 ## 7. Order
 
-1. `TBranchElement.md`, with tooling 1 and fixtures `split-object`,
-   `split-unsplit`, `split-clones`, `split-stl`, `split-stl-toplevel`,
-   `split-branch-object`. This is the bulk of the reading and the bulk of the value.
+1. ✅ `TBranchElement.md`, with tooling 1 and the `split-object` fixture. The
+   remaining fixtures of its row — `split-unsplit`, `split-clones`, `split-stl`,
+   `split-stl-toplevel`, `split-branch-object` — are still to write, and each
+   will extend rather than change the document; §13 there lists what they cover.
 2. `Splitting.md`, with `split-nested`, `split-counter`, `split-ptr-collection`.
    It depends on `TBranchElement.md` for the vocabulary, and it is where the
    zero-coverage procedures get reached.

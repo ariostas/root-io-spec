@@ -151,6 +151,35 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class BranchCountReference(unittest.TestCase):
+    """TBranchElement.md section 6. fBranchCount is a map position, not a branch."""
+
+    @staticmethod
+    def slot(raw: bytes, start: int = 0):
+        return rootfile.Value(name="fBranchCount", ftype=64,
+                              start=start, end=start + len(raw),
+                              type_name="TBranchElement*")
+
+    def test_a_null_slot_means_unset(self):
+        buf = b"\x00\x00\x00\x00"
+        self.assertEqual(rootfile._branch_ref(buf, self.slot(buf), 615), -1)
+
+    def test_a_tag_is_resolved_through_kmapoffset(self):
+        # The same off-by-two as fLeafCount: tag 447 in a record at 615 names
+        # absolute position 615 + 447 - 2.
+        buf = (447).to_bytes(4, "big")
+        self.assertEqual(rootfile._branch_ref(buf, self.slot(buf), 615), 1060)
+
+    def test_a_missing_member_is_unset(self):
+        self.assertEqual(rootfile._branch_ref(b"", None, 615), -1)
+
+    def test_a_byte_count_means_written_in_full_here(self):
+        # No corpus file does this, but the position is still the identity.
+        tag = (rootfile.BYTE_COUNT_MASK | 8).to_bytes(4, "big")
+        buf = b"\x00" * 900 + tag
+        self.assertEqual(rootfile._branch_ref(buf, self.slot(tag, 900), 615), 900)
+
+
 class EmbeddedBasketFlag(unittest.TestCase):
     """TBasket.md 4.1. The composed flag, and what it does and does not imply."""
 

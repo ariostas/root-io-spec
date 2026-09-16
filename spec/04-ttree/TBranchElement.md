@@ -1,0 +1,390 @@
+# `TBranchElement`
+
+The branch class a split tree is made of. A `TBranchElement` is a
+[`TBranch`](TBranch.md) with eleven extra members that say **which part of which
+class** the branch holds — and those eleven, not the branch record itself, are
+what a reader has to understand.
+
+Prerequisites: [TBranch](TBranch.md), [TLeaf](TLeaf.md),
+[Streamer information](../02-serialization/StreamerInfo.md),
+[Element types](../02-serialization/ElementTypes.md).
+
+In the two corpora of `PLAN.md` §9.8 and §9.9 — 178 files written by ROOT
+releases from 4.00 to 6.36 — **6736 of 11157 branches are `TBranchElement`**,
+spread over 56 files. A reader that handles only `TBranch` can walk a physics
+file and locate the right basket for an entry, and cannot interpret a byte of it.
+
+## 1. The record needs no special reading
+
+`TBranchElement::Streamer` exists but its read path is one line —
+`ReadClassBuffer` (`root/tree/tree/src/TBranchElement.cxx:6027-6028`) — followed
+by fixups that touch only transient members. The class has an accurate streamer
+info in every file that uses it, so
+[the streamer-driven algorithm](../02-serialization/StreamerDriven.md) reads the
+record correctly with no special knowledge, exactly as for
+[`TBranch`](TBranch.md#1-where-a-branch-lives).
+
+That is worth stating plainly because it is a trap in the other direction: a
+coverage measurement based on *decoding records* will report a split file as
+fully covered while the reader cannot produce a single value from it. The
+difficulty is entirely in the meaning of the fields.
+
+One fixup does reach the file format. When `fType` is 0 and `fLeaves` is empty,
+ROOT **synthesises** a `TLeafElement` on read
+(`root/tree/tree/src/TBranchElement.cxx:6037-6044`). No file in either corpus
+does this, so a reader may treat an empty `fLeaves` on an `fType` 0 branch as a
+file it should reject — but it is defensive code upstream, not an error.
+
+## 2. Layout
+
+The eleven members follow the `TBranch` base in declaration order
+(`root/tree/tree/inc/TBranchElement.h:60-84`). Class version 10;
+`root/tree/tree/inc/TBranchElement.h:255`.
+
+| # | Member | `fType` | C++ | Meaning |
+|---|---|---|---|---|
+| 0 | `TBranch` | 0 | base | everything in [TBranch §2](TBranch.md#2-layout) |
+| 1 | `fClassName` | 65 | `TString` | the class whose element list `fID` indexes (§5) |
+| 2 | `fParentName` | 65 | `TString` | the class this branch was split out of |
+| 3 | `fClonesName` | 65 | `TString` | the value type, on `fType` 3 and 4 only |
+| 4 | `fCheckSum` | 13 | `UInt_t` | checksum of `fClassName`'s class |
+| 5 | `fClassVersion` | 2 | `Version_t` | on-file version of `fClassName`'s class |
+| 6 | `fID` | 3 | `Int_t` | element index, or a sentinel (§3) |
+| 7 | `fType` | 3 | `Int_t` | which kind of node this is (§3) |
+| 8 | `fStreamerType` | 3 | `Int_t` | the element type code, or −1 |
+| 9 | `fMaximum` | 3 | `Int_t` | upper bound on the collection count (§7) |
+| 10 | `fBranchCount` | 64 | `TBranchElement*` | back-reference to the count branch (§6) |
+| 11 | `fBranchCount2` | 64 | `TBranchElement*` | the second dimension; never set (§6) |
+
+`fClassVersion` is a two-byte `Version_t` from class version 10 onward and a
+four-byte `Int_t` below it (§12). It is always non-negative on disk: the writer
+stores its absolute value (`root/tree/tree/src/TBranchElement.cxx:6053-6057`).
+
+Members declared `//!` — `fCollProxy`, `fSTLtype`, `fNdata`, `fInfo`, `fObject`,
+`fOnfileObject`, the `TClassRef`s, `fBranchOffset`, `fBranchID`, the action
+sequences and the iterators — are transient and are not on disk.
+
+## 3. `fType` and `fID`
+
+`fType` says what kind of node the branch is. Eight values occur:
+
+| `fType` | Meaning | Count in the corpora |
+|---|---|---|
+| −1 | unsplit object whose class had a custom streamer when written | 16 |
+| 0 | three different things; `fID` disambiguates (§3.2) | 4220 |
+| 1 | a base class of a split object | 141 |
+| 2 | a class-typed data member of a split object | 16 |
+| 3 | the count branch of a split `TClonesArray` | 21 |
+| 4 | the count branch of a split STL collection | 84 |
+| 31 | a data member of a split `TClonesArray`'s content | 733 |
+| 41 | a data member of a split STL collection's content | 1503 |
+
+The header lists these (`root/tree/tree/inc/TBranchElement.h:67-78`) and the
+dispatch of §8 rejects anything else with a `Fatal`.
+
+### 3.1 `fID` has two sentinels, and the header documents only one
+
+| `fID` | Meaning |
+|---|---|
+| −2 | a **split node**: the branch has sub-branches and no data of its own |
+| −1 | an **unsplit object**: the whole object is in this branch's baskets |
+| ≥ 0 | an index into the element list of `fClassName`'s streamer info |
+
+ROOT tests for −2 directly in several places
+(`root/tree/tree/src/TBranchElement.cxx:2279`,
+`root/tree/tree/src/TBranchElement.cxx:3812`), but the header's note on `fType`
+mentions only −1 (§11 erratum 1). Both occur: across the corpora, `fID` is −1 on
+250 branches and −2 on 176.
+
+### 3.2 `fType` 0 is three different branches
+
+`fType` 0 is the most common value and the least informative one. It is
+`fID` that separates the cases:
+
+| | Count | Data lives |
+|---|---|---|
+| `fType` 0, `fID` −1 | 216 | in this branch's baskets, as one whole object |
+| `fType` 0, `fID` −2 | 170 | in the sub-branches; this node has none |
+| `fType` 0, `fID` ≥ 0 | 3834 | in this branch's baskets, as one member's values |
+
+A reader that treats `fType` 0 as a single case will try to read a whole object
+out of a branch that holds one `Int_t` column, or out of a node that holds
+nothing at all.
+
+## 4. Two `fType` values have no leaf, and two reach theirs only by reference
+
+Over all 6736 branches in the corpora, with no exceptions:
+
+| `fType` | Leaves | Baskets |
+|---|---|---|
+| −1, 0, 31, 41 | exactly 1, written in place | yes |
+| 1, 2 | **none** | **never** — 141/141 and 16/16 have `fWriteBasket` 0 |
+| 3, 4 | exactly 1, **always a back-reference** | yes — 16/21 and 69/84 have baskets |
+
+`fType` 1 and 2 are pure interior nodes: no leaf, no basket, no data. A reader
+walks through them to their children. [`TBranch` §7](TBranch.md) already
+describes this shape from the `TBranch` side.
+
+The count branches are the trap. On all 105 `fType` 3 and 4 branches in the
+corpora, `fLeaves` holds exactly one entry and that entry is **not a leaf**: it
+is a four-byte back-reference to a copy written in full inside a member leaf's
+`fLeafCount` — the mechanism of
+[TLeaf §3.1](TLeaf.md#31-fleafcount-is-a-buffer-object-reference), reached from
+the other direction. A reader that does not follow buffer back-references sees
+an empty leaf list on every count branch in the file.
+
+It would not help much if it did. The read procedures of §8 ignore the leaf:
+`ReadLeavesCollection` and `ReadLeavesClones` take a single `Int_t` straight out
+of the entry and bound-check it against `fMaximum`
+(`root/tree/tree/src/TBranchElement.cxx:4337-4340`,
+`root/tree/tree/src/TBranchElement.cxx:4525-4528`). So the leaf-driven procedure
+of [TLeaf §5](TLeaf.md#5-reading-one-entry) is not how a count branch is read,
+whether or not the leaf can be found.
+
+## 5. `fClassName` names the class `fID` indexes
+
+`fClassName` is **not** the branch's own type. It is the class whose
+`TStreamerInfo` element list `fID` is an index into, and `fCheckSum` and
+`fClassVersion` describe that same class. One rule covers every case:
+
+- `fID ≥ 0` — `fClassName` is the class that *declares* the member.
+- `fID < 0` — there is no member to index, and `fClassName` is the class of the
+  object the branch holds.
+
+`ttree/split-object` shows both in five branches of one tree. The split node
+`ev` has `fID` −2 and `fClassName` `Ev`, the class being split. The base-class
+branch `Base` has `fID` 0 and `fClassName` **`Ev`** — because element 0 of `Ev`
+is the base-class entry. The member branch `fBase` under it has `fID` 0 and
+`fClassName` `Base`, because element 0 of *`Base`* is `fBase`. `fCheckSum`
+follows: `0x85067d87` on the five `Ev` branches, `0x013b271d` on `fBase`.
+
+The same rule explains the shape that looks strangest in real files. On an
+`fType` 4 branch:
+
+```
+fID = -1   fClassName = vector<mu2e::TrkInfo>   fClonesName = mu2e::TrkInfo
+           a top-level collection: fClassName is the collection type
+
+fID = 11   fClassName = Evt                     fClonesName = Hit
+           a collection member of a split parent: fClassName is the parent,
+           fID indexes `hits` within it, fClonesName is the value type
+```
+
+Both forms occur, 34 and 50 times.
+
+### 5.1 The other name fields
+
+| Field | Non-empty when |
+|---|---|
+| `fClassName` | **always** — 6736 of 6736 |
+| `fClonesName` | exactly `fType` 3 (21/21) and 4 (84/84); empty on all 6631 others |
+| `fParentName` | empty on every `fType` −1 branch, on every `fType` 0 or 4 branch with `fID < 0`, and on 16 of 21 `fType` 3 |
+
+`fParentName` is the class the branch was split *out of*, which is not always
+`fClassName`: on `ttree/split-object` the branch `fBase` has `fClassName` `Base`
+and `fParentName` `Ev`. It also depends on something outside the class — a
+trailing dot in the name passed to `TTree::Branch` changes it, which
+`Splitting.md` covers and which ROOT's own source calls "very annoying"
+(`root/tree/tree/src/TBranchElement.cxx:476-480`).
+
+`fClassVersion` is 0 on 981 of the 6734 `TBranchElement`s in the corpora. Zero
+means the class had no version to record, and the streamer info must be matched
+by `fCheckSum` instead — the foreign-class path of
+[Streamer information](../02-serialization/StreamerInfo.md).
+
+## 6. `fBranchCount` is a back-reference, and `fBranchCount2` is never set
+
+Both are declared `TBranchElement*` and both are persistent. Neither holds an
+object: `fBranchCount` holds a **four-byte buffer back-reference** to a branch
+written earlier in the same record, resolved with the map machinery of
+[Buffer §6](../02-serialization/Buffer.md#6-object-slots). This is the third
+place a `TTree` structure does this, after
+[`fLeaves`](TTree.md#5-fleaves-holds-references-not-leaves) and
+[`fLeafCount`](TLeaf.md#31-fleafcount-is-a-buffer-object-reference).
+
+Measured over all 6736:
+
+| `fType` | `fBranchCount` | `fBranchCount2` |
+|---|---|---|
+| 31 | a reference, 733 / 733 | null, 733 / 733 |
+| 41 | a reference, 1503 / 1503 | null, 1503 / 1503 |
+| 0 | a reference on 16, null on 4204 | null, 4220 / 4220 |
+| −1, 1, 2, 3, 4 | null | null |
+
+It has two kinds of target, and they are not interchangeable:
+
+- On an `fType` 31 or 41 member it points at the **`fType` 3 or 4 count branch**
+  of the container the member belongs to.
+- On an `fType` ≤ 2 member it points at an **ordinary counter branch** — itself
+  `fType` 0, but with `fStreamerType` 6, `kCounter`
+  (`root/core/meta/inc/TVirtualStreamerInfo.h:132`). This is the classic
+  `Int_t N; Short_t Slice[N];` shape, and it is what the two dispatch rows
+  `ReadLeavesMemberBranchCount` and `ReadLeavesMemberCounter` are for.
+
+The second case also carries the relationship **twice**. In
+`uproot-small-evnt-tree-fullsplit.root` the branch `SliceI16` has
+`fStreamerType` 42 (`kOffsetP + 2`), a title `SliceI16[N]`, an `fBranchCount`
+pointing at the *branch* `N`, and a leaf whose `fLeafCount` points at the *leaf*
+`N`. A reader may follow either chain;
+[TLeaf §3.1](TLeaf.md#31-fleafcount-is-a-buffer-object-reference) describes the
+leaf one and is enough on its own.
+
+`fBranchCount2` is **null in all 6736**. It exists for the second dimension of a
+two-dimensional variable-size array; no file in 178 reaches it, and this
+specification cannot state what a non-null one looks like.
+
+## 7. `fMaximum` bounds the count
+
+On an `fType` 3 or 4 branch, `fMaximum` is the largest collection size the writer
+saw. It is not decoration: the read procedure compares the count it just read
+against it and treats `n < 0 || n > fMaximum` as corruption
+(`root/tree/tree/src/TBranchElement.cxx:4340`,
+`root/tree/tree/src/TBranchElement.cxx:4528`).
+
+It is non-zero on 19 of 21 `fType` 3 branches and 42 of 84 `fType` 4, and on 2 of
+the 4220 `fType` 0. A zero `fMaximum` on a count branch means every entry's
+collection was empty — which makes the bound check reject any non-zero count, so
+a reader should apply it as ROOT does rather than as a hard invariant.
+
+## 8. The read procedure is selected by four fields, not one
+
+`root/tree/tree/src/TBranchElement.cxx:5772-5816` is the authority. `fType`
+chooses most of it, but `fID`, `fSplitLevel`, `fStreamerType` and whether
+`fBranchCount` is set all participate:
+
+| Condition | Procedure | In the corpora |
+|---|---|---|
+| `fType == 4` | `ReadLeavesCollection` | 84, in 16 files |
+| `fType == 41`, `fSplitLevel >= 100`, count branch is a `vector` | `ReadLeavesCollectionSplitVectorPtrMember` | **0** |
+| `fType == 41`, `fSplitLevel >= 100`, otherwise | `ReadLeavesCollectionSplitPtrMember` | **0** |
+| `fType == 41` otherwise | `ReadLeavesCollectionMember` | 1503, in 16 files |
+| `fType == 3` | `ReadLeavesClones` | 21, in 2 files |
+| `fType == 31` | `ReadLeavesClonesMember` | 733, in 2 files |
+| `fType < 0` | `ReadLeavesCustomStreamer` | 16, in 4 files |
+| `fType == 0` and `fID == -1` | `ReadLeavesMember` | 216, in 25 files |
+| `fType <= 2` and `fBranchCount` set | `ReadLeavesMemberBranchCount` | 16, in 2 files |
+| `fType <= 2` and `fStreamerType == 6` | `ReadLeavesMemberCounter` | 2, in 2 files |
+| `fType <= 2` otherwise | `ReadLeavesMember` | 4143, in 31 files |
+
+`fSplitLevel` packs two things: `fSplitLevel % 100` is a depth countdown, and the
+hundreds component flags a split collection of pointers
+(`root/tree/tree/src/TBranchElement.cxx:333-334`;
+`kSplitCollectionOfPointers` is 100, `root/tree/tree/inc/TTree.h:310`).
+**`fSplitLevel` never exceeds 99 in either corpus**, so the two pointer-collection
+procedures are unreached by 178 files and are named here from the source alone.
+
+A twelfth row, `ReadLeavesMakeClass`, is selected by an in-memory bit and is a
+reading *mode*, not a property of the file. It has no bearing on a reader that
+produces values rather than filling a generated class.
+
+## 9. Reading
+
+A branch record is read exactly as [`TBranch`](TBranch.md#10-reading) is; this
+adds what to do with the eleven fields.
+
+1. Read the branch with the streamer-driven algorithm. The class is
+   `TBranchElement`, or `TBranchObject` — see §12.
+2. Read `fType` and `fID`. If `fType` is 0, use §3.2 to decide which of the three
+   cases it is.
+3. If `fType` is 1 or 2, the branch holds nothing. Descend into `fBranches`.
+4. Otherwise resolve `fClassName` to a streamer info, matching by
+   `fClassVersion` when it is non-zero and by `fCheckSum` when it is 0.
+   If `fID ≥ 0`, element `fID` of that info is the member this branch holds.
+5. If `fBranchCount` is non-zero, resolve it as a buffer back-reference (§6) to
+   find the count branch. The number of values in this branch's entry comes from
+   that branch's entry, not from this one
+   (`root/tree/tree/src/TBranchElement.cxx:4566`,
+   `root/tree/tree/src/TBranchElement.cxx:4493`).
+6. Select the read procedure with the table of §8.
+7. For `fType` 3 and 4, the entry is a single `Int_t` count, and no leaf
+   describes it. For `fType` −1 the entry is the whole object, read with the
+   class's own streamer (`root/tree/tree/src/TBranchElement.cxx:4711-4712`).
+   For everything else the entry is the member's value or values.
+
+Locating the basket and the entry's byte range inside it is unchanged:
+[`TBranch` §10](TBranch.md#10-reading) and [`TBasket`](TBasket.md). The byte-level
+content of each procedure in step 7 is `ReadingEntries.md`.
+
+## 10. Invariants
+
+1. `fType` ∈ {−1, 0, 1, 2, 3, 4, 31, 41}. Anything else is `Fatal` in ROOT
+   (`root/tree/tree/src/TBranchElement.cxx:5815`).
+2. `fClassName` is never empty.
+3. `fClassVersion ≥ 0` — the writer records the absolute value
+   (`root/tree/tree/src/TBranchElement.cxx:6053-6057`).
+4. `fClonesName` is non-empty if and only if `fType` is 3 or 4.
+5. A branch with `fType` 1 or 2 has no leaf; every other `fType` has exactly
+   one. On `fType` 3 and 4 that leaf is always a back-reference, never written
+   in place.
+6. A branch with `fType` 1 or 2 has `fWriteBasket` 0 and `fTotBytes` 0.
+7. `fBranchCount` is set if and only if `fType` is 31 or 41, or the branch is an
+   `fType` ≤ 2 member with a counter in another branch.
+8. If `fID ≥ 0`, it is a valid index into the element list of the streamer info
+   named by `fClassName` and selected by `fClassVersion` or `fCheckSum`.
+9. `fBranchCount`, when set, refers to a branch written earlier in the same
+   record which is either `fType` 3 or 4, or `fType` ≤ 2 with `fStreamerType` 6
+   (`kCounter`).
+
+## 11. Errata
+
+| # | Claim | Correction |
+|---|---|---|
+| 1 | `root/tree/tree/inc/TBranchElement.h:72`: "`fID==-1` for the former" | Incomplete. `fID` has two negative sentinels, and the one the header omits — −2, the split node — occurs on 176 branches in the corpora. ROOT's own code tests for it at `root/tree/tree/src/TBranchElement.cxx:2279` and `root/tree/tree/src/TBranchElement.cxx:3812` |
+| 2 | `root/tree/tree/inc/TBranchElement.h:75-78`: `fType` 3 and 4 are "branch count of a split TClonesArray / STL Collection" | True but incomplete in the way that matters: those branches carry the count *in their own baskets*, and they have no leaf. Every other data-bearing branch in a tree is described by a leaf |
+| 3 | The name `fBranchCount` suggests a pointer to a branch | It is a four-byte buffer back-reference, like `fLeaves` and `fLeafCount`. Nothing in the header says so |
+
+## 12. Class versions
+
+Measured across both corpora; the layout is taken from each file's own streamer
+info, never from the version number.
+
+| Class version | Elements | `fClassVersion` width | Writing ROOT |
+|---|---|---|---|
+| 1 | 6 | 4 bytes | 4.00 |
+| 8, 9 | 12 | 4 bytes | 4.00.07 to 5.34.38 |
+| 10 | 12 | **2 bytes** | 6.04.02 onward |
+
+Version 1 has `TBranch`, `fClassName`, `fClassVersion`, `fID`, `fType` and
+`fStreamerType` only: no `fParentName`, `fClonesName`, `fCheckSum`, `fMaximum` or
+either `fBranchCount`. Versions 2 to 7 occur in neither corpus.
+
+`fClassVersion` changed from `Int_t` to `Version_t` and the class version was
+bumped to 10 in the same commit, so the width follows the version — but **two
+different checksums occur at each of versions 9 and 10** with identical member
+name and type-code lists, because the recorded type *names* changed (`Int_t` to
+`int`). A checksum identifies a declaration, not a layout.
+
+Other branch classes seen in the corpora:
+
+| Class | Class version | Count |
+|---|---|---|
+| `TBranchObject` | 1 (`root/tree/tree/inc/TBranchObject.h:71`) | 2, carrying the only two `TLeafObject`s |
+| `TBranchClones` | 2 (`root/tree/tree/inc/TBranchClones.h:66`) | **0** |
+| `TBranchSTL` | 1 (`root/tree/tree/inc/TBranchSTL.h:42`) | **0** |
+
+`TBranchClones` and `TBranchSTL` appear in no file and in no file's streamer info
+across 178 files. Whether a current ROOT can still be made to write one is open.
+
+## 13. Reference files
+
+| Case | What it covers |
+|---|---|
+| `ttree/split-object` | `fType` 0 with `fID` −2 and with `fID` ≥ 0, `fType` 1, the empty `fLeaves` of an interior node, `fClassName`/`fCheckSum` following `fID` rather than the branch, and `fEntryOffsetLen` taken from `fDefaultEntryOffsetLen` on the interior nodes and reset to 0 on the members |
+
+Not covered by any fixture yet, and tracked in `PLAN-ttree.md` §5: `fType` 2, 3,
+4, 31, 41 and −1; a non-null `fBranchCount`; a non-null `fBranchCount2`;
+`fSplitLevel ≥ 100`; `TBranchObject`; `TBranchClones`; `TBranchSTL`.
+
+Eight of the nine invariants of §10 were confirmed by corrupting a copy of
+`ttree/split-object` and checking that the intended invariant is what rejects
+it. Two exceptions, stated so the coverage is not overclaimed:
+
+- **Invariant 2 cannot be reached by corruption.** `fClassName` is a counted
+  string, so its length is part of the record's framing: blanking it
+  desynchronises everything after it and the byte count of
+  [Buffer §6](../02-serialization/Buffer.md#6-object-slots) rejects the file
+  first. The invariant is still worth stating — a writer can produce an empty
+  `fClassName` without breaking the framing — but no fixture can demonstrate it.
+- **The `fType` 3 and 4 half of invariant 5** has no fixture to corrupt, because
+  no fixture yet has a count branch. `split-clones` and `split-stl` are the two
+  cases that will fix that.

@@ -2142,6 +2142,22 @@ class Branch:
     leaf_refs: list[int]        # map positions of fLeaves entries not written here
     branches: list["Branch"]
 
+    # The eleven TBranchElement members. TBranchElement.md section 2. `cls` is
+    # the branch's own class; every field below it is None or 0 on a plain
+    # TBranch, which has none of them.
+    cls: str = "TBranch"
+    class_name: str = ""
+    parent_name: str = ""
+    clones_name: str = ""
+    check_sum: int = 0
+    class_version: int = 0
+    element_id: int | None = None       # fID
+    element_type: int | None = None     # fType
+    streamer_type: int | None = None
+    maximum: int = 0
+    count_slot: int = -1                # fBranchCount, resolved; -1 when null
+    count_slot2: int = -1               # fBranchCount2, likewise
+
 
 def truncated_width(cls: str, title: str) -> int:
     """Bytes per value of a TLeafF16 or TLeafD32. TLeaf.md section 7.
@@ -2333,10 +2349,56 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         leaf_refs=[e.reference for e in (m["fLeaves"].members or [])
                    if e.reference is not None],
         branches=[_read_branch(buf, e, base)
-                  for e in (m["fBranches"].members or [])])
+                  for e in (m["fBranches"].members or [])],
+        cls=entry.type_name or "TBranch",
+        **_element_members(buf, m, base))
+
+
+def _element_members(buf: bytes, m: dict, base: int) -> dict:
+    """The eleven TBranchElement fields, or empty for a plain TBranch.
+
+    Keyed off fType rather than off the class name, because TBranchObject and
+    the legacy container branches carry some of these and not others.
+    TBranchElement.md section 2.
+    """
+    if "fType" not in m:
+        return {}
+    return dict(
+        class_name=_string_at(buf, m["fClassName"]),
+        parent_name=_string_at(buf, m["fParentName"]) if "fParentName" in m else "",
+        clones_name=_string_at(buf, m["fClonesName"]) if "fClonesName" in m else "",
+        check_sum=_u32(buf, m["fCheckSum"].start) if "fCheckSum" in m else 0,
+        class_version=(_int_member(buf, m["fClassVersion"])
+                       if "fClassVersion" in m else 0),
+        element_id=_i32(buf, m["fID"].start),
+        element_type=_i32(buf, m["fType"].start),
+        streamer_type=_i32(buf, m["fStreamerType"].start),
+        maximum=_i32(buf, m["fMaximum"].start) if "fMaximum" in m else 0,
+        count_slot=_branch_ref(buf, m.get("fBranchCount"), base),
+        count_slot2=_branch_ref(buf, m.get("fBranchCount2"), base))
 
 
 TREE_POINTERS = ("fAliases", "fTreeIndex", "fFriends", "fUserInfo", "fBranchRef")
+
+
+def _branch_ref(buf: bytes, value: Value | None, base: int) -> int:
+    """fBranchCount / fBranchCount2: a back-reference, not a branch.
+
+    Four bytes holding the map position of a branch written earlier in this same
+    record, exactly as fLeafCount does for a leaf. TBranchElement.md section 6.
+    Zero means the field is unset, which is every branch but a split container's
+    members. Returns the absolute position, or -1.
+    """
+    if value is None or value.end - value.start < 4:
+        return -1
+    tag = _u32(buf, value.start)
+    if not tag:
+        return -1
+    if tag & BYTE_COUNT_MASK:
+        # Written in full here rather than referenced. No corpus file does this,
+        # but the position is still the identity, as for fLeafCount.
+        return value.start
+    return base + tag - MAP_OFFSET
 
 
 def _int_member(buf: bytes, value: Value) -> int:
@@ -2347,6 +2409,8 @@ def _int_member(buf: bytes, value: Value) -> int:
     """
     if value.ftype in (3, 6, 13):
         return _i32(buf, value.start)
+    if value.ftype == 2:
+        return _i16(buf, value.start)
     if value.ftype in (16, 17):
         return _i64(buf, value.start)
     if value.ftype == 8:
