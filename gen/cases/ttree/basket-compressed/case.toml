@@ -1,0 +1,156 @@
+id   = "ttree/basket-compressed"
+file = "data/ttree/basket-compressed.root"
+size = 5911
+
+description = """
+A compressed basket, and beside it one ROOT gave up compressing -- the two
+outcomes of TBasket.md 7.
+
+Every other `ttree` case writes with compression 0 so its bytes can be asserted
+directly. This one is the exception the specification needs, because two of its
+claims are about compressed baskets and neither could be checked:
+
+**The entry-offset array is inside the compressed payload.** It is appended to
+the basket's buffer before the buffer is compressed
+(`root/tree/tree/src/TBasket.cxx:1254-1269`), so it lives past `fLast` in the
+*decompressed* bytes and **a reader cannot reach it without decompressing the
+whole basket** -- it cannot seek to one entry. Branch `a`'s array is
+`4 | 65, 465, 1265, 0` at decompressed offset 2465, and the record on disk is 63
+bytes of payload.
+
+**Compression is all or nothing, and a small basket loses.** Branch `n` holds
+three `Int_t`, twelve bytes; zlib cannot beat that, so ROOT abandons compression
+for the whole basket and writes it raw
+(`root/tree/tree/src/TBasket.cxx:1334`). The result is
+`fNbytes == fKeylen + fObjlen` -- 77 = 65 + 12 -- which is the ordinary "stored
+raw" case of Compression.md 1 and is **indistinguishable from a file written with
+compression off**. Two baskets of the same tree, written under the same setting,
+one compressed and one not.
+
+The two branches are the same pair as `ttree/basket`, so the layouts can be read
+against that case's uncompressed assertions. `check_invariants.py` decompresses
+and checks the entry spans; the assertions here are on the record's raw bytes,
+which is all a reader has before it decompresses.
+"""
+
+spec = [
+  "spec/04-ttree/TBasket.md",
+  "spec/01-container/Compression.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "zlib", setting = 1 }
+
+[[records]]
+offset = 100
+nbytes = 200
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 300
+nbytes = 77
+class  = "TBasket"
+role   = "branch n -- too small to compress, so stored raw"
+[[records]]
+offset = 377
+nbytes = 128
+class  = "TBasket"
+role   = "branch a -- 2420 bytes in 63"
+[[records]]
+offset = 505
+nbytes = 489
+class  = "TTree"
+role   = "the tree"
+[[records]]
+offset = 994
+nbytes = 4678
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- branch n: compression abandoned --------------------------------------
+
+[[bytes]]
+name = "n: fNbytes"
+offset = 300
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "n: fObjlen"
+offset = 306
+type = "i32"
+value = 12
+
+[[bytes]]
+name = "n: fKeylen -- and 65 + 12 is 77, so the payload is stored raw"
+offset = 314
+type = "i16"
+value = 65
+
+[[bytes]]
+name = "n: the payload is the three Int_t themselves, with no block header"
+offset = 365
+type = "i32"
+value = 100
+
+# --- branch a: compressed -------------------------------------------------
+
+[[bytes]]
+name = "a: fNbytes, 65 of key and 63 of payload"
+offset = 377
+type = "i32"
+value = 128
+
+[[bytes]]
+name = "a: fObjlen is the DECOMPRESSED length, 38 times the payload"
+offset = 383
+type = "i32"
+value = 2420
+
+[[bytes]]
+name = "a: fKeylen"
+offset = 391
+type = "i16"
+value = 65
+
+[[bytes]]
+name = "a: the flag byte is still 0 -- compression changes nothing in the header"
+offset = 441
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "a: fLast, in the decompressed buffer, past where the record's bytes end"
+offset = 437
+type = "i32"
+value = 2465
+
+[[bytes]]
+name = "a: the block magic"
+offset = 442
+type = "bytes"
+value = "ZL"
+
+[[bytes]]
+name = "a: the method byte, 8 for deflate"
+offset = 444
+type = "u8"
+value = 8
+
+[[bytes]]
+name = "a: compressed size, three bytes little-endian: 0x000036 = 54"
+offset = 445
+type = "bytes"
+value = [0x36, 0x00, 0x00]
+
+[[bytes]]
+name = "a: uncompressed size, likewise: 0x000974 = 2420, matching fObjlen"
+offset = 448
+type = "bytes"
+value = [0x74, 0x09, 0x00]
+
+[[bytes]]
+name = "a: and the codec's own stream begins -- 54 + 9 = 63, the whole payload"
+offset = 451
+type = "bytes"
+value = [0x78, 0x01]

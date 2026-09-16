@@ -1,0 +1,168 @@
+id   = "ttree/basket-multiblock"
+file = "data/ttree/basket-multiblock.root"
+size = 7920
+
+description = """
+A basket whose payload is split into **two** compression blocks.
+
+TBasket.md 7 says a basket does its own multi-block splitting with the same
+constant as the container layer, `kMAXZIPBUF = 0xffffff`
+(`root/core/zip/inc/RZip.h:40`), and nothing demonstrated it: a basket needs more
+than 16 MB of **uncompressed** payload to have two blocks, and a fixture that big
+cannot be committed.
+
+It can, if the payload compresses hard enough. 2 100 000 `Double_t` all equal is
+16 800 000 bytes, LZMA at level 9 stores it in 2 712, and the committed file is
+**7 920 bytes** with a real two-block payload:
+
+| Block | At | Compressed | Uncompressed |
+|---|---|---|---|
+| 0 | 367 | 2 576 | **16 777 215** = `0xffffff` exactly |
+| 1 | 2 952 | 136 | 22 797 |
+
+`16777215 + 22797 = 16800012 = fObjlen`, and `2576 + 136 + 2 x 9 = 2730 =
+fNbytes - fKeylen`. **The first block is capped at the constant, not at a round
+number**, so a reader that assumes one block per record truncates the entry at
+16 777 215 bytes and reads the second block's nine-byte header as data.
+
+Nothing else about the basket changes: `flag` is 0, `fNevBuf` is 1, and the
+entry-offset array sits at the end of the *decompressed* buffer exactly as in
+`ttree/basket-compressed`. The block structure belongs to the container layer and
+is invisible above it.
+
+`fObjlen` is 16 800 012 in a 7 920-byte file. That is the largest ratio in the
+fixtures and a useful check on any reader that sizes a buffer from `fNbytes`.
+
+Branch `n`'s basket is four bytes and is stored raw, for the reason
+`ttree/basket-compressed` records.
+"""
+
+spec = [
+  "spec/04-ttree/TBasket.md",
+  "spec/01-container/Compression.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "lzma", setting = 9 }
+
+[[records]]
+offset = 100
+nbytes = 202
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 302
+nbytes = 2795
+class  = "TBasket"
+role   = "branch a -- 16 800 012 bytes in two blocks"
+[[records]]
+offset = 3097
+nbytes = 69
+class  = "TBasket"
+role   = "branch n -- four bytes, stored raw"
+[[records]]
+offset = 3166
+nbytes = 461
+class  = "TTree"
+role   = "the tree"
+[[records]]
+offset = 3627
+nbytes = 4049
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- the key --------------------------------------------------------------
+
+[[bytes]]
+name = "a: fNbytes -- 65 of key and 2730 of payload"
+offset = 302
+type = "i32"
+value = 2795
+
+[[bytes]]
+name = "a: fObjlen, 2120 times the payload"
+offset = 308
+type = "i32"
+value = 16800012
+
+[[bytes]]
+name = "a: fKeylen"
+offset = 316
+type = "i16"
+value = 65
+
+# --- the basket header, unchanged by any of this --------------------------
+
+[[bytes]]
+name = "a: fNevBuf is 1 -- one entry of 2.1 million doubles"
+offset = 358
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "a: fLast, in the decompressed buffer"
+offset = 362
+type = "i32"
+value = 16800065
+
+[[bytes]]
+name = "a: flag 0, as in any other basket record"
+offset = 366
+type = "u8"
+value = 0
+
+# --- block 0 --------------------------------------------------------------
+
+[[bytes]]
+name = "block 0: the magic, XZ for LZMA"
+offset = 367
+type = "bytes"
+value = "XZ"
+
+[[bytes]]
+name = "block 0: the method byte"
+offset = 369
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "block 0: compressed size, three bytes little-endian: 2576"
+offset = 370
+type = "bytes"
+value = [0x10, 0x0a, 0x00]
+
+[[bytes]]
+name = "block 0: uncompressed size is 0xffffff exactly -- kMAXZIPBUF, not a round number"
+offset = 373
+type = "bytes"
+value = [0xff, 0xff, 0xff]
+
+# --- block 1 --------------------------------------------------------------
+#
+# 367 + 9 + 2576 = 2952
+
+[[bytes]]
+name = "block 1: a second header follows the first block's data"
+offset = 2952
+type = "bytes"
+value = "XZ"
+
+[[bytes]]
+name = "block 1: compressed size 136"
+offset = 2955
+type = "bytes"
+value = [0x88, 0x00, 0x00]
+
+[[bytes]]
+name = "block 1: uncompressed size 22797, and 16777215 + 22797 is fObjlen"
+offset = 2958
+type = "bytes"
+value = [0x0d, 0x59, 0x00]
+
+# 2952 + 9 + 136 = 3097, where the next record's key begins.
+
+[[bytes]]
+name = "the next record's key starts at 3097 -- the payload was exactly two blocks"
+offset = 3097
+type = "i32"
+value = 69

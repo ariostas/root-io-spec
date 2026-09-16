@@ -421,11 +421,26 @@ header is always readable without decompressing anything.
 **The entry data and the entry-offset array are compressed together**, as one
 payload: the array is appended to the same buffer before the buffer is compressed
 (`root/tree/tree/src/TBasket.cxx:1254-1269`). A reader cannot read the array
-without decompressing the whole basket.
+without decompressing the whole basket, and therefore cannot seek to one entry
+of a compressed basket.
+
+> Demonstrated by `ttree/basket-compressed`: branch `a`'s record is 128 bytes,
+> of which 63 are payload, and its array `4 | 65, 465, 1265, 0` is at
+> decompressed offset 2465 — past `fLast`, and past the end of the record.
 
 `TBasket` performs its own multi-block splitting with the same constants as the
 container layer (`root/tree/tree/src/TBasket.cxx:1300-1355`), so nothing about the
-block format differs.
+block format differs. The constant is `kMAXZIPBUF`, `0xffffff`
+(`root/core/zip/inc/RZip.h:40`), and the count is
+`1 + (fObjlen - 1) / kMAXZIPBUF` (`root/tree/tree/src/TBasket.cxx:1301`), so a
+basket has more than one block exactly when its **uncompressed** payload exceeds
+16 MB.
+
+> Demonstrated by `ttree/basket-multiblock`, 7 920 bytes on disk holding an
+> `fObjlen` of 16 800 012 in two blocks: the first is `0xffffff` uncompressed —
+> the constant exactly, not a round number — and the second the remaining
+> 22 797. A reader that assumes one block per record truncates the entry there
+> and reads the second block's nine-byte header as data.
 
 **Compression is all or nothing for the whole basket.** If any chunk compresses to
 zero bytes or to no less than `fObjlen`, ROOT abandons compression for the entire
@@ -435,6 +450,12 @@ which is the ordinary "stored raw" case of
 [Compression §1](../01-container/Compression.md#1-deciding-whether-a-payload-is-compressed).
 Note that the test compares one *chunk's* output against the *whole* object's
 length, which is a loose test for a multi-block basket.
+
+> Demonstrated by `ttree/basket-compressed`, whose two baskets were written under
+> the same setting and came out differently: branch `a` is compressed 2 420 into
+> 63, and branch `n` holds three `Int_t` that zlib cannot beat, so it has
+> `fNbytes` 77 = `fKeylen` 65 + `fObjlen` 12 and is **indistinguishable from a
+> file written with compression off**.
 
 ## 8. Reading
 
@@ -539,5 +560,7 @@ and **the version is not how a reader detects `fIOBits`** — the sign of
 | `ttree/basket-iofeatures` | `fIOBits` in both of its consequences: the negated `fNevBufSize` and 20-byte header of §2.2, and the flag-80 basket of §5.2 that stores no offsets at all |
 
 | `ttree/basket-displacement` | A displacement array in both forms: flag 0 in a record, where only arithmetic finds it, and flag 51 embedded (§5.3) |
+| `ttree/basket-compressed` | A compressed basket with its offset array inside the payload, beside one ROOT gave up compressing (§7) |
+| `ttree/basket-multiblock` | Two compression blocks, the first capped at `kMAXZIPBUF` (§7) |
 
-No fixture covers a compressed basket or a multi-block basket.
+Every claim in this document now has a fixture behind it.

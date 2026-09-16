@@ -949,7 +949,7 @@ No external blocker; these are simply cases nobody has added yet.
 | Gap | Document |
 |---|---|
 | ~~A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte~~ | ✅ `classes/tarray-histogram`. **A `TH2F` does not produce one** — the row said it did. A `TH2F` in a `TTree` branch does, and 16 of the 39 histogram files across both corpora carry one |
-| A compressed basket, a multi-block basket, a displacement array, and `fIOBits` in either form | `04-ttree/TBasket.md` §12 |
+| ~~A compressed basket, a multi-block basket, a displacement array~~ | ✅ `ttree/basket-compressed`, `ttree/basket-multiblock`, `ttree/basket-displacement`. `fIOBits` was already covered by `ttree/basket-iofeatures` and the row was stale. **A multi-block basket is committable after all** — 16.8 MB of one repeated `Double_t` is 7 920 bytes under LZMA 9 |
 | ~~The embedded form of a basket~~ | ✅ `04-ttree/TBasket.md` §4.1, `ttree/basket-embedded` |
 | A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |
 | ~~`TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape~~ | ✅ `ttree/leaf-forms`. `TLeafObject` and `TLeafElement` were already covered — `tree-branchref` has one and the split cases have 52 — so only the legacy versions remain, under §9.1 |
@@ -1349,6 +1349,41 @@ is nothing, that is a rule `StreamerDriven.md` should state, and it would follow
 from the same place as §7's "a hand-written streamer's recorded info can be
 fiction". Not diagnosed further; `TQObject` is named in the `NOT CHECKED` output
 meanwhile, so nothing is hidden and nothing is assumed.
+
+#### A second lead, found 2026-09-16
+
+`aod_flushed.root` (ROOT 5.25/04) fails `StreamerDriven 10.1` on its
+`TTreePerfStats` record: the decode runs off the end of the buffer, at an offset
+of 3.2 GB in a 34 KB record, so it desynchronises early and never recovers. It is
+**not** caused by anything in this session's work — confirmed by checking out the
+previous commit and re-running.
+
+What is established:
+
+- The file carries its own `TTreePerfStats` info at **class version 1**, whose
+  first element is a `kBase` for `TVirtualPerfStats`. That class declares
+  `ClassDefOverride(TVirtualPerfStats, 0)`
+  (`root/core/base/inc/TVirtualPerfStats.h:93`) and its info in the file has
+  class version 0 with a single element, the `TObject` base at code 66.
+- The class version really was 1 for years while the member list changed
+  repeatedly — the omission ROOT fixed in `86728daacca` (2017-01-09, ROOT-8520),
+  which jumped `ClassDef(TTreePerfStats, 1)` straight to 6. So a version-1 record
+  may hold any of several schemas, which is precisely why the file carries its
+  own info.
+- Reading the payload from the byte count: `40 00 86 60 | 00 01` then the base.
+  Taking `fReadaheadSize` to be the 256000 at offset 338 and working backwards,
+  the base occupies **10 bytes** — exactly a `TObject` — with **no version word
+  of its own**. Reading it with a version word puts `fTreeCacheSize` at
+  −131072000, which is not a cache size.
+
+So the narrow question is the same shape as the `H1display.root` lead above:
+**what does a `kBase` element contribute when its class declares version 0?**
+`Buffer.md` §4 predicts a version word of 0 followed by nothing; these bytes look
+like nothing at all. `TStreamerBase::ReadBuffer` goes through `ReadClassBuffer`
+(`root/core/meta/src/TStreamerElement.cxx`), which always reads a version word,
+so if the ten-byte reading is right the write path must be diverging somewhere
+this reading has not found. Not diagnosed further; the file is named in the
+failure output, so nothing is hidden.
 
 #### Standing result
 
