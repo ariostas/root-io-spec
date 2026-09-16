@@ -41,6 +41,7 @@ nav = [
       { "The tree record" = "04-ttree/TTree.md" },
       { "Branches" = "04-ttree/TBranch.md" },
       { "Split branches" = "04-ttree/TBranchElement.md" },
+      { "Splitting" = "04-ttree/Splitting.md" },
       { "Leaves" = "04-ttree/TLeaf.md" },
       { "TBasket" = "04-ttree/TBasket.md" },
   ] },

@@ -1,0 +1,244 @@
+id   = "ttree/split-nested"
+file = "data/ttree/split-nested.root"
+size = 21646
+
+description = """
+Three levels of splitting: a class holding a class holding a collection.
+
+NTop holds an NDet, which holds a std::vector<NHit>. That is the shape of a real
+physics branch in miniature, and one TTree::Branch call produces seven branches:
+
+  nt                  fType 0, fID -2   the split node
+  nt/fDet             fType 2           a class-typed member
+  nt/fDet/fNo         fType 0
+  nt/fDet/fHits       fType 4           the collection count branch
+  nt/fDet/fHits/fId   fType 41
+  nt/fDet/fHits/fE    fType 41
+  nt/fRun             fType 0
+
+What this case pins down:
+
+- fType 2 is the second interior node type, and like fType 1 it has no leaf --
+  its fLeaves is a TObjArray with nobjects 0 -- and no basket. Its fStreamerType
+  is 62, kAny.
+- The count branch fDet/fHits is fType 4 with fStreamerType 300 (kSTL),
+  fClonesName NHit -- the *value* type, not the collection type -- and fMaximum
+  2, the largest collection in the file. Its fLeaves has nobjects 1 and that one
+  entry is a back-reference, never a leaf written in place.
+- **The count relationship is spelled out in the titles.** The count branch's
+  title ends in an underscore, `fDet.fHits_`, and each member branch's title
+  names it in brackets: `fId[fDet.fHits_]`. BuildTitle constructs both
+  (root/tree/tree/src/TBranchElement.cxx:1189,
+  root/tree/tree/src/TBranchElement.cxx:1218). The machine-readable form of the
+  same relationship is each member's fBranchCount: tag 1189, which against a
+  record starting at 791 names position 791 + 1189 - 2 = 1978, the count
+  branch's own position.
+- fClassName changes as the walk descends -- NTop, then NDet, then NHit -- and
+  each time it is the class whose element list that branch's fID indexes.
+- **fSplitLevel is not a depth counter.** It reads 99 on the node, 98 on fDet
+  and fRun, 97 on fDet/fHits, and **0** on fDet/fNo and on both fType 41
+  members, which are at three different depths. The writer decrements it in some
+  paths and zeroes it in others (root/tree/tree/src/TBranchElement.cxx:6403-6408,
+  root/tree/tree/src/TBranchElement.cxx:6444-6449), so a reader must take the
+  structure from the fBranches nesting and never from this number.
+
+Three entries with collections of 2, 0 and 1 elements, so the empty case is
+covered, and compression off.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 202
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 302
+nbytes = 84
+class  = "TBasket"
+role   = "basket of 'fDet.fNo'"
+[[records]]
+offset = 386
+nbytes = 106
+class  = "TBasket"
+role   = "basket of 'fDet.fHits'"
+[[records]]
+offset = 492
+nbytes = 110
+class  = "TBasket"
+role   = "basket of 'fDet.fHits.fId'"
+[[records]]
+offset = 602
+nbytes = 109
+class  = "TBasket"
+role   = "basket of 'fDet.fHits.fE'"
+[[records]]
+offset = 711
+nbytes = 80
+class  = "TBasket"
+role   = "basket of 'fRun'"
+[[records]]
+offset = 791
+nbytes = 4173
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 4964
+nbytes = 16438
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 21402
+nbytes = 147
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 21549
+nbytes = 97
+class  = "TFile"
+role   = "keys list / free segments"
+
+[[bytes]]
+name = "fDet: fType 2, a class-typed member of a split object"
+offset = 3973
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fDet: fStreamerType 62, kAny"
+offset = 3977
+type = "i32"
+value = 62
+
+[[bytes]]
+name = "fDet: fLeaves nobjects is 0 -- an interior node carries no leaf"
+offset = 3715
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fDet: and no basket either"
+offset = 1322
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fDet: fClassName is NTop, the class whose element 0 it is"
+offset = 3952
+type = "string"
+value = "NTop"
+
+[[bytes]]
+name = "fDet/fHits: fType 4, an STL collection count branch"
+offset = 3678
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fDet/fHits: fStreamerType 300, kSTL"
+offset = 3682
+type = "i32"
+value = 300
+
+[[bytes]]
+name = "fDet/fHits: fClonesName is the value type, not the collection type"
+offset = 3663
+type = "string"
+value = "NHit"
+
+[[bytes]]
+name = "fDet/fHits: fClassName is the class that declares the member"
+offset = 3653
+type = "string"
+value = "NDet"
+
+[[bytes]]
+name = "fDet/fHits: fMaximum, the largest collection in the file"
+offset = 3686
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fDet/fHits: the count branch's title ends in an underscore"
+offset = 2025
+type = "string"
+value = "fDet.fHits_"
+
+[[bytes]]
+name = "fDet/fHits: fLeaves nobjects is 1, and that entry is a back-reference"
+offset = 3404
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fDet/fHits/fId: fType 41, a member of the collection's content"
+offset = 2792
+type = "i32"
+value = 41
+
+[[bytes]]
+name = "fDet/fHits/fId: the title names the count branch in brackets"
+offset = 2202
+type = "string"
+value = "fId[fDet.fHits_]"
+
+[[bytes]]
+name = "fDet/fHits/fId: fBranchCount names 791 + 1189 - 2 = 1978, the count branch"
+offset = 2804
+type = "u32"
+value = 1189
+
+[[bytes]]
+name = "fDet/fHits/fId: fClassName is NHit, three classes deep"
+offset = 2771
+type = "string"
+value = "NHit"
+
+[[bytes]]
+name = "fDet/fNo: the sub-branch of an fType 2 node is always prefixed"
+offset = 1459
+type = "string"
+value = "fDet.fNo"
+
+[[bytes]]
+name = "nt: fSplitLevel as requested"
+offset = 1193
+type = "i32"
+value = 99
+
+[[bytes]]
+name = "fDet: fSplitLevel one lower"
+offset = 1353
+type = "i32"
+value = 98
+
+[[bytes]]
+name = "fRun: the same, at the same depth"
+offset = 4092
+type = "i32"
+value = 98
+
+[[bytes]]
+name = "fDet/fHits: one lower again"
+offset = 2090
+type = "i32"
+value = 97
+
+[[bytes]]
+name = "fDet/fNo: but zero, at the same depth as fDet/fHits"
+offset = 1521
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fDet/fHits/fId: and zero, one level deeper still"
+offset = 2272
+type = "i32"
+value = 0

@@ -1,0 +1,252 @@
+id   = "ttree/split-naming"
+file = "data/ttree/split-naming.root"
+size = 21605
+
+description = """
+The same class split twice, under a plain branch name and one ending in a dot.
+
+TTree::Branch takes the branch name as a string, and a trailing dot in it changes
+the name of every branch below it -- and the fParentName of the deepest one.
+Nothing else differs: same class, same split level, same data, the same fID,
+fType, fStreamerType and fClassName throughout.
+
+What this case pins down, as eight pairs of assertions that differ and five that
+do not:
+
+- The plain half names its sub-branches `NBase`, `fB` and `fI`. The dotted half
+  names them `dotted.NBase`, `dotted.NBase.fB` and `dotted.fI`.
+- The base-class node is *elided* from the name in the plain half: `fB` sits
+  under a branch named `NBase` but is itself just `fB`, so the name does not say
+  where in the class it came from. In the dotted half the same branch is
+  `dotted.NBase.fB`.
+- fParentName follows the same split. On the plain half the member `fB` records
+  `NEv` -- the top class -- and on the dotted half it records `NBase`, the class
+  that actually declares it. Same class, same member, two different answers.
+- Everything a reader needs is identical across the two halves: fClassName is
+  `NBase` on both, fID 0 on both, fType 0, fStreamerType 3 and fSplitLevel 0 on
+  both.
+
+So branch names and fParentName are not a reliable description of the object
+hierarchy, and a reader must take the structure from the fBranches nesting
+instead. ROOT's source calls the divergence "very annoying" in the comment above
+the code that causes it (root/tree/tree/src/TBranchElement.cxx:476-480).
+
+NBase and NEv come from classes.h and are compiled by gen/common/aclic.C before
+the macro runs.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 220
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 320
+nbytes = 74
+class  = "TBasket"
+role   = "basket of 'fB'"
+[[records]]
+offset = 394
+nbytes = 74
+class  = "TBasket"
+role   = "basket of 'fI'"
+[[records]]
+offset = 468
+nbytes = 87
+class  = "TBasket"
+role   = "basket of 'dotted.NBase.fB'"
+[[records]]
+offset = 555
+nbytes = 81
+class  = "TBasket"
+role   = "basket of 'dotted.fI'"
+[[records]]
+offset = 636
+nbytes = 4599
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 5235
+nbytes = 16092
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 21327
+nbytes = 172
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 21499
+nbytes = 106
+class  = "TFile"
+role   = "keys list / free segments"
+
+# --- the names differ ---------------------------------------------------
+
+[[bytes]]
+name = "plain: the branch name as given to TTree::Branch"
+offset = 1011
+type = "string"
+value = "plain"
+
+[[bytes]]
+name = "plain: the base-class node keeps the bare class name"
+offset = 1173
+type = "string"
+value = "NBase"
+
+[[bytes]]
+name = "plain: the member under it is named without any prefix at all"
+offset = 1335
+type = "string"
+value = "fB"
+
+[[bytes]]
+name = "plain: and so is the member of the top class"
+offset = 2168
+type = "string"
+value = "fI"
+
+[[bytes]]
+name = "dotted: the trailing dot is part of the stored name"
+offset = 3057
+type = "string"
+value = "dotted."
+
+[[bytes]]
+name = "dotted: the base-class node is prefixed"
+offset = 3223
+type = "string"
+value = "dotted.NBase"
+
+[[bytes]]
+name = "dotted: and the member carries the whole path"
+offset = 3399
+type = "string"
+value = "dotted.NBase.fB"
+
+[[bytes]]
+name = "dotted: the member of the top class is prefixed once"
+offset = 4273
+type = "string"
+value = "dotted.fI"
+
+# --- and so does fParentName, on the deepest branch ---------------------
+
+[[bytes]]
+name = "plain: fB records the *top* class as its parent"
+offset = 1804
+type = "string"
+value = "NEv"
+
+[[bytes]]
+name = "dotted: the same member records the class that declares it"
+offset = 3907
+type = "string"
+value = "NBase"
+
+[[bytes]]
+name = "plain: the base-class node's fParentName, for contrast -- the same in both"
+offset = 2097
+type = "string"
+value = "NEv"
+
+[[bytes]]
+name = "dotted: the base-class node's fParentName"
+offset = 4202
+type = "string"
+value = "NEv"
+
+# --- everything a reader actually needs is identical --------------------
+
+[[bytes]]
+name = "plain: fB's fClassName"
+offset = 1798
+type = "string"
+value = "NBase"
+
+[[bytes]]
+name = "dotted: fB's fClassName, the same"
+offset = 3901
+type = "string"
+value = "NBase"
+
+[[bytes]]
+name = "plain: fB's fID"
+offset = 1815
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "dotted: fB's fID, the same"
+offset = 3920
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "plain: fB's fStreamerType"
+offset = 1823
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "dotted: fB's fStreamerType, the same"
+offset = 3928
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "plain: fB's fSplitLevel -- 0 on a member reached through an interior node"
+offset = 1394
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "dotted: fB's fSplitLevel, the same"
+offset = 3484
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "plain: the split node's fID is the -2 sentinel"
+offset = 2997
+type = "i32"
+value = -2
+
+[[bytes]]
+name = "dotted: likewise"
+offset = 5134
+type = "i32"
+value = -2
+
+[[bytes]]
+name = "plain: fSplitLevel on the top node, as requested"
+offset = 1076
+type = "i32"
+value = 99
+
+[[bytes]]
+name = "dotted: likewise"
+offset = 3126
+type = "i32"
+value = 99
+
+[[bytes]]
+name = "plain: the base-class node is fType 1"
+offset = 2112
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "dotted: likewise"
+offset = 4217
+type = "i32"
+value = 1

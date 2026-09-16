@@ -239,8 +239,8 @@ rest.
 
 | Document | Status | Scope |
 |---|---|---|
-| `TBranchElement.md` | write | The member table, the `fType`/`fID` taxonomy (§3.2), the leaf bipartition (§3.3), `fBranchCount` as a back-reference (§3.4), the name fields (§3.5), and the dispatch table (§2) |
-| `Splitting.md` | write | How a class becomes a branch tree, the `parent.child` rule, the `name_`/`[name_]` count convention, `fSplitLevel`'s two components, and what "unsplit fallback" means on disk |
+| ✅ `TBranchElement.md` | **written** | The member table, the `fType`/`fID` taxonomy (§3.2), the leaf bipartition (§3.3), `fBranchCount` as a back-reference (§3.4), the name fields (§3.5), and the dispatch table (§2) |
+| ✅ `Splitting.md` | **written** | How a class becomes a branch tree, the `parent.child` rule, the `name_`/`[name_]` count convention, `fSplitLevel`'s two components, and what "unsplit fallback" means on disk |
 | `ReadingEntries.md` | write | The end-to-end normative procedure, spanning the unsplit path already specified and the nine procedures of §2 |
 | `Auxiliary.md` | write | `TTreeIndex`, `TFriendElement`, `TBranchRef`/`TRefTable`, `TEntryList`, `TEventList`, `TNtuple`/`TNtupleD`, `TChain` |
 | ~~`Double32.md`~~ | **drop** | Already written, distributed. The annotation grammar and the three encodings are `ElementTypes.md` §5.1-5.3; the leaf classes and the 3-versus-4-byte asymmetry are `TLeaf.md` §7, with the `ttree/leaf-truncated` fixture. Per `PLAN.md` decision 6 this is a cross-reference from `TBranchElement.md`, not a fifth document |
@@ -259,14 +259,15 @@ existing fixture does; the "covers" column names the rows of §2 and the facts o
 
 | Case under `gen/cases/ttree/` | Covers |
 |---|---|
-| `split-object` | `fType` 0 with `fID == -2` (the split node) and `fID >= 0` (members), `fType` 1 (base class, no leaf, no basket), `parent.child` naming, one leaf per member |
+| ✅ `split-object` | `fType` 0 with `fID == -2` (the split node) and `fID >= 0` (members), `fType` 1 (base class, no leaf, no basket), one leaf per member. 46 assertions |
+| ✅ `split-naming` | The same class under a plain branch name and one ending in a dot. The dot renames every sub-branch **and changes `fParentName`**, which ROOT's own source calls "very annoying" (`root/tree/tree/src/TBranchElement.cxx:476-480`). 26 assertions |
 | `split-unsplit` | The *same* class at split level 0: `fType` 0 with `fID == -1`, and `fType` −1 with a custom streamer. Gives a same-data comparison against `split-object` |
 | `split-clones` | A split `TClonesArray`: `fType` 3 (count, no leaf, has baskets, `fClonesName` and `fMaximum` set) and `fType` 31 (`fBranchCount` back-reference, `parent.child`) |
 | `split-stl` | A split `std::vector<T>` member: `fType` 4 with `fID >= 0` (`fClassName` = the *parent*), `fType` 41, the `name_` title and `x[name_]` leaf titles |
 | `split-stl-toplevel` | A top-level `std::vector<T>` branch: `fType` 4 with `fID == -1`, where `fClassName` is the collection type — the second meaning of §3.5 |
-| `split-nested` | Class inside class inside vector, split level ≥ 2: `fType` 2 (no leaf, no basket), depth ≥ 3, two- and three-dot names |
-| `split-counter` | `Int_t n; Float_t x[n];` inside a split object: `ReadLeavesMemberBranchCount` (16 in corpus) and `ReadLeavesMemberCounter` (2 in corpus), plus `fBranchCount` on an `fType == 0` branch |
-| `split-ptr-collection` | `std::vector<T*>` written at `kSplitCollectionOfPointers + n`: the **only** way to reach the two zero-coverage procedures and the only source of `fSplitLevel >= 100` |
+| ✅ `split-nested` | Class inside class inside vector: `fType` 2 (no leaf, no basket), an `fType` 4 count branch with `fType` 41 members, the `name_`/`[name_]` convention, and the table showing `fSplitLevel` is not a depth counter. 23 assertions |
+| ✅ `split-counter` | `Int_t n; Float_t x[n];` inside a split object: `ReadLeavesMemberBranchCount` (16 in corpus) and `ReadLeavesMemberCounter` (2), `fBranchCount` on an `fType == 0` branch, and `fMaximum` recorded on the *counter*. 15 assertions |
+| ✅ `split-ptr-collection` | `std::vector<T*>` at `kSplitCollectionOfPointers + n`: the only source anywhere of `fSplitLevel >= 100`, the two zero-coverage procedures, **and the only `TBranchSTL`**. 22 assertions |
 | `split-branch-object` | `TBranchObject` + `TLeafObject`, the legacy pair the corpus has exactly two of |
 | `split-double32` | A `Double32_t` member inside a split object, producing a `TLeafD32` **in a tree** — the corpus has the class in one file |
 | `tree-index` | `TTreeIndex` via `BuildIndex`, and `fIndexValues`/`fIndex` non-empty (`TTree.md` §8.1) |
@@ -327,16 +328,21 @@ Item 3 is the one that changes what we can claim. It should land with
 
 ## 8. Questions to settle while writing
 
-1. **Is `TBranchSTL` reachable?** Zero occurrences in 178 files. If a current ROOT
-   cannot be made to write one, it gets a version-history note rather than a layout.
-   Same question for `TBranchClones`.
+1. ~~**Is `TBranchSTL` reachable?**~~ **Resolved: yes.** A `std::vector<T*>`
+   branched at `kSplitCollectionOfPointers + n` produces one, and
+   `split-ptr-collection` is the fixture. `Splitting.md` §5 writes it up.
+   `TBranchClones` is still open, still with zero occurrences in 178 files.
 2. **Why is `fParentName` empty on 16 of 21 `fType == 3` branches** when their
    `fID >= 0`? Everywhere else the empty case lines up with `fID < 0` (§3.5).
 3. **Does `fBranchCount`'s back-reference use the same map-position convention as
    `fLeaves` and `fLeafCount`?** Near-certain, but it is a byte-level claim and
    `CLAUDE.md`'s discipline says verify it rather than infer it.
-4. **What does `fMaximum` mean on an `fType` 3 or 4 branch,** and why is it zero on
-   half the `fType == 4` ones (§3.5)?
+4. ~~**What does `fMaximum` mean on an `fType` 3 or 4 branch?**~~ **Resolved:**
+   it is the largest count the writer saw, it is checked against on read
+   (`root/tree/tree/src/TBranchElement.cxx:4340`), and it lives on whichever
+   branch holds the count — which `split-counter` showed includes a `kCounter`
+   branch, not only `fType` 3 and 4. Still open: why it is zero on half the
+   `fType == 4` branches in the corpora.
 5. **`fClassVersion == 0`** on 981 branches — confirm the `fCheckSum` fallback is
    exactly the `StreamerInfo.md` rule, and cross-reference rather than restate.
 6. **Can a `fType == 0` branch with an empty `fLeaves` actually be written**, or is

@@ -407,6 +407,15 @@ consumed, and read nothing if the remainder is zero.
    of the entry's byte range, exactly.
 8. `fOffset` of the first leaf of a branch is 0.
 
+**Invariants 5 to 7 are about what a branch's leaves say, so a branch with no
+leaf at all is outside them.** Two shapes reach that state, both added by the
+split fixtures: the interior nodes of
+[TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference),
+which have no basket either and so are vacuous rather than exempt; and a
+`TBranchSTL`, which has **baskets full of data and still no leaf**
+(`ttree/split-ptr-collection`). A reader must not conclude from an empty leaf
+list that a branch holds nothing.
+
 Invariant 5's first half — that the branch declares `fEntryOffsetLen` — is the
 testable one; its second half is not reachable in isolation, because a basket
 whose offset array is removed fails

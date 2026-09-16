@@ -1278,6 +1278,7 @@ class Checker:
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_branch_element(branch, by_slot)
+                self.check_splitting(branch, by_slot)
                 self.check_leaves(data, branch, leaves)
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
@@ -1382,6 +1383,45 @@ class Checker:
                 self.bad("TBranchElement 10.9",
                          f"{name}: fBranchCount at {br.count_slot} is not "
                          f"earlier than the branch at {br.slot}")
+
+    def check_splitting(self, br, by_slot) -> None:
+        """The Invariants of spec/04-ttree/Splitting.md."""
+        name = f"branch {br.name!r}"
+
+        # 5. A TBranchSTL has no leaf -- and still has baskets, which is why
+        #    TLeaf 10.5 to 10.7 are scoped to branches that have leaves.
+        if br.cls == "TBranchSTL" and br.leaves:
+            self.bad("Splitting 8.5",
+                     f"{name}: a TBranchSTL with {len(br.leaves)} leaf/leaves")
+
+        ft = br.element_type
+        if ft is None:
+            return
+
+        # 1 and 2. An interior node with no children describes nothing.
+        if br.element_id == -2 and not br.branches:
+            self.bad("Splitting 8.1",
+                     f"{name}: fID -2 marks a split node, but fBranches is empty")
+        if ft in (1, 2) and not br.branches:
+            self.bad("Splitting 8.2",
+                     f"{name}: fType {ft} is an interior node, but fBranches "
+                     f"is empty")
+
+        # 3. A count branch's title is its name, trailing dot dropped, plus "_".
+        if ft in (3, 4):
+            want = br.name.rstrip(".") + "_"
+            if br.title != want:
+                self.bad("Splitting 8.3",
+                         f"{name}: count branch title {br.title!r}, expected "
+                         f"{want!r}")
+
+        # 4. A member of a split container names its count branch in brackets.
+        if ft in (31, 41) and br.count_slot >= 0:
+            target = by_slot.get(br.count_slot)
+            if target is not None and not br.title.endswith(f"[{target.title}]"):
+                self.bad("Splitting 8.4",
+                         f"{name}: title {br.title!r} does not end in "
+                         f"[{target.title}]")
 
     def element_info(self, br):
         """The streamer info fClassName/fClassVersion/fCheckSum select."""
@@ -1561,6 +1601,14 @@ class Checker:
             self.bad("TBranch 11.11",
                      f"{name}: fEntryOffsetLen {br.entry_offset_len} is below the "
                      f"floor of 10")
+        if not br.leaves:
+            # A branch with no leaf at all. Two shapes reach here: the interior
+            # nodes of TBranchElement.md 4, which have no basket either and so
+            # cost nothing, and a TBranchSTL, which has baskets full of data and
+            # still no leaf -- see Splitting.md. TLeaf 10.5 to 10.7 are about
+            # what a branch's leaves say, so they have nothing to check.
+            return
+
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
                        for lf in br.leaves)
         if variable and not br.entry_offset_len:
@@ -1640,6 +1688,14 @@ class Checker:
             if i == 0 and lf.offset != 0:
                 self.bad("TLeaf 10.8",
                          f"{where}: the first leaf has fOffset {lf.offset}")
+
+        if not br.leaves:
+            # A branch with no leaf at all. Two shapes reach here: the interior
+            # nodes of TBranchElement.md 4, which have no basket either and so
+            # cost nothing, and a TBranchSTL, which has baskets full of data and
+            # still no leaf -- see Splitting.md. TLeaf 10.5 to 10.7 are about
+            # what a branch's leaves say, so they have nothing to check.
+            return
 
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
                        for lf in br.leaves)
