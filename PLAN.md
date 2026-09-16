@@ -948,7 +948,7 @@ No external blocker; these are simply cases nobody has added yet.
 
 | Gap | Document |
 |---|---|
-| A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte. A `TH2F` produces one; no reference file does | `03-classes/TArray.md` §2 |
+| ~~A `TStreamerInfo` for a concrete `TArray`, which ROOT sometimes writes and which is wrong by one byte~~ | ✅ `classes/tarray-histogram`. **A `TH2F` does not produce one** — the row said it did. A `TH2F` in a `TTree` branch does, and 16 of the 39 histogram files across both corpora carry one |
 | A compressed basket, a multi-block basket, a displacement array, and `fIOBits` in either form | `04-ttree/TBasket.md` §12 |
 | ~~The embedded form of a basket~~ | ✅ `04-ttree/TBasket.md` §4.1, `ttree/basket-embedded` |
 | A split branch, a non-empty `fFileName`, a non-zero `fIOBits`, a branch whose `fFirstEntry` is not 0, a `TBranch` at class version 9 or below | `04-ttree/TBranch.md` §14 |

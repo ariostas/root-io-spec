@@ -42,15 +42,30 @@ The total size is therefore `4 + fN × width`, exactly, in every context.
 ## 2. The streamer info, where it exists, is wrong by one byte
 
 Whether a file carries a `TStreamerInfo` for a concrete `TArray` is not
-predictable. A file containing only arrays carries none; a file containing a
-`TH2F` carries one for `TArrayF`; a file containing a `TH1L` carries none for
-`TArrayL64`. A reader MUST hardcode §1 either way.
+predictable, and **it does not follow from the file containing one**. A reader
+MUST hardcode §1 either way.
+
+What decides it is how the array reached the file, not what the file holds:
+
+| The file has | Concrete `TArray` info |
+|---|---|
+| eight `TArray`s written directly | **none** — the `StreamerInfo` list is empty |
+| a `TH2F` written with `Write()` | **none**, though `TH2F`'s own info names `TArrayF` as a base |
+| a `TH2F` held in a `TObjArray` | **none** |
+| a `TH2F` in a **`TTree` branch** | `TArrayF`, `TArrayD` **and** `TArray` |
+
+`TH1`'s hand-written `Streamer` never asks for the info; creating a branch does,
+because it builds the streamer info of every class in the hierarchy.
 
 > Demonstrated by `classes/tarray`, whose `StreamerInfo` record is the 21-byte
 > empty list ([Streamer information §3.2](../02-serialization/StreamerInfo.md#32-an-empty-list-is-meaningful))
-> even though the file contains eight arrays. And by
-> `serialization/version-zero`, which has fourteen infos and none for
-> `TArrayL64`, whose base it contains.
+> even though the file contains eight arrays; by `serialization/version-zero`,
+> which has fourteen infos and none for `TArrayL64`, whose base it contains; and
+> by `classes/tarray-histogram`, which is the `TTree` row.
+>
+> Measured across the two corpora: of the 39 files containing a histogram, **16
+> carry a concrete `TArray` info and 23 do not**, from ROOT 3.05 to 6.26. It is
+> not a version difference.
 
 **When the info is present it is nearly right, which is worse than being absent.**
 It lists two elements:
@@ -65,8 +80,11 @@ The flag byte is what a counted pointer always writes
 and `TArray::Streamer` does not write it. So following the recorded info reads
 `5 + fN × width` bytes where there are `4 + fN × width`.
 
-> Measured, not inferred: in a file written by 6.40.04 a `TH2F`'s `TArrayF` base
-> has `fN` 49 and occupies 200 bytes, and its recorded info would read 201.
+> Demonstrated by `classes/tarray-histogram`, whose `TArrayF` info lists exactly
+> those two elements — `fArray` at code 45 with `fCountName` `fN` and
+> `fCountClass` `TArray` — while the bytes of the `TH2F`'s `TArrayF` base are
+> `fN` = 49 followed **immediately** by 49 floats: 200 bytes where the recorded
+> info reads 201.
 >
 > This is the sharpest example in this specification of
 > [Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes):
@@ -153,3 +171,4 @@ observation there is recorded as an erratum with its measurement instead.
 |---|---|
 | `classes/tarray` | All seven widths, an empty array, and the empty `StreamerInfo` list |
 | `serialization/version-zero` | A `TArrayL64` base and two `TArrayD` members by value, inside `TH1L` |
+| `classes/tarray-histogram` | The `TStreamerInfo` for `TArrayF` that §2 is about, beside the 200 bytes it describes as 201 |
