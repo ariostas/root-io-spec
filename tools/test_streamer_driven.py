@@ -175,9 +175,6 @@ class CountedString(unittest.TestCase):
         self.assertEqual((len(text), end), (255, 260))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class StdStringObject(unittest.TestCase):
     """Collections.md 10.1. A std::string object has no frame at all."""
@@ -231,3 +228,113 @@ class BaseClassCounter(unittest.TestCase):
         decoder = rootfile.Decoder(b"\x01\x00\x00\x00\x07", 0, [derived])
         with self.assertRaises(rootfile.FormatError):
             decoder.read_members("C", 1, 0, None)
+
+
+class SynthesisedPair(unittest.TestCase):
+    """Collections.md 8.1. A pair's members from the type name alone.
+
+    The layouts are byte-verified in `serialization/pairs`; what is checked here
+    is the mapping from a template argument to the element that produces them,
+    which is a rule rather than a byte pattern.
+    """
+
+    @staticmethod
+    def members(name):
+        return [(el.name, el.cls, el.ftype, el.tail)
+                for el in rootfile.synthesise_pair(name).elements]
+
+    def test_two_fundamentals(self):
+        self.assertEqual(
+            self.members("pair<int,double>"),
+            [("first", "TStreamerBasicType", 3, {}),
+             ("second", "TStreamerBasicType", 8, {})])
+
+    def test_a_std_string_is_an_stl_string_element(self):
+        # Which is what gives its column the shared frame of section 4.1.
+        first = self.members("pair<string,int>")[0]
+        self.assertEqual(first[1:3], ("TStreamerSTLstring", 500))
+        self.assertEqual(first[3], {"fSTLtype": rootfile.STL_STRING,
+                                    "fCtype": rootfile.STL_STRING})
+
+    def test_a_TString_is_not(self):
+        # The pair to keep straight: a TString column has no frame at all.
+        self.assertEqual(self.members("pair<TString,int>")[0][1:3],
+                         ("TStreamerString", 65))
+
+    def test_a_collection_keeps_its_kind(self):
+        second = self.members("pair<int,vector<short> >")[1]
+        self.assertEqual(second[1:3], ("TStreamerSTL", 500))
+        self.assertEqual(second[3]["fSTLtype"], rootfile.STL_VECTOR)
+        self.assertEqual(
+            self.members("pair<int,set<short> >")[1][3]["fSTLtype"],
+            rootfile.STL_SET)
+
+    def test_a_pointer_and_a_class_differ(self):
+        self.assertEqual(self.members("pair<int,Hit*>")[1][1:3],
+                         ("TStreamerObjectAnyPointer", 69))
+        self.assertEqual(self.members("pair<int,Hit>")[1][1:3],
+                         ("TStreamerObjectAny", 62))
+
+    def test_a_nested_pair_is_a_class_like_any_other(self):
+        # No special case: pair<int,pair<int,int>> synthesises the outer one and
+        # the inner is read as a framed object.
+        self.assertEqual(self.members("pair<int,pair<int,int> >")[1][2], 62)
+
+
+class StlKind(unittest.TestCase):
+    """Collections.md 1. A collection name to the fSTLtype it would carry."""
+
+    def test_the_common_ones(self):
+        for name, want in (("vector<int>", rootfile.STL_VECTOR),
+                           ("std::map<int,int>", rootfile.STL_MAP),
+                           ("multiset<float>", rootfile.STL_MULTISET),
+                           ("unordered_map<int,int>", rootfile.STL_UNORDERED_MAP),
+                           ("bitset<8>", rootfile.STL_BITSET)):
+            with self.subTest(name):
+                self.assertEqual(rootfile.stl_kind(name), want)
+
+    def test_an_unknown_head_is_refused_rather_than_guessed(self):
+        with self.assertRaises(rootfile.UnsupportedClass):
+            rootfile.stl_kind("MyContainer<int>")
+
+
+class PairInfoLookup(unittest.TestCase):
+    """Collections.md 8.2. By name, not by checksum, and whitespace-insensitive."""
+
+    @staticmethod
+    def decoder(*infos):
+        return rootfile.Decoder(b"", 0, list(infos))
+
+    @staticmethod
+    def info(name, checksum=0, version=1):
+        return rootfile.StreamerInfo(name=name, title="", version=9, bits=0,
+                                     checksum=checksum, class_version=version,
+                                     elements=[])
+
+    def test_whitespace_in_the_name_does_not_matter(self):
+        d = self.decoder(self.info("pair<int,vector<short> >"))
+        self.assertIsNotNone(d.pair_info("pair<int,vector<short>>"))
+
+    def test_a_pair_the_file_does_not_describe_is_synthesised(self):
+        d = self.decoder(self.info("pair<int,int>"))
+        self.assertIsNone(d.pair_info("pair<int,float>"))
+        # value_info falls back rather than failing.
+        self.assertEqual(len(d.value_info("pair<int,float>", 0).elements), 2)
+
+    def test_the_file_wins_when_it_has_one(self):
+        recorded = self.info("pair<int,int>", checksum=0x95f86d56)
+        d = self.decoder(recorded)
+        self.assertIs(d.value_info("pair<int,int>", 0), recorded)
+
+    def test_a_shared_checksum_does_not_confuse_it(self):
+        # The three pairs of serialization/pairs all carry 0x0b5fb752.
+        shared = 0x0b5fb752
+        d = self.decoder(self.info("pair<int,string>", checksum=shared),
+                         self.info("pair<int,vector<short> >", checksum=shared))
+        self.assertEqual(d.pair_info("pair<int,string>").name, "pair<int,string>")
+        self.assertEqual(d.pair_info("pair<int,vector<short>>").name,
+                         "pair<int,vector<short> >")
+
+
+if __name__ == "__main__":
+    unittest.main()

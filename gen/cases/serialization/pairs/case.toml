@@ -1,0 +1,309 @@
+id   = "serialization/pairs"
+file = "data/serialization/pairs.root"
+size = 3366
+
+description = """
+The six shapes a `pair<K,V>` member takes in a member-wise `std::map`, and the
+empty case.
+
+`serialization/collections` covers `map<int,int>` and the fact that ROOT wrote no
+streamer info for its `pair<int,int>`. This case is the rest of the story, and it
+contradicts the simple version of that claim: **whether a file carries a pair's
+streamer info is not predictable.** Four of this file's six pairs have one and
+two do not, and the split is not by member type. Across both corpora it is 28
+present and 23 absent. A reader looks the pair up by name and synthesises only
+when it is missing.
+
+One column shape per member:
+
+| Member type | Column of *n* values |
+|---|---|
+| `std::string` | one shared byte count and version, then *n* counted strings |
+| `TString` | *n* counted strings, **no shared frame at all** |
+| a class | *n* objects, each with its own byte count and version |
+| a collection | one shared frame, then *n* object-wise collections |
+| a pointer | *n* object slots |
+
+The `TString` row against the `std::string` row is the one worth reading twice:
+the same-looking data, one with a frame and one without, decided only by which
+element class the member has.
+
+**fEmpty is the trap.** An empty member-wise collection writes its count and then
+nothing -- not even the columns' own headers
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199`, where ROOT does nothing
+for `!nobjects` above TStreamerInfo version 6). Sixteen bytes for the whole
+member. A reader that always reads a column header desynchronises here, and a
+reader that never reads one desynchronises on a split branch, where the header
+*is* written for an empty column.
+
+**The checksums are not unique.** `pair<int,string>`, `pair<int,vector<short> >`
+and `pair<TString,PHit*>` all carry `0x0b5fb752` in this file, in both their
+streamer infos and their stream headers. ROOT still reads the file correctly,
+because it resolves the value class from the member's declared type name first
+and uses the checksum only to pick among that class's own versions. A reader that
+looks a pair up by checksum alone will pick the wrong one of these three.
+Collections.md 8.2.
+"""
+
+spec = [
+  "spec/02-serialization/Collections.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 200
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 300
+nbytes = 272
+class  = "PairHolder"
+role   = "the object, seven map members"
+[[records]]
+offset = 572
+nbytes = 2568
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 3140
+nbytes = 130
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 3270
+nbytes = 96
+class  = "TFile"
+role   = "keys list / free segments"
+
+# --- fStrKey: map<string,int>, {"ab":1, "cd":2} ---------------------------
+#
+# 40 00 00 20 | 40 0a | 00 00 | 3a 5a 65 72 | 00 00 00 02
+# byte count    m-wise  value   pair's        count 2
+#               ver 10  ver 0   checksum
+# 40 00 00 08 00 0a | 02 61 62 02 63 64 | 00 00 00 01 00 00 00 02
+# the first column's shared frame, two strings, then the second column
+
+[[bytes]]
+name = "fStrKey: the collection's byte count"
+offset = 346
+type = "u32"
+value = 0x40000020
+
+[[bytes]]
+name = "fStrKey: kStreamedMemberWise set on version 10"
+offset = 350
+type = "u16"
+value = 0x400a
+
+[[bytes]]
+name = "fStrKey: the value class's version, 0, so a checksum follows"
+offset = 352
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "fStrKey: pair<string,int>'s checksum"
+offset = 354
+type = "u32"
+value = 0x3a5a6572
+
+[[bytes]]
+name = "fStrKey: two entries"
+offset = 358
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fStrKey: the string column's shared byte count, 8 for both strings"
+offset = 362
+type = "u32"
+value = 0x40000008
+
+[[bytes]]
+name = "fStrKey: and one shared version word, TStreamerInfo's own"
+offset = 366
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "fStrKey: both strings inside that one frame, counted, back to back"
+offset = 368
+type = "bytes"
+value = [2, 97, 98, 2, 99, 100]
+
+[[bytes]]
+name = "fStrKey: the second column, two bare Int_t"
+offset = 374
+type = "i32"
+value = 1
+
+# --- fTStrKey: map<TString,int>, {"pq":3} ---------------------------------
+#
+# A TString column has NO shared frame: the counted strings follow the count
+# directly. Compare offset 362 above.
+
+[[bytes]]
+name = "fTStrKey: pair<TString,int>'s checksum, which no info in this file has"
+offset = 425
+type = "u32"
+value = 0x9239704e
+
+[[bytes]]
+name = "fTStrKey: one entry"
+offset = 429
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fTStrKey: the TString column starts immediately -- no byte count, no version"
+offset = 433
+type = "bytes"
+value = [2, 112, 113]
+
+[[bytes]]
+name = "fTStrKey: the second column follows three bytes later"
+offset = 436
+type = "i32"
+value = 3
+
+# --- fClassVal: map<int,PHit>, {5: PHit(100, 0.5)} ------------------------
+
+[[bytes]]
+name = "fClassVal: the shared checksum -- see fVecVal and fPtrVal"
+offset = 448
+type = "u32"
+value = 0x0b5fb752
+
+[[bytes]]
+name = "fClassVal: the first column, one Int_t"
+offset = 456
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fClassVal: a class column frames each element, not the column"
+offset = 460
+type = "u32"
+value = 0x4000000a
+
+[[bytes]]
+name = "fClassVal: PHit's own class version"
+offset = 464
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fClassVal: PHit::fId"
+offset = 466
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "fClassVal: PHit::fE"
+offset = 470
+type = "f32"
+value = 0.5
+
+# --- fVecVal: map<int,vector<short>>, {9: [11,12,13]} ---------------------
+
+[[bytes]]
+name = "fVecVal: the same checksum as fClassVal, for a different pair"
+offset = 482
+type = "u32"
+value = 0x0b5fb752
+
+[[bytes]]
+name = "fVecVal: the first column"
+offset = 490
+type = "i32"
+value = 9
+
+[[bytes]]
+name = "fVecVal: a collection column shares one frame across the whole column"
+offset = 494
+type = "u32"
+value = 0x4000000c
+
+[[bytes]]
+name = "fVecVal: and one version word"
+offset = 498
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "fVecVal: then the one vector's own count, inside that frame"
+offset = 500
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fVecVal: three Short_t, object-wise"
+offset = 504
+type = "bytes"
+value = [0, 11, 0, 12, 0, 13]
+
+# --- fPtrVal: map<TString,PHit*>, {"rs": PHit(7, 1.5)} --------------------
+
+[[bytes]]
+name = "fPtrVal: the same checksum again, for a third distinct pair"
+offset = 518
+type = "u32"
+value = 0x0b5fb752
+
+[[bytes]]
+name = "fPtrVal: the TString column, unframed as in fTStrKey"
+offset = 526
+type = "bytes"
+value = [2, 114, 115]
+
+[[bytes]]
+name = "fPtrVal: a pointer column is object slots -- byte count, then a class tag"
+offset = 529
+type = "u32"
+value = 0x40000017
+
+[[bytes]]
+name = "fPtrVal: kNewClassTag, because this is PHit's first appearance in the buffer"
+offset = 533
+type = "u32"
+value = 0xffffffff
+
+[[bytes]]
+name = "fPtrVal: the class name, null-terminated"
+offset = 537
+type = "bytes"
+value = [80, 72, 105, 116, 0]
+
+# --- fEmpty: an empty map<string,int> -------------------------------------
+#
+# 40 00 00 0c | 40 0a | 00 00 | 3a 5a 65 72 | 00 00 00 00
+# Sixteen bytes, and the byte count of 12 leaves no room for the two columns'
+# headers. They are not written at all.
+
+[[bytes]]
+name = "fEmpty: a byte count of 12, the header and the count and nothing else"
+offset = 556
+type = "u32"
+value = 0x4000000c
+
+[[bytes]]
+name = "fEmpty: still member-wise"
+offset = 560
+type = "u16"
+value = 0x400a
+
+[[bytes]]
+name = "fEmpty: the same pair as fStrKey, so the same checksum"
+offset = 564
+type = "u32"
+value = 0x3a5a6572
+
+[[bytes]]
+name = "fEmpty: zero entries, and the member ends here"
+offset = 568
+type = "i32"
+value = 0

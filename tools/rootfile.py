@@ -1582,7 +1582,7 @@ class Decoder:
         value = value_type_name(el.type_name)
         if frame.member_wise:
             self.member_wise.append((el.name, value, offset))
-            pos = self.read_member_wise(value, frame.body, el)
+            pos = self.read_member_wise(value, frame.body, el, frame.version)
         else:
             pos = self.read_object_wise(value, stl, frame.body)
         if pos != frame.end:
@@ -1622,11 +1622,26 @@ class Decoder:
             return read_slot(self.buf, offset, self.base).end
         return self.read_object(bare, offset).end
 
-    def read_member_wise(self, value: str, offset: int, el) -> int:
-        """A second version word, a count, then one column per member."""
+    #: Above this collection version an empty member-wise collection writes no
+    #: columns at all; at or below it, the columns are written and empty
+    #: (root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199).
+    EMPTY_WRITES_NO_COLUMNS_ABOVE = 6
+
+    def read_member_wise(self, value: str, offset: int, el,
+                         collection_version: int = 99) -> int:
+        """A second version word, a count, then one column per member.
+
+        `collection_version` is the version on the collection's own frame, not
+        the value class's: it decides the empty case below.
+        """
         version, pos = self.resolve_bare_version(value, offset)
         count = _i32(self.buf, pos)
         pos += 4
+        if count == 0 and collection_version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE:
+            # Nothing follows -- not even the empty columns. Byte-verified on an
+            # empty map<string,string> in uproot-issue465-flat.root, whose byte
+            # count leaves no room for them. Collections.md 4.3.
+            return pos
         for element in self.value_info(value, version).elements:
             pos = self.read_column(element, count, pos)
         return pos
@@ -1652,8 +1667,25 @@ class Decoder:
 
     def value_info(self, cls: str, version: int):
         if cls.startswith("pair<"):
-            return synthesise_pair(cls)
+            found = self.pair_info(cls)
+            return found if found is not None else synthesise_pair(cls)
         return self.info_for(cls, version)
+
+    def pair_info(self, cls: str) -> "StreamerInfo | None":
+        """The file's own info for a pair, matched by NAME, or None.
+
+        By name and not by checksum. The checksum in a member-wise header is
+        scoped to the class ROOT has already resolved from the member's declared
+        type name, so it need not be unique across pairs -- and is not:
+        `serialization/pairs` has two distinct pairs sharing one
+        (Collections.md 8.2). Names differ only in whitespace between files, so
+        they are compared with it removed.
+        """
+        wanted = cls.replace(" ", "")
+        for name, by_version in self.infos.items():
+            if name.replace(" ", "") == wanted:
+                return max(by_version.values(), key=lambda i: i.class_version)
+        return None
 
     def read_column(self, element, count: int, offset: int,
                     counters: dict[str, int] | None = None) -> int:
@@ -1745,6 +1777,8 @@ class Decoder:
             for _ in range(count):
                 n = _i32(self.buf, pos)
                 pos += 4
+                if n == 0 and frame.version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE:
+                    continue          # as above: an empty one writes no columns
                 for member in info.elements:
                     pos = self.read_column(member, max(n, 0), pos)
         else:
@@ -1975,21 +2009,67 @@ def value_type_name(type_name: str) -> str:
     return args[0]
 
 
+#: Collection head name to fSTLtype. Collections.md section 1.
+STL_KINDS = {
+    "vector": STL_VECTOR, "list": STL_LIST, "deque": STL_DEQUE,
+    "map": STL_MAP, "multimap": STL_MULTIMAP,
+    "set": STL_SET, "multiset": STL_MULTISET,
+    "bitset": STL_BITSET, "forward_list": STL_FORWARD_LIST,
+    "unordered_set": STL_UNORDERED_SET,
+    "unordered_multiset": STL_UNORDERED_MULTISET,
+    "unordered_map": STL_UNORDERED_MAP,
+    "unordered_multimap": STL_UNORDERED_MULTIMAP,
+}
+
+
+def stl_kind(type_name: str) -> int:
+    """The fSTLtype a collection type name would carry. Collections.md 1."""
+    bare = type_name.strip()
+    if bare.startswith("std::"):
+        bare = bare[5:]
+    head = bare[:bare.index("<")] if "<" in bare else bare
+    if head not in STL_KINDS:
+        raise UnsupportedClass(f"unknown collection {type_name}")
+    return STL_KINDS[head]
+
+
+def pair_element(member: str, type_name: str) -> Element:
+    """The streamer element a `pair<K,V>` member would have.
+
+    Collections.md section 8.1. The shapes are byte-verified in
+    `serialization/pairs`; every one of them is an ordinary element, so the
+    column reader needs no special case for a pair.
+    """
+    def made(cls, ftype, tail=None):
+        return Element(cls=cls, version=2, name=member, title="", bits=0,
+                       ftype=ftype, fsize=0, array_length=0, array_dim=0,
+                       max_index=[0] * 5, type_name=type_name, tail=tail or {})
+
+    bare = type_name.strip()
+    if bare in FUNDAMENTAL:
+        return made("TStreamerBasicType", FUNDAMENTAL[bare])
+    if bare in STD_STRING_NAMES:
+        return made("TStreamerSTLstring", 500,
+                    {"fSTLtype": STL_STRING, "fCtype": STL_STRING})
+    if bare in ("TString", "const TString"):
+        return made("TStreamerString", 65)
+    if is_collection_name(bare):
+        return made("TStreamerSTL", 500, {"fSTLtype": stl_kind(bare), "fCtype": 0})
+    if bare.endswith("*"):
+        return made("TStreamerObjectAnyPointer", 69)
+    return made("TStreamerObjectAny", 62)
+
+
 def synthesise_pair(name: str) -> StreamerInfo:
     """A streamer info for `pair<K,V>`, built from the type name alone.
 
-    ROOT does not write one into the file even when a member-wise map names its
-    checksum, so a reader has to construct it. Collections.md section 8.
+    A file may or may not carry one of its own -- ROOT's writer is inconsistent
+    about it and the corpora have it both ways (Collections.md section 8.1), so a
+    reader looks for it first and falls back to this. The layout is always
+    `first` then `second`, from the two template arguments.
     """
     key, value = template_args(name)
-    elements = []
-    for member, type_name in (("first", key), ("second", value)):
-        if type_name not in FUNDAMENTAL:
-            raise UnsupportedClass(f"cannot synthesise {name}: {type_name}")
-        elements.append(Element(
-            cls="TStreamerBasicType", version=2, name=member, title="", bits=0,
-            ftype=FUNDAMENTAL[type_name], fsize=0, array_length=0, array_dim=0,
-            max_index=[0] * 5, type_name=type_name, tail={}))
+    elements = [pair_element("first", key), pair_element("second", value)]
     return StreamerInfo(name=name, title="", version=10, bits=0, checksum=0,
                         class_version=0, elements=elements)
 

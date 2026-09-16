@@ -969,6 +969,26 @@ class Checker:
                              f"{name} is a member-wise collection of {value!r}, "
                              f"which has no streamer info in this file")
 
+                # 9. An empty member-wise collection writes no columns at all.
+                # Read straight from the bytes rather than through the decoder,
+                # so that this states the rule independently of the reader that
+                # implements it.
+                if frame.end is None:
+                    continue
+                pos = frame.body
+                if rootfile._i16(data, pos) > 0:
+                    pos += 2                      # a plain value-class version
+                else:
+                    pos += 6                      # version 0 and a checksum
+                if pos + 4 > frame.end:
+                    continue
+                if (rootfile._i32(data, pos) == 0
+                        and frame.version > rootfile.Decoder.EMPTY_WRITES_NO_COLUMNS_ABOVE
+                        and pos + 4 != frame.end):
+                    self.bad("Collections 14.9",
+                             f"{name} holds 0 elements but runs {frame.end - pos - 4} "
+                             f"bytes past its count")
+
     def check_tarray(self) -> None:
         """TArray.md invariants 1 and 3.
 

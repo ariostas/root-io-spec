@@ -398,18 +398,19 @@ what it could not read is recorded as plainly as what it could.
 
 **Left, in order of how much of the corpora they account for:**
 
-1. **`pair<K,V>` whose members are not fundamental types** — 34 branch-baskets,
-   the largest thing that can be fixed. `synthesise_pair` builds the missing info from the
-   type name (`Collections.md` §8) and handles only scalars today. Extending it
-   to a `std::string`, a `TString` or a class member needs the encoding of each
-   inside a member-wise pair column verified against bytes; the corpus has the
-   cases to do it with.
-2. **A collection whose value class has no streamer info in the file** — 52,
+1. ~~**`pair<K,V>` whose members are not fundamental types**~~ ✅ Closed, 34
+   branch-baskets to 0. The six member shapes are byte-verified in
+   `serialization/pairs` and written up as `Collections.md` §8.1, and the reader
+   now looks a pair up in the file before synthesising one — which §8 had said
+   was never possible. It also turned up the empty member-wise collection
+   (§4.3) and the shared pair checksum (§8.2).
+2. **A collection whose value class has no streamer info in the file** — 49,
    the largest group and not a gap at all.
    `Collections.md` §9 already says this is unreadable by anyone, ROOT included.
    Nothing to fix; it stays a skip.
-3. **`fType` −1**, a branch whose class writes its own `Streamer` — 9. Still no
-   fixture; still needs a class with a hand-written `Streamer`.
+3. **`fType` −1**, a branch whose class writes its own `Streamer` — 9, plus 9
+   more on the Jpp classes of `gen/foreign/IGNORE.toml`. Still no fixture; still
+   needs a class with a hand-written `Streamer`.
 4. **A basket whose record could not be read** — 7, all of them a missing
    codec or a counter branch whose own basket was unavailable.
 5. **`kStreamLoop` contents.** The column's *extent* is checked from its byte

@@ -132,14 +132,46 @@ occupies one contiguous column.
 |---|---|
 | fundamental | none: the values are concatenated |
 | a base class | none: the base's streamer runs once per element, back to back |
+| `TString` (65) | none: *n* counted strings, back to back |
 | an object member (61, 62) | **each element gets its own** byte count and version word |
-| a collection member (500) | **one** byte count and version word for the *whole column* |
+| a pointer member (64, 69) | each element is an [object slot](Buffer.md#6-object-slots) |
+| a collection member (500), `std::string` included | **one** byte count and version word for the *whole column* |
 
 The last row is the surprising one and it follows from how the action is built:
 a collection column falls through to `GenericWrite`, which calls the ordinary
 member loop once with an array of `n` objects
 (`root/io/io/src/TStreamerInfoActions.cxx:2214-2228`), and the frame is written
 once inside that single call.
+
+> The `TString` row and the `std::string` row are the pair to keep straight. The
+> data looks the same and the framing does not, and nothing but the member's
+> element class says which it is. `serialization/pairs` has both, twelve bytes
+> apart.
+
+### 4.3 An empty member-wise collection writes no columns at all
+
+Not empty columns — **no columns**. After the count of 0 the collection ends, and
+the columns' own headers are not written either
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199`, where ROOT does nothing
+for `!nobjects`). The whole member is then the byte count, the two version words,
+the checksum where there is one, and four zero bytes.
+
+This is **version dependent**, and ROOT's comment at that line says so: at
+`TStreamerInfo` version 6 and below the columns were written for an empty
+collection. The version in question is the one on the collection's own frame, not
+the value class's.
+
+> Demonstrated by `serialization/pairs`, whose `fEmpty` is an empty
+> `map<string,int>` in sixteen bytes: `40 00 00 0c | 40 0a | 00 00 | 3a 5a 65 72
+> | 00 00 00 00`. The byte count of 12 leaves no room for a column header.
+
+**A split branch is the opposite case and it is easy to conflate them.** There an
+`fType` 31 or 41 column of *n* = 0 values still carries its shared frame — six
+bytes, not zero — because the branch writes an entry whether or not the
+collection has anything in it
+([Reading entries §3.2](../04-ttree/ReadingEntries.md#32-a-member-of-a-split-container-a-bare-packed-column)).
+A reader that always reads a column header desynchronises on `fEmpty`; one that
+never does desynchronises on the split branch.
 
 ### 4.2 A base class loses its version word
 
@@ -245,13 +277,66 @@ Note that `HasPointers()` deliberately returns false for a map even when the key
 or value is a pointer (`root/io/io/src/TGenCollectionProxy.cxx:1035`), so a map
 is not blocked from member-wise the way `vector<T*>` is.
 
-> **ROOT does not write a streamer info for `pair<K,V>`.** The member-wise frame
-> names the pair's checksum, and the file contains no entry with that checksum. A
-> reader MUST synthesise the layout — `first` then `second`, from the two
-> template arguments — rather than look it up.
+> **A file may or may not contain a streamer info for `pair<K,V>`, and which it
+> is cannot be predicted.** A reader MUST be able to synthesise the layout —
+> `first` then `second`, from the two template arguments — and MUST look for a
+> recorded info first, because when one is present it is the authority.
 >
-> Demonstrated by `serialization/collections`: `fMap`'s frame at 477 names
-> checksum `0x95f86d56` and that record's `TList` contains only `Coll` and `Hit`.
+> Demonstrated both ways. In `serialization/collections`, `fMap`'s frame at 477
+> names checksum `0x95f86d56` and that record's `TList` contains only `Coll` and
+> `Hit`: no info for `pair<int,int>` at all. In `serialization/pairs`, four of
+> six pairs have one and two do not.
+
+Across `gen/foreign/` and `gen/cern/` it is 28 map members whose pair info is in
+the file against 23 whose is not, and the split does not follow from the member
+types: `pair<string,int>` appears both ways in different files. Treat presence as
+a property of how the writing program's dictionaries were built, not of the
+format.
+
+### 8.1 What a synthesised pair's members look like
+
+The two elements are `first` and `second` in that order, and each takes its shape
+from its declared type — the same shapes §4.1 lists, because a pair is an ordinary
+value class and its columns are ordinary columns:
+
+| Template argument | Element | Column of *n* values |
+|---|---|---|
+| a fundamental type | `TStreamerBasicType` | *n* values, concatenated |
+| `std::string` | `TStreamerSTLstring`, `fSTLtype` 365 | one shared frame, then *n* counted strings |
+| `TString` | `TStreamerString` (65) | *n* counted strings, no frame |
+| a collection | `TStreamerSTL` with that `fSTLtype` | one shared frame, then *n* collections |
+| a pointer | `TStreamerObjectAnyPointer` (69) | *n* object slots |
+| any other class | `TStreamerObjectAny` (62) | *n* framed objects |
+
+> All six are demonstrated by `serialization/pairs`, one map each.
+
+### 8.2 The checksum does not identify the pair
+
+> **Two different `pair<K,V>` in the same file can carry the same checksum.**
+
+`serialization/pairs` has three: `pair<int,string>`, `pair<int,vector<short> >`
+and `pair<TString,PHit*>` all carry `0x0b5fb752`, in their recorded streamer
+infos and in their member-wise headers alike.
+
+ROOT reads such a file correctly because it never searches for the checksum
+globally. `ReadVersionForMemberWise` is given the value class — already resolved
+from the member's *declared type name* — and calls
+`cl->FindStreamerInfo(checksum)` on that class alone
+(`root/io/io/src/TBufferFile.cxx:3085-3100`), so the checksum only chooses among
+one pair's own versions.
+
+**A reader MUST do the same**: take the pair from the member's type name, and use
+the checksum only to select a version within it. One that keeps a global
+checksum → info table will decode two of those three maps as the wrong type.
+
+> The mechanism is a caching artefact rather than anything in the format.
+> `TClass::GetCheckSum` computes from the class's data-member list and caches the
+> result in `fCheckSum`, which "once it has transition from a zero Value it never
+> changes" (`root/core/meta/src/TClass.cxx:6655-6666`). A `pair<K,V>` whose
+> `TClass` is still forward-declared has no data members yet, so a checksum taken
+> at that moment is computed from almost nothing and then kept. Which pairs it
+> happens to is a function of the order in which the writing program touched
+> them; `PLAN.md` §7.1 banks it as an upstream report.
 
 ## 9. The value class's streamer info can be missing entirely
 
@@ -454,7 +539,8 @@ and the file has no info for it, the collection is not readable (§9).
 5. Applying §13 to a collection member consumes exactly the bytes its byte count
    delimits.
 6. Every class named as the value class of a member-wise collection has a
-   streamer info in the same file, unless it is a `pair`.
+   streamer info in the same file, unless it is a `pair` — for which the file may
+   have one or not (§8).
 
 7. A `TClonesArray`'s `"<class>;<version>"` string names a class that has a
    streamer info in the same file, at that class version.
@@ -463,6 +549,9 @@ and the file has no info for it, the collection is not readable (§9).
    [References §8](References.md#8-invariants) invariant 1, this is checked
    through consumption rather than directly: reading the wrong encoding
    desynchronises and the byte count catches it.
+9. A member-wise collection whose count is 0, on a frame above version 6,
+   occupies exactly the bytes of its two version words, its checksum if it has
+   one, and the count — and nothing more (§4.3).
 
 Invariant 6 is the one that fails on a file ROOT wrote (§9), which is why it is
 reported rather than assumed.
@@ -482,7 +571,9 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 7 | `tclonesarray.md`: describes the non-bypass body as the objects streamed sequentially | Omits the one-byte presence flag before each object, including for empty slots (§12) |
 | 8 | `tclonesarray.md`: "`kBypassStreamer` (0x1000)" | True for class version 4 only; in version 3 it was `0x4000` (§12) |
 | 9 | `tclonesarray.md`: version, `TObject` and `fName` are shown unconditionally | `TObject` is present only above version 2 and `fName` only above version 1 (§12) |
-| 10 | — | Nothing states that a map is written two different ways, or that its value class is `pair<K,V>` whose streamer info is never in the file (§8) |
+| 10 | — | Nothing states that a map is written two different ways, or that its value class is `pair<K,V>` — whose streamer info the file may or may not carry, unpredictably (§8) |
+| 12 | — | Nothing states that a pair's checksum need not identify it. Three distinct pairs share one in `serialization/pairs`, so a reader that looks a pair up by checksum rather than by name decodes two of them as the wrong type (§8.2) |
+| 13 | — | Nothing states that an empty member-wise collection writes no columns at all, nor that this changed at `TStreamerInfo` version 6 (§4.3) |
 | 11 | — | Nothing states that a `std::string` member's version word is `TStreamerInfo`'s 10 and not `std::string`'s 2 (§10) |
 
 ## 16. Reference files
@@ -491,6 +582,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 |---|---|
 | `serialization/collections` | Object-wise and member-wise side by side; `vector<int>`, `vector<bool>`, `set<int>`, `vector<Hit>`, `vector<vector<int>>`, `vector<string>`, `map<int,int>`, `std::string`, and the missing `pair<int,int>` info |
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
+| `serialization/pairs` | The six shapes a `pair<K,V>` member takes (§8.1), the empty member-wise collection (§4.3), and three distinct pairs sharing one checksum (§8.2) |
 
 `std::bitset` is covered from the other side: `ttree/split-bitset` has one as a
 member of a split branch, which is an ordinary object-wise collection and

@@ -671,9 +671,11 @@ dropped as already-written and distributed (`PLAN-ttree.md` §4).
 
 ✅ **And the split-branch decoder**, `rootfile.TreeReader`, which closes
 `ReadingEntries.md` invariant 5 — the one invariant in `04-ttree/` that could be
-stated but not checked. The entry checks now reach **25873 of 25984
-branch-baskets over both corpora, 99.6%, at 0 failures**, against 89.6% before
-it; the 111 they cannot reach are named and counted individually.
+stated but not checked. With the `pair<K,V>` work that followed it, the entry
+checks now reach **25937 of 26011 branch-baskets over both corpora, 99.7%, at 0
+failures**, against 89.6% before. The 74 they cannot reach are named and counted
+individually, and every one is something no reader could decode from the file —
+there is no longer a category that is merely unimplemented.
 
 Writing it found five things, listed in `PLAN-ttree.md` §10 — among them that the
 §5.3 header is shared across a whole column rather than written per value, and
@@ -811,6 +813,30 @@ Verified against the pinned submodule and real bytes; not yet reported.
 
 6. **The suspected `TFile::Recover` gap bug** (banked earlier; still unverified).
 
+7. **A `pair<K,V>`'s checksum can be computed before its members are known, and
+   is then cached forever.** `TClass::GetCheckSum` derives the value from
+   `GetListOfDataMembers()` and stores it in `fCheckSum`, which the source says
+   "once it has transition from a zero Value it never changes"
+   (`root/core/meta/src/TClass.cxx:6655-6666`). A `pair<K,V>` whose `TClass` is
+   still forward-declared has no data members yet, so a checksum taken at that
+   moment is computed from almost nothing — and several distinct pairs then share
+   one value. **Verified at byte level and reproducible**:
+   `data/serialization/pairs.root` has `pair<int,string>`,
+   `pair<int,vector<short> >` and `pair<TString,PHit*>` all carrying
+   `0x0b5fb752`, in their recorded streamer infos and in their member-wise
+   headers alike. Which pairs it happens to depends on the order the writing
+   program touched them — the same three came out differently in two ROOT
+   sessions over the same header.
+
+   **Not a data-loss bug**: ROOT reads the file back correctly, because
+   `ReadVersionForMemberWise` is handed the value class resolved from the
+   member's declared type name and calls `FindStreamerInfo(checksum)` on that
+   class alone. It is a hazard for every *other* reader, since the obvious
+   implementation — a checksum-to-info table — silently decodes two of those
+   three maps as the wrong type. `spec/02-serialization/Collections.md` §8.2.
+   Worth reporting as "the checksum should identify the class, and here it does
+   not"; the fixture is the reproducer.
+
 ## 8. Immediate next steps
 
 Phases 0–2 are done (§5). The next things, in order:
@@ -919,7 +945,7 @@ No external blocker; these are simply cases nobody has added yet.
 | `TLeafObject`, `TLeafElement`, `TLeafG`, a two-dimensional leaf `a[n][3]/F`, a `TLeafC` needing the 255-escape, any leaf class at a legacy version | `04-ttree/TLeaf.md` §13 |
 | `kCharStar` (7), `kBits` (15), `kStreamLoop` (501), the 81/82 array forms, `kAnyPnoVT` (70) | `02-serialization/ElementTypes.md` |
 | `TStreamerLoop` | `02-serialization/StreamerInfo.md` |
-| `std::array`, a collection of pointers, a fixed array of collections | `02-serialization/Collections.md` (`std::bitset` is covered from the tree side by `ttree/split-bitset`) |
+| `std::array`, a fixed array of collections | `02-serialization/Collections.md` (`std::bitset` is covered from the tree side by `ttree/split-bitset`, and a collection of pointers by `serialization/pairs`) |
 | The `kHasUUID` form of `TRef`, and a `TExec` index in a `TRef`'s `fBits` | `02-serialization/References.md` |
 
 ### 9.6 Structural, not a missing fixture

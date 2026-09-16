@@ -114,12 +114,14 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **25873 of 25984, 99.6%**, with 0 failures. Read a
+Over the two corpora that is **25937 of 26011, 99.7%**, with 0 failures. Read a
 `0 failure(s)` line against the `ENTRIES` line: it means zero failures among the
-things checked. The 111 skips are named individually — a class whose `Streamer`
-is hand-written, a collection whose value class has no streamer info in the file,
-a `pair<K,V>` whose members are not fundamental types (about a quarter of them,
-and the largest remaining gap). `PLAN-ttree.md` tracks what is left.
+things checked. The 74 skips are named individually, and **every one of them is
+something no reader could decode from the file**: a collection whose value class
+has no streamer info in it (49), a branch or class whose `Streamer` is
+hand-written (18), and a basket whose codec is not available here (7). There is
+no longer a category that is merely unimplemented. `PLAN-ttree.md` §10 tracks
+what that leaves.
 
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
