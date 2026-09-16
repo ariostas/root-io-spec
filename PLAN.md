@@ -965,7 +965,19 @@ No external blocker; these are simply cases nobody has added yet.
 | No checker decompresses, so nothing verifies a compressed payload's *contents* | `tools/rootfile.py` | ✅ done; zlib and lzma from the standard library, zstd on Python 3.14, LZ4 only with the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` |
 | `tools/rootfile.py` has no `TTree` support, so phase 5 fixtures will not be invariant-checked until it does | §4 | ✅ baskets, branches and leaves are read and checked, and `entry_spans` closes the entry → basket → byte range → value path |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets; worth adding back as a complement | §3.2 | ☐ |
-| **A `TTree` with a `TBranchElement` branch is not digest-portable.** A fixture with a `std::vector<float>` branch drifted between macOS and Linux CI while all 530 of its byte assertions passed on both, so the difference is in a region no case asserts — most likely the order of entries in the `StreamerInfo` record, which `02-serialization/StreamerInfo.md` §3 says is not guaranteed. Worked around by making `ttree/basket` leaflist-only. **Cause not identified.** `tools/generate.py` now prints per-record digests on drift, so the next occurrence names the record | §3.3, §9.7 | ◐ worked around, not understood |
+| **Four fixtures are not digest-portable between macOS and Linux**, and the causes are now identified — three of them, all different. Diagnosed by reproducing CI's exact digests in a `condaforge/miniforge3` container with ROOT 6.40.04 (the drift is libc++ vs libstdc++, **not** architecture: an arm64 container reproduced the x86_64 CI digests byte for byte) and diffing `tools/normalize.py --members` between the two. The standing guess — the order of entries in the `StreamerInfo` record — was **wrong**: that record is byte-identical in every case | §3.3, §9.7 | ◐ understood, not yet fixed |
+
+The three causes, each needing a different remedy:
+
+| Fixture | The only field that differs | Why | Maskable? |
+|---|---|---|---|
+| `ttree/split-stl-toplevel`, `ttree/split-ptr-collection` | `TBranchElement::fCheckSum` — `66eb45ed` vs `01c8a81d`, and nothing else in the file | The branch's `fClassName` is an STL type (`vector<SHit>`, `vector<PHit*>`), and a checksum folds in each member's resolved type name, which the two standard libraries spell differently. No streamer info in the file records that checksum, so no other record moves with it | Yes — four fixed bytes |
+| `serialization/pairs` | `TStreamerElement::fTitle` on the synthesised `pair<string,int>` members | libstdc++ carries doc comments on `std::pair`'s members and libc++ does not, so the titles are `"The first member"`/`"The second member"` on Linux and empty on macOS. Exactly the 33-byte growth: 35 bytes against 2 | **No** — it is a length change, and a mask cannot restore a length |
+| `ttree/basket-embedded` | the embedded basket's `TKey::fDatime` at offset 859, four times over | `normalize.py` masks the `fDatime` of every *record* key. An embedded basket carries a whole `TKey` inside object data ([TBasket §4.1](spec/04-ttree/TBasket.md#41-the-embedded-layout)) and that one is not masked. Its value is a fixed instant rendered in **local time**: `2033-12-31 19:00:00` on a UTC−5 machine against `2034-01-01 00:00:00` in the container | Yes, and it should be: this is the existing datime mask not reaching far enough |
+
+`fSize` also differs everywhere (`sizeof(std::map)` is 24 with libc++ and 48 with
+libstdc++), which is what the existing mask is for, and it is not the cause of any
+of these.
 | Five upstream bug candidates found and banked, not yet reported | §7.1 | ☐ |
 
 ### 9.7 What the coverage probe found
