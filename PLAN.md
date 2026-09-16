@@ -369,7 +369,7 @@ spend most of their effort.
 | ✅ `TBasket.md` | The basket record, `fNevBufSize` sign trick → `fIOBits`, the `flag >= 80` "generate offsets" path, `flag % 10 == 2`, entry-offset arrays and the offset/size conversion, displacement arrays, `fLast` |
 | `Splitting.md` | Split levels, how a class becomes a branch tree, the naming convention for sub-branches, unsplit fallback |
 | `ReadingEntries.md` | End-to-end normative procedure: entry number → basket → byte range → value |
-| `Double32.md` | `Double32_t`/`Float16_t` title-comment grammar (`[min,max]`, `[min,max,nbits]`), the factor/offset encoding, and the `TLeafD32`/`TLeafF16` variants |
+| ~~`Double32.md`~~ | **Dropped** — already written and distributed: the grammar and the three encodings are `02-serialization/ElementTypes.md` §5.1-5.3, the leaf classes and the 3-versus-4-byte asymmetry are `TLeaf.md` §7. Per decision 6, cross-referenced rather than re-homed (`PLAN-ttree.md` §4) |
 | `Auxiliary.md` | `TTreeIndex`, `TFriendElement`, `TBranchRef`/`TRefTable`, `TEntryList`, `TEventList`, `TNtuple`/`TNtupleD`, `TChain` |
 
 `TBasket.md` is deliberately prominent: `TBasket` has **no streamer info at all**
@@ -661,7 +661,11 @@ remains is the split half — `TBranchElement.md`, `Splitting.md`,
 `ReadingEntries.md`, `Double32.md`, `Auxiliary.md` — with the full split/type
 matrix of fixtures. Still the largest single phase, and it still wants its own
 sub-plan (§7 item 5), which should now be written around what these four
-documents settle.
+documents settle. **That sub-plan is now written: [`PLAN-ttree.md`](PLAN-ttree.md).**
+It measures the split half across both corpora — 6736 of 11158 branches are
+`TBranchElement`, `fType` selects nine read procedures of which two have zero
+coverage in 178 files — and turns phase 5 into four documents (not five) and a
+fourteen-case fixture matrix.
 
 **☐ Phase 6 — RNTuple audit**
 Import, sync tooling, and the field-by-field spec-vs-implementation audit;
@@ -714,8 +718,13 @@ These do not block starting, but should be resolved before the phase they affect
    no `TTree`. The open question is now narrower: whether to finish it deliberately
    as a completeness check, or leave it as a checking tool that happens to be
    thorough.
-5. **`TTree` sub-plan.** Phase 5 is large enough that it wants its own plan document
-   with the full split/leaf-type/collection fixture matrix enumerated.
+5. **`TTree` sub-plan.** ~~Phase 5 is large enough that it wants its own plan
+   document with the full split/leaf-type/collection fixture matrix enumerated.~~
+   **Resolved 2026-09-16: [`PLAN-ttree.md`](PLAN-ttree.md).** Built on a measurement
+   of both corpora rather than an estimate, which changed three things — it dropped
+   `Double32.md` as already-written, it found that four of the eight `fType` values
+   carry no leaf at all (so `ReadingEntries.md` cannot just extend `TLeaf.md` §5),
+   and it named the two read procedures no file in either corpus reaches.
 
 ### 7.1 Upstream bug candidates found while writing the spec
 
@@ -801,8 +810,10 @@ Phases 0–2 are done (§5). The next things, in order:
    `03-classes/index.md` that says where each divergent class is specified.
 4. **Decide `LargeFiles.md`** (§2.2): keep the material distributed, or collect it.
 
-Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on, and the
-`TTree` sub-plan (§7 item 5).
+Deferred deliberately: `gen/legacy/` (§3.5), which most of §9 depends on.
+
+The `TTree` sub-plan is no longer deferred — see [`PLAN-ttree.md`](PLAN-ttree.md),
+which orders the split half of phase 5 and is the largest piece of remaining work.
 
 ## 9. Known gaps
 
