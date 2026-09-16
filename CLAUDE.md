@@ -22,6 +22,7 @@ tools/generate.py --check      # byte assertions in every case.toml (no ROOT nee
 tools/check_invariants.py      # the Invariants sections of spec/01-container/
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists (needs submodule)
+tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
 PYTHONPATH=. zensical build --clean --strict          # site; fails on broken links
 PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
 ```
@@ -123,6 +124,14 @@ hand-written (18), and a basket whose codec is not available here (7). There is
 no longer a category that is merely unimplemented. `PLAN-ttree.md` §10 tracks
 what that leaves.
 
+`check_versions.py` is the companion to `check_citations.py`. The latter proves a
+cited line exists; it cannot prove the line still says what the citing sentence
+claims, and `spec/00-conventions.md` §7 admits as much. A **class version** is the
+one kind of claim where that gap can be closed completely, because the answer is
+an integer in a `ClassDef` macro. Sixteen of them are checked. It also prints
+`NARROWED` for a table row that names classes it does not spell — a row it can
+only partly check — so a silent narrowing is visible the way `SKIPPED` is.
+
 Check exit codes rather than eyeballing output — `DRIFT` goes to stderr and a
 `| tail` will hide it along with the non-zero status.
 
@@ -132,7 +141,8 @@ the suite with `&&` instead, and treat CI as the authority:
 
 ```sh
 tools/generate.py --check && tools/check_invariants.py && tools/check_pin.py \
-  && tools/check_citations.py && PYTHONPATH=. .venv/bin/zensical build --clean --strict \
+  && tools/check_citations.py && tools/check_versions.py \
+  && PYTHONPATH=. .venv/bin/zensical build --clean --strict \
   && PYTHONPATH=tools .venv/bin/python -m unittest discover -s tools -p "test_*.py"
 ```
 

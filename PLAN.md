@@ -854,9 +854,19 @@ Phases 0–2 are done (§5). The next things, in order:
    work order rather than by layer. `tools/test_bootstrap.py` checks its class
    lists against what `tools/rootfile.py` hardcodes, in both directions, because
    a list like that rots without anything failing.
-2. **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
+2. ◐ **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
    authoritative class/version list. It turns the phase-3 scope from an estimate
    into a checked-in file, and phase 3 cannot be planned properly without it.
+
+   Half of it exists: ✅ `tools/check_versions.py` does the extraction — **2166
+   distinct classes across 8899 headers**, of which 24 names are ambiguous
+   because ROOT's own tests and tutorials define classes called `Event`, `Track`
+   and `MyClass` — and compares it against the spec's class-version tables. CI
+   had a step wired for exactly this, guarded by `hashFiles(...)` so that it
+   silently did nothing; the guard is gone. What is still missing is the
+   *inventory as a checked-in artefact* for phase 4 to plan against. Note that
+   2166 is not the ~440 of §2.4: that figure is persistable classes, and the gap
+   between the two numbers is itself worth measuring before phase 4 is scoped.
 3. **Continue phase 3.** `TArray*` is done. By the §9.7 measurement the classes
    that diverge at *every* version are `TObject`, `TString`, `TList`, `TObjArray`,
    `TClonesArray`, `TRef`, `TRefArray`, `TCollection` and `TArray*` — and all but
