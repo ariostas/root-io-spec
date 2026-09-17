@@ -24,8 +24,8 @@ Of the `custom` classes:
 
 | Status | Count |
 |---|---|
-| `specified` | 30 |
-| `gap` | 13 |
+| `specified` | 32 |
+| `gap` | 11 |
 | `not-persisted` | 5 |
 | `out-of-scope` | 14 |
 <!-- END GENERATED -->
@@ -90,7 +90,7 @@ fails on one that is not. `gap` is the worklist.
 | `TBasket` | `root/tree/tree/src/TBasket.cxx:979` | specified | [TBasket](../04-ttree/TBasket.md) |
 | `TBranchClones` | `root/tree/tree/src/TBranchClones.cxx:386` | gap | PLAN-ttree.md §10 — the one branch kind with no fixture |
 | `TBtree` | `root/core/cont/src/TBtree.cxx:459` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
-| `TCanvas` | `root/graf2d/gpad/src/TCanvas.cxx:2221` | gap | graf2d/gpad; the top-level object of any file saved from a canvas |
+| `TCanvas` | `root/graf2d/gpad/src/TCanvas.cxx:2221` | specified | [TCanvas](../03-classes/Canvas.md) |
 | `TClassTree` | `root/graf2d/gpad/src/TClassTree.cxx:1102` | gap | graf2d/gpad |
 | `TClonesArray` | `root/core/cont/src/TClonesArray.cxx:744` | specified | [Collections §12](../02-serialization/Collections.md#12-tclonesarray) |
 | `TCollection` | `root/core/cont/src/TCollection.cxx:637` | specified | [Streamer-driven reading §7](../02-serialization/StreamerDriven.md) — reachable only through `TList`'s fictional streamer info, which no reader should follow |
@@ -117,7 +117,7 @@ fails on one that is not. `gap` is the worklist.
 | `TObject` | `root/core/base/src/TObject.cxx:994` | specified | [Buffer framing §7](../02-serialization/Buffer.md#7-the-tobject-base) |
 | `TPolyLine3D` | `root/graf3d/g3d/src/TPolyLine3D.cxx:696` | gap | graf3d/g3d |
 | `TPolyMarker3D` | `root/graf3d/g3d/src/TPolyMarker3D.cxx:617` | gap | graf3d/g3d |
-| `TQObject` | `root/core/base/src/TQObject.cxx:1033` | gap | streams nothing in either direction; a base that occupies zero bytes, which is why `H1display.root` decoded the way it did |
+| `TQObject` | `root/core/base/src/TQObject.cxx:1033` | specified | [TCanvas](../03-classes/Canvas.md) |
 | `TRef` | `root/core/base/src/TRef.cxx:485` | specified | [References §3](../02-serialization/References.md#3-tref) |
 | `TRefArray` | `root/core/cont/src/TRefArray.cxx:516` | specified | [References §4](../02-serialization/References.md#4-trefarray) |
 | `TRemoteObject` | `root/core/base/src/TRemoteObject.cxx:206` | out-of-scope | PROOF |

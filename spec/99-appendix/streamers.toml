@@ -147,12 +147,12 @@ status = "gap"
 note = "a four-byte length where `TString` uses one"
 
 [class.TQObject]
-status = "gap"
-note = "streams nothing in either direction; a base that occupies zero bytes, which is why `H1display.root` decoded the way it did"
+status = "specified"
+spec = "[TCanvas](../03-classes/Canvas.md)"
 
 [class.TCanvas]
-status = "gap"
-note = "graf2d/gpad; the top-level object of any file saved from a canvas"
+status = "specified"
+spec = "[TCanvas](../03-classes/Canvas.md)"
 
 [class.TASImage]
 status = "gap"

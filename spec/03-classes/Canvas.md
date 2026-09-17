@@ -1,0 +1,159 @@
+# `TCanvas`
+
+The top-level object of any file saved from a canvas, and the reason a reader
+meets `TPad`, `TVirtualPad` and `TQObject` at all. Its `Streamer` is hand-written
+at every version (`root/graf2d/gpad/src/TCanvas.cxx:2221`), and what it writes is
+not what its streamer info says.
+
+Class version **8** (`root/graf2d/gpad/inc/TCanvas.h:242`).
+
+Prerequisites: [Buffer framing](../02-serialization/Buffer.md),
+[Streamer-driven reading §4](../02-serialization/StreamerDriven.md).
+
+## 1. Layout
+
+```
+bc:u32  ver:i16=8
+<TPad>                      -- a framed TPad, read through its own streamer info
+fDISPLAY:string
+fDoubleBuffer:i32  fRetained:u8
+fXsizeUser:f32  fYsizeUser:f32  fXsizeReal:f32  fYsizeReal:f32
+fWindowTopX:i32  fWindowTopY:i32
+fWindowWidth:u32  fWindowHeight:u32  fCw:u32  fCh:u32
+<TAttCanvas>                -- fCatt, a framed object
+kMoveOpaque:u8  kResizeOpaque:u8  fHighLightColor:i16  fBatch:u8
+kShowEventStatus:u8  kAutoExec:u8  kMenuBar:u8
+```
+
+`TPad` is **not** hand-written at any version a ROOT 6 file contains: its
+`Streamer` calls `ReadClassBuffer` above class version 5
+(`root/graf2d/gpad/src/TPad.cxx:6649-6659`), and it is at 13 now
+(`root/graf2d/gpad/inc/TPad.h:427`). So the `TPad` base is ordinary
+streamer-info-driven reading and this document says nothing about its 64 members.
+What it does need is §3.
+
+`Size_t` is `Float_t` in ROOT, so the four `fXsize`/`fYsize` fields are 4 bytes
+each, and `Color_t` is `Short_t`.
+
+### 1.1 Version history
+
+| Version | Difference |
+|---|---|
+| 1 | stops after `fBatch`: no `kShowEventStatus`, `kAutoExec` or `kMenuBar` |
+| 2 | `fWindowWidth` and `fWindowHeight` are absent; a reader takes them from `fCw` and `fCh` |
+| 3 | `kAutoExec` is absent |
+| 4 – 7 | as §1 |
+| 8 | as §1; current. The only change is that `ClassBegin`/`ClassMember` annotations appear — see §2 — which alter no bytes |
+
+`root/graf2d/gpad/src/TCanvas.cxx:2303-2357`. Versions below 4 have no reference
+file, and `tools/rootfile.py` refuses them rather than guessing.
+
+## 2. The member names in the source reach the file in no form
+
+`TCanvas::Streamer` is written as a sequence of labelled members:
+
+```cpp
+if (v>7) b.ClassMember("fDoubleBuffer", "Int_t");
+b >> fDoubleBuffer;
+```
+
+**`ClassBegin`, `ClassMember` and `ClassEnd` are empty in `TBufferFile`**
+(`root/io/io/inc/TBufferFile.h:95-97`). They are pure virtual on `TBuffer` and are
+implemented only by `TBufferJSON` and `TBufferXML`, which need member names to
+produce named output. In a `.root` file they emit nothing at all, and the `v>7`
+guard around them changes no bytes either — which is why class version 8 has the
+same layout as 4 through 7.
+
+A reader must not look for the names. They are documentation that happens to
+compile.
+
+### 2.1 Seven bytes that are not members
+
+`kMoveOpaque`, `kResizeOpaque`, `kShowEventStatus`, `kAutoExec` and `kMenuBar` are
+**bits of `fBits`**, not data members, and each is written as its own `Bool_t`.
+On read they are turned back into bits (`SetBit`, or `MoveOpaque(1)`).
+
+`fBatch` is stranger: it is written, and on read it is consumed into a dummy and
+thrown away — `b >> dummy; //was fBatch` — with `fBatch` then set from
+`gROOT->IsBatch()` (`root/graf2d/gpad/src/TCanvas.cxx:2327-2338`). So one byte of
+every canvas record is write-only.
+
+None of these seven appear in `TCanvas`'s streamer info, because the info is built
+from data members. The info lists `fDISPLAY`, `fDoubleBuffer`, … and stops at
+`fCatt`.
+
+## 3. Three empty base classes, three different byte counts
+
+A `TCanvas` record contains, adjacent to each other, both cases that make
+"an empty base occupies nothing" false as a general rule — and the third case is
+in [TMap, TExMap and TBtree §6](Containers.md). All three are empty in the sense
+that they contribute no members of their own:
+
+| Base | `ClassDef` | `#pragma link` | Bytes | Why |
+|---|---|---|---|---|
+| `TQObject` | 1 | `-` (`root/core/base/inc/LinkDef2.h:131`) | **0** | hand-written `Streamer` that reads and writes nothing (`root/core/base/src/TQObject.cxx:1033-1040`) |
+| `TAttBBox2D` | **0** | `+` (`root/core/base/inc/LinkDef1.h:184`) | **6** | the generated `ReadClassBuffer` streamer: byte count, then a version word of 0 |
+| `TSeqCollection` | **0** | plain (`root/core/cont/inc/LinkDef.h:49`) | **0** | the version-0 forwarding streamer, which writes only its bases |
+
+In `classes/canvas` they land side by side:
+
+```
+317  40 00 00 60  00 03     TVirtualPad, byte count 96, version 3
+323  <TObject, 10 bytes>
+333  <TAttLine frame>  345 <TAttFill frame>  355 <TAttPad frame>
+417                         TVirtualPad's frame ends here -- TQObject got nothing
+417  40 00 00 02  00 00     TAttBBox2D: byte count 2, version 0, no members
+423  fX1, the first TPad member
+```
+
+`TVirtualPad`'s streamer info has **five** elements and the fifth is
+`kBase TQObject` (code 0). Its byte count is 96, and `TObject` + `TAttLine` +
+`TAttFill` + `TAttPad` account for all 96. **The byte count is the only thing that
+says so**, and it is what makes this case recoverable where
+`PLAN.md` §9.9's `TTreePerfStats` case is not: there, the same kind of surprise sits
+among a dozen members under one byte count, so nothing localises it.
+
+> A modern file carries **no streamer info for `TQObject` at all** — `classes/canvas`
+> has 14 infos and `TQObject` is not among them — because nothing ever calls
+> `WriteClassBuffer` for it. So the element names a class the file does not
+> describe. `H1display.root` (ROOT 3.05) *does* carry one, with zero elements,
+> which is the same trap dressed differently.
+
+## 4. Reading
+
+1. Read the frame. Refuse a version below 4 or use §1.1.
+2. Read the `TPad` base as an ordinary framed object through the streamer info in
+   the file, with the `TQObject` rule of §3 — without it the read desynchronises
+   inside `TVirtualPad` and never recovers.
+3. Read `fDISPLAY` as a counted string, then the twelve fixed-width fields of §1
+   in order.
+4. Read `fCatt` as a framed `TAttCanvas`.
+5. Read the seven bytes of §2.1.
+6. Check the byte count.
+
+## 5. Invariants
+
+1. A `TCanvas` record's version word is in 1–8, and the fields of §1 consume
+   exactly its byte count.
+2. A `TVirtualPad` frame's byte count is exactly what its non-`TQObject` bases
+   occupy: a `kBase TQObject` element contributes zero bytes.
+3. `fCw` and `fCh` are positive, and `fHighLightColor` is a valid colour index
+   (≥ 0).
+
+Checked by `tools/check_invariants.py`; invariants 1 and 2 are consumption checks
+raised by the reader.
+
+## 6. Errata
+
+| # | Claim | Correction |
+|---|---|---|
+| 1 | `TCanvas`'s streamer info describes its bytes | It omits the seven bytes of §2.1 — five `fBits` flags, `fHighLightColor`'s neighbours and the discarded `fBatch` — and lists `fCatt` as the last member where the file has seven more bytes after it |
+| 2 | A base class with no persistent members occupies nothing | Depends entirely on *why* it has none. §3: 0, 6 and 0 bytes for three such classes, decided by a `ClassDef` version and a `LinkDef` suffix, neither of which is in the file |
+
+## 7. Reference files
+
+| File | What it pins |
+|---|---|
+| `classes/canvas` | §1 in full at version 8, §2.1's seven trailing bytes, and §3 — `TQObject` at zero bytes and `TAttBBox2D` at six, six bytes apart. 49 KB of the record is the `TPad`'s primitives and the 800-entry list of colours a canvas carries, all of it read through streamer infos |
+| `H1display.root` (`gen/cern/`) | a ROOT 3.05 canvas, whose `TQObject` info is present and empty. Not decodable here: its `TPad` is below class version 6 |
+| — | `TCanvas` versions 1 to 3: needs a pre-ROOT-4 file (`PLAN.md` §9.1) |

@@ -1,0 +1,285 @@
+id   = "classes/canvas"
+file = "data/classes/canvas.root"
+size = 64848
+
+description = """
+A `TCanvas` written in batch mode by the pinned ROOT: class version 8, wrapping a
+`TPad` at class version 13.
+
+It is the largest fixture here, 64 KB, and almost all of it is honest weight: a
+canvas adds `gROOT`'s **800-entry list of colours** to its own list of primitives
+before streaming, so the record carries 800 `TColor`s. Every one of them is read
+through a streamer info; none of it is what the case is about.
+
+**Two empty base classes, six bytes apart, with different byte counts.**
+`TVirtualPad`'s frame opens at 317 with byte count 96 and its streamer info has
+five elements, the fifth a `kBase` for `TQObject`. `TObject` + `TAttLine` +
+`TAttFill` + `TAttPad` account for all 96 bytes, so **`TQObject` occupies none** --
+its `Streamer` is hand-written to read and write nothing. Immediately after, at
+417, `TAttBBox2D` -- also with no members of its own -- writes **six bytes**: a
+byte count of 2 and a version word of 0. One is `ClassDef(…, 1)` with a `-`
+pragma, the other `ClassDef(…, 0)` with a `+`, and the file records neither fact.
+Canvas.md 3.
+
+The read desynchronises without the `TQObject` rule, immediately and
+unrecoverably: `tools/rootfile.py` then reports
+`version word 0 for TAttCanvas with checksum 0x0`.
+
+**The last seven bytes are not members.** `kMoveOpaque`, `kResizeOpaque`,
+`kShowEventStatus`, `kAutoExec` and `kMenuBar` are bits of `fBits` written as
+individual `Bool_t`s, and `fBatch` at 49671 is written and then discarded on read.
+`TCanvas`'s streamer info ends at `fCatt` and mentions none of them.
+
+**And the member names in the source reach the file in no form.** The streamer is
+written as `b.ClassMember("fDoubleBuffer", "Int_t"); b >> fDoubleBuffer;`, and
+`TBufferFile::ClassMember` is empty -- the annotations exist for `TBufferJSON`.
+Canvas.md 2.
+
+`fDISPLAY` is the literal string `$DISPLAY`, not the environment variable, which is
+what makes this fixture portable. `fWindowWidth` and `fWindowHeight` are 0 in batch
+mode while `fCw` and `fCh` are the real 296 x 172.
+"""
+
+spec = [
+  "spec/03-classes/Canvas.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+# This file cannot have a portable normalized digest, and the reason is not about
+# its content: the fourteen streamer infos are byte-for-byte the same on macOS and
+# Linux -- same names, versions, checksums and element counts, and the record is
+# 14982 bytes on both -- but they appear in a DIFFERENT ORDER.
+# `TFile::WriteStreamerInfo` iterates `gROOT->GetListOfStreamerInfo()`
+# (root/io/io/src/TFile.cxx:3509), which is registration order across the whole
+# process, so it follows dictionary and shared-library initialisation order. A
+# canvas pulls infos out of libCore, libGraf and libGpad at once, which is why
+# this is the first fixture to trip on it.
+#
+# It cannot be normalised away either. The record carries class and object
+# back-references as byte positions (Buffer.md 6), so the same infos in a
+# different order are different bytes throughout, not a value a mask can zero.
+# StreamerInfo.md 3.4 records the fact; the 32 byte assertions still run, and
+# none of them is inside the StreamerInfo record.
+digest        = false
+digest_reason = """
+The fourteen streamer infos are identical on both standard libraries but appear in
+a different ORDER, because `TFile::WriteStreamerInfo` writes them in the order
+`gROOT->GetListOfStreamerInfo()` holds them -- process-wide registration order,
+which follows library initialisation. Back-references inside the record are byte
+positions, so reordering changes bytes throughout and no mask can undo it. The 32
+byte assertions still run. StreamerInfo.md 3.4
+"""
+
+[[records]]
+offset = 100
+nbytes = 160
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 260
+nbytes = 49415
+class  = "TCanvas"
+role   = "the canvas, its pad, and 800 colours"
+[[records]]
+offset = 49675
+nbytes = 14982
+class  = "TList"
+role   = "StreamerInfo -- 14 infos, and no TQObject among them"
+
+# --- the frame and the base chain ------------------------------------------
+
+[[bytes]]
+name = "TCanvas: byte count"
+offset = 305
+type = "u32"
+value = 0x4000c0d6
+
+[[bytes]]
+name = "TCanvas: class version 8"
+offset = 309
+type = "i16"
+value = 8
+
+[[bytes]]
+name = "TPad: byte count"
+offset = 311
+type = "u32"
+value = 0x4000c074
+
+[[bytes]]
+name = "TPad: class version 13 -- above 5, so streamer-info driven"
+offset = 315
+type = "i16"
+value = 13
+
+[[bytes]]
+name = "TVirtualPad: byte count 96, and four bases have to fit in it"
+offset = 317
+type = "u32"
+value = 0x40000060
+
+[[bytes]]
+name = "TVirtualPad: class version 3"
+offset = 321
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "TVirtualPad: the TObject base, version 1, unframed"
+offset = 323
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "TVirtualPad: the TAttLine base"
+offset = 333
+type = "u32"
+value = 0x40000008
+
+[[bytes]]
+name = "TVirtualPad: the TAttFill base"
+offset = 345
+type = "u32"
+value = 0x40000006
+
+[[bytes]]
+name = "TVirtualPad: the TAttPad base"
+offset = 355
+type = "u32"
+value = 0x4000003a
+
+[[bytes]]
+name = "TVirtualPad: TAttPad's version 4"
+offset = 359
+type = "i16"
+value = 4
+
+[[bytes]]
+name = "TAttBBox2D begins here, so TQObject got zero bytes: 317 + 4 + 96 = 417"
+offset = 417
+type = "u32"
+value = 0x40000002
+
+[[bytes]]
+name = "TAttBBox2D: a version word of 0, and no members -- six bytes for an empty class"
+offset = 421
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "TPad: fX1, the first real member, six bytes after TQObject contributed none"
+offset = 423
+type = "f64"
+value = 0.0
+
+# --- the TCanvas tail -----------------------------------------------------
+
+[[bytes]]
+name = "TCanvas: fDISPLAY is the literal $DISPLAY, not the environment variable"
+offset = 49583
+type = "string"
+value = "$DISPLAY"
+
+[[bytes]]
+name = "TCanvas: fDoubleBuffer"
+offset = 49592
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TCanvas: fRetained"
+offset = 49596
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "TCanvas: fXsizeUser"
+offset = 49597
+type = "f32"
+value = 0.0
+
+[[bytes]]
+name = "TCanvas: fXsizeReal, in centimetres"
+offset = 49605
+type = "f32"
+value = 20.0
+
+[[bytes]]
+name = "TCanvas: fWindowWidth is 0 in batch mode"
+offset = 49621
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "TCanvas: fWindowHeight likewise"
+offset = 49625
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "TCanvas: fCw, the real width"
+offset = 49629
+type = "u32"
+value = 296
+
+[[bytes]]
+name = "TCanvas: fCh"
+offset = 49633
+type = "u32"
+value = 172
+
+[[bytes]]
+name = "TCanvas: fCatt, a framed TAttCanvas"
+offset = 49637
+type = "u32"
+value = 0x4000001a
+
+[[bytes]]
+name = "TCanvas: TAttCanvas version 1"
+offset = 49641
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "TCanvas: kMoveOpaque -- an fBits flag written as a byte"
+offset = 49667
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "TCanvas: kResizeOpaque"
+offset = 49668
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "TCanvas: fHighLightColor"
+offset = 49669
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "TCanvas: fBatch, written and discarded on read"
+offset = 49671
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "TCanvas: kShowEventStatus"
+offset = 49672
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "TCanvas: kAutoExec"
+offset = 49673
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "TCanvas: kMenuBar, the last byte of the record"
+offset = 49674
+type = "u8"
+value = 1

@@ -1164,6 +1164,15 @@ CUSTOM_STREAMER = {
     "TCollection", "TSeqCollection",
     # Implemented below, from spec/02-serialization/References.md.
     "TRef", "TRefArray",
+    # Writes nothing in either direction, so a kBase element for it occupies
+    # zero bytes -- and a modern file carries no streamer info for it at all,
+    # leaving a reader with an element it can neither describe nor skip.
+    # StreamerDriven.md 4.4; every TPad and TCanvas has one.
+    "TQObject",
+    # A version word, a TPad read through its own info, then fourteen fields
+    # and seven bytes of fBits that its info does not mention.
+    # spec/03-classes/Canvas.md.
+    "TCanvas",
 }
 
 _PI_LITERALS = {
@@ -1341,6 +1350,16 @@ class Decoder:
             _, end = _counted_string(self.buf, offset)
             return Value(name="TString", ftype=65, start=offset, end=end,
                          type_name="TString")
+        if cls == "TQObject":
+            # Reads nothing and writes nothing, in either direction
+            # (root/core/base/src/TQObject.cxx:1033-1040). A kBase element for it
+            # occupies no bytes: not a framed empty object, not a version word.
+            # StreamerDriven.md 4.4.
+            return Value(name="TQObject", ftype=0, start=offset, end=offset,
+                         type_name="TQObject",
+                         note="TQObject: contributes no bytes")
+        if cls == "TCanvas":
+            return self.read_tcanvas(offset)
         if cls == "TDatime":
             # A hand-written streamer that writes fDatime and nothing else: no
             # version word and no byte count. Record.md section 3.7.
@@ -1356,6 +1375,68 @@ class Decoder:
             members[-1].end if members else body)
         return Value(name=cls, ftype=61, start=offset, end=end,
                      type_name=cls, members=members)
+
+    #: The fields TCanvas writes after its TPad base, in order, as
+    #: (name, element code, width). Canvas.md section 2. `fCatt` is a framed
+    #: TAttCanvas and `fDISPLAY` a counted string, so both are handled apart.
+    CANVAS_TAIL = (
+        ("fDoubleBuffer", 3, 4), ("fRetained", 18, 1),
+        ("fXsizeUser", 5, 4), ("fYsizeUser", 5, 4),
+        ("fXsizeReal", 5, 4), ("fYsizeReal", 5, 4),
+        ("fWindowTopX", 3, 4), ("fWindowTopY", 3, 4),
+        ("fWindowWidth", 13, 4), ("fWindowHeight", 13, 4),
+        ("fCw", 13, 4), ("fCh", 13, 4),
+    )
+
+    #: What follows fCatt: five bits of fBits written as separate bytes, with
+    #: fHighLightColor and a discarded fBatch among them. Canvas.md 2.1.
+    CANVAS_BITS = (
+        ("kMoveOpaque", 18, 1), ("kResizeOpaque", 18, 1),
+        ("fHighLightColor", 2, 2), ("fBatch", 18, 1),
+        ("kShowEventStatus", 18, 1), ("kAutoExec", 18, 1),
+        ("kMenuBar", 18, 1),
+    )
+
+    def read_tcanvas(self, offset: int) -> Value:
+        """A TCanvas. Canvas.md sections 1 and 2.
+
+        Class versions below 4 are refused rather than guessed: v <= 2 omits
+        fWindowWidth and fWindowHeight, v <= 3 omits kAutoExec, and v < 2 stops
+        after fBatch (root/graf2d/gpad/src/TCanvas.cxx:2303-2357). No file here
+        contains one, and an untested branch would be worse than a refusal.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"TCanvas at {offset} has no byte count")
+        if frame.version < 4:
+            raise UnsupportedClass(
+                f"TCanvas class version {frame.version}: Canvas.md 5 records "
+                f"the layout, no reference file has one")
+
+        members = [self.read_object("TPad", frame.body)]
+        at = members[0].end
+        _, end = _counted_string(self.buf, at)
+        members.append(Value(name="fDISPLAY", ftype=65, start=at, end=end,
+                             type_name="TString"))
+        at = end
+        for name, code, width in self.CANVAS_TAIL:
+            members.append(Value(name=name, ftype=code, start=at,
+                                 end=at + width))
+            at += width
+        catt = self.read_object("TAttCanvas", at)
+        members.append(Value(name="fCatt", ftype=61, start=at, end=catt.end,
+                             type_name="TAttCanvas", members=catt.members))
+        at = catt.end
+        for name, code, width in self.CANVAS_BITS:
+            members.append(Value(name=name, ftype=code, start=at,
+                                 end=at + width))
+            at += width
+        if at != frame.end:
+            raise FormatError(
+                f"TCanvas at {offset} consumed {at - offset} bytes, byte count "
+                f"says {frame.end - offset}")
+        return Value(name="TCanvas", ftype=61, start=offset, end=frame.end,
+                     type_name="TCanvas", members=members)
 
     def resolve_version(self, cls: str, frame: Frame) -> tuple[int, int]:
         """Apply the version-0 rule of Buffer.md section 4.

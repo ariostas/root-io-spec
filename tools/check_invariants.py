@@ -1034,6 +1034,66 @@ class Checker:
     FORMULA_CURRENT = {"TF1": 12, "TFormula": 14}
     FORMULA_NEW_FROM = {"TF1": 8, "TFormula": 9}
 
+    def check_canvas(self) -> None:
+        """Canvas.md invariants 1 to 3.
+
+        Invariants 1 and 2 are consumption checks: read_tcanvas raises when the
+        fields do not exhaust the byte count, and the TVirtualPad frame inside it
+        can only balance if the TQObject base occupies nothing. Confirmed by
+        making read_object treat TQObject as an ordinary framed object on a copy
+        of classes/canvas, which reports "version word 0 for TAttCanvas with
+        checksum 0x0".
+        """
+        for rec in self.records:
+            if rec.free or rec.class_name != "TCanvas":
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            _, _, infos = self.streamer_infos()
+            if infos is None:
+                self.skip("Canvas 5.1", "no StreamerInfo record")
+                continue
+            start, _ = rootfile.payload_range(rec)
+            version = rootfile.read_frame(data, start).version
+            if not 1 <= version <= 8:
+                self.bad("Canvas 5.1",
+                         f"TCanvas at {rec.offset} has version {version}, "
+                         f"outside 1 to 8")
+                continue
+            try:
+                canvas = rootfile.decode_record(data, rec, infos)
+            except rootfile.UnsupportedClass as exc:
+                self.skip("Canvas 5.1", str(exc))
+                continue
+            except (rootfile.FormatError, struct.error, IndexError) as exc:
+                self.bad("Canvas 5.1", f"TCanvas at {rec.offset}: {exc}")
+                continue
+            by_name = {m.name: m for m in canvas.members}
+            pad = by_name.get("TPad")
+            if pad is not None:
+                virtual = next((m for m in (pad.members or [])
+                                if m.name == "TVirtualPad"), None)
+                qobject = next((m for m in (virtual.members or [])
+                                if m.name == "TQObject"), None) if virtual else None
+                if qobject is not None and qobject.end != qobject.start:
+                    self.bad("Canvas 5.2",
+                             f"TQObject base at {qobject.start} occupies "
+                             f"{qobject.end - qobject.start} bytes, not 0")
+            for name, lowest in (("fCw", 1), ("fCh", 1),
+                                 ("fHighLightColor", 0)):
+                member = by_name.get(name)
+                if member is None:
+                    continue
+                width = member.end - member.start
+                fmt = ">H" if width == 2 else ">I"
+                value = struct.unpack_from(fmt, data, member.start)[0]
+                if width == 2:
+                    value = struct.unpack_from(">h", data, member.start)[0]
+                if value < lowest:
+                    self.bad("Canvas 5.3",
+                             f"TCanvas at {rec.offset} has {name} {value}")
+
     def check_formula(self) -> None:
         """Formula.md invariants 1 to 3."""
         for rec in self.records:
@@ -2318,6 +2378,7 @@ class Checker:
         self.check_tarray()
         self.check_containers()
         self.check_formula()
+        self.check_canvas()
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()

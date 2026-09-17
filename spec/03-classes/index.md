@@ -67,6 +67,7 @@ than collected here — see `PLAN.md` decision 6:
 | `TRef`, `TRefArray` | [References §3](../02-serialization/References.md#3-tref), [§4](../02-serialization/References.md#4-trefarray) |
 | `TArray*` | [TArray](TArray.md) |
 | `TMap`, `TExMap`, `TBtree` | [TMap, TExMap and TBtree](Containers.md) |
+| `TCanvas`, `TQObject` | [TCanvas](Canvas.md) |
 | `TDatime` | [Records and keys §3.7](../01-container/Record.md#37-fdatime) — four bare bytes as a member, exactly as in a key |
 | `TCollection` | not specified; reachable only through `TList`'s fictional streamer info, which no reader should follow ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)) |
 

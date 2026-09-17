@@ -114,6 +114,33 @@ them, and in particular MUST NOT use them in place of the hardcoded layouts: for
 a class with a hand-written streamer the recorded info does **not** describe the
 bytes. `TString`'s info, for instance, lists no members at all.
 
+### 3.4 "In no guaranteed order" is stronger than it sounds
+
+The order is not merely unspecified; **it is not a property of the file's content
+at all.** `TFile::WriteStreamerInfo` iterates
+`gROOT->GetListOfStreamerInfo()` (`root/io/io/src/TFile.cxx:3509`) and keeps the
+entries `fClassIndex` has marked, so the order on disk is the order in which
+`TStreamerInfo` objects were registered **in the writing process** — which follows
+dictionary and shared-library initialisation, not anything about the objects being
+written.
+
+Demonstrated rather than asserted: `classes/canvas`, written by the same ROOT
+6.40.04 from the same `gen.C`, holds the same fourteen infos with the same names,
+versions, checksums and element counts, in a 14982-byte record on both platforms —
+**in a different order** on libc++ and libstdc++. A canvas is the first fixture to
+show it because it draws infos from libCore, libGraf and libGpad at once.
+
+Two consequences:
+
+- A reader MUST look entries up by name and version, never by position, and MUST
+  NOT assume a base class's info precedes the class that uses it.
+- The record cannot be normalised into a canonical order for comparison, because
+  it carries class and object back-references as **byte positions** (§4,
+  [Buffer framing §6](Buffer.md)). The same infos in a different order are
+  different bytes throughout. `classes/canvas` therefore declares
+  `digest = false`, which is the only fixture here whose reason is ordering rather
+  than content.
+
 ## 4. `TList`
 
 Hand-written (`root/core/cont/src/TList.cxx:1323`). Current version 5.

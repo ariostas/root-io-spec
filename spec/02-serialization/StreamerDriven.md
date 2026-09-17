@@ -238,6 +238,13 @@ A reader cannot derive any of this from the file; the class name is the only
 signal. The complete list for ROOT's own classes is
 [Hand-written streamers](../99-appendix/HandWrittenStreamers.md).
 
+> **Three empty bases, three byte counts.** `TQObject` writes 0 bytes,
+> `TAttBBox2D` writes 6 — a byte count and a version word of 0 — and
+> `TSeqCollection` writes 0 plus whatever *its* bases write. All three have no
+> members of their own, and what decides between them is a `ClassDef` version and
+> a `LinkDef` suffix. [TCanvas §3](../03-classes/Canvas.md) tabulates them and
+> `classes/canvas` has the first two six bytes apart.
+
 ### 4.5 A base whose class is version 0
 
 The other way a `kBase` element can contribute something other than what §4
