@@ -18,10 +18,20 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 5 | Envelopes | open | — |
 | 6 | Header Envelope → Column Description | open | — |
 
-Bytes below are from `RNTuple.root`, 2 514 bytes, written by ROOT 6.35/01 and
-published at <https://root.cern/files/>; `gen/cern/README.md` lists it and
+Bytes come from two files.
+
+**`rntuple/anchor`** is this project's own fixture, written by the **pinned**
+ROOT 6.40.04 with compression off so the envelopes are readable in place. Its
+anchor record is at 998 and its payload runs 1052 to 1130; its header envelope is
+at 268 and its footer at 838. Every erratum that can be shown in bytes is
+asserted there, which is what makes these claims checked rather than stated.
+
+**`RNTuple.root`**, 2 514 bytes, written by ROOT 6.35/01 and published at
+<https://root.cern/files/>; `gen/cern/README.md` lists it and
 `tools/fetch_cern.py` fetches it. Its anchor record is at offset 1835 and its
-payload runs 1889 to 1967.
+payload runs 1889 to 1967. It is **older than the pinned release** and carries an
+older format version — `Version Minor` 0 against 2 — so it is kept as a second,
+independent witness rather than as the primary one.
 
 ---
 
@@ -32,6 +42,9 @@ payload runs 1889 to 1967.
 **The writer** stamps epoch 1, major 0, minor 2, patch **0**
 (`root/tree/ntuple/inc/ROOT/RNTuple.hxx:79-82`), so an anchor written by the
 pinned ROOT says **1.0.2.0**.
+
+> Confirmed in bytes by `rntuple/anchor`, whose four version words at 1058, 1060,
+> 1062 and 1064 are 1, 0, **2**, **0**.
 
 Harmless in itself — the document says of the patch component that "the
 versioning is for reporting only" — but it means **the version in the document is
@@ -86,7 +99,10 @@ In `RNTuple.root` the payload begins:
 
 **A reader that positions itself at the anchor payload and follows the schema
 reads `0x4000` as Version Epoch and `0x0042` as Version Major**, and every
-subsequent field is six bytes early. It is not a hypothetical: the document is a
+subsequent field is six bytes early.
+
+> `rntuple/anchor` asserts the byte count at 1052 and `Version Epoch` at 1058,
+> six bytes apart, so the gap the schema omits is pinned rather than described. It is not a hypothetical: the document is a
 binary format specification, and this is the only description it gives of where
 the anchor's first field is.
 
@@ -140,6 +156,10 @@ Measured on `RNTuple.root`:
 checksum**, and one that checks the byte count against the payload length finds a
 mismatch of exactly eight and may reject the file. Both are consequences of a
 sentence that reads as a complete description and is not.
+
+> `rntuple/anchor` pins the same gap on the pinned release: its byte count of 66
+> at 1052 ends the object at 1122, its record payload ends at 1130, and the eight
+> bytes between are asserted as the checksum.
 
 ---
 
@@ -233,6 +253,12 @@ A reader that takes the length to exclude the checksum reads eight bytes too few
 and then finds the next envelope eight bytes early; one that hashes the full
 length never validates a correct file.
 
+> `rntuple/anchor` asserts both ends of the same envelope: its preamble at 268 is
+> `01 00 f0 00 00 00 00 00` — type 1, length 240 — and its checksum occupies
+> 500 to 508, which is 268 + 240. The footer's *Header checksum* field at 854
+> holds those same eight bytes, which is the only thing in the file that states
+> the relation.
+
 The same word is also doing double duty against the anchor, which is worth
 stating in the fix: `Len Header` and `Len Footer` in the anchor are the envelope
 length in **this** sense — 332 and 148 in the same file — so the two agree once
@@ -268,6 +294,10 @@ The string `kSplitReal16` does not occur anywhere under `root/tree/ntuple/`.
 `SerializeColumnType` and `GetValidBitRange` mechanically, twenty-nine match on
 both name and bit width — including the two variable-width types, `Real32Trunc`
 at 10–31 and `Real32Quant` at 1–32. `0x17` is the single row with no counterpart.
+
+> Two of those rows are also checked against bytes: `rntuple/anchor`'s two column
+> records carry type `0x0C` with 32 bits on storage for a `float` and `0x07` with
+> 32 bits for a `std::int32_t`.
 
 ### Why this one is not a documentation nit
 

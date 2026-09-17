@@ -698,9 +698,24 @@ with each other. **The CI step for this existed but was guarded by
 `hashFiles(...) != ''` and had therefore never run**; the guard is gone and the
 step is real.
 
+✅ **A fixture of its own.** `gen/cases/rntuple/anchor` is the first RNTuple file
+this project writes: the pinned ROOT 6.40.04, compression off so the envelopes are
+readable in place, 50 byte assertions covering the anchor, both envelope
+preambles and the whole header envelope down to its field and column records.
+Before it, every byte in the errata came from `RNTuple.root` in §9.9's corpus —
+**one file, written by 6.35/01, older than the pin and at an older format
+version** (`Version Minor` 0 against 2). That was the weakest part of the audit
+and it is closed; the CERN file stays as a second, independent witness.
+
+It also exposed a gap in the harness: `check_bytes.py` was big-endian only,
+because until now every byte in the project was. An RNTuple has **both** orders in
+one file — the anchor is a TKey payload and big-endian, everything below it is
+little-endian — so the format table gained an `le` suffix and the case states the
+order at every offset. Read the wrong way those bytes are a plausible number, not
+an obvious error, which is why it has to be explicit.
+
 ◐ The audit, through **every envelope**. **Six errata**, each verified against
-the pinned submodule and, where there are bytes to check, against `RNTuple.root`
-(ROOT 6.35/01, from §9.9's corpus):
+the pinned submodule and against bytes:
 
 | # | Section | What |
 |---|---|---|

@@ -21,6 +21,11 @@ project's contribution is the audit** — checking it against
 `tools/sync_rntuple.py --check` runs in CI and fails if the copy drifts from the
 submodule, so the copy cannot quietly become a fork.
 
+**`gen/cases/rntuple/anchor`** is the audit's fixture: an RNTuple written by the
+pinned ROOT with compression off, whose bytes the errata are asserted against.
+Before it existed, every byte in them came from one file in the CERN corpus
+written by an older release.
+
 ## Where RNTuple meets the rest of this specification
 
 An RNTuple in a ROOT file is not self-contained: it sits inside the container this

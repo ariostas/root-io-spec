@@ -106,3 +106,41 @@ class ErrataAreCitedAndTracked(unittest.TestCase):
         for i, body in enumerate(sections, 1):
             with self.subTest(erratum=i):
                 self.assertRegex(body, r"`root/[A-Za-z0-9_./+-]+\.(?:cxx|hxx|h):\d+")
+
+
+class ByteOrderFormats(unittest.TestCase):
+    """check_bytes.py gained little-endian formats for RNTuple's envelopes.
+
+    A ROOT file with an RNTuple in it has both byte orders, and the boundary is
+    the anchor's last byte -- so a case has to say which at every offset, and
+    getting it wrong has to fail rather than read a plausible number. These are
+    the two the first RNTuple fixture actually turned up.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, str(REPO / "tools"))
+        import check_bytes
+        self.check_bytes = check_bytes
+
+    def test_both_orders_are_available(self):
+        f = self.check_bytes.FORMATS
+        for name in ("u16", "u32", "i64", "f64"):
+            self.assertTrue(f[name].startswith(">"), name)
+            self.assertTrue(f[name + "le"].startswith("<"), name + "le")
+
+    def test_a_little_endian_envelope_preamble(self):
+        # type 1 in the low 16 bits, length 240 in the upper 48 -- the header
+        # envelope of rntuple/anchor.
+        buf = bytes([0x01, 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00])
+        ok = [{"offset": 0, "type": "u64le", "value": (240 << 16) | 1, "name": "le"}]
+        self.assertEqual(self.check_bytes.check(buf, ok, "x"), [])
+        # The same bytes read big-endian are a different, plausible-looking
+        # number, which is why the suffix has to be explicit.
+        bad = [{"offset": 0, "type": "u64", "value": (240 << 16) | 1, "name": "be"}]
+        self.assertEqual(len(self.check_bytes.check(buf, bad, "x")), 1)
+
+    def test_a_negative_list_frame_size(self):
+        # -12, the empty list frame that appears four times in that fixture.
+        buf = (-12).to_bytes(8, "little", signed=True)
+        good = [{"offset": 0, "type": "i64le", "value": -12, "name": "le"}]
+        self.assertEqual(self.check_bytes.check(buf, good, "x"), [])

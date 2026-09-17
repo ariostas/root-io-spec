@@ -99,11 +99,24 @@ own format and are little-endian. The boundary is exactly the anchor's last byte
 The struct makes it explicit — every member of `RTFNTuple` is an `RUInt64BE` or
 an `RUInt16BE` (`root/tree/ntuple/src/RMiniFile.cxx:547-560`).
 
+> Demonstrated by `rntuple/anchor`, which needs **both** orders to describe one
+> file: its anchor assertions read big-endian and its envelope assertions read
+> little-endian, and `tools/check_bytes.py` gained an `le` suffix for exactly
+> this case. The same eight bytes read the other way are a different, plausible
+> number rather than an obvious error, which is why the fixture states the order
+> at every offset instead of relying on a default.
+
 ## 4. What has not been audited yet
 
 This directory is new. The field-by-field audit of the document against
 `RNTupleSerialize.cxx` — which is the actual work of phase 6 and the reason the
 copy is tracked at all — has so far covered:
+
+Since the table below was written, `rntuple/anchor` has turned the audited
+sections from source readings into byte-checked ones: it is this project's first
+RNTuple fixture, written by the pinned release with compression off, and it
+asserts the anchor, both envelope preambles, and the whole header envelope
+including its field and column records.
 
 | Section | State |
 |---|---|

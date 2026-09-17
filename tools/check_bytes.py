@@ -15,12 +15,20 @@ import sys
 import tomllib
 from pathlib import Path
 
-# Big-endian throughout: the TFile container and TBuffer object layers are
-# big-endian regardless of host byte order.
+# Big-endian by default: the TFile container and the TBuffer object layers are
+# big-endian regardless of host byte order (spec/00-conventions.md 3).
+#
+# The `le` suffix is for the one part of a ROOT file that is not. An RNTuple's
+# envelopes and pages are little-endian, and only its anchor -- a TKey payload
+# like any other -- is big-endian, so a single fixture needs both and has to say
+# which at every offset. See spec/05-rntuple/NOTES.md 3.
 FORMATS = {
     "i8": ">b", "u8": ">B", "i16": ">h", "u16": ">H",
     "i32": ">i", "u32": ">I", "i64": ">q", "u64": ">Q",
     "f32": ">f", "f64": ">d",
+    "i16le": "<h", "u16le": "<H",
+    "i32le": "<i", "u32le": "<I", "i64le": "<q", "u64le": "<Q",
+    "f32le": "<f", "f64le": "<d",
 }
 
 
