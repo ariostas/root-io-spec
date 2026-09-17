@@ -123,7 +123,7 @@ things checked. The 74 skips are named individually, and **every one of them is
 something no reader could decode from the file**: a collection whose value class
 has no streamer info in it (49), a branch or class whose `Streamer` is
 hand-written (18), and a basket whose codec is not available here (7). No skip
-over the corpora is merely unimplemented. `PLAN-ttree.md` §10 tracks what that
+over the corpora is merely unimplemented. `PLAN.md` §9.11 tracks what that
 leaves.
 
 **One skip over the fixtures is.** `ttree/branch-clones` has four branch-baskets

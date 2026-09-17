@@ -2415,7 +2415,7 @@ class Checker:
                                      counts, leaves)
             except rootfile.UnsupportedClass as exc:
                 # Not a pass. The entry check simply cannot run here, and saying
-                # nothing would let the split branches of PLAN-ttree.md 1 sit
+                # nothing would let the split branches of PLAN.md 9.11 sit
                 # inside a "0 failures" line unexamined. Counted, reported, and
                 # expected to fall as 04-ttree/ grows.
                 if br.element_type is not None:

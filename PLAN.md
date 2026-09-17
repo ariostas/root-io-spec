@@ -74,7 +74,7 @@ explicitly; the pinned submodule is what the checkers in `tools/` run against.
 
 ```
 root-io-spec/
-├── README.md, PLAN.md, PLAN-ttree.md, CLAUDE.md
+├── README.md, PLAN.md, CLAUDE.md
 ├── root/                         ← submodule, pinned to v6-40-04
 ├── spec/                         ← the specification; also the site (docs_dir)
 │   ├── 00-conventions.md
@@ -190,11 +190,11 @@ Conventions §5.1.1 and `TBranchClones` to `TBranchElement.md` §13, per decisio
 
 `Double32.md` was dropped as already-written and distributed: the grammar and the
 three encodings are `ElementTypes.md` §5.1–5.3, the leaf classes and the
-3-versus-4-byte asymmetry are `TLeaf.md` §7 (`PLAN-ttree.md` §4).
+3-versus-4-byte asymmetry are `TLeaf.md` §7.
 
-`PLAN-ttree.md` is the sub-plan that ordered this layer; it is kept for its
-measurement of the corpora and for §10's list of what the decoder still cannot
-reach.
+The sub-plan that ordered this layer is discharged and deleted; §9.11 keeps its
+residue — the corpus census it was written against, what the decoder still
+cannot reach, and the questions it left open.
 
 ### 2.6 `spec/05-rntuple/` ◐
 
@@ -405,7 +405,7 @@ phase.
 4. **Reference reader.** Resolved by accident: `tools/rootfile.py` grew into one,
    and it is the strongest completeness check the project has. It stays a
    checking tool that happens to be thorough.
-5. **`TTree` sub-plan** — resolved: `PLAN-ttree.md`.
+5. **`TTree` sub-plan** — discharged, and its residue is §9.11.
 
 ### 7.1 Upstream bug candidates found while writing the spec
 
@@ -741,7 +741,7 @@ Deferred to the end by standing decision, and the natural opening for open item 
 **Not in the MVP, deliberately**: the ten narrow `custom`/`extending` classes (§2.4);
 `TGeo*` hand-review; `gen/legacy/`; the pre-ROOT-4 object layouts (decision 7);
 semantic `case.toml` assertions; `WriterInvariants.md`; `TBranchSTL` entry
-decoding and `kStreamLoop` values (`PLAN-ttree.md` §10).
+decoding and `kStreamLoop` values (§9.11).
 
 ## 9. Known gaps
 
@@ -948,3 +948,70 @@ legacy layouts, and they are M6 and §9.1.
 `ClassDef` version `≤ 0` and a plain `#pragma link`, exactly **two** appear as a
 `kBase` element anywhere in the corpora — `TSeqCollection` (348) and
 `TVirtualPerfStats` (1). 117 distinct base-class names occur in total.
+
+### 9.11 The `TTree` sub-plan's residue
+
+`PLAN-ttree.md` ordered this layer and was deleted on 2026-09-17, its work done:
+all four documents written, `rootfile.TreeReader` decoding the split path, and
+every case in its fixture matrix built or absorbed — `split-stl` by
+`ttree/split-nested`, `split-branch-object` by `ttree/branch-clones`. Its
+dispatch table is now `TBranchElement.md` §8 and its structural findings are in
+the four documents themselves; the git log has the sections that were consumed.
+What had no other home is here.
+
+**The census it was written against** — 178 corpus files, every record whose
+class derives from `TTree`, every `TBranch*` member at every depth. Measured, not
+estimated:
+
+| Measured | Value |
+|---|---|
+| Branches that are not `TBranch` | 6736 of 11157, in 56 files |
+| Branch classes | `TBranch` 4421, `TBranchElement` 6734, `TBranchObject` 2, `TBranchClones` 0, `TBranchSTL` 0 |
+| `fType` | 0 (4220), 41 (1503), 31 (733), 1 (141), 4 (84), 3 (21), 2 (16), −1 (16) |
+| `fID` where `fType == 0` | −1 (216, unsplit top level), −2 (170, split node, which ROOT's own header comment does not mention), ≥ 0 (3834, a member) |
+| `fSplitLevel` | 0, 1, 2, 3, 4, 97, 98, 99 — **never 100**, so the two pointer-collection procedures have zero corpus coverage and `ttree/split-ptr-collection` is their only witness |
+| `fBranchCount2` | null in **all 6736** |
+
+**What the decoder still cannot reach**, largest first. This is what the
+`SKIPPED` and `ENTRIES` lines of `check_invariants.py` count:
+
+1. A collection whose value class has no streamer info in the file — 49
+   branch-baskets, and not a gap at all: `Collections.md` §9 says it is
+   unreadable by anyone, ROOT included.
+2. `fType` −1, a branch whose class writes its own `Streamer` — 9, plus 9 on the
+   Jpp classes of `gen/foreign/IGNORE.toml`. It is the one `fType` value with no
+   fixture, and needs a branch whose class has a hand-written `Streamer`.
+3. A basket whose record could not be read — 7, each one a missing codec or the
+   embedded counter basket of M8.
+4. `kStreamLoop` values — 4, all in one file. The column's *extent* is checked
+   from its byte count; its values need the per-element counts held by a sibling
+   branch's column.
+5. `TBranchSTL` entries — `ttree/split-ptr-collection` has one with data in it,
+   but it is not a `TBranchElement` and has no leaf, so neither entry check
+   reaches it. `Splitting.md` §5 describes the branch; its entries stay
+   undecoded.
+6. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
+   path is unexercised and unwritten.
+
+**Questions it left open.** Each is small, and each wants the submodule rather
+than a file:
+
+- Why `fParentName` is empty on 16 of 21 `fType == 3` branches whose `fID >= 0`,
+  when everywhere else the empty case lines up with `fID < 0`.
+- Why `fMaximum` is zero on half the `fType == 4` branches.
+- Whether `fBranchCount`'s back-reference uses the same map-position convention
+  as `fLeaves` and `fLeafCount`. Near-certain, and unverified at byte level.
+- Whether a `fType == 0` branch with an empty `fLeaves` can be written at all, or
+  whether `root/tree/tree/src/TBranchElement.cxx:6037-6044` is dead defensive
+  code. An errata row if it is dead, a fixture if it is not.
+
+**Two decisions recorded there and nowhere else:**
+
+- **A cross-file `TFriendElement` and a `TChain` are not committed fixtures.**
+  Both record a path that must exist when the file is read, which makes them
+  awkward to ship and their absence a decision rather than a gap;
+  `Auxiliary.md` §7 points here.
+- **`coverage_probe.py` measures record decoding only**, so it reports a split
+  file as almost fully covered while none of its values is decoded.
+  `check_invariants.py`'s `ENTRIES` line is the honest figure; moving it into the
+  probe would make it per file rather than per run.

@@ -488,7 +488,7 @@ begins with its parent's.
 | `ttree/branch-clones` | §13 in full: the only `TBranchClones` here, under the only `TBranchObject`, with its ten hand-written `TBranch` fields, its pointer-streamed `fBranchCount`, and the lost name prefix of §13.3 |
 
 Seven of the eight `fType` values now have a fixture, and `TBranchClones` and
-`TBranchObject` now have one too. Not covered, and tracked in `PLAN-ttree.md` §5:
+`TBranchObject` now have one too. Not covered, and tracked in `PLAN.md` §9.11:
 **`fType` −1**, which needs a class with a hand-written `Streamer`; and a non-null
 `fBranchCount2`, which no file in 178 has.
 

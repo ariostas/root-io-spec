@@ -340,4 +340,4 @@ Not covered: `TChain` and `TChainElement` (§7), `TChainIndex`,
 `TEntryListArray`, a cross-file `TFriendElement`, and a `TTreeIndex` of class
 version 1. A cross-file friend and a `TChain` both record a path that must exist
 when the file is read, which makes them awkward as committed fixtures; that is a
-decision recorded in `PLAN-ttree.md` rather than a gap in the format.
+decision recorded in `PLAN.md` §9.11 rather than a gap in the format.
