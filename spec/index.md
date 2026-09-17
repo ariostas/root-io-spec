@@ -1,5 +1,7 @@
 # ROOT I/O Specification
 
+**Version 0.1.0**, descriptive of ROOT **6.40.04**.
+
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.
 
@@ -87,7 +89,8 @@ it is good for.
 ## Scope
 
 **It is descriptive, not normative.** This describes ROOT 6.40.04, pinned as a
-submodule. Where this specification and that submodule disagree, the submodule is
+submodule, and its own version is 0.1.0 — the changelog in the repository says
+what each release changed for a reader. Where this specification and that submodule disagree, the submodule is
 right and this has a bug. Source citations link to that exact commit.
 
 **Reading is specified; writing is constrained.** Each layer ends with an
@@ -180,7 +183,19 @@ expected value — checkable with nothing but Python:
 tools/generate.py --check
 ```
 
-They are usable directly as test vectors by an implementation in any language. This
-is also how the specification is kept honest: the assertions and the byte tables
-here are written from the same reading, so an error in either shows up as a
+They are usable directly as test vectors by an implementation in any language, and
+are licensed for exactly that — BSD-3-Clause for the reference files and the
+generators, CC-BY-4.0 for this prose; the repository's `LICENSE` says which is
+which. Copy a fixture's `case.toml` along with it: the assertions are what make
+the bytes useful.
+
+This is also how the specification is kept honest: the assertions and the byte
+tables here are written from the same reading, so an error in either shows up as a
 failure.
+
+## Corrections are the most welcome contribution
+
+If a sentence here is wrong about ROOT, that is worth more than an addition, and
+saying so needs no fixture. `CONTRIBUTING.md` in the repository has the mechanics,
+and the one rule behind all of them: every claim carries two witnesses, a
+`path:line` citation and real bytes.

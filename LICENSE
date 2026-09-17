@@ -1,0 +1,55 @@
+# Licensing
+
+Two licences, because this repository holds two different kinds of thing, and one
+directory that belongs to somebody else.
+
+| What | Licence | Full text |
+|---|---|---|
+| `spec/`, `README.md`, `PLAN.md`, `CONTRIBUTING.md`, `CHANGELOG.md` — the prose | **CC-BY-4.0** | [LICENSES/CC-BY-4.0.txt](LICENSES/CC-BY-4.0.txt) |
+| `tools/`, `gen/`, `data/`, `.github/`, `zensical.toml` — the code, the generators and the reference files they produce | **BSD-3-Clause** | [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt) |
+| `root/` — a submodule, not content of this repository | ROOT's own **LGPL-2.1-or-later** | `root/LICENSE` |
+| `spec/05-rntuple/BinaryFormatSpecification.md` — see below | not ours to licence | — |
+
+Copyright (c) 2026, Andres Rios Tascon.
+
+## Why the split
+
+The specification is a document, and the point of it is that other projects
+describe the format the same way; CC-BY-4.0 lets them quote and adapt it with
+attribution.
+
+The reference files are meant to be **vendored as test vectors** by readers in
+any language, together with the `case.toml` assertions that go with them and the
+generators that made them. BSD-3-Clause makes that unambiguous, including for a
+closed-source implementation. If you copy a fixture, copy its `case.toml` with
+it: the assertions are what make the bytes useful, and
+[CONTRIBUTING.md](CONTRIBUTING.md) explains the format.
+
+## The one exception
+
+`spec/05-rntuple/BinaryFormatSpecification.md` is a **byte-for-byte copy of
+ROOT's own RNTuple specification**, tracked so that this project's RNTuple errata
+have something fixed to be errata against; `tools/sync_rntuple.py --check` fails
+in CI if it drifts. It is the ROOT project's document under ROOT's licence, not
+ours, and no correction is ever made inside it — corrections go in
+`spec/05-rntuple/ERRATA.md`, which is ours and is CC-BY-4.0 like the rest of
+`spec/`.
+
+Every other file in `spec/` cites ROOT's source by `path:line` rather than
+copying it. Where a short excerpt appears, it is quoted as evidence for a claim
+about the format, is attributed to the file and line it came from, and remains
+under ROOT's licence.
+
+## Citing this
+
+[CITATION.cff](CITATION.cff) has the machine-readable form. Attribution under
+CC-BY-4.0 is satisfied by naming the project and linking to it:
+
+> ROOT I/O Specification, <https://ariostas.github.io/root-io-spec/>
+
+## Not affiliated with ROOT
+
+This is an independent description of a format, written from ROOT's published
+source. It is not endorsed by, released by, or a product of the ROOT project or
+CERN. Where this specification and ROOT disagree, ROOT is right — that is stated
+in `spec/index.md` and it is a licensing statement as much as a technical one.

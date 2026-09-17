@@ -1,5 +1,8 @@
 # ROOT I/O Specification
 
+**Version 0.1.0** — descriptive of ROOT 6.40.04. Published at
+<https://ariostas.github.io/root-io-spec/>.
+
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.
 
@@ -68,10 +71,25 @@ git clone --recurse-submodules <this repo>
 | Path | Contents |
 |---|---|
 | `spec/` | The specification itself, organized by layer |
-| `gen/` | One small ROOT macro per reference file |
+| `gen/` | One small ROOT macro per reference file, and the two corpus manifests |
 | `data/` | Generated reference files |
-| `tools/` | Consistency checkers and dumpers |
+| `tools/` | Consistency checkers, the reference reader, and the generators |
 | `root/` | ROOT source, pinned submodule |
+
+## Licence, citation, contributing
+
+[LICENSE](LICENSE) — **CC-BY-4.0** for `spec/` and the prose, **BSD-3-Clause** for
+`tools/`, `gen/` and `data/`, so the reference files can be vendored as test
+vectors by an implementation in any language, closed-source included. One file is
+neither: `spec/05-rntuple/BinaryFormatSpecification.md` is a tracked copy of
+ROOT's own document.
+
+[CITATION.cff](CITATION.cff) has the machine-readable citation;
+[CHANGELOG.md](CHANGELOG.md) says what each release changed for a reader; and
+[CONTRIBUTING.md](CONTRIBUTING.md) has the mechanics, of which the load-bearing
+one is that every claim carries two witnesses — a `path:line` citation into the
+pinned ROOT release, and real bytes in a reference file. **A correction to this
+specification is more welcome than an addition, and needs no fixture.**
 
 ## Building the site
 

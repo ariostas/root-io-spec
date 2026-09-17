@@ -365,7 +365,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | RNTuple | ◐ upstream tracked, envelopes audited, six errata; the type mapping is partial |
 | Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
-| Release plumbing (licence, citation, version) | ☐ §8 |
+| Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
@@ -467,8 +467,13 @@ missing on-ramp documents, an unstated scope, and no licence.
 
 ### 8.1 Release criteria
 
+**All six are met as of 2026-09-17, and 0.1.0 is tagged.** What each one was, and
+what satisfied it:
+
 1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
-   claim was the violation.
+   claim was the violation, and M6 found four more in the `TBranch` and `TLeaf`
+   invariants. Criterion 1 is not a state a project reaches once — it is what the
+   two corpora keep testing.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -478,9 +483,9 @@ missing on-ramp documents, an unstated scope, and no licence.
    `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
-   published site.
-6. **The front pages are accurate.** ✅ M4; both now quote the measured counts
-   and are regenerated against them when they change.
+   published site. ✅ M7.
+6. **The front pages are accurate.** ✅ M4, and re-measured at M5 and M6; both
+   quote the counts the checks print.
 
 ### 8.2 The work, in order
 
@@ -774,17 +779,41 @@ reader could decode.
 `StreamerInfo.md` still describes their shape only in passing; and the directory
 record versions want a fixture rather than a reader (M4).
 
-**M7 — release plumbing.** *Without this the corpus cannot legally be vendored
-as test vectors, which is the main way a third party would use it.*
+**M7 — ✅ done 2026-09-17. Release plumbing, and version 0.1.0.**
+*Without it the reference files cannot legally be vendored as test vectors, which
+is the main way a third party would use this.*
 
-`LICENSE` — CC-BY-4.0 for `spec/`, BSD-3 for `tools/` and `gen/`, as §2 has
-promised since the first draft; `CONTRIBUTING.md` (how to add a case, the
-two-witness discipline, the container loop); `CITATION.cff`; a spec version
-number carried in `zensical.toml` and on the front page; `CHANGELOG.md`; a `v0.1`
-tag; and a check that the Pages deploy actually serves the site.
+- **`LICENSE`** — CC-BY-4.0 for `spec/` and the prose, BSD-3-Clause for `tools/`,
+  `gen/` and `data/`, with the full texts in `LICENSES/`. The BSD half is the
+  point: a closed-source reader can vendor a fixture and its `case.toml` without
+  asking. Two things the file has to say that §2 had not: the `root/` submodule is
+  ROOT's under LGPL-2.1-or-later and is not content of this repository, and
+  `spec/05-rntuple/BinaryFormatSpecification.md` is **not ours to licence** — it
+  is ROOT's document, tracked verbatim, which is also why corrections to it go in
+  `ERRATA.md`. It ends with a non-affiliation notice: where this specification and
+  ROOT disagree, ROOT is right, which is a licensing statement as much as a
+  technical one.
+- **`CONTRIBUTING.md`** — the two-witness rule first, then the mechanics: adding
+  a case, the `case.toml` format, the two traps (repo-relative output paths; that
+  fixtures cannot be byte-reproducible and `--accept` is the only way to re-record
+  a digest), the libc++/libstdc++ container loop for a cross-platform `DRIFT`, how
+  to write a document, and what the two corpora mean — `gen/cern/` is evidence,
+  `gen/foreign/` is a lead. It says out loud that **a correction is more welcome
+  than an addition and needs no fixture**, which nothing in the repository had
+  said.
+- **`CITATION.cff`**, **`CHANGELOG.md`**, and the version in three places that
+  cannot drift silently: `[project.extra]` in `zensical.toml`, the front page, and
+  the citation file.
+- **Pages already serves the current build** — `LargeFiles/` and
+  `ReaderChecklist/`, both published today, answer 200 at
+  <https://ariostas.github.io/root-io-spec/>. No deploy work was needed.
 
-*Done when*: the files exist, CI is green, and <https://ariostas.github.io/root-io-spec/>
-serves the current build.
+*One thing this nearly got wrong, worth remembering about `zensical.toml`*: TOML
+tables are positional, so inserting `[project.extra]` above `nav` silently moved
+`nav` **into** it. The strict build reported "No issues found" and quietly built an
+auto-generated navigation. A config table has to go after every key of the table
+it follows, and the check that catches it is grepping the built HTML for a nav
+entry, not the build's own exit code.
 
 ### 8.3 Next tier, after the MVP
 

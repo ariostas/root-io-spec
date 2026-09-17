@@ -13,6 +13,7 @@ repo_url = "https://github.com/ariostas/root-io-spec"
 repo_name = "ariostas/root-io-spec"
 edit_uri = "edit/main/spec/"
 docs_dir = "spec"
+copyright = "CC-BY-4.0 for the specification, BSD-3-Clause for the tools and the reference files -- see LICENSE"
 
 nav = [
   { "Overview" = "index.md" },
@@ -69,6 +70,12 @@ nav = [
       { "Bibliography" = "99-appendix/Bibliography.md" },
   ] },
 ]
+
+# The specification's own version, not ROOT's. CHANGELOG.md is the record and
+# CITATION.cff carries the same number; spec/index.md states it on the front page.
+[project.extra]
+version = "0.1.0"
+describes_root = "6.40.04"
 
 [project.theme]
 # No external font requests: the site should build and serve offline.

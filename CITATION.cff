@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+title: ROOT I/O Specification
+message: >-
+  If you use this specification or its reference files, please cite it.
+type: software
+authors:
+  - given-names: Andres
+    family-names: Rios Tascon
+    alias: ariostas
+repository-code: https://github.com/ariostas/root-io-spec
+url: https://ariostas.github.io/root-io-spec/
+abstract: >-
+  A specification of the ROOT on-disk binary formats -- the container layer,
+  object serialization, the classes whose recorded streamer information does not
+  describe their bytes, and TTree -- written so that a third party can implement
+  a reader without reading ROOT's C++ source. Every claim is verified twice:
+  against a pinned ROOT release with a path:line citation, and against real bytes
+  in a committed reference file. The invariants of each layer run over 226 ROOT
+  files this project did not write.
+keywords:
+  - ROOT
+  - TFile
+  - TTree
+  - RNTuple
+  - binary format
+  - file format specification
+  - high energy physics
+  - serialization
+# The prose is CC-BY-4.0 and the tools, generators and reference files are
+# BSD-3-Clause; LICENSE says which is which.
+license:
+  - CC-BY-4.0
+  - BSD-3-Clause
+license-url: https://github.com/ariostas/root-io-spec/blob/main/LICENSE
+version: 0.1.0
+date-released: '2026-09-17'
