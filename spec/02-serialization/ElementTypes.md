@@ -164,6 +164,31 @@ This code exists only because `Build` special-cases `TObject::fBits`
 (`root/io/io/src/TStreamerInfo.cxx:668-670`), so it appears **only in `TObject`'s
 own streamer info**.
 
+### 2.4 One member, two codes, depending on the writer's standard library
+
+> **The same source code produces `kULong` (14) on one platform and `kULong64`
+> (17) on another, for the same member.** The bytes are identical; only the
+> streamer info differs.
+
+`std::uint64_t` is a typedef, and ROOT records the type it resolves to rather
+than the spelling in the source. On a 64-bit Linux it is `unsigned long`, giving
+`fType` 14 and `fTypeName` `unsigned long`; with libc++ it is
+`unsigned long long`, giving `fType` 17 and `fTypeName` `ULong64_t`. The same
+applies to the signed pair, `kLong` (4) against `kLong64` (16).
+
+Both write eight bytes, so **nothing on disk distinguishes them** and a reader
+that handles all four codes as 8-byte integers is correct on every platform. What
+a reader MUST NOT do is treat `fType` or `fTypeName` as a stable property of a
+class: two files holding the same class, written by the same ROOT release from
+the same source, can disagree on both.
+
+> Measured on `ROOT::RNTuple`, whose seven seek and length members are declared
+> `std::uint64_t`. Regenerating `rntuple/anchor` under libstdc++ moves all seven
+> from 17/`ULong64_t` to 14/`unsigned long`, and the streamer info grows by
+> exactly 28 bytes — seven members times four characters of type name — while
+> every one of the case's 50 byte assertions still passes. That is why the case
+> carries `digest = false`; `PLAN.md` §9.6 has the reasoning.
+
 ## 3. `kOffsetL + T` (20 + T) — fixed-size array
 
 ```

@@ -1092,6 +1092,29 @@ comparing against the committed manifest:
   `size`, for the same reason; `size` is now optional in `check_bytes.py`. Its 34
   byte assertions run everywhere and none of them touches `fTitle`.
 
+**A second, different cause, found 2026-09-17 on `rntuple/anchor`.** Not a
+`sizeof` and not a doc comment: a **typedef resolving to a different type**.
+`ROOT::RNTuple` declares its seven seek and length members as `std::uint64_t`,
+which is `unsigned long long` with libc++ and `unsigned long` with libstdc++, and
+ROOT records the resolved type rather than the spelling. So the streamer info
+carries `fType` **17** with `fTypeName` `ULong64_t` on one platform and `fType`
+**14** with `unsigned long` on the other — seven members, four characters of type
+name each, exactly 28 bytes, and a **length** change a mask cannot undo. Same
+remedy as `pairs`: `digest = false`, no `size`, all 50 byte assertions still run
+on both.
+
+The format fact underneath it is worth more than the fixture problem, and is now
+`ElementTypes.md` §2.4: **the same source code produces `kULong` (14) on one
+platform and `kULong64` (17) on another for the same member**, and the bytes are
+identical because both are eight bytes. A reader must treat all four of 4/14/16/17
+as 8-byte integers and must not take `fType` or `fTypeName` as a stable property
+of a class.
+
+**And the process lesson**: this reached CI because the case was checked for
+reproducibility on one platform and not across two. The container loop at the top
+of `CLAUDE.md` exists precisely for this and takes four minutes; every new case
+should go through it before a push, not after a red build.
+
 The earlier workaround — making `ttree/basket` leaflist-only — is no longer
 needed for this reason, though it has not been reverted; a split-branch `ttree/basket`
 would now be portable.

@@ -1,6 +1,9 @@
 id   = "rntuple/anchor"
 file = "data/rntuple/anchor.root"
-size = 2592
+
+# No `size`: 2592 bytes when libc++ wrote it and 2620 when libstdc++ did, for
+# the reason `digest_reason` below gives. Every offset the assertions use is at
+# or below 870, well before the StreamerInfo record where the two diverge.
 
 description = """
 The first RNTuple fixture in this project: an anchor, a header envelope and a
@@ -60,6 +63,26 @@ spec = [
 
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
+
+# This file cannot have a portable normalized digest. `ROOT::RNTuple` declares
+# its seek and length members as `std::uint64_t`, and that typedef resolves to
+# `unsigned long long` with libc++ and `unsigned long` with libstdc++ -- so the
+# streamer info records `fType` 17 (kULong64) with the type name `ULong64_t` on
+# one and `fType` 14 (kULong) with `unsigned long` on the other. Seven members,
+# four characters of type name each: exactly the 28-byte difference. It is a
+# LENGTH change, and a mask can restore a value but not a length.
+#
+# The bytes on disk are identical either way -- codes 14 and 17 are both eight
+# bytes (ElementTypes.md 2) -- which is the point, and is now recorded there as
+# section 2.4. PLAN.md 9.6.
+digest        = false
+digest_reason = """
+`std::uint64_t` resolves to `unsigned long long` with libc++ and `unsigned long`
+with libstdc++, so ROOT::RNTuple's seven 64-bit members are recorded as fType 17
+`ULong64_t` on one and fType 14 `unsigned long` on the other -- a 28-byte LENGTH
+difference a mask cannot undo. The bytes they describe are identical. The 50 byte
+assertions still run. ElementTypes.md 2.4, PLAN.md 9.6
+"""
 
 [[records]]
 offset = 100
