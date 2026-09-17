@@ -24,7 +24,7 @@ baskets, splitting, and reading an entry out of a split or an unsplit tree.
 | Layer | State |
 |---|---|
 | Conventions | written |
-| Container — header, records, directories, compression, free list | written, bar the >2 GB layout |
+| Container — header, records, directories, compression, free list, the >2 GB layout | written |
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
@@ -32,8 +32,8 @@ baskets, splitting, and reading an entry out of a split or an unsplit tree.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus six errata from auditing it | partly |
 
-**65 reference files, 1563 byte-level assertions, and 1111 source citations
-checked against the pinned submodule across 39 documents.** The invariants also
+**65 reference files, 1563 byte-level assertions, and 1130 source citations
+checked against the pinned submodule across 40 documents.** The invariants also
 run over 226 files this project did not write — 154 from uproot's regression
 corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 94% of the records in them decode. Those files are where

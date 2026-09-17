@@ -26,7 +26,7 @@ known gap.
 | Layer | State |
 |---|---|
 | Conventions | written |
-| Container — all of it; the >2 GB variants are specified field by field, not yet collected in one page | written |
+| Container — all of it, including the >2 GB layout | written |
 | Serialization — framing, streamer info, element types, the reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
@@ -34,8 +34,8 @@ known gap.
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
 
-Behind it: **65 reference files with 1563 byte-level assertions, 1111 source
-citations checked against the pinned ROOT tree across 39 documents**, and the
+Behind it: **65 reference files with 1563 byte-level assertions, 1130 source
+citations checked against the pinned ROOT tree across 40 documents**, and the
 invariants of every layer run over 226 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 

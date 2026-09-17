@@ -104,7 +104,7 @@ including `Long_t` at **8 bytes on disk even where it is 4 in memory**; the four
 string encodings (counted string, `TString`, `TStringLong` §5.1.1, NUL-terminated
 class tags); the notation for byte layouts; and how citations work.
 
-### 2.2 `spec/01-container/` ✅ except `LargeFiles.md`
+### 2.2 `spec/01-container/` ✅
 
 | File | Contents |
 |---|---|
@@ -113,11 +113,7 @@ class tags); the notation for byte layouts; and how citations work.
 | ✅ `Directory.md` | `TFile`'s own record, `TDirectoryFile`, the keys list, `fSeekDir`/`fSeekParent`/`fSeekKeys`, nested directories |
 | ✅ `FreeSegments.md` | The `TFree` list, the sentinel segment past EOF, gaps, the interleaved 10-/18-byte forms |
 | ✅ `Compression.md` | The 9-byte block header, the `ZL`/`XZ`/`L4`/`ZS`/`CS` magics, multi-block payloads, the LZ4 XXH64 trailer, `fCompress` as `100*algorithm + level`, which records are never compressed, and that `CS` is raw DEFLATE (§3.1) |
-| ☐ `LargeFiles.md` | Everything that changes past 2 GB, collected in one place — **decided: write it**, §8 item M5 |
-
-What changes past 2 GB is currently stated where it arises: `FileHeader.md` §2,
-`Record.md` §3.5–3.6, `FreeSegments.md` §3. The measurements in §9.2 make a
-single page writable against something real.
+| ✅ `LargeFiles.md` | Everything that changes past 2 GB: the five independent switches and their five different conditions, the wide diagrams, one 5.25 GB file byte by byte, and six invariants checked by `fetch_cern.py --headers` |
 
 ### 2.3 `spec/02-serialization/` ✅
 
@@ -362,7 +358,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Layer | State |
 |---|---|
 | Conventions | ✅ |
-| Container | ✅ except `LargeFiles.md` (§2.2) |
+| Container | ✅ all six documents |
 | Serialization | ✅ all seven documents |
 | Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
@@ -666,19 +662,49 @@ one directory form nothing exercises is version 2, which occurs in neither
 corpus, and it is the one where ROOT's own reader is suspect (`Directory.md`
 §7).
 
-**M5 — `LargeFiles.md`.** *Decided: collect it.*
+**M5 — ✅ done 2026-09-17. `LargeFiles.md`.**
+*The one layout in the container layer that no fixture can reach, and the last
+document §2.2 was missing.*
 
-Everything that changes past 2 GB, in one page: the `+1000000` `fVersion` flag
-and `fUnits` 8, the widened header fields, the large key layout and the packed
-`fPidOffset`, the 18-byte `TFree` entry interleaved with the 10-byte one, and
-`fLast` above 2000000000. The sections it draws on stay where they are and it
-links them, so nothing is duplicated as a second source of truth. The evidence
-is the eight files measured by `fetch_cern.py --headers` (§9.2), including
-`lhcb2.root` with `fEND` past 4 GB and `volume.root` with 32 large and 19 small
-free entries in one record.
+[`spec/01-container/LargeFiles.md`](spec/01-container/LargeFiles.md): the five
+switches and their conditions, wide diagrams for the header, the key and the
+`TFree` entry, one 5.25 GB file walked byte by byte, and six invariants. Writing
+it against real bytes rather than against the source alone found two things the
+specification had wrong or missing, both about *which* condition widens *what*:
 
-*Done when*: the page exists with a bit diagram per widened field, `--headers`
-is cited as its check, and `zensical build --strict` resolves its links.
+- **A key's width is not decided by the key's own offset**, which is what
+  `Directory.md` §3 said. Every writing constructor calls `TKey::Build` with
+  `filepos == -1` and `Build` substitutes the file's current `fEND`
+  (`root/io/io/src/TKey.cxx:456`), so a key written into a reused gap near the
+  front of a large file is **wide with a small offset in it**. `volume.root` has
+  exactly that: `fVersion` 1004 at offset 105 159 358, while the key at `fBEGIN`
+  in the same 5.25 GB file is `fVersion` 4 and narrow. A non-zero `fPidOffset`
+  is the second, size-independent trigger.
+- **The directory record has two writers with different conditions.**
+  `FillBuffer` widens on the three offsets it is about to write
+  (`root/io/io/src/TDirectoryFile.cxx:751-759`); `TDirectoryFile::Streamer`
+  widens on `fEND` (`:1827`). Only the first produces the on-disk record — the
+  root directory record of that same 5.25 GB file is version **5**, narrow —
+  which is why the mismatch matters to a writer and not to a reader.
+
+Two more things fell out of reading real bytes:
+
+- **`Directory.md` §6.1's uninitialised slack is now witnessed, not just
+  cited.** The key list of `volume.root` has `fObjlen` 65 for a count and one
+  53-byte image, and the eight bytes past them read `00 04 00 62 00 04 00 62` —
+  heap, and heap that looks like the start of a key. A length-driven parse takes
+  it as a second entry.
+- **The boundary from below is the strictly-greater-than test.** The trailing
+  free entry's `fLast` is the next whole multiple of 1 000 000 000 above `fEND`,
+  so a 1.997 GB file's sentinel is exactly 2 000 000 000 — not *greater than*
+  the threshold, so that file has no wide entry anywhere.
+
+The six invariants are checked by `tools/fetch_cern.py --headers`, which now
+carries them as a pure function over its parsed reading, and each is shown to
+catch a violation by `tools/test_large_files.py` — twelve mutation tests, since
+`check_invariants.py` has no file large enough to corrupt. `rootfile.py` gained
+`parse_free_entries`, which keeps each entry's version word so invariant 4 can be
+stated at all.
 
 **M6 — the legacy layouts the corpora already contain.**
 *The largest remaining in-scope blocked category over files ROOT wrote, and
@@ -782,9 +808,14 @@ every recorded field on each run, downloading nothing.
 | `nfree` agrees with the parsed list; the last entry always passes `fEND` | all eight, counts 1 to 1539 |
 | The boundary from below: over 1 GB and *not* large format | a CMS file at 1.997 GB with `units` 4 |
 | A free record whose key class is a `TFile` subclass | the same file: `TStorageFactoryFile` |
+| A **wide key at a small offset**, which is what disproved the old rule | `volume.root`: `fVersion` 1004 at 105 159 358 (M5, §1.1 of the page) |
+| An 8-byte `fSeekPdir` whose top 16 bits are `fPidOffset` and mask away cleanly | both large-format free records read; invariant 6 |
+| The uninitialised slack past a key list, past the threshold | `volume.root`: `00 04 00 62 00 04 00 62` after the one image |
+| `fLast` above 2000000000 | 32 entries of `volume.root`; the wide form **is** that condition |
 
-Still not asserted by a committed fixture, and `fLast` above 2000000000 is still
-unwitnessed. M5 writes this up.
+Still not asserted by a committed fixture, and never will be: 2 GB cannot be
+committed. `spec/01-container/LargeFiles.md` is the write-up (M5) and
+`tools/fetch_cern.py --headers` is its check.
 
 ### 9.3 Needs a compiled dictionary — ✅ unblocked
 

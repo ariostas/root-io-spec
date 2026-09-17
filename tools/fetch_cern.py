@@ -49,6 +49,46 @@ BASE = "https://root.cern/files/"
 DEFAULT_DIR = REPO / "build/cern"
 
 
+BIG = 2000000000          # TFile::kStartBigFile, root/io/io/inc/TFile.h:278
+
+
+def large_file_problems(header, key, entries) -> list[str]:
+    """The invariants of spec/01-container/LargeFiles.md section 8.
+
+    Pure, so the unit tests can feed it a corrupted reading. `header` is a
+    rootfile.FileHeader, `key` the free-segment record's own key, and `entries`
+    the (version, fFirst, fLast) triples of its payload.
+    """
+    out = []
+    if (header.version >= 1000000) != (header.end > BIG):
+        out.append(f"fVersion {header.version} but fEND {header.end} "
+                   f"(LargeFiles 8.1)")
+    if len(entries) != header.nfree:
+        out.append(f"nfree {header.nfree} but {len(entries)} entries parsed "
+                   f"(LargeFiles 8.2, FreeSegments 6)")
+    if entries and entries[-1][2] <= header.end:
+        out.append(f"last entry ends at {entries[-1][2]}, not past fEND "
+                   f"{header.end} (LargeFiles 8.3)")
+    for i, (version, first, last) in enumerate(entries):
+        if (version > 1000) != (last > BIG):
+            out.append(f"entry {i} version {version} with fLast {last} "
+                       f"(LargeFiles 8.4)")
+        if not 0 <= first <= last:
+            out.append(f"entry {i} spans ({first}, {last}) (LargeFiles 8.5)")
+        elif first > header.end or (last > header.end
+                                    and i != len(entries) - 1):
+            out.append(f"entry {i} spans ({first}, {last}) past fEND "
+                       f"{header.end} (LargeFiles 8.5)")
+    if key.key_version > 1000:
+        if key.seek_pdir != header.begin:
+            out.append(f"the free record's key has fSeekPdir {key.seek_pdir}, "
+                       f"not fBEGIN {header.begin} (LargeFiles 8.6)")
+        if key.pid_offset:
+            out.append(f"the free record's key has fPidOffset "
+                       f"{key.pid_offset} (LargeFiles 8.6)")
+    return out
+
+
 def entries(tier: str) -> list[tuple[str, int, str]]:
     """(digest, size, remote path) for the requested tier."""
     out = []
@@ -86,8 +126,9 @@ def check_headers() -> int:
             # The free record's key starts at chunk[0], so every offset this
             # parse uses is local to the chunk.
             record, _ = rootfile._read_key_at(chunk, 0)
-            free = rootfile.parse_free_list(chunk, record.key_len,
-                                            record.payload_nbytes)
+            triples = rootfile.parse_free_entries(chunk, record.key_len,
+                                                  record.payload_nbytes)
+            free = [(first, last) for _, first, last in triples]
         except (OSError, rootfile.FormatError, struct.error, IndexError,
                 ValueError) as exc:
             print(f"FAIL {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -115,15 +156,9 @@ def check_headers() -> int:
             if want[field] != value:
                 problems.append(f"{field}: recorded {want[field]!r}, "
                                 f"measured {value!r}")
-        # The invariants FreeSegments.md states, checked here because no local
-        # file exercises them: nfree agrees with the list, and the last entry is
-        # the past-fEND sentinel.
-        if len(free) != header.nfree:
-            problems.append(f"nfree {header.nfree} but {len(free)} entries "
-                            f"parsed (FreeSegments 6)")
-        if free and free[-1][1] <= header.end:
-            problems.append(f"last entry {free[-1]} does not pass fEND "
-                            f"{header.end} (FreeSegments 3)")
+        # The invariants LargeFiles.md section 8 states, checked here because no
+        # local file is large enough to exercise them.
+        problems.extend(large_file_problems(header, record, triples))
         if problems:
             bad += 1
             for problem in problems:

@@ -100,12 +100,17 @@ time, set once; `fDatimeM` is refreshed on every header rewrite
 | Structure | Flag | Condition |
 |---|---|---|
 | File header | `fVersion >= 1000000` | `fEND > 2000000000` |
-| Key | `fVersion > 1000` | that key's own offset `> 2000000000` |
+| Key | `fVersion > 1000` | the file's `fEND` **when the key was built** `> 2000000000`, or a non-zero `fPidOffset` — *not* the key's own offset ([Large files §1.1](LargeFiles.md#11-a-keys-width-is-not-decided-by-where-the-key-is)) |
 | **Directory record** | **version `> 1000`** | **any of `fSeekDir`, `fSeekParent`, `fSeekKeys` `> 2000000000`** |
 
 A reader MUST take the directory layout from the **directory record's own version
 word**, never from the file header. All three of its offsets widen together; it
 is one flag, not per-field.
+
+`TDirectoryFile::Streamer` is a second writer of the same record with a
+*different* condition — `fEND`, not the three offsets
+(`root/io/io/src/TDirectoryFile.cxx:1827`) — which matters to a writer and not to
+a reader. [Large files](LargeFiles.md) collects all five switches.
 
 The combinations are not equivalent. A file larger than 2 GB can still hold
 small-layout directory records — the root directory's `fSeekDir` is `fBEGIN`,

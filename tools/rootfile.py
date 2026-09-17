@@ -234,14 +234,15 @@ def read_records(buf: bytes, header: FileHeader) -> list[Record]:
     return records
 
 
-def parse_free_list(chunk: bytes, key_len: int,
-                    payload_nbytes: int) -> list[tuple[int, int]]:
-    """The TFree entries of a free-segment record. FreeSegments.md section 2.
+def parse_free_entries(chunk: bytes, key_len: int,
+                       payload_nbytes: int) -> list[tuple[int, int, int]]:
+    """The TFree entries with their version words: (version, fFirst, fLast).
 
     `chunk` holds the record from its key onwards -- it need not be the whole file,
     which is what lets a caller read the list of a multi-gigabyte file with one
     HTTP range request. Each entry sizes itself from its own version word, so the
-    10-byte and 18-byte forms may be interleaved (section 2.1).
+    10-byte and 18-byte forms may be interleaved (FreeSegments.md section 2.1,
+    LargeFiles.md section 4).
     """
     o, end, out = key_len, key_len + payload_nbytes, []
     while o + 10 <= end:
@@ -255,8 +256,16 @@ def parse_free_list(chunk: bytes, key_len: int,
         else:
             first, last = _i32(chunk, o), _i32(chunk, o + 4)
             o += 8
-        out.append((first, last))
+        out.append((version, first, last))
     return out
+
+
+def parse_free_list(chunk: bytes, key_len: int,
+                    payload_nbytes: int) -> list[tuple[int, int]]:
+    """The TFree entries of a free-segment record. FreeSegments.md section 2."""
+    return [(first, last)
+            for _, first, last in parse_free_entries(chunk, key_len,
+                                                     payload_nbytes)]
 
 
 def read_free_segments(buf: bytes, header: FileHeader) -> list[tuple[int, int]]:

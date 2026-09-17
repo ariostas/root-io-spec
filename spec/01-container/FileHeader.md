@@ -60,6 +60,9 @@ Two layouts exist, selected by `fVersion`:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
+The wide layout, which the right-hand column below gives as offsets, is drawn
+out in [Large files §2](LargeFiles.md#2-the-file-header).
+
 ### 2.2 Field offsets
 
 | Field | Type | Small offset | Large offset | Notes |

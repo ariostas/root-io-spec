@@ -233,5 +233,7 @@ verifying and, if real, reporting upstream.
 | `container/file-minimal` | The trailing entry alone, `fFirst == fEND`, `fLast == 2000000000` |
 
 No fixture covers the large entry form or a `fLast` above 2000000000; both need a
-file over 2 GB, which belongs with the release artifacts rather than the committed
-corpus.
+file over 2 GB, which cannot be committed. They are measured instead over eight
+published files read by range request, down to the interleaving of the two entry
+widths in one record — see [Large files §4](LargeFiles.md#4-the-wide-free-list-entry)
+and §6 there.

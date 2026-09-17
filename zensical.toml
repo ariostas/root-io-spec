@@ -22,6 +22,7 @@ nav = [
       { "Records and keys" = "01-container/Record.md" },
       { "Directories and key lists" = "01-container/Directory.md" },
       { "Free segments" = "01-container/FreeSegments.md" },
+      { "Files larger than 2 GB" = "01-container/LargeFiles.md" },
       { "Compression" = "01-container/Compression.md" },
   ] },
   { "Serialization" = [

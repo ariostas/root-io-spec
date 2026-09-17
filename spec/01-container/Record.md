@@ -88,7 +88,9 @@ The comparison is strictly greater-than
 | `fName` | counted string | — | — |
 | `fTitle` | counted string | — | — |
 
-The fixed part is 26 bytes (small) or 34 (large). The three strings are
+The fixed part is 26 bytes (small) or 34 (large); the large form is drawn out in
+[Large files §3](LargeFiles.md#3-the-wide-key), which also states what actually
+selects it — not the key's own offset. The three strings are
 **counted strings** as defined in [Conventions §5.1](../00-conventions.md#51-counted-string),
 appearing bare with no byte count or version word.
 
