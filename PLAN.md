@@ -11,9 +11,9 @@ Measured, 2026-09-17, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 36, plus the tracked RNTuple copy |
+| Specification documents | 39, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 65 / 1563, 0 failures |
-| Source citations checked | 1109, 0 failures |
+| Source citations checked | 1111, 0 failures |
 | Class versions checked against `ClassDef` | 25 |
 | Invariants over the fixtures | 65 files, 0 failures |
 | Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
@@ -220,9 +220,9 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `Glossary.md` | Every term used with a meaning it does not have in ordinary English |
 | ✅ `HandWrittenStreamers.md` | Generated from the submodule by `inventory.py`; §2.4 |
 | ✅ `ForwardingStreamers.md` | The other half of the same question, from the same tool: the classes whose *generated* `Streamer` writes only their bases |
-| ☐ `ReaderChecklist.md` | An implementation checklist for a new reader — **MVP**, §8 item M3 |
-| ☐ `Pitfalls.md` | The things that have historically bitten implementers, each linking to the normative section — **MVP**, §8 item M3 |
-| ☐ `Bibliography.md` | The old ROOT docs, the user's guide, prior art — **MVP**, §8 item M3 |
+| ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
+| ✅ `Pitfalls.md` | Forty-five things that are true, unobvious and have cost somebody time, each linked to the section that specifies it |
+| ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
 | ☐ `WriterInvariants.md` | The collected index of §2.8. A collation job; `tools/check_invariants.py` is already its executable form. Not MVP |
 
 ### 2.8 Write support: invariants, not algorithms ✅
@@ -476,7 +476,7 @@ missing on-ramp documents, an unstated scope, and no licence.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8).
 3. **A reader can find the path in**: an ordered implementation checklist and a
-   pitfalls page, both linking into the normative text.
+   pitfalls page, both linking into the normative text. ✅ M3.
 4. **Zero unexplained failures over both corpora.** ✅ as of M2: the last one,
    `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
@@ -592,28 +592,28 @@ makes `aod_flushed.root`'s `TTreePerfStats` decode: its `TVirtualPerfStats` base
 is ten bytes, a bare `TObject`, and `fReadaheadSize` lands on 256000 exactly
 where §9.9's byte count said it would. **Both corpora are now at 0 failures.**
 
-**M3 — the on-ramp: `ReaderChecklist.md`, `Pitfalls.md`, `Bibliography.md`.**
-*The difference between a correct specification and a usable one. No new research
-— all three are collation.*
+**M3 — ✅ done 2026-09-17. The on-ramp.**
+*The difference between a correct specification and a usable one, and all three
+pages are collation rather than research.*
 
-- `ReaderChecklist.md`: the implementation order, with milestones a reader can
-  stop at — open a file and list its keys; decompress; read the streamer infos;
-  hardcode the bootstrap set; decode an arbitrary object; read an unsplit tree;
-  read a split tree; RNTuple. Each step names the documents, the fixtures that
-  prove it, and the invariants worth checking. `Bootstrap.md` is one section of
-  this and is already written.
-- `Pitfalls.md`: the traps, each one sentence plus a link — the two byte orders
-  in one file; `Long_t` at 8 bytes on disk; `kIsReferenced` changing a fixed
-  layout's length; version 0 versus a foreign class's checksum; `fType` 500;
-  `fSize` and `fOffset` being unusable; `fType` not being stable across
-  platforms; a `Bool_t` that is `0x99`; a streamer info that is fiction; the
-  shared `pair` checksum; `flag >= 80` baskets with no offset array; the
-  `!=`-versus-`>` compression test; `TStreamerInfo` order not being file content.
-- `Bibliography.md`: ROOT's own docs (with what each is and is not good for), the
-  user's guide, and the prior-art readers with a note on what each got right.
+- ✅ [`ReaderChecklist.md`](spec/99-appendix/ReaderChecklist.md) — the whole
+  specification as a work order. Eight milestones, each one a state in which
+  something works: list a file's contents, decompress, read the streamer infos,
+  decode an arbitrary object, then the classes the info gets wrong, an unsplit
+  tree, a split tree, the rest. Each names its documents, its fixtures and the
+  checks worth running there, and it ends with two sections the layer documents
+  cannot carry — how to know you are right, and what can be left out.
+- ✅ [`Pitfalls.md`](spec/99-appendix/Pitfalls.md) — **forty-five** of them, in
+  six groups, each a sentence or two and a link to the section that specifies it.
+  Two are ROOT's bugs rather than a reader's and are labelled as such.
+- ✅ [`Bibliography.md`](spec/99-appendix/Bibliography.md) — ROOT's own
+  documentation with what each part is good *for* (the RNTuple spec is real; the
+  TFile docs are a source of questions; the reference guide tells you what a
+  member means and nothing about how it is written), the five other readers built
+  without a specification, and the two corpora.
 
-*Done when*: the three pages exist, the strict build passes, and every link in
-them resolves to a section that actually says what the line claims.
+`spec/index.md` now opens with the checklist, since "I am here to implement
+something" is the common case, and two stale claims on that page went with it.
 
 **M4 — state the scope, and refresh the front pages.**
 *A reader cannot currently tell whether a gap is unknown or deliberate.*

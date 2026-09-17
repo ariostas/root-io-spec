@@ -29,15 +29,22 @@ known gap.
 | Container — all of it | written |
 | Serialization — framing, streamer info, element types, the reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes — `TArray` | written |
-| Standard classes — everything else | not yet written |
+| Standard classes — the divergent set, bar nine narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
-| Appendix — bootstrap classes, glossary | written |
+| Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
 
 ## How to read it
 
-Start with [Conventions](00-conventions.md). It fixes the things every other
+**If you are here to implement something**, start with
+[Implementing a reader](99-appendix/ReaderChecklist.md). It is this material as a
+work order: eight milestones, each a state in which something works, with the
+documents, the reference files and the checks for each one. Keep
+[Pitfalls](99-appendix/Pitfalls.md) open beside it — forty-five things that are
+true, unobvious, and have cost somebody time.
+
+To read the format rather than build on it, start with
+[Conventions](00-conventions.md). It fixes the things every other
 document assumes: byte order — ROOT uses **two** in the same file — the primitive
 type widths, the four distinct string encodings, and the notation used for byte
 layouts.
@@ -57,13 +64,20 @@ Then the layers, in order. They build on each other:
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes its audit has produced so far. Read the copy for the
    format and [ERRATA](05-rntuple/ERRATA.md) for where it and ROOT's code
-   disagree; three entries so far, all in the anchor.
+   disagree; six entries so far, one of which has already made two readers in
+   ROOT's own repository diverge.
 
 [Bootstrap classes](99-appendix/Bootstrap.md) cuts across all of them, and is the
 one to read if the question is "what do I have to implement before anything
 works?" The layers are organised for describing the format; that appendix is
-organised as a work order. [Glossary](99-appendix/Glossary.md) defines every term
-used with a meaning it does not have in ordinary English.
+organised as a work order.
+[Hand-written streamers](99-appendix/HandWrittenStreamers.md) and
+[Forwarding streamers](99-appendix/ForwardingStreamers.md) are the two lists that
+cannot be derived from a file and so have to be published.
+[Glossary](99-appendix/Glossary.md) defines every term used with a meaning it does
+not have in ordinary English, and
+[Bibliography](99-appendix/Bibliography.md) says what else exists and what each of
+it is good for.
 
 ## Two things to know before implementing
 

@@ -59,10 +59,13 @@ nav = [
       { "Implementation notes" = "05-rntuple/NOTES.md" },
   ] },
   { "Appendix" = [
+      { "Implementing a reader" = "99-appendix/ReaderChecklist.md" },
+      { "Pitfalls" = "99-appendix/Pitfalls.md" },
       { "Bootstrap classes" = "99-appendix/Bootstrap.md" },
       { "Hand-written streamers" = "99-appendix/HandWrittenStreamers.md" },
       { "Forwarding streamers" = "99-appendix/ForwardingStreamers.md" },
       { "Glossary" = "99-appendix/Glossary.md" },
+      { "Bibliography" = "99-appendix/Bibliography.md" },
   ] },
 ]
 
