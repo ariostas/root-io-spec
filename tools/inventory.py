@@ -37,6 +37,18 @@ member by what its `Streamer` actually does when reading:
     describe the bytes at *any* version. **These need hand-written text**, and a
     class here that the specification does not account for is a hole.
 
+It answers a second question in the same pass, for
+`spec/99-appendix/ForwardingStreamers.md`: **which classes write nothing of their
+own even though their `Streamer` is generated?** For a `ClassDef` version `<= 0`
+selected with a plain `#pragma link C++ class X;` — no `+`, no `-` — `rootcling`
+emits a body that calls each base's `Streamer` and returns
+(`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`), chosen at
+`root/core/clingutils/src/TClingUtils.cxx:3016`. Such a class writes no version
+word, no byte count and none of its members, while still recording a streamer
+info that lists them. Nothing in a file distinguishes it from a version-0 class
+read through `ReadClassBuffer`, so the list has to be published; that is what the
+second document is.
+
 Every row carries a `path:line` citation, and every `custom` and `extending` row
 must be resolved in `spec/99-appendix/streamers.toml` — to the document that specifies it, or
 explicitly to a gap. A submodule bump that adds a hand-written `Streamer` fails
@@ -55,6 +67,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SUBMODULE = REPO / "root"
 DOCUMENT = REPO / "spec/99-appendix/HandWrittenStreamers.md"
+FORWARDING_DOCUMENT = REPO / "spec/99-appendix/ForwardingStreamers.md"
 SIDECAR = REPO / "spec/99-appendix/streamers.toml"
 
 #: A definition of `X::Streamer(TBuffer &)`. The class name may carry template
@@ -369,6 +382,100 @@ def streamers() -> dict[str, dict]:
             for name, sources in bodies.items()}
 
 
+#: `#pragma link C++ class X;`, with the trailing flag left in the name so that
+#: `+` (request a streamer info, hence `ReadClassBuffer`), `-` (generate no
+#: `Streamer` at all) and plain can be told apart. `options=...` may precede
+#: `class`; `#pragma link off ...` deselects and must not match.
+LINK = re.compile(
+    r"^[ \t]*#pragma[ \t]+link[ \t]+C\+\+[ \t]+"
+    r"(?:options[ \t]*=[ \t]*\S+[ \t]+)?class[ \t]+(.+?)[ \t]*;", re.M)
+
+#: A `#pragma link C++ defined_in "header";` selects everything in a header, with
+#: no per-class flag. Eight exist, all naming TMVA's GUI headers, and they are
+#: reported rather than resolved -- see `ForwardingStreamers.md` §4.
+DEFINED_IN = re.compile(
+    r"^[ \t]*#pragma[ \t]+link[ \t]+C\+\+[ \t]+defined_in[ \t]+(\S+)[ \t]*;", re.M)
+
+
+def selections() -> tuple[dict[str, set[str]], dict[str, str], list[str]]:
+    """What every `#pragma link C++ class` in the submodule selects.
+
+    Returns the set of flags seen per class (`""`, `"+"`, `"-"` or `"!"`), the
+    LinkDef path each class was first seen in, and the `defined_in` selections,
+    which carry no flag and so cannot be classified.
+
+    Template selections are kept out: a `ClassDef` names the template and a
+    pragma names the specialization, so `vector<TObject*>+` matches nothing this
+    is compared against, and a line continued with a backslash would otherwise give a
+    half-spelled name.
+    """
+    flags: dict[str, set[str]] = {}
+    where: dict[str, str] = {}
+    wildcards: list[str] = []
+    for path in sorted(SUBMODULE.rglob("LinkDef*.h")):
+        relative = str(path.relative_to(REPO))
+        if EXCLUDED.search("/" + relative):
+            continue
+        try:
+            text = blank(path.read_text(errors="ignore"))
+        except OSError:
+            continue
+        for match in DEFINED_IN.finditer(text):
+            wildcards.append(f"{relative}: defined_in {match.group(1)}")
+        for match in LINK.finditer(text):
+            name = match.group(1).strip()
+            flag = ""
+            if name[-1:] in "+-!":
+                name, flag = name[:-1].strip(), name[-1]
+            if "<" in name or ">" in name or "\\" in name or " " in name:
+                continue        # a specialization, or a continued line
+            flags.setdefault(name, set()).add(flag)
+            where.setdefault(name, relative)
+    return flags, where, wildcards
+
+
+def forwarding() -> tuple[list[tuple[str, str]], list[str]]:
+    """Classes whose generated `Streamer` writes only their bases, and the doubts.
+
+    The rule is `ClassDef` version `<= 0` **and** a plain selection. Both halves
+    matter: `+` routes the class through `ReadClassBuffer`, which writes a version
+    word of 0 rather than nothing, and `-` means the class supplies its own
+    `Streamer` -- `TCollection` is version 3 with a `-`, `TSeqCollection` is
+    version 0 and plain, and the two sit four lines apart in the same LinkDef
+    (`root/core/cont/inc/LinkDef.h:29`, `root/core/cont/inc/LinkDef.h:49`).
+
+    A class selected both plainly and with `+`, or whose `ClassDef` version is
+    ambiguous because ROOT's own tests declare a class of the same name, is
+    reported rather than guessed at.
+    """
+    import check_versions
+
+    versions = check_versions.class_versions()
+    flags, where, _ = selections()
+    rows: list[tuple[str, str]] = []
+    doubts: list[str] = []
+    for name in sorted(flags):
+        seen = versions.get(name)
+        if not seen:
+            continue            # selected but no ClassDef: not a persistent class
+        if flags[name] != {""}:
+            if "" in flags[name] and max(seen) <= 0:
+                doubts.append(
+                    f"{name}: selected both plainly and with "
+                    f"{sorted(flags[name] - {''})}, so which Streamer was "
+                    f"generated depends on the dictionary")
+            continue
+        if max(seen) > 0:
+            continue            # an old-style streamer, but a versioned one
+        if min(seen) != max(seen):
+            doubts.append(f"{name}: ClassDef versions {sorted(seen)} in the "
+                          f"submodule, so the name is ambiguous")
+            continue
+        module = "/".join(where[name].split("/")[1:3])
+        rows.append((name, module))
+    return rows, doubts
+
+
 def notes() -> dict[str, dict]:
     with SIDECAR.open("rb") as handle:
         return tomllib.load(handle).get("class", {})
@@ -422,16 +529,41 @@ def summary(found: dict[str, dict],
     return out
 
 
-def block(lines: list[str], name: str) -> tuple[int, int]:
+def render_forwarding(rows: list[tuple[str, str]]) -> list[str]:
+    """The forwarding classes as a definition list, by ROOT module.
+
+    534 names is too many for a table and the module is the useful grouping:
+    almost every one of them is a GUI or graphics class that never reaches a
+    file, and seeing that at a glance is part of the answer.
+    """
+    import textwrap
+
+    modules: dict[str, list[str]] = {}
+    for name, module in rows:
+        modules.setdefault(module, []).append(name)
+    out: list[str] = []
+    for module in sorted(modules):
+        names = ", ".join(f"`{n}`" for n in sorted(modules[module]))
+        out.append(f"`{module}` ({len(modules[module])})")
+        body = textwrap.wrap(names, width=76,
+                             break_long_words=False, break_on_hyphens=False)
+        for i, line in enumerate(body):
+            out.append(f"{':   ' if i == 0 else '    '}{line}")
+        out.append("")
+    return out[:-1] if out else out
+
+
+def block(lines: list[str], name: str,
+          document: Path = DOCUMENT) -> tuple[int, int]:
     begin = BEGIN.format(name)
     try:
         start = lines.index(begin)
     except ValueError:
-        sys.exit(f"{DOCUMENT}: no block {begin!r}")
+        sys.exit(f"{document}: no block {begin!r}")
     for i in range(start + 1, len(lines)):
         if lines[i] == END:
             return start, i
-    sys.exit(f"{DOCUMENT}: block {name!r} is not closed")
+    sys.exit(f"{document}: block {name!r} is not closed")
 
 
 def rebuild(found: dict[str, dict], annotations: dict[str, dict]) -> str:
@@ -441,6 +573,17 @@ def rebuild(found: dict[str, dict], annotations: dict[str, dict]) -> str:
         lines[start + 1:stop] = render(found, annotations, kind)
     start, stop = block(lines, "summary")
     lines[start + 1:stop] = summary(found, annotations)
+    return "\n".join(lines) + "\n"
+
+
+def rebuild_forwarding(rows: list[tuple[str, str]]) -> str:
+    lines = FORWARDING_DOCUMENT.read_text().splitlines()
+    start, stop = block(lines, "forwarding", FORWARDING_DOCUMENT)
+    lines[start + 1:stop] = render_forwarding(rows)
+    start, stop = block(lines, "forwarding-count", FORWARDING_DOCUMENT)
+    modules = {module for _, module in rows}
+    lines[start + 1:stop] = [
+        f"**{len(rows)} classes**, in {len(modules)} of ROOT's modules."]
     return "\n".join(lines) + "\n"
 
 
@@ -476,26 +619,38 @@ def main(argv: list[str]) -> int:
     counts = {k: sum(1 for e in found.values() if e["kind"] == k)
               for k in KINDS}
 
+    rows, doubts = forwarding()
     problems = unresolved(found, annotations)
-    wanted = rebuild(found, annotations)
-    stale = wanted != DOCUMENT.read_text()
+    # A class cannot both supply a `Streamer` and have one generated for it: the
+    # first needs a `-` and the second a plain selection. If the two lists ever
+    # overlap, one of the two extractions is wrong.
+    overlap = sorted({n for n, _ in rows} & set(found))
+    problems += [f"{n}: both hand-written and generated-forwarding, which "
+                 f"cannot both be true" for n in overlap]
+
+    documents = ((DOCUMENT, rebuild(found, annotations)),
+                 (FORWARDING_DOCUMENT, rebuild_forwarding(rows)))
+    stale = [d for d, wanted in documents if wanted != d.read_text()]
 
     if args.check:
-        for problem in problems:
+        for problem in problems + doubts:
             print(f"UNRESOLVED {problem}", file=sys.stderr)
-        if stale:
-            print(f"STALE {DOCUMENT.relative_to(REPO)} does not match the "
+        for document in stale:
+            print(f"STALE {document.relative_to(REPO)} does not match the "
                   f"submodule; run tools/inventory.py", file=sys.stderr)
         if problems or stale:
             return 1
     else:
-        DOCUMENT.write_text(wanted)
-        for problem in problems:
+        for document, wanted in documents:
+            document.write_text(wanted)
+        for problem in problems + doubts:
             print(f"UNRESOLVED {problem}", file=sys.stderr)
 
     total = sum(counts.values())
     print(f"{total} hand-written Streamer(s): "
           + ", ".join(f"{counts[k]} {k}" for k in KINDS))
+    print(f"{len(rows)} class(es) whose generated Streamer writes only their "
+          f"bases")
     return 1 if problems else 0
 
 

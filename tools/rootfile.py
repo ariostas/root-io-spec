@@ -1190,6 +1190,29 @@ CUSTOM_STREAMER = {
     "TMatrixTSym",
 }
 
+# Classes whose *generated* Streamer writes only their base classes: ClassDef
+# version <= 0 selected with a plain `#pragma link C++ class X;`, for which
+# rootcling emits a body that calls each base's Streamer and returns -- no
+# version word, no byte count, none of its own members
+# (root/core/dictgen/src/rootcling_impl.cxx:1332-1367).
+#
+# Nothing in a file distinguishes such a class from a version-0 class read
+# through ReadClassBuffer, which writes a version word of 0, so the list is
+# out-of-band knowledge a reader has to carry. spec/99-appendix/ForwardingStreamers.md
+# publishes all 534 of them; these are the three that any file in either corpus
+# names, and the rest are a lookup table for the day a file surprises this
+# reader. StreamerDriven.md 4.5.
+FORWARDING_STREAMER = {
+    # a kBase of TList and TObjArray, in 240 files
+    "TSeqCollection",
+    # TAxis::fLabels and TGeoManager::fHashPNE are THashList*, so any labelled
+    # axis writes one. Read by read_sequence, which implements the TList base
+    # this would forward to, so the dispatch below never reaches it.
+    "THashList",
+    # a kBase of TTreePerfStats, in aod_flushed.root
+    "TVirtualPerfStats",
+}
+
 _PI_LITERALS = {
     "pi": 3.141592653589793,
     "2pi": 6.283185307179586,
@@ -1290,6 +1313,9 @@ class Decoder:
         # this specification's; `custom` extends it with classes a caller has
         # diagnosed in a particular file.
         self.custom = CUSTOM_STREAMER | set(custom or ())
+        # And a second list, for the opposite reason: these have a *generated*
+        # Streamer that writes only their bases. ForwardingStreamers.md.
+        self.forwarding = FORWARDING_STREAMER
         # In tolerant mode an object whose class cannot be read is skipped by its
         # byte count and recorded, instead of failing the whole read. That is what
         # StreamerDriven.md section 8 says a partial reader should do; it is off by
@@ -1394,6 +1420,8 @@ class Decoder:
                          type_name="TDatime")
         if cls.startswith("TMatrixTSym<"):
             return self.read_matrix_sym(cls, offset)
+        if cls in self.forwarding:
+            return self.read_forwarded(cls, offset, counters)
         try:
             frame = read_frame(self.buf, offset)
             version, body = self.resolve_version(cls, frame)
@@ -1404,6 +1432,39 @@ class Decoder:
             members[-1].end if members else body)
         return Value(name=cls, ftype=61, start=offset, end=end,
                      type_name=cls, members=members)
+
+    def read_forwarded(self, cls: str, offset: int,
+                       counters: dict[str, int] | None = None) -> Value:
+        """A class whose generated Streamer calls its bases and nothing else.
+
+        No version word and no byte count: the first byte of the object is the
+        first byte of its first base. The base list comes from the class's own
+        streamer info, which for a version-0 class holds its bases and nothing
+        more -- TStreamerInfo::Build skips every data member of such a class
+        (root/io/io/src/TStreamerInfo.cxx:552-554). Any non-base element is
+        therefore a member the streamer does not write and is ignored here.
+        ForwardingStreamers.md section 3.
+        """
+        by_version = self.infos.get(cls, {})
+        if not by_version:
+            raise UnsupportedClass(
+                f"{cls} writes only its bases, and no streamer info in this "
+                f"file names them")
+        info = by_version[min(by_version)]
+        members: list[Value] = []
+        pos = offset
+        if counters is None:
+            counters = {}
+        for el in info.elements:
+            if el.ftype not in (0, 66):
+                continue        # a member the forwarding streamer never writes
+            value = self.read_element_value(el, pos, counters)
+            members.append(value)
+            pos = value.end
+        return Value(name=cls, ftype=61, start=offset, end=pos, type_name=cls,
+                     members=members,
+                     note=f"{cls}: a forwarding Streamer, so its bases and "
+                          f"nothing else")
 
     def read_matrix_sym(self, cls: str, offset: int) -> Value:
         """A symmetric matrix: TMatrixTBase's frame, then the upper triangle.

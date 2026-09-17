@@ -11,12 +11,12 @@ Measured, 2026-09-17, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 35, plus the tracked RNTuple copy |
+| Specification documents | 36, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 65 / 1563, 0 failures |
-| Source citations checked | 1103, 0 failures |
+| Source citations checked | 1109, 0 failures |
 | Class versions checked against `ClassDef` | 25 |
 | Invariants over the fixtures | 65 files, 0 failures |
-| Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **1 failure** (§9.9) |
+| Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 25938 of 26011 branch-baskets, 99.7% |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
@@ -219,6 +219,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `Bootstrap.md` | The minimal hardcoded class set, in dependency order; the only document organised as a work order rather than by layer. `tools/test_bootstrap.py` checks its lists against what `rootfile.py` hardcodes, in both directions |
 | ✅ `Glossary.md` | Every term used with a meaning it does not have in ordinary English |
 | ✅ `HandWrittenStreamers.md` | Generated from the submodule by `inventory.py`; §2.4 |
+| ✅ `ForwardingStreamers.md` | The other half of the same question, from the same tool: the classes whose *generated* `Streamer` writes only their bases |
 | ☐ `ReaderChecklist.md` | An implementation checklist for a new reader — **MVP**, §8 item M3 |
 | ☐ `Pitfalls.md` | The things that have historically bitten implementers, each linking to the normative section — **MVP**, §8 item M3 |
 | ☐ `Bibliography.md` | The old ROOT docs, the user's guide, prior art — **MVP**, §8 item M3 |
@@ -476,8 +477,8 @@ missing on-ramp documents, an unstated scope, and no licence.
    is deliberately out of scope (decisions 7 and 8).
 3. **A reader can find the path in**: an ordered implementation checklist and a
    pitfalls page, both linking into the normative text.
-4. **Zero unexplained failures over both corpora.** One failure remains
-   (`aod_flushed.root`, §9.9), and it is explained but not cleared: item M2.
+4. **Zero unexplained failures over both corpora.** ✅ as of M2: the last one,
+   `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
    published site.
@@ -548,33 +549,48 @@ counts are visible), seven invariants in `check_invariants.py`, and a reader in
   "consumed 48 of 3528" — which is exactly the framed prefix. They now decode,
   and the foreign corpus is at 0 failures with one more branch-basket reached.
 
-**M2 — publish the list a reader cannot derive from a file.**
-*Clears the last corpus failure and hands over the one piece of out-of-band
-knowledge the format requires.*
+**M2 — ✅ done 2026-09-17. The list a reader cannot derive from a file is
+published.**
+*It clears the last failure over either corpus and hands over the one piece of
+out-of-band knowledge the format requires.*
 
 For a class whose `ClassDef` version is `≤ 0` **and** which was selected with a
-plain `#pragma link C++ class X;` rather than `X+`, `rootcling` generates a
-`Streamer` that calls each base's `Streamer` and **nothing else** — no version
-word, no byte count, no members
-(`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`, the choice being
+plain `#pragma link C++ class X;`, `rootcling` generates a `Streamer` that calls
+each base's `Streamer` and **nothing else** — no version word, no byte count, no
+members (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`, chosen at
 `root/core/clingutils/src/TClingUtils.cxx:3016`). Both generators write a
-streamer info and both record class version 0, so **nothing in the file
-distinguishes them**: `StreamerDriven.md` §4.5 states the rule and says a reader
-needs the class list out of band.
+streamer info and both record class version 0, so nothing in a file
+distinguishes them.
 
-Measured for this plan: 540 classes in the pinned submodule are version `≤ 0`
-with a plain link, but only **two occur as a base class anywhere in the 226
-corpus files** — `TSeqCollection` (348 occurrences) and `TVirtualPerfStats` (1).
-So the table is cheap to publish and the carried set is tiny.
+`tools/inventory.py` now extracts that set too — the same tool, a second
+CI-checked document, [`spec/99-appendix/ForwardingStreamers.md`](spec/99-appendix/ForwardingStreamers.md):
+**534 classes across 46 modules**, listed by module because the shape of the set
+is part of the answer. It also cross-checks the two lists against each other: a
+class cannot both supply a `Streamer` and have one generated for it, and an
+overlap fails `--check`.
 
-Work: extend `inventory.py` with a second generated table (version `≤ 0` + plain
-link, CI-checked like the first); reference it from `StreamerDriven.md` §4.5 and
-`Bootstrap.md`; carry it in `rootfile.py` as it already carries the bootstrap
-classes.
+What the measurement changed about the plan's own expectations:
 
-*Done when*: `check_invariants.py` over `gen/cern/` reports **0 failures**
-(`aod_flushed.root`'s `TTreePerfStats` record decodes), and the table is
-CI-checked.
+- **The set is not only GUI classes.** ROOT's *pure-subclass containers* are in
+  it — `THashList`, `TSortedList`, `TOrdCollection`, `THashTable`, `TPair`,
+  `TSeqCollection` — version 0 precisely because they add no persistent state to
+  their base. "Writes only its bases" is the design, not an accident.
+- **Three of the 534 occur in the corpora**, not the two this plan predicted:
+  `TSeqCollection` (a `kBase` of `TList` and `TObjArray`, 240 files),
+  `THashList` (the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any
+  labelled axis writes one, 38 files) and `TVirtualPerfStats` (1). No record in
+  either corpus has one as its class.
+- **The streamer info is not fiction here, only unframed.**
+  `TStreamerInfo::Build` skips every data member of a version-0 class
+  (`root/io/io/src/TStreamerInfo.cxx:552-554`), so a modern info lists exactly
+  the bases the streamer writes. Two ROOT 4.00/00 files show the older
+  behaviour, listing `TSeqCollection::fSorted` — a member no forwarding streamer
+  has ever written.
+
+`rootfile.py` carries the three and reads them by the published procedure, which
+makes `aod_flushed.root`'s `TTreePerfStats` decode: its `TVirtualPerfStats` base
+is ten bytes, a bare `TObject`, and `fReadaheadSize` lands on 256000 exactly
+where §9.9's byte count said it would. **Both corpora are now at 0 failures.**
 
 **M3 — the on-ramp: `ReaderChecklist.md`, `Pitfalls.md`, `Bibliography.md`.**
 *The difference between a correct specification and a usable one. No new research
@@ -844,13 +860,13 @@ records of `pippa.root` decompress with it. The lesson is the cheaper one: a
 claim in the document — "rare but readable" — had sat unverified long enough that
 its cost was assumed rather than measured.
 
-**The one open failure.** `aod_flushed.root` (ROOT 5.25/04) fails
-`StreamerDriven 10.1` on its `TTreePerfStats` record: the `kBase` element for
-`TVirtualPerfStats` contributes a bare `TObject`, ten bytes, with **no version
-word of its own**. The rule behind it is understood and written up
-(`StreamerDriven.md` §4.5): a version-0 class selected with a plain
-`#pragma link` gets a forwarding-only `Streamer`. It is not derivable from the
-file, which is why clearing this failure means publishing the class list — M2.
+**The one open failure, closed 2026-09-17.** `aod_flushed.root` (ROOT 5.25/04)
+failed `StreamerDriven 10.1` on its `TTreePerfStats` record, whose `kBase`
+element for `TVirtualPerfStats` contributes a bare `TObject`, ten bytes, with
+**no version word of its own** (`StreamerDriven.md` §4.5). The rule is not
+derivable from a file, so clearing it meant publishing the class list, which is
+M2 and `spec/99-appendix/ForwardingStreamers.md`. The record now decodes, with
+`fReadaheadSize` on 256000 exactly where the byte count said it would be.
 
 ### 9.10 What the corpora already contain — measured 2026-09-17
 

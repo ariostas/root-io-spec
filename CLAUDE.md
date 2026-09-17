@@ -162,6 +162,13 @@ specification, and each one must be resolved in
 `spec/99-appendix/streamers.toml` or `--check` fails, so a submodule bump cannot
 add one silently.
 
+It writes a second document in the same pass,
+`spec/99-appendix/ForwardingStreamers.md`: the classes whose **generated**
+`Streamer` writes only their bases, which is `ClassDef` version `<= 0` plus a
+plain `#pragma link`. That list is what a reader cannot derive from a file — both
+generators record a streamer info and both record class version 0 — and carrying
+it is what lets `rootfile.py` read `aod_flushed.root`'s `TTreePerfStats`.
+
 `extending` exists because the three-way split published a wrong claim for two
 months: `TMatrixTSym` reads the upper-right triangle after `ReadClassBuffer`, and
 calling that `delegating` told a reader it needed nothing. Two smaller traps in

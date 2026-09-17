@@ -268,10 +268,17 @@ late.
 
 **The file does not record which generator ran.** Both write a streamer info,
 both record class version 0, and the `+` suffix exists only in a `LinkDef.h`.
-Class version 0 is therefore a *warning* to a reader rather than an answer, and
-the only way through is the class list in
-[Hand-written streamers](../99-appendix/HandWrittenStreamers.md) plus the
-resynchronisation of §8.
+Class version 0 is therefore a *warning* to a reader rather than an answer.
+
+So the class list has to come from outside the file, and it is published as
+[Forwarding streamers](../99-appendix/ForwardingStreamers.md) — 534 classes,
+extracted from the pinned submodule and CI-checked, of which three occur anywhere
+in this project's two corpora. That page also gives the reading procedure and one
+fact that makes the case less alarming than it sounds: for a version-0 class,
+`TStreamerInfo::Build` records **no data members at all**
+(`root/io/io/src/TStreamerInfo.cxx:552-554`), so the info lists the bases the
+streamer actually writes and the only thing missing is the frame. Where the list
+runs out, §8's resynchronisation is the fallback.
 
 ## 5. Nested objects
 

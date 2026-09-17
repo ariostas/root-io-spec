@@ -13,6 +13,11 @@ file. This page is that set, extracted from the pinned submodule by
 `tools/inventory.py` and checked in CI, so a class that acquires or loses a
 hand-written `Streamer` in a later release cannot pass unnoticed.
 
+A **generated** `Streamer` can diverge too, in one specific way: for a class
+whose version is 0 and which was selected plainly, `rootcling` writes a body that
+calls its bases and returns. Those classes are the same tool's second output,
+[Forwarding streamers](ForwardingStreamers.md).
+
 <!-- BEGIN GENERATED: summary -->
 | Classification | Count | What a reader has to do |
 |---|---|---|

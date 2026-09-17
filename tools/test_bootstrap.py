@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """spec/99-appendix/Bootstrap.md against tools/rootfile.py.
 
+Two lists are compared: the classes whose `Streamer` is hand-written
+(`CUSTOM_STREAMER`) and the classes whose generated `Streamer` writes only their
+bases (`FORWARDING_STREAMER`). A reader has to carry both, for opposite reasons,
+and the document has to name both.
+
 The appendix lists the classes a reader must hardcode, and rootfile.py is a
 reader that hardcodes them. A list like that rots quietly: the reader learns
 about a divergent class and the document does not, or the document names one the
@@ -65,6 +70,7 @@ def reader_classes() -> set[str]:
     dispatched = set(re.findall(r'cls == "([^"]+)"',
                                 inspect.getsource(rootfile.Decoder.read_object)))
     return (set(rootfile.CUSTOM_STREAMER)
+            | set(rootfile.FORWARDING_STREAMER)
             | set(rootfile.Decoder.SEQUENCES)
             | set(rootfile.TARRAY_WIDTH)
             | set(rootfile.STD_STRING_NAMES)

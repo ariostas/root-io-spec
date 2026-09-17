@@ -259,6 +259,12 @@ exactly its own base, a bare `TObject`, and the record's bytes agree:
 Ten bytes for the base, with no version word of its own. Reading it as a framed
 object puts `fReadaheadSize` four bytes early and every later member with it.
 
+**The complete class list is published**, since a reader cannot derive it:
+[Forwarding streamers](../99-appendix/ForwardingStreamers.md), 534 classes
+extracted from the pinned submodule and CI-checked. `TSeqCollection` and
+`TVirtualPerfStats` are two of the three that occur anywhere in this project's
+corpora; the third is `THashList`, which any labelled `TAxis` writes.
+
 ## 7. Invariants
 
 1. A `TMap`'s pair count `n` satisfies `4 + 2 + 10 + len(fName) + 1 + 4 + (bytes
