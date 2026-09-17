@@ -125,6 +125,9 @@ class Checker:
         #: denominator for the SKIPPED counts, so that "0 failures" can be read
         #: against how much was actually reached.
         self.verified = 0
+        #: The payload of the TTree record whose branches are being checked,
+        #: where an embedded basket lives. TBranch.md 5.
+        self._tree_payload = None
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
@@ -1646,6 +1649,9 @@ class Checker:
                         # leaf's fLeafCount. TLeaf.md 3.1.
                         leaves.append(lf.counter)
             by_slot = {b.slot: b for b in rootfile.walk_branches(top)}
+            # An embedded basket lives in this record's payload, and the counter
+            # lookup below needs it. TBranch.md 5.
+            self._tree_payload = data
             _, _, infos = self.streamer_infos()
             reader = rootfile.TreeReader(self.buf, tree, infos or [],
                                          self.fetch_basket, custom=self.custom)
@@ -1709,6 +1715,15 @@ class Checker:
                              f"{consumed - start}")
                     return
             self.verified += 1
+        emb = br.embedded.get(br.write_basket)
+        if emb is not None and emb.basket.nev_buf:
+            # Reachable, unimplemented, and counted rather than passed over:
+            # TreeReader fetches baskets by file offset and an embedded basket
+            # has none. The leaf-driven check above does cover these.
+            self.skip("ReadingEntries 8.5",
+                      "the basket at fWriteBasket is embedded in the tree "
+                      "record and TreeReader fetches baskets by file offset, "
+                      "which an embedded basket has none of (TBranch.md 5)")
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
     ELEMENT_TYPES = {-1, 0, 1, 2, 3, 4, 31, 41}
@@ -2165,10 +2180,25 @@ class Checker:
                      f"{name}: fDefaultEntryOffsetLen "
                      f"{tree.default_entry_offset_len}")
 
+    def branch_class_version(self) -> int:
+        """The lowest TBranch class version any info in this file describes.
+
+        Which writer's conventions apply is a property of the file, not of the
+        branch: fMaxBaskets is exactly max(fWriteBasket + 1, 10) from version 8
+        on and a flat 1000 below it. TBranch.md 11.1, 13.2.
+        """
+        _, _, infos = self.streamer_infos()
+        versions = [i.class_version for i in (infos or []) if i.name == "TBranch"]
+        return min(versions) if versions else 13
+
     def check_branch(self, data, br) -> None:
         name = f"branch {br.name!r}"
         want = max(br.write_basket + 1, 10)
-        if br.max_baskets != want:
+        if br.max_baskets < want:
+            self.bad("TBranch 11.1",
+                     f"{name}: fMaxBaskets {br.max_baskets} is below "
+                     f"max(fWriteBasket + 1, 10) = {want}")
+        elif br.max_baskets != want and self.branch_class_version() >= 8:
             self.bad("TBranch 11.1",
                      f"{name}: fMaxBaskets {br.max_baskets}, expected {want} for "
                      f"fWriteBasket {br.write_basket}")
@@ -2197,11 +2227,14 @@ class Checker:
                 self.bad("TBranch 11.3",
                          f"{name}: fBasketEntry[fWriteBasket] {span[-1]} != "
                          f"fEntryNumber {br.entry_number}")
-        elif span[-1] >= br.entry_number:
+        elif span[-1] > br.entry_number and not br.branches:
             # The terminator was never written: the element is the embedded
-            # basket's first entry, so it must be below fEntryNumber.
+            # basket's first entry, so it is at most fEntryNumber -- equal when
+            # that basket is empty, and unconstrained on a split parent, where
+            # fEntryNumber is 0 and counts nothing (TBranch.md 11.3, section 5,
+            # section 7).
             self.bad("TBranch 11.3",
-                     f"{name}: fBasketEntry[fWriteBasket] {span[-1]} is not below "
+                     f"{name}: fBasketEntry[fWriteBasket] {span[-1]} is past "
                      f"fEntryNumber {br.entry_number} though basket "
                      f"{br.write_basket} is embedded")
 
@@ -2219,10 +2252,16 @@ class Checker:
                      f"{name}: fEntries {br.entries} != fEntryNumber - fFirstEntry "
                      f"({br.entry_number} - {br.first_entry})")
 
-        if br.basket_slots > br.write_basket + 1:
+        # The slot count is not fixed by fWriteBasket: a ROOT 4.00-era writer
+        # wrote fMaxBaskets slots and alice_ESDs.root writes one more than
+        # fWriteBasket + 1, leaving a basket ROOT never reads. What must hold is
+        # that the array cannot run past the arrays that index it, and that no
+        # slot pairs an embedded basket with a non-zero fBasketSeek.
+        # TBranch.md 11.9, section 5.
+        if br.basket_slots > br.max_baskets:
             self.bad("TBranch 11.9",
                      f"{name}: fBaskets has {br.basket_slots} slots, more than "
-                     f"fWriteBasket + 1 = {br.write_basket + 1}")
+                     f"fMaxBaskets = {br.max_baskets}")
         for index in br.embedded:
             if index < len(br.basket_seek) and br.basket_seek[index]:
                 self.bad("TBranch 11.9",
@@ -2362,16 +2401,31 @@ class Checker:
                 self.bad("TLeaf 10.5",
                          f"{name}: basket {i} has no entry-offset array though a "
                          f"leaf is variable-size")
-            if not variable:
+            if not variable and not br.entry_offset_len:
+                # fEntryOffsetLen is the writer's decision and the baskets follow
+                # it: a ROOT 4.00-era writer left it at 1000 on a fixed-width
+                # branch and wrote offsets anyway. TLeaf.md 10.6.
                 if basket.has_offsets:
                     self.bad("TLeaf 10.6",
                              f"{name}: basket {i} has an entry-offset array though "
-                             f"every leaf is fixed-size")
+                             f"every leaf is fixed-size and fEntryOffsetLen is 0")
                 elif basket.nev_buf_size != fixed_width:
                     self.bad("TLeaf 10.6",
                              f"{name}: fNevBufSize {basket.nev_buf_size} != the "
                              f"leaves' {fixed_width} bytes an entry")
             self.check_entries(payload, basket_rec, basket, br, leaves, i)
+
+        # And the basket that was never written as a record. Its entry offsets
+        # are relative to the raw block inside the TTree record rather than to a
+        # key, so the block start stands in for the record offset. Without this
+        # every branch of a file whose baskets are all embedded -- which is every
+        # legacy file in the corpora -- would be counted as checked while nothing
+        # in it was. TBranch.md 5, TBasket.md 4.1.
+        for i, emb in sorted(br.embedded.items()):
+            if i > br.write_basket or emb.block < 0 or not emb.basket.nev_buf:
+                continue
+            self.check_entries(data, rootfile.Record(offset=emb.block, nbytes=0),
+                               emb.basket, br, leaves, i)
 
     def generated_offsets(self, basket, br, leaves, index):
         """TBasket.md 5.2.1: the offsets a flag-80 basket does not store."""
@@ -2467,19 +2521,24 @@ class Checker:
             i = rootfile.find_basket(owner, entry)
             rec = self.basket_record(owner.basket_seek[i])
             if rec is None:
-                # Two different causes used to share one message. This one is a
-                # basket that was never written as its own record: the counter
-                # branch kept it embedded in the TTree record (TBranch.md 5), and
-                # this lookup can only fetch a record. Reachable, unimplemented.
-                raise rootfile.UnsupportedClass(
-                    f"counter basket {i} of branch {owner.name!r} is embedded in "
-                    f"the tree record, which this lookup cannot fetch")
-            payload = self.data(rec)
-            if payload is None:
-                raise rootfile.UnsupportedClass(
-                    f"counter basket {i} of branch {owner.name!r} could not be "
-                    f"decompressed")
-            basket = self.basket(rec, payload)
+                # No record: the counter branch kept this basket embedded in the
+                # TTree record (TBranch.md 5), so it is in the payload the
+                # branches themselves came out of, and its entry offsets are
+                # relative to the raw block rather than to a key (TBasket.md 4.1).
+                emb = owner.embedded.get(i)
+                if emb is None or emb.block < 0 or self._tree_payload is None:
+                    raise rootfile.UnsupportedClass(
+                        f"counter basket {i} of branch {owner.name!r} is neither a "
+                        f"record nor an embedded basket this reader can locate")
+                rec = rootfile.Record(offset=emb.block, nbytes=0)
+                payload, basket = self._tree_payload, emb.basket
+            else:
+                payload = self.data(rec)
+                if payload is None:
+                    raise rootfile.UnsupportedClass(
+                        f"counter basket {i} of branch {owner.name!r} could not be "
+                        f"decompressed")
+                basket = self.basket(rec, payload)
             spans = rootfile.entry_spans(payload, rec, basket, owner,
                                          entry - owner.basket_entry[i], {}, leaves)
             start = next(s for lfx, s, _ in spans if lfx is counter)

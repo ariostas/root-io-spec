@@ -171,8 +171,8 @@ an uncompressed branch the two are equal.
 ## 5. `fBaskets` is written, and is usually empty
 
 `fBaskets` is declared `//->` rather than `//!`, so the streamer info lists it and
-it is on disk. It holds `fWriteBasket + 1` slots, and on any file written by
-`TTree::Write` every one of them is **null**.
+it is on disk. It usually holds `fWriteBasket + 1` slots, and on any file written
+by `TTree::Write` every one of them is **null**.
 
 That is not a property of the format but of two pieces of code acting in
 sequence. `TTree::Write` flushes every basket before streaming anything
@@ -210,6 +210,21 @@ file offset. Its layout is
 > Not to be confused with [TBasket §10](TBasket.md#10-errata) erratum 8, which is
 > about the shipped documentation claiming that one basket per branch is
 > *normally* embedded. It was, before ROOT 5.20/00; it has not been since.
+
+Two things a reader must not assume about the array, both measured over the two
+corpora of `PLAN.md` §9.8 and §9.9:
+
+- **An embedded basket may be empty.** 92 branches in three files have an
+  embedded basket at `fWriteBasket` whose first entry *equals* `fEntryNumber`, so
+  it holds no entries at all: the branch was flushed and then written without
+  another entry arriving. Its `fNevBuf` is 0 and invariant 6 still holds.
+- **A slot above `fWriteBasket` may hold a basket, and must be ignored.**
+  `alice_ESDs.root` (ROOT 5.34) writes two embedded baskets on each of its 19
+  collection count branches while `fWriteBasket` is 0. ROOT reads index
+  `fWriteBasket` down to 0 and never looks higher
+  (`root/tree/tree/src/TBranch.cxx:3002-3009`), so the second one is unreachable
+  by design rather than corrupt. A ROOT 4.00-era writer, differently, wrote all
+  `fMaxBaskets` slots with the unused ones null.
 
 ## 6. `fEntryOffsetLen`
 
@@ -389,14 +404,19 @@ the remaining entries live.
 
 ## 11. Invariants
 
-1. `fMaxBaskets == max(fWriteBasket + 1, 10)`, and the three counted pointers each
-   have `fMaxBaskets` elements with their *is present* flag set.
+1. `fMaxBaskets >= max(fWriteBasket + 1, 10)`, and the three counted pointers each
+   have `fMaxBaskets` elements with their *is present* flag set. **Equality** holds
+   for every branch a writer from ROOT 4.00 on produced — 12 125 of them measured
+   — but not below: at class version 7 the writer allocated a flat 1000 however
+   few baskets it filled (§13.2).
 2. `0 <= fWriteBasket < fMaxBaskets`.
 3. `fBasketEntry[0] == fFirstEntry` and `fBasketEntry` is non-decreasing over
    `[0, fWriteBasket]`. `fBasketEntry[fWriteBasket] == fEntryNumber` **when slot
    `fWriteBasket` of `fBaskets` is null**; when it holds an embedded basket, that
-   element is the embedded basket's first entry instead and is below
-   `fEntryNumber`.
+   element is the embedded basket's first entry instead and is **at most**
+   `fEntryNumber` — equal when the embedded basket is empty, which happens when
+   the branch was flushed and then written without another entry (92 branches
+   measured, §5). Invariant 6 pins the difference exactly.
 4. `fBasketBytes[i]`, `fBasketEntry[i]` and `fBasketSeek[i]` are 0 for every
    `i > fWriteBasket`.
 5. For `i < fWriteBasket` with `fFileName` empty: `fBasketSeek[i]` is the offset
@@ -410,8 +430,15 @@ the remaining entries live.
    `fTotBytes` the sum of `fObjlen + fKeylen` over the same baskets.
 8. `fEntries == fEntryNumber - fFirstEntry`, **unless the branch has
    sub-branches**, where `fEntryNumber` may be 0 while `fEntries` counts (§7).
-9. `fBaskets` holds `fWriteBasket + 1` slots, and none of them holds a `TBasket`
-   for which `fBasketSeek` is non-zero.
+9. No slot of `fBaskets` holds a `TBasket` for which `fBasketSeek` is non-zero,
+   and no slot above `fWriteBasket` holds anything a reader may use: ROOT walks
+   indices `fWriteBasket` down to 0 and no further
+   (`root/tree/tree/src/TBranch.cxx:3002-3009`). The **slot count** is not fixed
+   by `fWriteBasket`: it is `fWriteBasket + 1` for 11 028 branches measured, one
+   or more *less* when the trailing slots are null and the writer's `TObjArray`
+   trimmed them, `fMaxBaskets` for a ROOT 4.00-era writer, and `fWriteBasket + 2`
+   in one ROOT 5 file that left a second embedded basket above the write index
+   (§5).
 10. `fLeaves` is not empty, **unless the branch has sub-branches**, where it may
     hold nothing at all (§9.1).
 11. `fEntryOffsetLen` is 0 or at least 10, and is 0 only if no leaf of this branch
@@ -455,7 +482,7 @@ side; see [TLeaf §3.2](TLeaf.md#32-foffset-is-a-position-in-the-entry).
 | 6 | the oldest version the `v > 5` legacy path reads (`root/tree/tree/src/TBranch.cxx:3035-3108`) |
 | 7 | `fSplitLevel` added |
 | 8 | the `TAttFill` base added |
-| 9 | `fBasketSeek` widened from `Seek_t` to `Long64_t`, marked by a flag byte of **2** rather than 1 on that member (§13.1) |
+| 9 | `fBasketSeek` widened from `Seek_t` to `Long64_t`, marked by a flag byte of **2** rather than 1 on that member (§13.3) |
 | 10 | `fEntryNumber` `Int_t` → `Long64_t`; `fEntries`, `fTotBytes`, `fZipBytes` `Stat_t` (a `double`) → `Long64_t`; `fBasketEntry` `Int_t*` → `Long64_t*`. First version read by the streamer info |
 | 11 | `fFirstEntry` added |
 | 12 | two transient members dropped; no change on disk |
@@ -464,14 +491,81 @@ side; see [TLeaf §3.2](TLeaf.md#32-foffset-is-a-position-in-the-entry).
 Everything above 9 is read by `ReadClassBuffer` from the file's own streamer
 info, so a reader that follows [Streamer-driven reading](../02-serialization/StreamerDriven.md)
 needs no version knowledge for those — including the difference between 10, 11
-and 13, which the file's own streamer info states. A version at or below 9 needs
-the legacy layouts, which this document does not give; see `PLAN.md` §9.1.
+and 13, which the file's own streamer info states.
 
 The threshold is 9 and not some other number because version 10 is where the
 widths settled: below it the same member name has a different width, which is
-the one thing schema evolution of that era could not express.
+the one thing schema evolution of that era could not express. §13.1 gives the
+layout for 6 to 9.
 
-### 13.1 At version 9 the streamer info is not authoritative
+### 13.1 The layout below version 10
+
+`TBranch::Streamer` hand-codes the read for every version at or below 9
+(`root/tree/tree/src/TBranch.cxx:3035-3108`). In order, with no framing of its
+own beyond the branch's byte count and version word:
+
+| Member | On disk | Present |
+|---|---|---|
+| `TNamed` base | a framed object: byte count, version word, `TObject`, `fName`, `fTitle` | always |
+| `TAttFill` base | a framed object, 2 bytes of payload | **version 8 and above** |
+| `fCompress` | `i32` | always |
+| `fBasketSize` | `i32` | always |
+| `fEntryOffsetLen` | `i32` | always |
+| `fWriteBasket` | `i32` | always |
+| `fEntryNumber` | **`i32`** — `Long64_t` from version 10 | always |
+| `fOffset` | `i32` | always |
+| `fMaxBaskets` | `i32`, the counter for the three arrays below | always |
+| `fSplitLevel` | `i32` | **version 7 and above** |
+| `fEntries` | **`f64`** — `Stat_t` is a `double`; `Long64_t` from version 10 | always |
+| `fTotBytes` | **`f64`** | always |
+| `fZipBytes` | **`f64`** | always |
+| `fBranches` | a `TObjArray` | always |
+| `fLeaves` | a `TObjArray` | always |
+| `fBaskets` | a `TObjArray` | always |
+| `fBasketBytes` | a flag byte, then **`fMaxBaskets`** `i32` | always |
+| `fBasketEntry` | a flag byte, then **`fMaxBaskets`** `i32` — `i64` from version 10 | always |
+| `fBasketSeek` | a flag byte, then `fMaxBaskets` values **4 or 8 bytes wide, chosen by the flag** (§13.3) | always |
+| `fFileName` | a bare counted string | always |
+
+Three things in that table are not what a modern reader expects, and each one
+desynchronises the parse rather than producing a wrong value:
+
+- **`fEntries`, `fTotBytes` and `fZipBytes` are doubles.** `Stat_t` was a
+  `double` until version 10 made all three `Long64_t`. The width is the same;
+  the interpretation is not.
+- **`fEntryNumber` and every element of `fBasketEntry` are 4 bytes**, not 8.
+- **The three arrays are always read in full**, `fMaxBaskets` values each. The
+  flag byte in front of each is read and, for two of them, discarded: unlike the
+  generated streamer's *is present* byte, a zero here does not mean the values
+  are absent (`root/tree/tree/src/TBranch.cxx:3055-3066`). Every legacy branch
+  measured writes 1 there.
+
+**The recorded streamer info agrees with this, element for element**, on all 116
+legacy branches in the two corpora — `mlpHiggs.root` at version 7,
+`uproot-from-geant4.root` at 8 and `stock.root` at 9. That is a measurement and
+not a rule: the one member where the two disagree is §13.3's, and it disagrees
+at exactly the version where a reader is most likely to trust the info.
+
+> `tools/rootfile.py` reads these versions from the order above rather than from
+> the info, and checks that the parse ends on the branch's byte count. All 116
+> do. **No reference file covers this section and none can**: the writers are
+> ROOT 3.04 and 4.00. The evidence is the three corpus files named above, and
+> `tools/test_ttree.py` pins the version gates and the width selector against a
+> synthetic buffer.
+
+### 13.2 What the legacy writers did differently
+
+The layout is not the only thing that changed. Two writer conventions that
+invariants §11.1 and §11.9 state for current files do not hold below them, and
+both were measured rather than derived:
+
+| Version | Convention | Measured |
+|---|---|---|
+| 7 | `fMaxBaskets` is a flat **1000**, whatever `fWriteBasket` is, so the three arrays are 1000 elements long and all but the first few are zero | `mlpHiggs.root`, 14 branches, `fWriteBasket` 0 and 12 003 bytes of arrays each |
+| 8 | `fBaskets` holds **`fMaxBaskets`** slots, not `fWriteBasket + 1`, with the unused ones null | `uproot-from-geant4.root`, 22 branches with 10 slots and one basket |
+| 8 and above | `fMaxBaskets == max(fWriteBasket + 1, 10)` | 12 125 branches, every version from 8 to 13 |
+
+### 13.3 At version 9 the streamer info is not authoritative
 
 A `TBranch` at class version 9 carries a streamer info declaring `fBasketSeek` as
 `Long64_t*`, element code 56. **The values on disk may still be four bytes each.**
@@ -486,11 +580,17 @@ for (i = 0; i < fMaxBaskets; i++) {
 }
 ```
 
-So a flag of 2 means 8-byte values and any other non-zero flag means 4-byte ones,
+So a flag of 2 means 8-byte values and anything else means 4-byte ones,
 regardless of what the info says. This is the concrete reason the generic algorithm
 cannot be used below version 10, and the reason `TBranch::Streamer` hand-codes the
 read: the recorded info describes the *class*, and at this version the class had
 outgrown what the file could say about it.
+
+**No file measured carries a flag of 2.** All 116 legacy branches in the two
+corpora write 1, so every legacy `fBasketSeek` seen is four bytes wide. A flag of
+2 needs a version-9 file whose baskets sit past 2 GB, which is a file nobody has
+published; the width selector is specified from the source and unwitnessed, and a
+reader that assumes 4 bytes unconditionally will read such a file wrongly.
 
 > Measured on `stock.root` in the corpus of `PLAN.md` §9.9, ROOT 4.00/07: its ten
 > trees all carry `TBranch` v9 with `fBasketSeek`'s flag byte **1**, and reading
@@ -498,8 +598,8 @@ outgrown what the file could say about it.
 > `fMaxBaskets × 4` bytes. Reading it as four-byte values makes all ten records
 > parse to their byte count exactly.
 
-`tools/rootfile.py` refuses `TBranch` below version 10 rather than guessing, and
-reports it as a named `NOT CHECKED`.
+`tools/rootfile.py` takes the width from the flag byte for every version below
+10, and §13.1 is the layout it reads.
 
 ## 14. Reference files
 

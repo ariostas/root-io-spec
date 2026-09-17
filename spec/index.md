@@ -128,11 +128,10 @@ and `tools/coverage_probe.py` prints the reason per record:
 |---|---|---|
 | No streamer infos in the file | 468 | the version floor above |
 | RooFit's own classes | 216 | out of scope, below |
-| `TBranch` class versions 7, 8 and 9 | 50 | **a gap** — the layout below version 10, [TBranch §13](04-ttree/TBranch.md#13-class-versions) |
-| `TASImage` | 8 | **a gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
 | An LZ4 payload where the `lz4` package is absent | 137 | the checker's environment, not the format |
+| `TASImage` | 8 | **the only gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
 
-Those two are the only **specification** gaps a file in either corpus hits. The
+`TASImage` is the only **specification** gap a file in either corpus hits. The
 remainder is a tail of single records of three kinds, none of them a hole in this
 document: a class used by a file whose streamer info that file does not contain,
 so no reader could decode it either; entry offsets the probe declines to
@@ -140,11 +139,14 @@ regenerate from the leaf, which
 [TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets) specifies;
 and one file ROOT itself refuses to open.
 
-**No other class in 226 files is below a hand-written version threshold.** The
-classes that keep a legacy layout under one — `TH1`, `TGraph`, `TFormula`, `TF1`,
-`TAxis`, `TTree`, `TLeafObject`, [listed here](03-classes/index.md#how-small-that-set-is)
-— occur only at versions above it, `TBranch` excepted. That is why those legacy
-branches are a low priority and not a hole underneath the reader.
+**No class in 226 files is below a hand-written version threshold except
+`TBranch`, whose legacy layout is now specified** —
+[TBranch §13.1](04-ttree/TBranch.md#131-the-layout-below-version-10) covers
+versions 6 to 9. The others that keep a legacy layout under a threshold — `TH1`,
+`TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree`, `TLeafObject`,
+[listed here](03-classes/index.md#how-small-that-set-is) — occur only at versions
+above it, which is why those branches are a low priority and not a hole
+underneath the reader.
 
 ### What is deliberately out of scope
 

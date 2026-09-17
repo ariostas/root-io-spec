@@ -364,7 +364,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
 | RNTuple | ◐ upstream tracked, envelopes audited, six errata; the type mapping is partial |
 | Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
-| Legacy reading (pre-ROOT 6) | ◐ specified where cited, unchecked where no file was available — §9.1, §9.10 |
+| Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ☐ §8 |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
@@ -706,28 +706,73 @@ catch a violation by `tools/test_large_files.py` — twelve mutation tests, sinc
 `parse_free_entries`, which keeps each entry's version word so invariant 4 can be
 stated at all.
 
-**M6 — the legacy layouts the corpora already contain.**
-*The largest remaining in-scope blocked category over files ROOT wrote, and
-§9.10 shows it is not blocked on `gen/legacy/` at all.*
+**M6 — ✅ done 2026-09-17. The legacy layouts the corpora already contain.**
+*The largest remaining in-scope blocked category over files ROOT wrote, and it
+turned out to be half specification and half an overstated coverage number.*
 
-| What | Records affected | Reproducer |
+`TBranch.md` gained §13.1, the member order below class version 10, and
+`rootfile.py` reads it. The three reproducers all decode: `mlpHiggs.root`
+(ROOT 3.04/02, version 7), `uproot-from-geant4.root` (4.00/00, version 8) and
+`stock.root` (4.00/07, version 9) — 116 legacy branches, each parse ending exactly
+on its byte count, and 17 tree records that had been `PARTIAL` since the corpora
+were added. `coverage_probe.py` no longer names `TBranch` anywhere, which leaves
+**`TASImage` as the only specification gap either corpus hits**.
+
+What the legacy layout actually is, because it is not what the version table
+suggested: `fEntries`, `fTotBytes` and `fZipBytes` are `Stat_t`, a **double**;
+`fEntryNumber` and every element of `fBasketEntry` are 4 bytes; and the three
+counted pointers are read in full, `fMaxBaskets` values each, whatever their flag
+byte says. And the surprise:
+
+- **The recorded streamer info is right, element for element, on all 116.** The
+  hand-coded order and the info's order agree at versions 7, 8 and 9. The legacy
+  layout was not missing from the files at all — what is missing is any way to
+  *know* that without checking, which is why `rootfile.py` reads the order from
+  the source and verifies the byte count rather than trusting the info. The one
+  member where they disagree is `fBasketSeek` at version 9 (§13.3), which is
+  exactly where a reader would most want to trust it.
+- **No file in either corpus carries the flag byte 2** that makes `fBasketSeek`
+  8 bytes wide. All 116 write 1. The width selector is specified from the source
+  and unwitnessed; it needs a version-9 file with baskets past 2 GB.
+
+Reading 116 branches nobody had read before broke four invariants, and each one
+was the invariant's fault rather than the files':
+
+| Invariant | Was | Is, and the witness |
 |---|---|---|
-| `TBranch` class versions 7, 8, 9 — **the only one that blocks a record** | 50 across both corpora | `mlpHiggs.root` 3.04/02 (v7), `uproot-from-geant4.root` 4.00/00 (v8), `stock.root` 4.00/07 (v9) |
-| Directory record versions 1, 3, 4 — read, but unwitnessed by a fixture (M4) | 31 directory records | `pippa.root` 2.24/00, and see §9.10 |
-| `TStreamerElement` at base version 2 | 979 elements | 6 corpus files; `rootfile.py` already reads them, the spec describes the shape only in passing |
-| `TStreamerInfo` record versions 2, 4, 5, 6 | 695 infos | same files; the collection layouts below info version 8 are the live question |
+| `TBranch` 11.1 | `fMaxBaskets == max(fWriteBasket + 1, 10)` | `>=`, with equality from class version 8 on — 12 125 branches. At version 7 the writer allocated a flat **1000**: `mlpHiggs.root`, 12 003 bytes of arrays per branch |
+| `TBranch` 11.3 | with an embedded basket, `fBasketEntry[fWriteBasket]` is **below** `fEntryNumber` | **at most**: an embedded basket may be empty, 92 branches in three files |
+| `TBranch` 11.9 | `fBaskets` holds `fWriteBasket + 1` slots | the slot count is not fixed by `fWriteBasket` — a ROOT 4.00-era writer wrote `fMaxBaskets` slots (22 branches), `alice_ESDs.root` writes one *more* than `fWriteBasket + 1` and ROOT never reads it, and a trimmed trailing null makes it fewer |
+| `TLeaf` 10.6 | a branch whose leaves are all fixed-size has no entry-offset array | only when its `fEntryOffsetLen` is 0. `uproot-issue-250.root` (ROOT 4.00) leaves it at the default 1000 on a `TLeafD` branch and its baskets carry offsets 8 bytes apart |
 
-`TBranch.md` §13.1 already carries the fact that makes the generic algorithm
-inapplicable at version 9 — the *is present* byte of `fBasketSeek` is a **width
-selector** (`root/tree/tree/src/TBranch.cxx:3062-3066`) — byte-verified on
-`stock.root`. What is missing is the full member order per version, and the
-reader's refusal below version 10 turned into a decode.
+**And then the coverage number.** The four invariants above were reachable only
+because refusing version 10 had also refused `alice_ESDs.root`, a ROOT 5.34 file
+whose baskets are all embedded. Chasing that turned up something bigger: neither
+entry check had ever looked at an **embedded** basket. The leaf-driven check
+iterated the baskets *below* `fWriteBasket` and an embedded one sits *at* it, so
+1266 branch-baskets were in neither the numerator nor the denominator of the
+`ENTRIES` line. The published **99.7%** was measuring the wrong denominator.
 
-*Done when*: `rootfile.py` reads `TBranch` 7–9, both corpora still report
-0 failures, and `coverage_probe.py` no longer names it as a blocker. The
-directory row needs a fixture rather than a reader, and version 2 — in neither
-corpus, and the form ROOT's own loader appears to misparse (`Directory.md` §7) —
-is the one to write it for.
+Both halves are fixed: `check_invariants.py` now checks the embedded basket for
+`TLeaf` 10.7, and `leaf_counts` reads an embedded **counter** basket out of the
+`TTree` payload — which closes the four `ttree/branch-clones` skips that §8.3
+called the one merely-unimplemented skip in the suite. The honest figures:
+
+| | Before M6 | After |
+|---|---|---|
+| Fixtures | 85 of 91, with 5 plumbing skips | **94 of 96**, and neither remaining skip is plumbing |
+| Both corpora | 25937 of 26011 (99.7%), embedded baskets invisible | **26948 of 27949 (96.4%)**, 0 failures |
+
+The 1001 skips that remain are 920 embedded baskets that `TreeReader` cannot
+fetch (M8, now the largest single item in the project), 48 collections whose value
+class has no streamer info in the file, 18 hand-written streamers and 15 baskets
+that could not be read here. Two of those four are plumbing and two are things no
+reader could decode.
+
+*Left from M6's original scope*: `TStreamerElement` at base version 2 and
+`TStreamerInfo` record versions 2/4/5/6 are read and produce 0 failures, but
+`StreamerInfo.md` still describes their shape only in passing; and the directory
+record versions want a fixture rather than a reader (M4).
 
 **M7 — release plumbing.** *Without this the corpus cannot legally be vendored
 as test vectors, which is the main way a third party would use it.*
@@ -743,12 +788,15 @@ serves the current build.
 
 ### 8.3 Next tier, after the MVP
 
-**M8 — the embedded-counter-basket plumbing.** Four branch-baskets in
-`ttree/branch-clones` skip because the counter branch keeps its basket embedded
-in the `TTree` record and the counter lookup only knows how to fetch a basket
-record. The bytes are in the file and `TBasket.md` §4.1 specifies them. It is the
-one skip over the fixtures that is merely unimplemented, and closing it takes the
-fixtures to 100%.
+**M8 — `TreeReader` and the embedded basket.** ✅ half done by M6 and now
+measured: the leaf-driven check reads an embedded basket, which closed the four
+`ttree/branch-clones` skips and 346 over the corpora. What is left is the other
+entry check — `rootfile.TreeReader`, which fetches a basket by file offset and so
+cannot reach one that has none. **920 branch-baskets**, every remaining
+plumbing skip over the two corpora and the single largest coverage item in the
+project. It needs the tree record's payload passed into `TreeReader` and
+`basket_for` to consult `Branch.embedded` before fetching; the risk is the buffer
+base, since a basket inside a `TTree` record shares that record's object map.
 
 **M9 — the RNTuple type mapping.** Still unaudited: the rest of *Type Name
 Normalization*, low-precision floats, the stdlib collections beyond
@@ -783,8 +831,8 @@ Reframed by §9.10: most of these are **not** blocked on `gen/legacy/` after all
 
 | Gap | Document | Available in |
 |---|---|---|
-| Directory record versions 1, 3, 4 | `Directory.md` | ✅ 31 records, §9.10 — M6 |
-| `TBranch` class versions 6–9 | `TBranch.md` §13 | ✅ `mlpHiggs.root` (7), `uproot-from-geant4.root` (8), `stock.root` (9) — M6 |
+| Directory record versions 1, 3, 4 | `Directory.md` | ✅ read; no fixture, and version 2 occurs nowhere (M4) |
+| `TBranch` class versions 6–9 | `TBranch.md` §13.1 | ✅ **closed by M6**: specified, read, and 116 legacy branches decoded in `mlpHiggs.root` (7), `uproot-from-geant4.root` (8) and `stock.root` (9) |
 | `TStreamerElement` at base version 2 | `StreamerInfo.md` | ✅ 979 elements, §9.10 — M6 |
 | Collection layouts below `TStreamerInfo` version 8 | `Collections.md` | ✅ info versions 2, 4, 5, 6 present — M6 |
 | The version-3 `TStreamerElement` form with `fXmin`/`fXmax`/`fFactor` | `StreamerInfo.md` | ☐ not in either corpus (only 2 and 4 occur) |
@@ -875,7 +923,8 @@ what close that, and their coverage is the `ENTRIES` line.
 154 files, **0 failures**. The probe: 28374 decoded, 705 container, 12 partial,
 24 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
 locally. The triage that got there turned **10 047 failures into 0** and found
-**eleven specification errors**, each one published, wrong and reader-facing:
+**eleven specification errors**, each one published, wrong and reader-facing —
+M6 added a twelfth from here, `TLeaf` 10.6 on `uproot-issue-250.root`:
 
 - a basket with no offset array is **not** fixed-length when its flag is 80;
 - the last offset may equal `fLast` exactly, on an empty last entry;
@@ -913,7 +962,9 @@ two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
 `RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with
 **no streamer infos at all** (out of scope for objects, decision 7).
 
-Two specification errors came from here, both the same mistake in different
+M6 added three more from here, all of them `TBranch` invariants that had only
+ever been checked against files from ROOT 5.34 on: 11.1, 11.3 and 11.9, each
+listed in §8.2. Before that, two came from here, both the same mistake in different
 places — stating an equality where ROOT tests an inequality:
 
 - a payload is compressed when `fObjLen > fNbytes - fKeyLen`, **not** when the
@@ -1003,25 +1054,30 @@ estimated:
 | `fSplitLevel` | 0, 1, 2, 3, 4, 97, 98, 99 — **never 100**, so the two pointer-collection procedures have zero corpus coverage and `ttree/split-ptr-collection` is their only witness |
 | `fBranchCount2` | null in **all 6736** |
 
-**What the decoder still cannot reach**, largest first. This is what the
-`SKIPPED` and `ENTRIES` lines of `check_invariants.py` count:
+**What the decoder still cannot reach**, largest first, re-measured after M6.
+This is what the `SKIPPED` and `ENTRIES` lines of `check_invariants.py` count —
+1001 of 27949 branch-baskets over the two corpora:
 
-1. A collection whose value class has no streamer info in the file — 49
+1. **An embedded basket, in `TreeReader`** — 920, the largest item in the project
+   and M8. The leaf-driven check reads one since M6; the entry-decode check
+   fetches baskets by file offset and an embedded basket has none.
+2. A collection whose value class has no streamer info in the file — 48
    branch-baskets, and not a gap at all: `Collections.md` §9 says it is
    unreadable by anyone, ROOT included.
-2. `fType` −1, a branch whose class writes its own `Streamer` — 9, plus 9 on the
+3. `fType` −1, a branch whose class writes its own `Streamer` — 18 including the
    Jpp classes of `gen/foreign/IGNORE.toml`. It is the one `fType` value with no
    fixture, and needs a branch whose class has a hand-written `Streamer`.
-3. A basket whose record could not be read — 7, each one a missing codec or the
-   embedded counter basket of M8.
-4. `kStreamLoop` values — 4, all in one file. The column's *extent* is checked
+4. A basket whose record could not be read — 15, each one a missing codec or a
+   truncated file. The embedded **counter** basket that used to be in this group
+   is closed (M6).
+5. `kStreamLoop` values — 4, all in one file. The column's *extent* is checked
    from its byte count; its values need the per-element counts held by a sibling
    branch's column.
-5. `TBranchSTL` entries — `ttree/split-ptr-collection` has one with data in it,
+6. `TBranchSTL` entries — `ttree/split-ptr-collection` has one with data in it,
    but it is not a `TBranchElement` and has no leaf, so neither entry check
    reaches it. `Splitting.md` §5 describes the branch; its entries stay
    undecoded.
-6. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
+7. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
    path is unexercised and unwritten.
 
 **Questions it left open.** Each is small, and each wants the submodule rather

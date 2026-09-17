@@ -488,3 +488,113 @@ class InteriorNodes(unittest.TestCase):
         self.assertTrue(
             rootfile.TreeReader.holds_data(self.reader(),
                                            self.branch(None, fid=None)))
+
+
+class LegacyBranchLayout(unittest.TestCase):
+    """TBranch.md 13.1: the member order below class version 10.
+
+    No fixture can cover it -- the writers are ROOT 3 and ROOT 4 -- so the
+    evidence is the three corpus files, and these tests pin what the reader does
+    with the version gates and the fBasketSeek width selector. The nested objects
+    are stubbed, because what is being tested is the scalar layout around them.
+    """
+
+    STUB = 6                           # bytes each stubbed nested object takes
+
+    class Stubbed(rootfile.Decoder):
+        def read_object(self, cls, offset, counters=None):
+            return rootfile.Value(name=cls, ftype=61, start=offset,
+                                  end=offset + LegacyBranchLayout.STUB,
+                                  type_name=cls)
+
+    def branch_bytes(self, version, max_baskets, seek_flag=1):
+        """A legacy TBranch's member area, with the nested objects stubbed."""
+        import struct
+        out = bytearray(b"\x00" * self.STUB)                 # TNamed
+        if version > 7:
+            out += b"\x00" * self.STUB                       # TAttFill
+        scalars = [0, 32000, 0, 0, 7, 0, max_baskets]        # ... fMaxBaskets
+        if version > 6:
+            scalars.append(0)                                # fSplitLevel
+        for v in scalars:
+            out += struct.pack(">i", v)
+        out += struct.pack(">ddd", 7.0, 0.0, 0.0)            # Stat_t x 3
+        out += b"\x00" * (3 * self.STUB)                     # the three arrays
+        for flag, width in ((1, 4), (1, 4), (seek_flag, 8 if seek_flag == 2 else 4)):
+            out += bytes([flag]) + b"\x00" * (max_baskets * width)
+        out += b"\x00"                                       # fFileName, empty
+        return bytes(out)
+
+    def members(self, version, max_baskets, seek_flag=1):
+        buf = self.branch_bytes(version, max_baskets, seek_flag)
+        decoder = self.Stubbed(buf, 0, [])
+        return {v.name: v for v in
+                decoder.read_legacy_branch(version, 0, len(buf))}
+
+    def test_version_7_has_no_att_fill_and_a_split_level(self):
+        m = self.members(7, 10)
+        self.assertNotIn("TAttFill", m)
+        self.assertIn("fSplitLevel", m)
+
+    def test_version_6_has_neither(self):
+        m = self.members(6, 10)
+        self.assertNotIn("TAttFill", m)
+        self.assertNotIn("fSplitLevel", m)
+
+    def test_version_8_has_both(self):
+        m = self.members(8, 10)
+        self.assertIn("TAttFill", m)
+        self.assertIn("fSplitLevel", m)
+
+    def test_the_counters_are_doubles(self):
+        m = self.members(9, 10)
+        for name in ("fEntries", "fTotBytes", "fZipBytes"):
+            self.assertEqual(m[name].ftype, 8, name)
+            self.assertEqual(m[name].end - m[name].start, 8, name)
+        self.assertEqual(rootfile._int_member(
+            self.branch_bytes(9, 10), m["fEntries"]), 7)
+
+    def test_fentrynumber_is_four_bytes(self):
+        m = self.members(9, 10)
+        self.assertEqual(m["fEntryNumber"].end - m["fEntryNumber"].start, 4)
+
+    def test_the_arrays_are_fmaxbaskets_long(self):
+        m = self.members(9, 1000)
+        for name in ("fBasketBytes", "fBasketEntry", "fBasketSeek"):
+            self.assertEqual(m[name].end - m[name].start, 1 + 1000 * 4, name)
+
+    def test_flag_two_widens_fbasketseek_and_nothing_else(self):
+        m = self.members(9, 10, seek_flag=2)
+        self.assertEqual(m["fBasketSeek"].end - m["fBasketSeek"].start,
+                         1 + 10 * 8)
+        self.assertEqual(m["fBasketEntry"].end - m["fBasketEntry"].start,
+                         1 + 10 * 4)
+
+    def test_a_short_byte_count_is_an_error(self):
+        buf = self.branch_bytes(9, 10)
+        decoder = self.Stubbed(buf, 0, [])
+        with self.assertRaises(rootfile.FormatError):
+            decoder.read_legacy_branch(9, 0, len(buf) - 1)
+
+
+class CountedPointerWidth(unittest.TestCase):
+    """TBranch.md 13.1: the width comes from the bytes, not the declared type."""
+
+    def value(self, span):
+        return rootfile.Value(name="fBasketSeek", ftype=56, start=0,
+                              end=1 + span)
+
+    def test_four_byte_values_under_an_eight_byte_declaration(self):
+        buf = b"\x01" + b"\x00\x00\x00\x07" * 3
+        self.assertEqual(
+            rootfile._counted_pointer(buf, self.value(12), None, 3), [7, 7, 7])
+
+    def test_eight_byte_values(self):
+        buf = b"\x01" + b"\x00" * 7 + b"\x09"
+        self.assertEqual(
+            rootfile._counted_pointer(buf, self.value(8), None, 1), [9])
+
+    def test_an_absent_array_is_empty(self):
+        absent = rootfile.Value(name="fBasketSeek", ftype=56, start=0, end=1)
+        self.assertEqual(
+            rootfile._counted_pointer(b"\x00", absent, None, 10), [])

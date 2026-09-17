@@ -37,8 +37,9 @@ checked against the pinned submodule across 40 documents.** The invariants also
 run over 226 files this project did not write — 154 from uproot's regression
 corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 94% of the records in them decode. Those files are where
-fourteen errors in this specification were found and fixed — plus one compression
-codec it had written off as unreadable (`PLAN.md` §9.8 and §9.9).
+eighteen errors in this specification were found and fixed — plus one compression
+codec it had written off as unreadable, and one coverage figure it had been
+overstating (`PLAN.md` §9.8 and §9.9).
 
 **Start at [spec/99-appendix/ReaderChecklist.md](spec/99-appendix/ReaderChecklist.md)**
 if you are here to implement something: it is the whole specification as a work

@@ -1607,6 +1607,82 @@ class Decoder:
                      end=frame.end, type_name="TBranchClones",
                      members=members)
 
+    #: The scalars TBranch::Streamer reads below class version 10, in order
+    #: (root/tree/tree/src/TBranch.cxx:3035-3059), as (name, element code,
+    #: width). fEntries, fTotBytes and fZipBytes are Stat_t -- a double -- and
+    #: fEntryNumber is an Int_t; both widen at version 10. TBranch.md 13.1.
+    LEGACY_BRANCH_SCALARS = (
+        ("fCompress", 3, 4), ("fBasketSize", 3, 4), ("fEntryOffsetLen", 3, 4),
+        ("fWriteBasket", 3, 4), ("fEntryNumber", 3, 4), ("fOffset", 3, 4),
+        ("fMaxBaskets", 6, 4),
+    )
+
+    def read_legacy_branch(self, version: int, offset: int,
+                           limit: int | None) -> list[Value]:
+        """A TBranch below class version 10. TBranch.md 13.1.
+
+        The member order is taken from TBranch::Streamer rather than from the
+        file's streamer info. The two agree element for element on every legacy
+        file measured -- which is a finding, not an assumption a reader should
+        rest on (TBranch.md 13.1) -- and they disagree at version 9 about the
+        width of fBasketSeek, where the source is right and the info is not
+        (13.3).
+        """
+        buf = self.buf
+        values: list[Value] = []
+        pos = offset
+        named = self.read_object("TNamed", pos)
+        values.append(Value(name="TNamed", ftype=67, start=pos, end=named.end,
+                            type_name="TNamed", members=named.members))
+        pos = named.end
+        if version > 7:
+            fill = self.read_object("TAttFill", pos)
+            values.append(Value(name="TAttFill", ftype=0, start=pos,
+                                end=fill.end, type_name="TAttFill",
+                                members=fill.members))
+            pos = fill.end
+        fields = list(self.LEGACY_BRANCH_SCALARS)
+        if version > 6:
+            fields.append(("fSplitLevel", 3, 4))
+        fields += [("fEntries", 8, 8), ("fTotBytes", 8, 8), ("fZipBytes", 8, 8)]
+        max_baskets = 0
+        for name, code, width in fields:
+            values.append(Value(name=name, ftype=code, start=pos,
+                                end=pos + width))
+            if name == "fMaxBaskets":
+                max_baskets = _i32(buf, pos)
+            pos += width
+        for name in ("fBranches", "fLeaves", "fBaskets"):
+            array = self.read_object("TObjArray", pos)
+            values.append(Value(name=name, ftype=61, start=pos, end=array.end,
+                                type_name="TObjArray", members=array.members))
+            pos = array.end
+        if max_baskets < 0:
+            raise FormatError(
+                f"TBranch v{version} at {offset} has fMaxBaskets {max_baskets}")
+        for name in ("fBasketBytes", "fBasketEntry", "fBasketSeek"):
+            # All three are read unconditionally, whatever the flag byte says:
+            # the legacy streamer reads fMaxBaskets values after it and only
+            # fBasketSeek gives the byte a meaning -- 2 for 8-byte values, any
+            # other value for 4-byte ones (root/tree/tree/src/TBranch.cxx:3055-3066).
+            flag = buf[pos]
+            width = 8 if (name == "fBasketSeek" and flag == 2) else 4
+            end = pos + 1 + max_baskets * width
+            values.append(Value(
+                name=name, ftype=OFFSET_P + (16 if width == 8 else 3),
+                start=pos, end=end, type_name="Int_t",
+                note=f"flag byte {flag}: {max_baskets} value(s) of {width} bytes"))
+            pos = end
+        _, end = _counted_string(buf, pos)
+        values.append(Value(name="fFileName", ftype=65, start=pos, end=end,
+                            type_name="TString"))
+        pos = end
+        if limit is not None and pos != limit:
+            raise FormatError(
+                f"TBranch v{version} consumed {pos - offset} bytes, "
+                f"byte count says {limit - offset}")
+        return values
+
     def read_tcanvas(self, offset: int) -> Value:
         """A TCanvas. Canvas.md sections 1 and 2.
 
@@ -1685,18 +1761,7 @@ class Decoder:
             return [Value(name="TObject", ftype=66, start=offset, end=base.end,
                           tobject=base)]
         if cls == "TBranch" and version < 10:
-            # Below version 10 the file's own streamer info is not authoritative:
-            # TBranch::Streamer hand-codes the read, and fBasketSeek's "is present"
-            # flag doubles as a WIDTH selector -- 2 means 8-byte values, any other
-            # non-zero means 4-byte, whatever the info says
-            # (root/tree/tree/src/TBranch.cxx:3062-3066). Byte-verified on
-            # stock.root, ROOT 4.00/07, where reading it as the declared Long64_t*
-            # overruns every branch by exactly fMaxBaskets x 4 bytes.
-            # TBranch.md section 13 does not give these layouts; refuse rather than
-            # guess. PLAN.md section 9.1.
-            raise UnsupportedClass(
-                f"TBranch class version {version}: the legacy layout below 10, "
-                f"see TBranch.md 13")
+            return self.read_legacy_branch(version, offset, limit)
         info = self.info_for(cls, version)
         values: list[Value] = []
         pos = offset
@@ -2975,10 +3040,20 @@ def _string_at(buf: bytes, value: Value) -> str:
     return _counted_string(buf, value.start)[0]
 
 
-def _counted_pointer(buf: bytes, value: Value, width: int,
+def _counted_pointer(buf: bytes, value: Value, width: int | None,
                      count: int) -> list[int]:
-    """The values of a kOffsetP member: a flag byte then `count` of them."""
-    if not buf[value.start]:
+    """The values of a kOffsetP member: a flag byte then `count` of them.
+
+    `width` of None derives the width from the bytes the member occupies, which
+    is how a legacy TBranch's fBasketSeek is read: its width is in its flag byte,
+    not in the streamer info (TBranch.md 13.3).
+    """
+    span = value.end - value.start - 1
+    if span <= 0 or count <= 0:
+        return []
+    if width is None:
+        width = span // count
+    if not buf[value.start] and span < count * width:
         return []
     fmt = {4: _i32, 8: _i64}[width]
     base = value.start + 1
@@ -3099,13 +3174,9 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         raise UnsupportedClass(
             "TBranchClones streams ten TBranch fields and no TBranch base, so "
             "the generic branch layout does not apply: TBranchElement.md 13.1")
-    if "fFirstEntry" not in m:
-        # fFirstEntry arrived at TBranch version 11, and below version 10 the
-        # entry counters are Stat_t rather than Long64_t. spec/04-ttree/TBranch.md
-        # section 13 does not give those layouts, so do not guess at them here:
-        # this reader implements what the specification says and no more.
-        raise UnsupportedClass(
-            "TBranch below class version 11: no fFirstEntry, see TBranch.md 13")
+    # fFirstEntry arrived at TBranch version 11 and fSplitLevel at 7; below
+    # those the field does not exist and its value is 0 by definition -- a branch
+    # with no fFirstEntry starts at entry 0. TBranch.md 13.1.
     n = _i32(buf, m["fMaxBaskets"].start)
     return Branch(
         slot=entry.start,
@@ -3114,21 +3185,26 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         basket_size=_i32(buf, m["fBasketSize"].start),
         entry_offset_len=_i32(buf, m["fEntryOffsetLen"].start),
         write_basket=_i32(buf, m["fWriteBasket"].start),
-        entry_number=_i64(buf, m["fEntryNumber"].start),
+        entry_number=_int_member(buf, m["fEntryNumber"]),
         io_bits=_io_bits(buf, m) or 0,
         offset=_i32(buf, m["fOffset"].start),
         max_baskets=n,
-        split_level=_i32(buf, m["fSplitLevel"].start),
-        entries=_i64(buf, m["fEntries"].start),
-        first_entry=_i64(buf, m["fFirstEntry"].start),
-        tot_bytes=_i64(buf, m["fTotBytes"].start),
-        zip_bytes=_i64(buf, m["fZipBytes"].start),
+        split_level=(_i32(buf, m["fSplitLevel"].start)
+                     if "fSplitLevel" in m else 0),
+        entries=_int_member(buf, m["fEntries"]),
+        first_entry=(_i64(buf, m["fFirstEntry"].start)
+                     if "fFirstEntry" in m else 0),
+        tot_bytes=_int_member(buf, m["fTotBytes"]),
+        zip_bytes=_int_member(buf, m["fZipBytes"]),
         basket_slots=_sequence_count(buf, m["fBaskets"]),
         basket_objects=len(m["fBaskets"].members or []),
         embedded=_embedded_baskets(buf, m["fBaskets"], base),
-        basket_bytes=_counted_pointer(buf, m["fBasketBytes"], 4, n),
-        basket_entry=_counted_pointer(buf, m["fBasketEntry"], 8, n),
-        basket_seek=_counted_pointer(buf, m["fBasketSeek"], 8, n),
+        # Widths from the bytes rather than from the declared type: below
+        # version 10 fBasketEntry is Int_t and fBasketSeek's width is in its
+        # flag byte. TBranch.md 13.1, 13.3.
+        basket_bytes=_counted_pointer(buf, m["fBasketBytes"], None, n),
+        basket_entry=_counted_pointer(buf, m["fBasketEntry"], None, n),
+        basket_seek=_counted_pointer(buf, m["fBasketSeek"], None, n),
         file_name=_string_at(buf, m["fFileName"]),
         leaves=[_read_leaf(buf, e, base) for e in (m["fLeaves"].members or [])
                 if e.reference is None],

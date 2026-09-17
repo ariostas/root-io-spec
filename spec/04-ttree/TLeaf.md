@@ -426,8 +426,14 @@ consumed, and read nothing if the remainder is zero.
    entry-offset array **unless its flag is 80**, in which case the offsets are
    generated instead ([TBasket §5.2.1](TBasket.md#521-regenerating-the-offsets)).
 6. For a branch every one of whose leaves has a null `fLeafCount` and none of
-   which is a `TLeafC`, the sum of `width × fLen` over its leaves equals the
-   basket's `fNevBufSize`, and the basket has no entry-offset array.
+   which is a `TLeafC` **and whose `fEntryOffsetLen` is 0**, the sum of
+   `width × fLen` over its leaves equals the basket's `fNevBufSize`, and the
+   basket has no entry-offset array. `fEntryOffsetLen` is the writer's decision
+   and it is what the baskets follow: a current writer sets it to 0 on such a
+   branch, but a ROOT 4.00-era writer left it at the default 1000 and its baskets
+   then **do** carry an offset array for fixed-width leaves —
+   `uproot-issue-250.root`, whose `TLeafD` branches have `fEntryOffsetLen` 1000,
+   `fNevBufSize` 1000 and offsets 8 bytes apart.
 7. For any branch, the sum over its leaves of that entry's bytes equals the length
    of the entry's byte range, exactly.
 8. `fOffset` of the first leaf of a branch is 0, **unless the branch stands under
