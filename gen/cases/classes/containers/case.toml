@@ -1,0 +1,361 @@
+id   = "classes/containers"
+file = "data/classes/containers.root"
+size = 1703
+
+description = """
+`TMap`, `TExMap` and `TBtree` -- the three ROOT containers whose `Streamer` is
+hand-written at **every** version, so no streamer info in any file describes
+their bytes. `tools/inventory.py` named them as gaps; this pins them.
+
+Three things here are not obvious from the source alone.
+
+**A `TMap`'s entries are pointer-streamed, so the second use of an object is a
+back-reference.** The map stores one `TObjString` as the value of both pairs. The
+first occurrence carries the full class tag (`ff ff ff ff`, then the class name);
+the second is four bytes, `00 00 00 78`, an offset into the same buffer. A reader
+that treats each slot as a fresh object reads a byte count that is not there.
+
+**A `TExMap` stores the slot index, and the hash it stores is not the hash it was
+given.** `Assoc_t::SetHash` forces bit 0 so that a zero hash can mean "free slot",
+so the 6 and the 10 this case adds are 7 and 11 on disk. The slot follows from the
+stored hash, which puts the four entries in slots 0, 3, 7 and 9 -- and the write
+loop walks the table by slot, so the entry added last is the first on disk.
+`fSize` (11) is the capacity and `fTally` (4) the count; both are present and they
+differ.
+
+**A `TBtree` writes its six shape integers and then exactly one more frame, and
+that frame is `TCollection`'s.** `TBtree::Streamer` calls `TSeqCollection::Streamer`,
+and `TSeqCollection` is a version-0 class with a plain `#pragma link` -- for which
+`rootcling` generates a `Streamer` that calls its **bases and nothing else**: no
+version word, no byte count, no members. So the `00 03` at offset 760 is
+`TCollection`'s version, immediately after `TBtree`'s own integers, with no frame
+in between. That rule also explains the `TTreePerfStats` record of
+`aod_flushed.root` -- see Containers.md 6.
+
+`TBtree`'s own version word is **0**, at offset 730, which is the second reason
+this file is worth having: a version-0 class that is not the one the
+`serialization/version-zero` case covers.
+
+`TMap` and `TBtree` are `TCollection`s, so `Write()` gives each *element* its own
+key unless `kSingleKey` is passed. That flag appears in no other case here.
+
+The file carries **one** streamer info, for `TObjString`. None of the three
+containers contributes one, because none of them ever calls `WriteClassBuffer`,
+which is what forces an info into a file -- the clearest statement in the corpus
+that a hand-written `Streamer` and a recorded streamer info are independent.
+"""
+
+spec = [
+  "spec/03-classes/Containers.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 206
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 306
+nbytes = 182
+class  = "TMap"
+role   = "two pairs sharing one value object"
+[[records]]
+offset = 488
+nbytes = 194
+class  = "TExMap"
+role   = "four entries in eleven slots"
+[[records]]
+offset = 682
+nbytes = 242
+class  = "TBtree"
+role   = "order 3, five entries"
+[[records]]
+offset = 924
+nbytes = 434
+class  = "TList"
+role   = "StreamerInfo -- one info, for TObjString"
+
+# --- TMap, payload at 357 --------------------------------------------------
+
+[[bytes]]
+name = "TMap: byte count"
+offset = 357
+type = "u32"
+value = 0x4000007f
+
+[[bytes]]
+name = "TMap: class version 3"
+offset = 361
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "TMap: the TObject base, version 1 -- no frame of its own"
+offset = 363
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "TMap: fName, inherited from TCollection"
+offset = 373
+type = "string"
+value = "pairs"
+
+[[bytes]]
+name = "TMap: the pair count, not a byte count"
+offset = 379
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "TMap: first key, byte count of the pointer-streamed object"
+offset = 383
+type = "u32"
+value = 0x40000025
+
+[[bytes]]
+name = "TMap: kNewClassTag -- the class name follows"
+offset = 387
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "TMap: the class name, null-terminated and not counted"
+offset = 391
+type = "bytes"
+value = "TObjString"
+
+[[bytes]]
+name = "TMap: and its terminator, where a counted string would have had a length"
+offset = 401
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "TMap: first key object, byte count"
+offset = 402
+type = "u32"
+value = 0x40000012
+
+[[bytes]]
+name = "TMap: first key"
+offset = 418
+type = "string"
+value = "alpha"
+
+[[bytes]]
+name = "TMap: first value, byte count"
+offset = 424
+type = "u32"
+value = 0x4000001b
+
+[[bytes]]
+name = "TMap: first value, a class reference to the tag at 387"
+offset = 428
+type = "u32"
+value = 0x80000053
+
+[[bytes]]
+name = "TMap: first value"
+offset = 448
+type = "string"
+value = "shared"
+
+[[bytes]]
+name = "TMap: second key"
+offset = 479
+type = "string"
+value = "beta"
+
+[[bytes]]
+name = "TMap: second value is an object back-reference, four bytes and no more"
+offset = 484
+type = "u32"
+value = 0x00000078
+
+# --- TExMap, payload at 546 ------------------------------------------------
+
+[[bytes]]
+name = "TExMap: byte count"
+offset = 546
+type = "u32"
+value = 0x40000084
+
+[[bytes]]
+name = "TExMap: class version 3"
+offset = 550
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "TExMap: fSize -- the table capacity, from TExMap(5)"
+offset = 562
+type = "i32"
+value = 11
+
+[[bytes]]
+name = "TExMap: fTally -- the number of entries, and not fSize"
+offset = 566
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "TExMap: first record, slot 0 -- the entry added last"
+offset = 570
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TExMap: first record, hash 11 for the 10 that was added"
+offset = 574
+type = "u64"
+value = 11
+
+[[bytes]]
+name = "TExMap: first record, key"
+offset = 582
+type = "i64"
+value = 104
+
+[[bytes]]
+name = "TExMap: first record, value"
+offset = 590
+type = "i64"
+value = 1004
+
+[[bytes]]
+name = "TExMap: second record, slot 3"
+offset = 598
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TExMap: second record, hash 3, unchanged because it is already odd"
+offset = 602
+type = "u64"
+value = 3
+
+[[bytes]]
+name = "TExMap: second record, key"
+offset = 610
+type = "i64"
+value = 101
+
+[[bytes]]
+name = "TExMap: third record, slot 7 -- from the stored hash, not the given one"
+offset = 626
+type = "i32"
+value = 7
+
+[[bytes]]
+name = "TExMap: third record, hash 7 for the 6 that was added"
+offset = 630
+type = "u64"
+value = 7
+
+[[bytes]]
+name = "TExMap: fourth record, slot 9"
+offset = 654
+type = "i32"
+value = 9
+
+[[bytes]]
+name = "TExMap: fourth record, value -- the last eight bytes of the object"
+offset = 674
+type = "i64"
+value = 1003
+
+# --- TBtree, payload at 726 ------------------------------------------------
+
+[[bytes]]
+name = "TBtree: byte count"
+offset = 726
+type = "u32"
+value = 0x400000c2
+
+[[bytes]]
+name = "TBtree: class version 0 -- a version word that is not a version"
+offset = 730
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "TBtree: fOrder, the only one of the six that is not derived"
+offset = 732
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TBtree: fOrder2 = 2 * (fOrder + 1), not the order*2+1 the header claims"
+offset = 736
+type = "i32"
+value = 8
+
+[[bytes]]
+name = "TBtree: fInnerLowWaterMark = (fOrder - 1) / 2"
+offset = 740
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "TBtree: fLeafLowWaterMark = fLeafMaxIndex / 2 - 1"
+offset = 744
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "TBtree: fInnerMaxIndex = fOrder"
+offset = 748
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TBtree: fLeafMaxIndex = fOrder2 - 1"
+offset = 752
+type = "i32"
+value = 7
+
+[[bytes]]
+name = "TBtree: the next frame's byte count"
+offset = 756
+type = "u32"
+value = 0x400000a4
+
+[[bytes]]
+name = "TBtree: and it is TCollection's version 3 -- TSeqCollection contributes no frame"
+offset = 760
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "TBtree: fName"
+offset = 772
+type = "string"
+value = "sorted"
+
+[[bytes]]
+name = "TBtree: the element count"
+offset = 779
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "TBtree: first element, kNewClassTag"
+offset = 787
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "TBtree: second element, a class reference to the tag at 787"
+offset = 824
+type = "u32"
+value = 0x8000006b
+
+[[bytes]]
+name = "TBtree: the last element, and the last byte of the object"
+offset = 922
+type = "string"
+value = "t"

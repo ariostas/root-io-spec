@@ -127,16 +127,16 @@ spec = "[Streamer-driven reading §7](../02-serialization/StreamerDriven.md) —
 # --------------------------------------------------------------------- gaps --
 
 [class.TMap]
-status = "gap"
-note = "core/cont, and the only standard associative container that is not an STL collection"
+status = "specified"
+spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
 
 [class.TExMap]
-status = "gap"
-note = "core/cont; three class versions, the layout changes at 3"
+status = "specified"
+spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
 
 [class.TBtree]
-status = "gap"
-note = "core/cont"
+status = "specified"
+spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
 
 [class.TBranchClones]
 status = "gap"

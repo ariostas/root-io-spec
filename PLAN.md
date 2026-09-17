@@ -679,16 +679,22 @@ actually does:
 | `guarded` | 86 | nothing for a current file — `ReadClassBuffer` above a version threshold, a legacy layout below. These are §9.1 gaps, not phase-4 work |
 | `custom` | 64 | know the layout; the streamer info describes the bytes at no version |
 
-Of the 64: **27 are already specified**, 5 are never objects in a file, 14 are
-outside §2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **18 are gaps** —
-which is the entire remaining worklist of this phase, against an estimate of
-~440. The ordinary ones among them are `TMap`, `TExMap`, `TBtree`,
-`ROOT::v5::TFormula`/`TF1Data` (every file holding a fitted function),
-`TStringLong`, `TQObject`, `TCanvas` and `TBranchClones`.
+Of the 64: **30 are now specified**, 5 are never objects in a file, 14 are
+outside §2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **15 are gaps** —
+the entire remaining worklist of this phase, against an estimate of ~440.
 
-So phase 4 is now: write those 18, ranked by how often they occur in the two
-corpora. `gen_tables.py` is not planned; `inventory.py` replaced it and is a
-different tool for a different reason.
+✅ The first three are written: `spec/03-classes/Containers.md` covers `TMap`,
+`TExMap` and `TBtree`, with `classes/containers` as the fixture (46 byte
+assertions), six invariants in `check_invariants.py` — each confirmed to catch a
+corruption — and readers for all three in `rootfile.py`. It found the version-0
+`Streamer` rule that resolves §9.9's second lead, two errata, and the fact that a
+file holding all three carries **one** streamer info, for the `TObjString`s
+inside them.
+
+What is left: `ROOT::v5::TFormula`/`TF1Data` (every file holding a fitted
+function), `TStringLong`, `TQObject`, `TCanvas`, `TBranchClones`, and ten of
+narrower reach. `gen_tables.py` is not planned; `inventory.py` replaced it and is
+a different tool for a different reason.
 
 **◐ Phase 5 — TTree**
 ✅ `04-ttree/TBasket.md`, done early because the coverage probe named it the last
@@ -1557,9 +1563,39 @@ What is established:
   of its own**. Reading it with a version word puts `fTreeCacheSize` at
   −131072000, which is not a cache size.
 
-The question is **not** the same as the `H1display.root` lead above, which
-turned out to be about a hand-written `Streamer` and is resolved.
-`TVirtualPerfStats` has none, so this one stands on its own:
+**Resolved 2026-09-17.** The answer is not in `TStreamerBase` at all but in
+`rootcling`: for a class whose `ClassDef` version is `≤ 0` **and** which was
+selected with a plain `#pragma link C++ class X;` rather than `X+`, the generated
+`Streamer` calls each base class's `Streamer` **and nothing else** — no version
+word, no byte count, none of its own members
+(`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`; the choice is
+`cl.RequestStreamerInfo()`, `root/core/clingutils/src/TClingUtils.cxx:3016`).
+
+`TVirtualPerfStats` is version 0 (`root/core/base/inc/TVirtualPerfStats.h:93`)
+and plainly selected (`root/core/base/inc/LinkDef3.h:173`), so its `kBase`
+element contributes exactly its own base — a bare `TObject`, ten bytes — which is
+what the byte count above found and could not explain. `Buffer.md` §4's
+prediction of a version word of 0 is right for a class read through
+`ReadClassBuffer` and does not apply here.
+
+Written up as `StreamerDriven.md` §4.5, with the byte evidence in
+`03-classes/Containers.md` §6: `TSeqCollection` is the same case, and
+`classes/containers` pins it in a fixture — a `TBtree`'s `TSeqCollection` call
+produces `TCollection`'s frame and no frame of its own.
+
+**The reader is not fixed by this.** `aod_flushed.root` still fails
+`StreamerDriven 10.1`, because the rule is not derivable from the file: both
+generators write a streamer info, both record class version 0, and the `+` suffix
+lives only in a `LinkDef.h`. Two ways forward, neither done:
+
+1. Carry the class list, as `rootfile.py` already does for the bootstrap
+   classes. `tools/inventory.py` could compute it — every `ClassDef` version `≤ 0`
+   whose `#pragma link` has no `+` — which would make it checked rather than
+   curated, and would be a second generated table beside the `Streamer` one.
+2. Resynchronise (`StreamerDriven.md` §8): read the base framed, and on a byte
+   count mismatch retry unframed. General, but speculative.
+
+The old question, kept because it is the one the note was written around:
 **what does a `kBase` element contribute when its class declares version 0?**
 `Buffer.md` §4 predicts a version word of 0 followed by nothing; these bytes look
 like nothing at all. `TStreamerBase::ReadBuffer` goes through `ReadClassBuffer`

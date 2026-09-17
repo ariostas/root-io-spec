@@ -238,6 +238,34 @@ A reader cannot derive any of this from the file; the class name is the only
 signal. The complete list for ROOT's own classes is
 [Hand-written streamers](../99-appendix/HandWrittenStreamers.md).
 
+### 4.5 A base whose class is version 0
+
+The other way a `kBase` element can contribute something other than what §4
+describes, and it does not need a hand-written `Streamer` at all.
+
+`rootcling` generates two different bodies. For a class selected with
+`#pragma link C++ class X+;` it emits the `ReadClassBuffer` form §4 assumes. For
+one selected **plainly**, as `class X;`, *and* whose `ClassDef` version is `≤ 0`,
+it emits a body that calls each base class's `Streamer` **and nothing else** — no
+version word, no byte count, and none of the class's own members
+(`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`; the choice is
+`cl.RequestStreamerInfo()` at
+`root/core/clingutils/src/TClingUtils.cxx:3016`).
+
+So such a class is transparent on disk: its `kBase` element occupies exactly what
+*its* bases occupy. `TSeqCollection` is one, and a `TBtree` is where that is
+visible in bytes — see
+[TMap, TExMap and TBtree §6](../03-classes/Containers.md), which also gives the
+`TTreePerfStats` case where following §4 instead puts every member four bytes
+late.
+
+**The file does not record which generator ran.** Both write a streamer info,
+both record class version 0, and the `+` suffix exists only in a `LinkDef.h`.
+Class version 0 is therefore a *warning* to a reader rather than an answer, and
+the only way through is the class list in
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md) plus the
+resynchronisation of §8.
+
 ## 5. Nested objects
 
 An object-valued member is read by running this same loop over the member's own

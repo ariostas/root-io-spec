@@ -777,6 +777,130 @@ ELEMENT_HAS_RANGE = 1 << 6       # kHasRange: the title carries a Double32/Float
 ELEMENT_DO_NOT_DELETE = 1 << 13  # kDoNotDelete
 
 # The subclass tail after the TStreamerElement base, as (member, reader) pairs.
+# ---------------------------------------------------------------------------
+# The hand-written containers: TMap, TExMap, TBtree (03-classes/Containers.md).
+#
+# None of the three has a usable streamer info -- none of them ever calls
+# WriteClassBuffer, so no info is even written -- and all three carry ordinary
+# object slots, so they are read here from the specification rather than through
+# the streamer-driven path.
+# ---------------------------------------------------------------------------
+
+#: The fixed part of a TExMap record: slot, hash, key, value.
+EXMAP_RECORD = 4 + 8 + 8 + 8
+
+
+@dataclass
+class Collection:
+    """A TCollection frame: what TMap, TBtree and TList all end with."""
+
+    version: int
+    name: str
+    count: int
+    slots: list[Slot]
+    end: int
+
+
+@dataclass
+class ExMap:
+    """A TExMap: fSize slots, fTally of them written."""
+
+    version: int
+    size: int
+    tally: int
+    records: list[tuple[int, int, int, int]]   # slot, hash, key, value
+    end: int
+
+
+@dataclass
+class BTree:
+    """A TBtree: six shape integers and then a TCollection frame."""
+
+    version: int
+    order: int
+    order2: int
+    inner_low: int
+    leaf_low: int
+    inner_max: int
+    leaf_max: int
+    collection: Collection
+    end: int
+
+
+def read_collection_frame(buf: bytes, offset: int, base: int,
+                          pairs: bool = False) -> Collection:
+    """The `TObject`, `fName`, count and object slots of a TCollection frame.
+
+    `pairs` reads two slots per count, which is what `TMap::Streamer` writes --
+    the count is the number of pairs, not the number of slots.
+    """
+    frame = read_frame(buf, offset)
+    at = skip_tobject(buf, frame.body)
+    name, at = _counted_string(buf, at)
+    count = _i32(buf, at)
+    at += 4
+    slots = []
+    for _ in range(count * (2 if pairs else 1)):
+        slot = read_slot(buf, at, base)
+        slots.append(slot)
+        at = slot.end
+    if at != frame.end:
+        raise FormatError(
+            f"TCollection frame at {offset} consumed {at - offset} bytes, "
+            f"byte count says {frame.end - offset}")
+    return Collection(version=frame.version, name=name, count=count,
+                      slots=slots, end=frame.end)
+
+
+def read_tmap(buf: bytes, rec: Record) -> Collection:
+    """A TMap record. Containers.md section 1."""
+    start, _ = payload_range(rec)
+    return read_collection_frame(buf, start, rec.offset, pairs=True)
+
+
+def read_texmap(buf: bytes, rec: Record) -> ExMap:
+    """A TExMap record. Containers.md section 2."""
+    start, _ = payload_range(rec)
+    frame = read_frame(buf, start)
+    at = skip_tobject(buf, frame.body)
+    size, tally = _i32(buf, at), _i32(buf, at + 4)
+    at += 8
+    records = []
+    for _ in range(max(tally, 0)):
+        records.append((_i32(buf, at), _u64(buf, at + 4),
+                        _i64(buf, at + 12), _i64(buf, at + 20)))
+        at += EXMAP_RECORD
+    if at != frame.end:
+        raise FormatError(
+            f"TExMap at {start} consumed {at - start} bytes, byte count says "
+            f"{frame.end - start}")
+    return ExMap(version=frame.version, size=size, tally=tally,
+                 records=records, end=frame.end)
+
+
+def read_tbtree(buf: bytes, rec: Record) -> BTree:
+    """A TBtree record. Containers.md section 3.
+
+    The six integers are followed by exactly one more frame, and it is
+    TCollection's: `TSeqCollection` is a version-0 class whose generated
+    `Streamer` forwards to its bases and writes nothing of its own, so it
+    contributes no frame at all (Containers.md section 6).
+    """
+    start, _ = payload_range(rec)
+    frame = read_frame(buf, start)
+    at = frame.body
+    shape = [_i32(buf, at + 4 * i) for i in range(6)]
+    at += 24
+    collection = read_collection_frame(buf, at, rec.offset)
+    if collection.end != frame.end:
+        raise FormatError(
+            f"TBtree at {start}: its TCollection frame ends at "
+            f"{collection.end}, the TBtree byte count at {frame.end}")
+    return BTree(version=frame.version, order=shape[0], order2=shape[1],
+                 inner_low=shape[2], leaf_low=shape[3], inner_max=shape[4],
+                 leaf_max=shape[5], collection=collection, end=frame.end)
+
+
 # Empty for the subclasses that add nothing.
 _ELEMENT_TAILS = {
     "TStreamerBase": [("fBaseVersion", "i32")],

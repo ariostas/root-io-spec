@@ -24,8 +24,8 @@ Of the `custom` classes:
 
 | Status | Count |
 |---|---|
-| `specified` | 27 |
-| `gap` | 18 |
+| `specified` | 30 |
+| `gap` | 15 |
 | `not-persisted` | 5 |
 | `out-of-scope` | 14 |
 <!-- END GENERATED -->
@@ -91,7 +91,7 @@ fails on one that is not. `gap` is the worklist.
 | `TArrayS` | `root/core/cont/src/TArrayS.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TBasket` | `root/tree/tree/src/TBasket.cxx:979` | specified | [TBasket](../04-ttree/TBasket.md) |
 | `TBranchClones` | `root/tree/tree/src/TBranchClones.cxx:386` | gap | PLAN-ttree.md §10 — the one branch kind with no fixture |
-| `TBtree` | `root/core/cont/src/TBtree.cxx:459` | gap | core/cont |
+| `TBtree` | `root/core/cont/src/TBtree.cxx:459` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TCanvas` | `root/graf2d/gpad/src/TCanvas.cxx:2221` | gap | graf2d/gpad; the top-level object of any file saved from a canvas |
 | `TClassTree` | `root/graf2d/gpad/src/TClassTree.cxx:1102` | gap | graf2d/gpad |
 | `TClonesArray` | `root/core/cont/src/TClonesArray.cxx:744` | specified | [Collections §12](../02-serialization/Collections.md#12-tclonesarray) |
@@ -103,7 +103,7 @@ fails on one that is not. `gap` is the worklist.
 | `TEmulatedCollectionProxy` | `root/io/io/src/TEmulatedCollectionProxy.cxx:629` | not-persisted | [Collections](../02-serialization/Collections.md) |
 | `TEmulatedMapProxy` | `root/io/io/src/TEmulatedMapProxy.cxx:237` | not-persisted | [Collections](../02-serialization/Collections.md) |
 | `TEveTrans` | `root/graf3d/eve/src/TEveTrans.cxx:941` | out-of-scope | the event display |
-| `TExMap` | `root/core/cont/src/TExMap.cxx:305` | gap | core/cont; three class versions, the layout changes at 3 |
+| `TExMap` | `root/core/cont/src/TExMap.cxx:305` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TFile` | `root/io/io/src/TFile.cxx:2458` | specified | [File header](../01-container/FileHeader.md) |
 | `TGenCollectionProxy` | `root/io/io/src/TGenCollectionProxy.cxx:1431` | not-persisted | [Collections](../02-serialization/Collections.md) |
 | `TGenCollectionStreamer` | `root/io/io/src/TGenCollectionStreamer.cxx:1389` | not-persisted | [Collections](../02-serialization/Collections.md) |
@@ -112,7 +112,7 @@ fails on one that is not. `gap` is the worklist.
 | `TGraphStruct` | `root/graf2d/gviz/src/TGraphStruct.cxx:307` | gap | graf2d/gviz |
 | `TKey` | `root/io/io/src/TKey.cxx:1387` | specified | [Records and keys](../01-container/Record.md) |
 | `TList` | `root/core/cont/src/TList.cxx:1323` | specified | [Streamer information §4](../02-serialization/StreamerInfo.md#4-tlist) |
-| `TMap` | `root/core/cont/src/TMap.cxx:360` | gap | core/cont, and the only standard associative container that is not an STL collection |
+| `TMap` | `root/core/cont/src/TMap.cxx:360` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TMaterial` | `root/graf3d/g3d/src/TMaterial.cxx:80` | gap | graf3d/g3d, the pre-TGeo geometry |
 | `TMixture` | `root/graf3d/g3d/src/TMixture.cxx:96` | gap | graf3d/g3d, the pre-TGeo geometry |
 | `TObjArray` | `root/core/cont/src/TObjArray.cxx:448` | specified | [Streamer information §5](../02-serialization/StreamerInfo.md#5-tobjarray) |

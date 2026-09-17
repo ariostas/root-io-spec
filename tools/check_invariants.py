@@ -1029,6 +1029,71 @@ class Checker:
                          f"{rec.class_name} at {rec.offset} has fObjlen "
                          f"{rec.obj_len}, but fN {count} needs {want}")
 
+    def check_containers(self) -> None:
+        """Containers.md invariants 1 to 6.
+
+        1, 2 and 6 are consumption checks and are raised by the readers in
+        `rootfile` rather than computed here: a frame that does not end where its
+        byte count says is a FormatError. Confirmed by lowering the fTally of a
+        copy of classes/containers, which reports "TExMap at 546 consumed 52
+        bytes, byte count says 136".
+        """
+        for rec in self.records:
+            if rec.free or rec.class_name not in ("TMap", "TExMap", "TBtree"):
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                if rec.class_name == "TMap":
+                    rootfile.read_tmap(data, rec)
+                elif rec.class_name == "TExMap":
+                    self._check_exmap(rootfile.read_texmap(data, rec), rec)
+                else:
+                    self._check_btree(rootfile.read_tbtree(data, rec), rec)
+            except rootfile.FormatError as exc:
+                label = {"TMap": "Containers 7.1", "TExMap": "Containers 7.2",
+                         "TBtree": "Containers 7.6"}[rec.class_name]
+                self.bad(label, f"{rec.class_name} at {rec.offset}: {exc}")
+
+    def _check_exmap(self, exmap, rec) -> None:
+        """Containers.md invariant 3."""
+        where = f"TExMap at {rec.offset}"
+        if not 0 <= exmap.tally <= exmap.size:
+            self.bad("Containers 7.3",
+                     f"{where} has fTally {exmap.tally}, fSize {exmap.size}")
+            return
+        previous = -1
+        for slot, hash_, _, _ in exmap.records:
+            if not 0 <= slot < exmap.size:
+                self.bad("Containers 7.3",
+                         f"{where} has slot {slot} outside [0, {exmap.size})")
+            if slot <= previous:
+                self.bad("Containers 7.3",
+                         f"{where} has slot {slot} after {previous}: the write "
+                         f"loop walks the table in order")
+            previous = slot
+            if not hash_ & 1:
+                self.bad("Containers 7.3",
+                         f"{where} has even hash {hash_} in slot {slot}: "
+                         f"SetHash forces bit 0 to mark the slot in use")
+
+    def _check_btree(self, btree, rec) -> None:
+        """Containers.md invariants 4 and 5."""
+        where = f"TBtree at {rec.offset}"
+        if btree.order < 3:
+            self.bad("Containers 7.5", f"{where} has fOrder {btree.order}")
+        for name, got, want in (
+                ("fOrder2", btree.order2, 2 * (btree.order + 1)),
+                ("fLeafMaxIndex", btree.leaf_max, btree.order2 - 1),
+                ("fInnerMaxIndex", btree.inner_max, btree.order),
+                ("fLeafLowWaterMark", btree.leaf_low, btree.leaf_max // 2 - 1),
+                ("fInnerLowWaterMark", btree.inner_low, (btree.order - 1) // 2)):
+            if got != want:
+                self.bad("Containers 7.4",
+                         f"{where} has {name} {got}, but fOrder {btree.order} "
+                         f"gives {want}")
+
     def check_basket(self) -> None:
         """TBasket.md invariants."""
         for rec in self.records:
@@ -2197,6 +2262,7 @@ class Checker:
         self.check_schema_evolution()
         self.check_collections()
         self.check_tarray()
+        self.check_containers()
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()
