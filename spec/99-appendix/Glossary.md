@@ -71,8 +71,9 @@ spells it. Where this specification had to choose a word, that is said.
 
 ## RNTuple
 
-RNTuple is not yet specified here; `PLAN.md` phase 6 is the audit of ROOT's own
-specification for it, which is the one format ROOT documents properly. Its terms
+RNTuple is specified here by a [verbatim tracked copy](../05-rntuple/index.md) of
+ROOT's own specification for it, the one format ROOT documents properly, with this
+project's audit recorded beside it as errata and notes. Its terms
 — envelope, page, page list, cluster group, column, field — are defined in that
 document and are deliberately not duplicated or paraphrased here.
 

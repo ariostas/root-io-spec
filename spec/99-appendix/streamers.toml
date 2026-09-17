@@ -9,7 +9,7 @@
 # status:
 #   specified     — `spec` names the document and section that describes the bytes
 #   gap           — ROOT writes this class into files and the spec does not
-#                   describe it; this is the phase 4 worklist
+#                   describe it; this is the remaining per-class worklist
 #   not-persisted — never an object in a file; the `Streamer` is machinery
 #   out-of-scope  — ships in ROOT but outside the formats this project specifies
 #                   (`PLAN.md` §2.4), recorded so the list stays complete

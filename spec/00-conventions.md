@@ -341,4 +341,4 @@ passage of time.
 
 See [Glossary](99-appendix/Glossary.md) for the full list. RNTuple's own
 vocabulary is defined in ROOT's specification for that format and is not
-duplicated here; `PLAN.md` phase 6 is the audit of it.
+duplicated here; `PLAN.md` §2.6 records this project's audit of it.

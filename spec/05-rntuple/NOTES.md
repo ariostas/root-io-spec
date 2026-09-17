@@ -109,7 +109,7 @@ an `RUInt16BE` (`root/tree/ntuple/src/RMiniFile.cxx:547-560`).
 ## 4. What has not been audited yet
 
 This directory is new. The field-by-field audit of the document against
-`RNTupleSerialize.cxx` — which is the actual work of phase 6 and the reason the
+`RNTupleSerialize.cxx` — which is the actual work of the audit and the reason the
 copy is tracked at all — has so far covered:
 
 Since the table below was written, `rntuple/anchor` has turned the audited

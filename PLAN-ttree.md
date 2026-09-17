@@ -1,19 +1,19 @@
-# Phase 5 sub-plan — the split half of `spec/04-ttree/`
+# The `TTree` measurement record — formerly the phase 5 sub-plan
 
-`PLAN.md` §7 item 5. Written 2026-09-16 against the pinned submodule (`v6-40-04`)
-and measured against both corpora — `gen/foreign/` (§9.8, 154 files) and
-`gen/cern/` (§9.9, 24 files), 178 files in total. Uncurated downloads left in
-`build/cern/` are excluded: the 48 `TGeoManager` demos `gen/cern/README.md`
-deliberately does not list hold one tree and one plain `TBranch` between them.
+**This plan is discharged.** All four documents it ordered are written
+(`TBranchElement.md`, `Splitting.md`, `ReadingEntries.md`, `Auxiliary.md`), all
+fifteen fixtures exist, and `rootfile.TreeReader` decodes the split path.
+`PLAN.md` §8 holds what is left of the project.
 
-Phase 5 closed the unsplit reading path: `TTree.md` → `TBranch.md` → `TBasket.md`
-→ `TLeaf.md`, checked end to end by `rootfile.entry_spans`. What is left is the
-*split* path, and it is the larger half. This plan exists because "write
-`TBranchElement.md`" is not a plan: `fType` alone selects nine different read
-algorithms, and until they were counted there was no way to order the work or size
-the fixture matrix.
+It is kept for three things that are still worth having: the **dispatch table**
+(§2), the **measurement of both corpora** (§3) that the documents were written
+against, the **open questions** of §8, and **what the decoder still cannot
+reach** (§10). Sections 4, 6, 7 and 9 are consumed and are reduced to a line
+each; the git log has them in full.
 
-Everything in §3 is a measurement over the 178 corpus files, not an estimate.
+Written 2026-09-16 against the pinned submodule (`v6-40-04`) and measured over
+178 corpus files — `gen/foreign/` (154) and `gen/cern/` (24 curated at the time).
+Everything in §3 is a measurement, not an estimate.
 
 ## 1. Why this is the next thing
 
@@ -234,23 +234,16 @@ have never been seen by this project.
 
 ## 4. Revised document breakdown
 
-`PLAN.md` §2.5 listed five remaining documents. This drops one and re-scopes the
-rest.
+Consumed. It dropped `Double32.md` as already-written and distributed — the
+annotation grammar and the three encodings are `ElementTypes.md` §5.1-5.3, the
+leaf classes and the 3-versus-4-byte asymmetry are `TLeaf.md` §7 — and scoped the
+other four documents, all of which are now written.
 
-| Document | Status | Scope |
-|---|---|---|
-| ✅ `TBranchElement.md` | **written** | The member table, the `fType`/`fID` taxonomy (§3.2), the leaf bipartition (§3.3), `fBranchCount` as a back-reference (§3.4), the name fields (§3.5), and the dispatch table (§2) |
-| ✅ `Splitting.md` | **written** | How a class becomes a branch tree, the `parent.child` rule, the `name_`/`[name_]` count convention, `fSplitLevel`'s two components, and what "unsplit fallback" means on disk |
-| ✅ `ReadingEntries.md` | **written** | The end-to-end normative procedure, spanning the unsplit path already specified and the nine procedures of §2 |
-| ✅ `Auxiliary.md` | **written** | `TTreeIndex`, `TFriendElement`, `TBranchRef`/`TRefTable`, `TEntryList`, `TEventList`, `TNtuple`/`TNtupleD`, `TChain` |
-| ~~`Double32.md`~~ | **drop** | Already written, distributed. The annotation grammar and the three encodings are `ElementTypes.md` §5.1-5.3; the leaf classes and the 3-versus-4-byte asymmetry are `TLeaf.md` §7, with the `ttree/leaf-truncated` fixture. Per `PLAN.md` decision 6 this is a cross-reference from `TBranchElement.md`, not a fifth document |
-
-`Auxiliary.md` is the one with a surprise in it: `TTreeIndex`, `TFriendElement`,
+`Auxiliary.md` had the surprise in it: `TTreeIndex`, `TFriendElement`,
 `TEntryList`, `TEventList`, `TNtuple`, `TNtupleD` and `TChain` appear in **no
-`StreamerInfo` in either corpus**. Only `TBranchRef` and `TRefTable` do (136 files
-each). Everything else there must be fixture-generated from scratch, with no
-independent file to check against — so it should go last, and its invariants will
-be weaker than the rest of the phase.
+`StreamerInfo` in either corpus**. Only `TBranchRef` and `TRefTable` do (136
+files each), so everything else there is fixture-generated with no independent
+file to check against, and its invariants are weaker than the rest of the layer.
 
 ## 5. The fixture matrix
 
@@ -283,54 +276,26 @@ should be checked for round-trip readability by ROOT itself (`CLAUDE.md`, "a fix
 can also be one ROOT cannot read"): `split-ptr-collection`, because nothing in the
 corpus is written that way, and `split-double32`.
 
-Deliberately *not* in the matrix, pending §8: `TBranchClones`, `TBranchSTL`, a
-non-null `fBranchCount2`, and a `fType == 0` branch with an empty `fLeaves`. Each
-is unreachable from an ordinary current-ROOT write, so each needs a decision about
-whether to specify it from source alone.
+Deliberately *not* in the matrix, pending §8, and how each turned out:
+`TBranchSTL` ✅ (`split-ptr-collection`), `TBranchClones` ✅
+(`ttree/branch-clones`, via the one `TTree::BranchOld` call site), a non-null
+`fBranchCount2` ☐ (no file in 178 has one), a `fType == 0` branch with an empty
+`fLeaves` ☐ (possibly dead defensive code, §8 item 6), and `fType` −1 ☐ (needs a
+branch whose class has a hand-written `Streamer`). The two open ones are what
+`TBranchElement.md` points here for.
 
 ## 6. Tooling
 
-In rough dependency order:
-
-1. **`rootfile.py`: `Branch` grows the `TBranchElement` fields** — `fID`, `fType`,
-   `fStreamerType`, `fClassName`, `fParentName`, `fClonesName`, `fCheckSum`,
-   `fClassVersion`, `fMaximum`, and `fBranchCount` resolved as a back-reference.
-   The decoder does not populate `Value.reference` for that slot today (§3.4); that
-   is the first fix.
-2. ✅ **`rootfile.py`: split entry reading.** `rootfile.TreeReader` decodes one
-   entry of one `TBranchElement` and reports where the decode stopped, which is
-   `ReadingEntries.md` invariant 5. `entry_spans` still handles the leaf-driven
-   path for a plain `TBranch`; the two together reach 25873 of 25984
-   branch-baskets over both corpora, 99.6%, at 0 failures.
-3. **`coverage_probe.py`: an entry-reading mode.** It still measures record
-   decoding only, which is why a split file scores 99.9% while being unreadable
-   (§1). `check_invariants.py`'s `ENTRIES` line now gives the honest number for
-   the split path, so this is no longer blocking; it would put the same figure
-   per file rather than per run.
-4. **`check_invariants.py`**: the new invariants, each corruption-tested against a
-   fixture per `CLAUDE.md`. The measurements of §3 are the source — the leaf
-   bipartition (§3.3), `fClonesName` iff `fType` ∈ {3, 4}, `fClassName` always
-   non-empty, `fClassVersion >= 0`, `fBranchCount` set iff `fType` ∈ {31, 41} or a
-   counted member, `parent.child` for `fType` 31 and 41.
-
-Item 3 is the one that changes what we can claim. It should land with
-`TBranchElement.md`, not after the phase.
+Consumed. `rootfile.py` grew the `TBranchElement` fields and `TreeReader`, and
+`check_invariants.py` gained the layer's invariants, each corruption-tested.
+One item is still open: `coverage_probe.py` measures record decoding only, so it
+reports a split file as almost fully covered while its values are undecoded.
+`check_invariants.py`'s `ENTRIES` line is the honest figure; moving it into the
+probe would make it per file rather than per run.
 
 ## 7. Order
 
-1. ✅ `TBranchElement.md`, with tooling 1 and the `split-object` fixture. The
-   remaining fixtures of its row — `split-unsplit`, `split-clones`, `split-stl`,
-   `split-stl-toplevel`, `split-branch-object` — are still to write, and each
-   will extend rather than change the document; §13 there lists what they cover.
-2. `Splitting.md`, with `split-nested`, `split-counter`, `split-ptr-collection`.
-   It depends on `TBranchElement.md` for the vocabulary, and it is where the
-   zero-coverage procedures get reached.
-3. ✅ Tooling 2, then `split-double32`. Tooling 3 is still open.
-4. `ReadingEntries.md`. Last of the three, deliberately: written earlier it would
-   duplicate `TBranch.md` §10 and `TLeaf.md` §5, and the §9.8 triage already showed
-   what duplication costs.
-5. `Auxiliary.md` and its four fixtures. Independent of 1–4 and separable if the
-   phase needs to be cut short.
+Consumed; the documents were written in the order this section set.
 
 ## 8. Questions to settle while writing
 
@@ -373,19 +338,8 @@ Item 3 is the one that changes what we can claim. It should land with
 
 ## 9. Done criteria
 
-- The four documents written, each with Layout / Fields / Reading / Invariants /
-  Errata / Reference files per `CLAUDE.md`.
-- Every row of the §2 dispatch table reachable from at least one fixture, including
-  the two with zero corpus coverage.
-- `coverage_probe.py` reports an entry-reading figure, not only a record-decoding
-  one, and the split path's number is stated honestly in `PLAN.md` §9.
-- `rootfile.py` reads values out of a split branch for every `fType` in §3.2,
-  checked against the fixtures' byte assertions.
-- Every new invariant in `check_invariants.py`, each confirmed to catch a
-  corruption, and both corpora still at 0 failures.
-- `PLAN.md` §2.5 updated: `Double32.md` dropped with its cross-reference recorded,
-  and §5 phase 5 marked complete.
-
+Met, bar the one tooling item in §6. Every row of the §2 dispatch table is now
+reachable from a fixture, including the two with zero corpus coverage.
 
 ## 10. What the decoder found, and what it left
 
