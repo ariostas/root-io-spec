@@ -741,15 +741,33 @@ from the TFile side goes wrong — chiefly that an `RBlob` key's `fObjLen` is
 decorative, which is the same observation that produced the `Compression.md`
 erratum in §9.9.
 
-☐ **Not yet audited**: the whole C++ type mapping (*Mapping of C++ Types to
-Fields and Columns* and everything under it), *Limits*, *Naming*, *Defaults* and
-the compatibility notes — now the second half of the document rather than the
-bulk of it, and a different kind of material. The envelope sections describe byte
-layouts, which can be checked field by field against the serializer; the type
-mapping describes which columns a given C++ type produces, which needs a written
-RNTuple per type to check properly — i.e. a fixture harness like `gen/cases/`,
-not more reading. `spec/05-rntuple/NOTES.md` §4 carries the same table so the
-state is visible in the specification rather than only here.
+◐ **The type mapping**, which is a different kind of material: an envelope
+describes a byte layout, checkable against the serializer; the type mapping
+describes *which columns a given C++ type produces*, checkable only by writing an
+RNTuple of that type and reading the schema back. So it advances one fixture at a
+time.
+
+✅ `tools/rootfile.py` now reads an RNTuple — anchor, envelope, frames, and the
+header envelope's field and column records, decompressing the envelope when it
+has to. Written from the tracked copy like every other reader here, so the two
+disagreeing is a detectable event. It reads the CERN corpus's compressed
+`RNTuple.root` as well as the fixtures.
+
+✅ `gen/cases/rntuple/fundamental-types`, one field per fundamental C++ type,
+closes the *Fundamental Types* table: all thirteen defaults match, all thirteen
+are plain fields with exactly one column, and the sentence "if the ntuple is
+stored uncompressed, the default changes from split encoding to non-split
+encoding" is confirmed in bytes — `Int16`, `Int32`, `Real32`, `Real64`, not their
+split forms. `tools/test_rntuple.py` parses that table **out of the tracked copy**
+and compares it against the decoded file, the same idea as `check_versions.py`;
+editing the table makes three tests fail.
+
+☐ Still unaudited: the rest of *Type Name Normalization*, low-precision floats,
+the stdlib collections beyond `std::string`, `std::atomic`, enums, user-defined
+classes, `RNTupleCardinality`, streamed types, untyped collections, *Limits*,
+*Naming*, *Defaults* and the compatibility notes.
+`spec/05-rntuple/NOTES.md` §4 carries the same table so the state is visible in
+the specification rather than only here.
 
 Upstream PRs for the six open errata are the next step, and are the natural
 opening for §7 item 1. Erratum 6 is the one to lead with: it is the only one that

@@ -27,6 +27,24 @@ HAVE_SUBMODULE = (REPO / "root/tree/ntuple/doc/BinaryFormatSpecification.md").is
 TRACKED = REPO / "spec/05-rntuple/BinaryFormatSpecification.md"
 
 
+def _have_gitlink() -> bool:
+    """Whether `git rev-parse HEAD:root` can run here.
+
+    It can in a checkout, with or without the submodule fetched, which is the
+    case that matters. It cannot in a bare copy of the tree -- the scratch
+    directory the container regeneration mounts, say -- and a test that cannot
+    run should skip rather than error.
+    """
+    try:
+        sync_rntuple.pinned_commit()
+    except Exception:
+        return False
+    return True
+
+
+HAVE_GITLINK = _have_gitlink()
+
+
 class TrackedCopy(unittest.TestCase):
     """Properties of the copy that hold with or without the submodule."""
 
@@ -38,6 +56,7 @@ class TrackedCopy(unittest.TestCase):
         self.assertIsNotNone(recorded)
         self.assertEqual(len(recorded), 40)
 
+    @unittest.skipUnless(HAVE_GITLINK, "not a git checkout")
     def test_provenance_matches_the_pin(self):
         # Not guarded on the submodule: the gitlink is in the index, so this
         # works in a checkout that never fetched root/.
@@ -144,3 +163,89 @@ class ByteOrderFormats(unittest.TestCase):
         buf = (-12).to_bytes(8, "little", signed=True)
         good = [{"offset": 0, "type": "i64le", "value": -12, "name": "le"}]
         self.assertEqual(self.check_bytes.check(buf, good, "x"), [])
+
+
+def _fundamental_table(text: str) -> dict[str, str]:
+    """The `W*` cell of the tracked copy's Fundamental Types table.
+
+    Returns {C++ type: default column name}, with the `(Split)` prefix kept so
+    the caller can decide which half of the split rule it is testing.
+    """
+    import re
+    lines = text.splitlines()
+    start = lines.index("### Fundamental Types")
+    head = next(i for i in range(start, len(lines))
+                if lines[i].startswith("| Column Type / Fundamental C++ Type"))
+    # `std::byte` is the one header the document namespaces; strip on both
+    # sides rather than special-case it.
+    types = [c.strip().strip("`").replace("std::", "")
+             for c in lines[head].split("|")[2:-1]]
+    defaults: dict[str, str] = {}
+    for line in lines[head + 2:]:
+        if not line.startswith("|"):
+            break
+        cells = [c.strip() for c in line.split("|")[1:-1]]
+        column, marks = cells[0], cells[1:]
+        for cpp, mark in zip(types, marks):
+            if mark == "W*":
+                defaults[cpp] = column
+    return defaults
+
+
+class FundamentalTypeTable(unittest.TestCase):
+    """The tracked table against a file, so the two cannot drift apart.
+
+    The same idea as check_versions.py for class versions: a claim that is a
+    table of names is exactly the kind that rots without anything failing, and
+    here both sides move -- the document on a submodule bump, the file when ROOT
+    changes a default.
+    """
+
+    FIXTURE = REPO / "data/rntuple/fundamental-types.root"
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import rootfile
+        cls.rootfile = rootfile
+        cls.defaults = _fundamental_table(TRACKED.read_text())
+
+    def decoded(self):
+        rootfile = self.rootfile
+        buf, _, recs = rootfile.load(self.FIXTURE)
+        rec = next(r for r in recs if r.class_name == "ROOT::RNTuple")
+        _, schema = rootfile.read_rntuple(buf, rec)
+        by_field = {c.field_id: c for c in schema.columns}
+        # The fixture's field names are the C++ types with std:: stripped, which
+        # is how the document's table heads its columns.
+        return {f.type_name.replace("std::", ""): by_field[f.field_id]
+                for f in schema.fields}
+
+    def test_the_table_marks_one_default_per_type(self):
+        self.assertEqual(len(self.defaults), 13, self.defaults)
+
+    def test_the_fixture_covers_every_type_in_the_table(self):
+        self.assertEqual(set(self.decoded()), set(self.defaults))
+
+    def test_every_default_matches_and_the_ntuple_is_uncompressed(self):
+        # "If the ntuple is stored uncompressed, the default changes from split
+        # encoding to non-split encoding where applicable" -- so the expected
+        # column is the table's cell with any `(Split)` prefix removed.
+        for cpp, column in self.decoded().items():
+            want = self.defaults[cpp].replace("(Split)", "")
+            with self.subTest(cpp=cpp):
+                self.assertEqual(column.type_name, want)
+
+    def test_each_is_a_plain_field_with_exactly_one_column(self):
+        rootfile = self.rootfile
+        buf, _, recs = rootfile.load(self.FIXTURE)
+        rec = next(r for r in recs if r.class_name == "ROOT::RNTuple")
+        _, schema = rootfile.read_rntuple(buf, rec)
+        self.assertEqual(len(schema.columns), len(schema.fields))
+        for f in schema.fields:
+            with self.subTest(field=f.name):
+                self.assertEqual(f.role, "plain")
+
+    def test_split_columns_are_absent_from_an_uncompressed_ntuple(self):
+        names = {c.type_name for c in self.decoded().values()}
+        self.assertFalse([n for n in names if n.startswith("Split")], names)

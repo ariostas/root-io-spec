@@ -21,10 +21,15 @@ project's contribution is the audit** — checking it against
 `tools/sync_rntuple.py --check` runs in CI and fails if the copy drifts from the
 submodule, so the copy cannot quietly become a fork.
 
-**`gen/cases/rntuple/anchor`** is the audit's fixture: an RNTuple written by the
-pinned ROOT with compression off, whose bytes the errata are asserted against.
-Before it existed, every byte in them came from one file in the CERN corpus
-written by an older release.
+Two fixtures carry the audit. **`gen/cases/rntuple/anchor`** is an RNTuple
+written by the pinned ROOT with compression off, whose bytes the errata are
+asserted against; before it existed, every byte in them came from one file in the
+CERN corpus written by an older release. **`gen/cases/rntuple/fundamental-types`**
+has one field per fundamental C++ type and pins the column each lands in.
+
+`tools/rootfile.py` reads an RNTuple anchor and header envelope independently of
+ROOT — written from the tracked copy, so the two disagreeing is a detectable
+event, which is how the rest of this specification was checked.
 
 ## Where RNTuple meets the rest of this specification
 

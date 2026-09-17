@@ -99,8 +99,8 @@ own format and are little-endian. The boundary is exactly the anchor's last byte
 The struct makes it explicit — every member of `RTFNTuple` is an `RUInt64BE` or
 an `RUInt16BE` (`root/tree/ntuple/src/RMiniFile.cxx:547-560`).
 
-> Demonstrated by `rntuple/anchor`, which needs **both** orders to describe one
-> file: its anchor assertions read big-endian and its envelope assertions read
+> Demonstrated by `rntuple/anchor` and `rntuple/fundamental-types`, which need
+> **both** orders to describe one file: its anchor assertions read big-endian and its envelope assertions read
 > little-endian, and `tools/check_bytes.py` gained an `le` suffix for exactly
 > this case. The same eight bytes read the other way are a different, plausible
 > number rather than an obvious error, which is why the fixture states the order
@@ -129,18 +129,30 @@ including its field and column records.
 | Header Envelope: field, column, alias column, extra type info | audited — ERRATA 6 |
 | Footer Envelope: schema extension, cluster groups, attribute sets | audited, clean |
 | Page List Envelope: cluster summaries, page locations, suppressed columns | audited, clean |
+| Fundamental Types: the default column per C++ type | audited against bytes, clean |
+| Type Name Normalization: the standard-integer-typedef rule | audited against bytes, clean |
+| `std::string`'s field and columns | audited against bytes, clean |
 
-**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, the
-whole C++ type mapping (*Mapping of C++ Types to Fields and Columns* and
-everything under it — type name normalization, the stdlib collections, streamed
-types, untyped collections), *Limits*, *Naming specification*, *Defaults*, and
-*Notes on Backward and Forward Compatibility*.
+**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, most
+of the C++ type mapping — the rest of *Type Name Normalization*, low-precision
+floats, the stdlib collections beyond `std::string`, `std::atomic`, enums,
+user-defined classes, `RNTupleCardinality`, streamed types and untyped
+collections — plus *Limits*, *Naming specification*, *Defaults*, and *Notes on
+Backward and Forward Compatibility*.
 
-That is now the second half of the document rather than the bulk of it, and it is
-a different kind of material: the envelope sections describe byte layouts, which
-can be checked field by field against the serializer; the type mapping describes
-which columns a given C++ type produces, which needs a written RNTuple per type
-to check properly.
+The type mapping is a different kind of material from the envelope sections. An
+envelope describes a byte layout, checkable field by field against the
+serializer. The type mapping describes **which columns a given C++ type
+produces**, which is only checkable by writing an RNTuple of that type and
+reading the schema back — so it advances one fixture at a time rather than one
+reading.
+
+`gen/cases/rntuple/fundamental-types` is the first of those, and the pattern it
+sets is worth repeating: a fixture per group of types, decoded with
+`rootfile.read_rntuple`, and a test in `tools/test_rntuple.py` that parses the
+claim **out of the tracked copy** and compares. That way neither side can move
+silently — not the document on a submodule bump, and not ROOT when a default
+changes.
 
 The frames section came out clean. Its size field is a signed 64-bit
 little-endian integer whose sign selects record (positive) from list (negative),

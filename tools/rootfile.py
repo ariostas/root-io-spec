@@ -120,6 +120,10 @@ def _u32(b, o):
     return struct.unpack_from(">I", b, o)[0]
 
 
+def _u64(b, o):
+    return struct.unpack_from(">Q", b, o)[0]
+
+
 def _i64(b, o):
     return struct.unpack_from(">q", b, o)[0]
 
@@ -588,33 +592,39 @@ def _u24le(b: bytes, o: int) -> int:
     return b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)
 
 
-def decompress(buf: bytes, rec: Record) -> bytes:
-    """The object data of a compressed record. Compression.md section 7."""
-    src = rec.offset + rec.key_len
-    src_end = rec.offset + rec.nbytes
+def decompress_blocks(buf: bytes, src: int, src_end: int, want: int,
+                      where: str) -> bytes:
+    """A sequence of compression blocks, decompressed to `want` bytes.
+
+    Compression.md section 7. Factored out of `decompress` because RNTuple wraps
+    its envelopes and pages in the same block format without wrapping them in a
+    TKey, so the block walk has to be reachable without a Record
+    (spec/05-rntuple/, "Compression Block").
+    """
+    rec_obj_len = want
     out = bytearray()
-    while len(out) < rec.obj_len:
+    while len(out) < rec_obj_len:
         if src + BLOCK_HEADER > src_end:
             raise FormatError(
-                f"record at {rec.offset}: payload ends mid-block-header")
+                f"{where}: payload ends mid-block-header")
         magic = bytes(buf[src:src + 2])
         if magic not in CODECS:
             raise FormatError(
-                f"record at {rec.offset}: unknown compression magic {magic!r}")
+                f"{where}: unknown compression magic {magic!r}")
         method, codec = CODECS[magic]
         if method is not None and buf[src + 2] != method:
             raise FormatError(
-                f"record at {rec.offset}: {magic.decode()} block has method byte "
+                f"{where}: {magic.decode()} block has method byte "
                 f"{buf[src + 2]}, expected {method}")
         nin = BLOCK_HEADER + _u24le(buf, src + 3)
         nout = _u24le(buf, src + 6)
         if src + nin > src_end:
             raise FormatError(
-                f"record at {rec.offset}: block claims {nin} bytes, only "
+                f"{where}: block claims {nin} bytes, only "
                 f"{src_end - src} remain")
-        if len(out) + nout > rec.obj_len:
+        if len(out) + nout > rec_obj_len:
             raise FormatError(
-                f"record at {rec.offset}: block would exceed fObjLen")
+                f"{where}: block would exceed fObjLen")
         skip = BLOCK_HEADER + (LZ4_CHECKSUM if magic == b"L4" else 0)
         try:
             chunk = codec(bytes(buf[src + skip:src + nin]), nout)
@@ -624,19 +634,26 @@ def decompress(buf: bytes, rec: Record) -> bytes:
             # Every codec raises its own exception type; a corrupt block is a
             # format error here, not a crash.
             raise FormatError(
-                f"record at {rec.offset}: {magic.decode()} block at {src} did not "
+                f"{where}: {magic.decode()} block at {src} did not "
                 f"decompress: {exc}") from exc
         if len(chunk) != nout:
             raise FormatError(
-                f"record at {rec.offset}: block decompressed to {len(chunk)} "
+                f"{where}: block decompressed to {len(chunk)} "
                 f"bytes, header says {nout}")
         out += chunk
         src += nin
-    if len(out) != rec.obj_len:
+    if len(out) != rec_obj_len:
         raise FormatError(
-            f"record at {rec.offset}: decompressed {len(out)} bytes, fObjLen is "
-            f"{rec.obj_len}")
+            f"{where}: decompressed {len(out)} bytes, fObjLen is "
+            f"{rec_obj_len}")
     return bytes(out)
+
+
+def decompress(buf: bytes, rec: Record) -> bytes:
+    """The object data of a compressed record. Compression.md section 7."""
+    return decompress_blocks(buf, rec.offset + rec.key_len,
+                             rec.offset + rec.nbytes, rec.obj_len,
+                             f"record at {rec.offset}")
 
 
 def object_data(buf: bytes, rec: Record) -> bytes:
@@ -3414,3 +3431,354 @@ def embedded_entry_range(emb: EmbeddedBasket, index: int) -> tuple[int, int]:
     if index + 1 < b.nev_buf:
         return start, emb.block + b.entry_offsets[index + 1]
     return start, b.data_end
+
+
+# -- RNTuple -----------------------------------------------------------------
+#
+# Written from spec/05-rntuple/BinaryFormatSpecification.md -- ROOT's own
+# specification, tracked verbatim -- and from the errata beside it, which is the
+# whole point: where this reader and ROOT disagree, one of the two is wrong and
+# the disagreement is detectable. spec/05-rntuple/ERRATA.md 2, 3 and 5 are all
+# places where following the document literally would fail here.
+#
+# Everything below the anchor is LITTLE-endian; the anchor is a TKey payload and
+# is big-endian like the rest of the file (NOTES.md 3). The helpers say which.
+
+
+def _u16le(b: bytes, o: int) -> int:
+    return struct.unpack_from("<H", b, o)[0]
+
+
+def _u32le(b: bytes, o: int) -> int:
+    return struct.unpack_from("<I", b, o)[0]
+
+
+def _i64le(b: bytes, o: int) -> int:
+    return struct.unpack_from("<q", b, o)[0]
+
+
+def _u64le(b: bytes, o: int) -> int:
+    return struct.unpack_from("<Q", b, o)[0]
+
+
+RN_ENVELOPE_HEADER = 0x01
+RN_ENVELOPE_FOOTER = 0x02
+RN_ENVELOPE_PAGELIST = 0x03
+RN_CHECKSUM_BYTES = 8
+
+
+@dataclass
+class RNTupleAnchor:
+    """The ROOT::RNTuple object that anchors an RNTuple in a TFile.
+
+    Big-endian. Note the two fields the document's schema does not show
+    (ERRATA 2) and the checksum outside the byte count (ERRATA 3).
+    """
+
+    byte_count: int
+    class_version: int
+    epoch: int
+    major: int
+    minor: int
+    patch: int
+    seek_header: int
+    nbytes_header: int
+    len_header: int
+    seek_footer: int
+    nbytes_footer: int
+    len_footer: int
+    max_key_size: int
+    checksum: int
+    end: int
+
+    @property
+    def version(self) -> str:
+        return f"{self.epoch}.{self.major}.{self.minor}.{self.patch}"
+
+
+def read_rntuple_anchor(buf: bytes, rec: Record) -> RNTupleAnchor:
+    """The anchor of `rec`, a ROOT::RNTuple record. Big-endian throughout.
+
+    The offsets below start six bytes into the payload, not at it: the byte
+    count and the class version come first and the document's anchor schema does
+    not show them (ERRATA 2).
+    """
+    start, end = payload_range(rec)
+    word = _u32(buf, start)
+    if not word & BYTE_COUNT_MASK:
+        raise FormatError(f"RNTuple anchor at {start} has no byte count")
+    byte_count = word & ~BYTE_COUNT_MASK
+
+    versions = [_u16(buf, start + 6 + 2 * i) for i in range(4)]
+    seeks = [_u64(buf, start + 14 + 8 * i) for i in range(7)]
+
+    # ERRATA 3: the checksum is appended after the struct, so it falls outside
+    # the byte count. A reader that trusts the byte count to delimit the object
+    # never sees it; one that checks the byte count against the payload length
+    # finds a mismatch of exactly eight and may reject a good file.
+    body_end = start + 4 + byte_count
+    if end - body_end != RN_CHECKSUM_BYTES:
+        raise FormatError(
+            f"RNTuple anchor at {start}: {end - body_end} bytes follow the byte "
+            f"count, expected {RN_CHECKSUM_BYTES} of checksum")
+
+    return RNTupleAnchor(
+        byte_count=byte_count,
+        class_version=_u16(buf, start + 4),
+        epoch=versions[0], major=versions[1],
+        minor=versions[2], patch=versions[3],
+        seek_header=seeks[0], nbytes_header=seeks[1], len_header=seeks[2],
+        seek_footer=seeks[3], nbytes_footer=seeks[4], len_footer=seeks[5],
+        max_key_size=seeks[6],
+        checksum=_u64(buf, body_end), end=end)
+
+
+@dataclass
+class RNEnvelope:
+    """An envelope: `typeAndSize`, a payload, and a trailing XXH3 checksum.
+
+    ERRATA 5: `length` covers the whole envelope INCLUDING the checksum, and the
+    checksum covers everything before itself. Both halves matter.
+    """
+
+    type_id: int
+    length: int
+    start: int          # of the type/length word
+    body: int           # first payload byte
+    body_end: int       # one past the payload, i.e. where the checksum starts
+    checksum: int
+
+
+def read_rn_envelope(buf: bytes, offset: int) -> RNEnvelope:
+    word = _u64le(buf, offset)
+    type_id, length = word & 0xFFFF, word >> 16
+    if length < 8 + RN_CHECKSUM_BYTES:
+        raise FormatError(f"envelope at {offset} declares {length} bytes")
+    body_end = offset + length - RN_CHECKSUM_BYTES
+    return RNEnvelope(type_id=type_id, length=length, start=offset,
+                      body=offset + 8, body_end=body_end,
+                      checksum=_u64le(buf, body_end))
+
+
+@dataclass
+class RNFrame:
+    """A record frame (positive size) or a list frame (negative size)."""
+
+    size: int
+    items: int | None   # None for a record frame
+    start: int
+    body: int
+    end: int
+
+    @property
+    def is_list(self) -> bool:
+        return self.items is not None
+
+
+def read_rn_frame(buf: bytes, offset: int) -> RNFrame:
+    raw = _i64le(buf, offset)
+    if raw == 0:
+        raise FormatError(f"frame at {offset} has size 0")
+    if raw > 0:
+        return RNFrame(size=raw, items=None, start=offset, body=offset + 8,
+                       end=offset + raw)
+    size = -raw
+    return RNFrame(size=size, items=_u32le(buf, offset + 8), start=offset,
+                   body=offset + 12, end=offset + size)
+
+
+def read_rn_string(buf: bytes, offset: int) -> tuple[str, int]:
+    """A u32 length then that many bytes -- NOT the counted string of
+    Conventions 5.1, which is where a reader coming from TFile goes wrong."""
+    n = _u32le(buf, offset)
+    return buf[offset + 4:offset + 4 + n].decode("utf-8"), offset + 4 + n
+
+
+# The structural roles of a field, and the column types, both from the tables in
+# the tracked specification. Column type 0x17 is deliberately absent: the
+# document lists SplitReal16 there and ROOT has no such type (ERRATA 6).
+RN_STRUCTURE = {0x00: "plain", 0x01: "collection", 0x02: "record",
+                0x03: "variant", 0x04: "streamer"}
+RN_COLUMN_TYPE = {
+    0x00: "Bit", 0x01: "Byte", 0x02: "Char", 0x03: "Int8", 0x04: "UInt8",
+    0x05: "Int16", 0x06: "UInt16", 0x07: "Int32", 0x08: "UInt32",
+    0x09: "Int64", 0x0A: "UInt64", 0x0B: "Real16", 0x0C: "Real32",
+    0x0D: "Real64", 0x0E: "Index32", 0x0F: "Index64", 0x10: "Switch",
+    0x11: "SplitInt16", 0x12: "SplitUInt16", 0x13: "SplitInt32",
+    0x14: "SplitUInt32", 0x15: "SplitInt64", 0x16: "SplitUInt64",
+    0x18: "SplitReal32", 0x19: "SplitReal64", 0x1A: "SplitIndex32",
+    0x1B: "SplitIndex64", 0x1C: "Real32Trunc", 0x1D: "Real32Quant",
+}
+
+RN_FLAG_REPETITIVE = 0x01
+RN_FLAG_PROJECTED = 0x02
+RN_FLAG_CHECKSUM = 0x04
+RN_FLAG_SOA = 0x08
+
+
+@dataclass
+class RNField:
+    start: int          # of its record frame, for a case.toml assertion
+    field_id: int
+    parent_id: int
+    structure: int
+    flags: int
+    name: str
+    type_name: str
+    type_alias: str
+    description: str
+    array_size: int | None = None
+    source_id: int | None = None
+    type_checksum: int | None = None
+
+    @property
+    def role(self) -> str:
+        return RN_STRUCTURE.get(self.structure, f"unknown({self.structure})")
+
+
+@dataclass
+class RNColumn:
+    start: int          # of its record frame
+    field_id_offset: int    # where the type code sits, which is start + 8
+    column_id: int
+    type_code: int
+    bits: int
+    field_id: int
+    flags: int
+    representation: int
+    first_element: int | None = None
+    value_range: tuple[float, float] | None = None
+
+    @property
+    def type_name(self) -> str:
+        return RN_COLUMN_TYPE.get(self.type_code, f"unknown({self.type_code:#x})")
+
+
+@dataclass
+class RNSchema:
+    name: str
+    description: str
+    writer: str
+    feature_flags: list[int]
+    fields: list[RNField]
+    columns: list[RNColumn]
+
+
+def _read_rn_field(buf: bytes, offset: int, field_id: int) -> RNField:
+    frame = read_rn_frame(buf, offset)
+    o = frame.body
+    o += 4                                       # field version
+    o += 4                                       # type version
+    parent = _u32le(buf, o); o += 4
+    structure = _u16le(buf, o); o += 2
+    flags = _u16le(buf, o); o += 2
+    name, o = read_rn_string(buf, o)
+    type_name, o = read_rn_string(buf, o)
+    type_alias, o = read_rn_string(buf, o)
+    description, o = read_rn_string(buf, o)
+    field = RNField(start=offset, field_id=field_id, parent_id=parent,
+                    structure=structure,
+                    flags=flags, name=name, type_name=type_name,
+                    type_alias=type_alias, description=description)
+    # The optional trailing values, in flag order.
+    if flags & RN_FLAG_REPETITIVE:
+        field.array_size = _u64le(buf, o); o += 8
+    if flags & RN_FLAG_PROJECTED:
+        field.source_id = _u32le(buf, o); o += 4
+    if flags & RN_FLAG_CHECKSUM:
+        field.type_checksum = _u32le(buf, o); o += 4
+    if o > frame.end:
+        raise FormatError(f"field record at {offset} overran its frame")
+    return field
+
+
+def _read_rn_column(buf: bytes, offset: int, column_id: int) -> RNColumn:
+    frame = read_rn_frame(buf, offset)
+    o = frame.body
+    type_code = _u16le(buf, o); o += 2
+    bits = _u16le(buf, o); o += 2
+    field_id = _u32le(buf, o); o += 4
+    flags = _u16le(buf, o); o += 2
+    representation = _u16le(buf, o); o += 2
+    column = RNColumn(start=offset, field_id_offset=frame.body,
+                      column_id=column_id, type_code=type_code, bits=bits,
+                      field_id=field_id, flags=flags,
+                      representation=representation)
+    if flags & 0x01:                             # deferred column
+        column.first_element = _i64le(buf, o); o += 8
+    if flags & 0x02:                             # a value range follows
+        column.value_range = struct.unpack_from("<dd", buf, o)
+        o += 16
+    if o > frame.end:
+        raise FormatError(f"column record at {offset} overran its frame")
+    return column
+
+
+def read_rn_feature_flags(buf: bytes, offset: int) -> tuple[list[int], int]:
+    """Words of feature flags, continuing while the top bit is set."""
+    flags = []
+    while True:
+        word = _u64le(buf, offset)
+        offset += 8
+        flags.append(word & ~(1 << 63))
+        if not word & (1 << 63):
+            return flags, offset
+
+
+def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
+    """The schema description of a header envelope.
+
+    Only an uncompressed envelope is read: this is an audit tool for fixtures
+    written with compression off, not a general RNTuple reader, and failing
+    loudly is better than half-decoding a zstd block.
+    """
+    if envelope.type_id != RN_ENVELOPE_HEADER:
+        raise FormatError(f"envelope type {envelope.type_id}, expected a header")
+    o = envelope.body
+    feature_flags, o = read_rn_feature_flags(buf, o)
+    name, o = read_rn_string(buf, o)
+    description, o = read_rn_string(buf, o)
+    writer, o = read_rn_string(buf, o)
+
+    fields: list[RNField] = []
+    frame = read_rn_frame(buf, o)
+    if not frame.is_list:
+        raise FormatError(f"field list at {o} is a record frame")
+    pos = frame.body
+    for i in range(frame.items):
+        fields.append(_read_rn_field(buf, pos, i))
+        pos = read_rn_frame(buf, pos).end
+    o = frame.end
+
+    columns: list[RNColumn] = []
+    frame = read_rn_frame(buf, o)
+    if not frame.is_list:
+        raise FormatError(f"column list at {o} is a record frame")
+    pos = frame.body
+    for i in range(frame.items):
+        columns.append(_read_rn_column(buf, pos, i))
+        pos = read_rn_frame(buf, pos).end
+
+    return RNSchema(name=name, description=description, writer=writer,
+                    feature_flags=feature_flags, fields=fields, columns=columns)
+
+
+def read_rntuple(buf: bytes, rec: Record) -> tuple[RNTupleAnchor, RNSchema]:
+    """The anchor and header schema of the RNTuple anchored at `rec`.
+
+    A compressed header envelope is decompressed first. RNTuple decides that on
+    equality -- `nbytes == len` means stored unmodified -- where the container
+    layer uses `>` and tolerates a raw payload longer than its length
+    (spec/05-rntuple/NOTES.md 2).
+    """
+    anchor = read_rntuple_anchor(buf, rec)
+    start, nbytes, length = (anchor.seek_header, anchor.nbytes_header,
+                             anchor.len_header)
+    if nbytes == length:
+        body = buf
+        offset = start
+    else:
+        body = decompress_blocks(buf, start, start + nbytes, length,
+                                 f"RNTuple header envelope at {start}")
+        offset = 0
+    return anchor, read_rn_header(body, read_rn_envelope(body, offset))
