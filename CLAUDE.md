@@ -24,6 +24,7 @@ tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists (needs submodule)
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
 tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream (needs submodule)
+tools/inventory.py --check     # the hand-written Streamer list matches the submodule
 PYTHONPATH=. zensical build --clean --strict          # site; fails on broken links
 PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
 ```
@@ -137,6 +138,21 @@ without editing it.
 tools/sync_rntuple.py          # re-copy after a submodule bump, then audit the diff
 tools/sync_rntuple.py --check  # what CI runs
 ```
+
+`inventory.py` answers the one question a reader cannot put to a file: **which
+classes is the streamer info lying about?** It reads every
+`X::Streamer(TBuffer &)` in the submodule and sorts it by what the reading branch
+does — `delegating` (calls `ReadClassBuffer` unconditionally, so the bytes are
+generated), `guarded` (above a version threshold), or `custom` (never, so the
+streamer info describes the bytes at no version). Only `custom` needs
+specification, and each one must be resolved in `spec/99-appendix/streamers.toml`
+or `--check` fails, so a submodule bump cannot add one silently.
+
+It scans source text with comments and string literals blanked out, which is not
+fussiness: `TStreamerInfo::Streamer` has its `ReadClassBuffer` call commented out
+and replaced, and `ROOT::v5::TFormula` lives in a namespace inside a file full of
+braces in string literals. Both were misclassified before that pass existed, and
+both in the direction of "a reader needs nothing".
 
 `check_versions.py` is the companion to `check_citations.py`. The latter proves a
 cited line exists; it cannot prove the line still says what the citing sentence

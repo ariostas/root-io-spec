@@ -147,11 +147,14 @@ kTObject (66):     ver  fUniqueID:u32  fBits:u32  [pidf:u16]
 kNoType (-1):  nothing
 ```
 
-For code 0 the recursion is literal: ROOT calls back into `ReadClassBuffer` for
-the base class (`root/core/meta/src/TStreamerElement.cxx:813-845`), which reads a
-version word and runs this same loop. The version word belongs to the **base
-class**, not to the derived class, and it is the version that selects the base's
-streamer info.
+For code 0 the recursion is usually literal: ROOT calls back into
+`ReadClassBuffer` for the base class
+(`root/core/meta/src/TStreamerElement.cxx:813-845`), which reads a version word
+and runs this same loop. The version word belongs to the **base class**, not to
+the derived class, and it is the version that selects the base's streamer info.
+
+"Usually" because that is the *last* branch `TStreamerBase::ReadBuffer` tries,
+and a base whose class has a `Streamer` of its own never reaches it — §4.4.
 
 Bases come first. `TStreamerInfo::Build` collects base classes in a loop that
 precedes the data-member loop (`root/io/io/src/TStreamerInfo.cxx:469`,
@@ -204,6 +207,36 @@ elements only.
 > named `vector<JTRIGGER::JPMTIdentifier_t>` and then a `TStreamerBase` named
 > `TObject` — the C++ being `class JPMTSelector : public
 > std::vector<JPMTIdentifier_t>, public TObject`.
+
+### 4.4 A base whose class has a hand-written `Streamer`
+
+`TStreamerBase::ReadBuffer` does not begin with `ReadClassBuffer`. It begins with
+the base class's own `Streamer`, taken from `TClass::GetStreamerFunc()` at
+`root/core/meta/src/TStreamerElement.cxx:760` and called at
+`root/core/meta/src/TStreamerElement.cxx:820`; then an adopted `TClassStreamer`
+if the class has one (`root/core/meta/src/TStreamerElement.cxx:826`); and only
+then `ReadClassBuffer` with the version word §4 describes.
+
+So a `kBase` element contributes **whatever the base class's `Streamer` writes**,
+which is the same rule as §7 applied one level down. For a class with a generated
+`Streamer` the two branches agree and the distinction is invisible. For one with
+a hand-written `Streamer` the streamer info recorded for the base is as much a
+fiction as §7's, and reading it consumes bytes the writer never wrote.
+
+The extreme case is `TQObject`, whose `Streamer` reads nothing and writes nothing
+in either direction (`root/core/base/src/TQObject.cxx:1033-1040`). **A `TQObject`
+base occupies zero bytes** — not a framed empty object, not a bare version word.
+`TVirtualPad` derives from it (`root/core/base/inc/TVirtualPad.h:50-51`), so
+every `TPad` and `TCanvas` in every file has a base element that is not there.
+
+> A file will happily carry a `TQObject` streamer info alongside, with zero
+> elements, because `TStreamerInfo::Build` records the class whether or not it
+> writes anything. Following it reads a version word that belongs to the next
+> member.
+
+A reader cannot derive any of this from the file; the class name is the only
+signal. The complete list for ROOT's own classes is
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md).
 
 ## 5. Nested objects
 
@@ -263,9 +296,13 @@ dispatches on, is a transient member (`root/core/meta/inc/TClass.h:285`,
 reader therefore cannot detect a hand-written streamer; it has to know, from a
 list, which classes have one.
 
-For ROOT's own classes that list is the entire content of `spec/03-classes/`,
-and it is small: the divergent classes are essentially `TFile`/`TDirectory`, the
-collections, the reference types, and parts of `TTree`.
+For ROOT's own classes that list is
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md), extracted from
+ROOT's source and checked against it on every build. It is smaller than the count
+of hand-written `Streamer` definitions suggests: most of them still call
+`ReadClassBuffer`, either unconditionally or above a version threshold, and only
+the ones that never do can diverge from their streamer info at a current
+version.
 
 **The list cannot be closed, though, because a user class can have one too.**
 `ClassDef` generates a `Streamer` that calls `ReadClassBuffer`, so a class that

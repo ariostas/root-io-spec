@@ -40,8 +40,14 @@ older than ROOT 6 to test against and are tracked as gaps in `PLAN.md` §9.1.
 
 ## The classes that diverge at every version
 
-Ten, and they are specified where their behaviour arises rather than collected
-here — see `PLAN.md` decision 6. This table is the index:
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md) is the complete
+list, extracted from ROOT's source rather than asserted: every class whose
+`Streamer` never calls `ReadClassBuffer`, each one resolved to the document that
+specifies it or recorded as a gap. Its counts are generated and CI-checked, which
+is why they are not repeated here.
+
+The ones this layer indexes are specified where their behaviour arises rather
+than collected here — see `PLAN.md` decision 6:
 
 | Class | Specified in |
 |---|---|
@@ -69,10 +75,16 @@ streamer info: see [TBranch](../04-ttree/TBranch.md) and
 that proves the rule — their streamers are hand-written purely to re-parse a
 packing annotation out of the leaf title, which no streamer info records.
 
-## Why there is no generated table here yet
+## Why there is no generated member table here
 
-`PLAN.md` §2.4 plans generated member tables and version matrices for all ~440
+`PLAN.md` §2.4 planned generated member tables and version matrices for all ~440
 persistable classes, produced by `tools/gen_tables.py` from the pinned submodule.
-That tooling is not built. Until it is, this layer is deliberately thin: a
-generated table that nobody checks is worse than a pointer to the algorithm that
-produces the same answer from the file itself.
+That is not what this layer needs, and the reason is now measured rather than
+argued: a generated table restates what the streamer info in the file already
+says, and `tools/rootfile.py` reads that directly for 99.7% of branch-baskets
+across both corpora. A generated table that nobody checks is worse than a pointer
+to the algorithm that produces the same answer from the file itself.
+
+What a reader cannot get from the file is *which classes the file is lying
+about*, and that is the one thing worth generating. `tools/inventory.py` does,
+into [Hand-written streamers](../99-appendix/HandWrittenStreamers.md).

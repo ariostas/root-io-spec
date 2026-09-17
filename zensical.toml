@@ -56,6 +56,7 @@ nav = [
   ] },
   { "Appendix" = [
       { "Bootstrap classes" = "99-appendix/Bootstrap.md" },
+      { "Hand-written streamers" = "99-appendix/HandWrittenStreamers.md" },
       { "Glossary" = "99-appendix/Glossary.md" },
   ] },
 ]

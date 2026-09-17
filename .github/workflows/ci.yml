@@ -39,6 +39,8 @@ jobs:
         run: tools/check_pin.py
       - name: Class version tables match ClassDef in the submodule
         run: tools/check_versions.py
+      - name: Hand-written Streamer inventory matches the submodule
+        run: tools/inventory.py --check
       - name: Cited files and line numbers exist in the submodule
         run: tools/check_citations.py
 

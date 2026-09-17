@@ -1,0 +1,279 @@
+# Where each class with a fully hand-written `Streamer` is accounted for.
+#
+# `tools/inventory.py` extracts the class list from the pinned submodule; this
+# file says what the project has done about each one, and the tool fails if the
+# two disagree in either direction. A submodule bump that adds a hand-written
+# `Streamer` therefore fails CI until someone classifies it, and an entry here
+# for a class that has since dropped its custom streamer fails too.
+#
+# status:
+#   specified     — `spec` names the document and section that describes the bytes
+#   gap           — ROOT writes this class into files and the spec does not
+#                   describe it; this is the phase 4 worklist
+#   not-persisted — never an object in a file; the `Streamer` is machinery
+#   out-of-scope  — ships in ROOT but outside the formats this project specifies
+#                   (`PLAN.md` §2.4), recorded so the list stays complete
+
+# ---------------------------------------------------------------- specified --
+
+[class.TObject]
+status = "specified"
+spec = "[Buffer framing §7](../02-serialization/Buffer.md#7-the-tobject-base)"
+
+[class.TString]
+status = "specified"
+spec = "[Conventions §5.1](../00-conventions.md#51-counted-string)"
+
+[class.TDatime]
+status = "specified"
+spec = "[Records and keys §3.7](../01-container/Record.md#37-fdatime)"
+
+[class.TKey]
+status = "specified"
+spec = "[Records and keys](../01-container/Record.md)"
+
+[class.TFile]
+status = "specified"
+spec = "[File header](../01-container/FileHeader.md)"
+
+[class.TDirectory]
+status = "specified"
+spec = "[Directory records](../01-container/Directory.md)"
+
+[class.TDirectoryFile]
+status = "specified"
+spec = "[Directory records](../01-container/Directory.md)"
+
+[class.TList]
+status = "specified"
+spec = "[Streamer information §4](../02-serialization/StreamerInfo.md#4-tlist)"
+
+[class.TObjArray]
+status = "specified"
+spec = "[Streamer information §5](../02-serialization/StreamerInfo.md#5-tobjarray)"
+
+[class.TClonesArray]
+status = "specified"
+spec = "[Collections §12](../02-serialization/Collections.md#12-tclonesarray)"
+
+[class.TRef]
+status = "specified"
+spec = "[References §3](../02-serialization/References.md#3-tref)"
+
+[class.TRefArray]
+status = "specified"
+spec = "[References §4](../02-serialization/References.md#4-trefarray)"
+
+[class.TStreamerInfo]
+status = "specified"
+spec = "[Streamer information](../02-serialization/StreamerInfo.md)"
+
+[class.TVirtualStreamerInfo]
+status = "specified"
+spec = "[Streamer information](../02-serialization/StreamerInfo.md)"
+
+[class.TStreamerElement]
+status = "specified"
+spec = "[Streamer information §7](../02-serialization/StreamerInfo.md)"
+
+[class.TStreamerBase]
+status = "specified"
+spec = "[Streamer information §7](../02-serialization/StreamerInfo.md)"
+
+[class.TStreamerArtificial]
+status = "specified"
+spec = "[Schema evolution](../02-serialization/SchemaEvolution.md)"
+
+[class.TArrayC]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayS]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayI]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayL]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayL64]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayF]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TArrayD]
+status = "specified"
+spec = "[TArray](../03-classes/TArray.md)"
+
+[class.TBasket]
+status = "specified"
+spec = "[TBasket](../04-ttree/TBasket.md)"
+
+[class.TTreeIndex]
+status = "specified"
+spec = "[Auxiliary structures §2](../04-ttree/Auxiliary.md)"
+
+[class.TCollection]
+status = "specified"
+spec = "[Streamer-driven reading §7](../02-serialization/StreamerDriven.md) — reachable only through `TList`'s fictional streamer info, which no reader should follow"
+
+# --------------------------------------------------------------------- gaps --
+
+[class.TMap]
+status = "gap"
+note = "core/cont, and the only standard associative container that is not an STL collection"
+
+[class.TExMap]
+status = "gap"
+note = "core/cont; three class versions, the layout changes at 3"
+
+[class.TBtree]
+status = "gap"
+note = "core/cont"
+
+[class.TBranchClones]
+status = "gap"
+note = "PLAN-ttree.md §10 — the one branch kind with no fixture"
+
+[class.TStringLong]
+status = "gap"
+note = "a four-byte length where `TString` uses one"
+
+[class."ROOT::v5::TFormula"]
+status = "gap"
+note = "the pre-6.02 formula, still in every file holding a fitted function"
+
+[class."ROOT::v5::TF1Data"]
+status = "gap"
+note = "written by the same files as ROOT::v5::TFormula"
+
+[class.TQObject]
+status = "gap"
+note = "streams nothing in either direction; a base that occupies zero bytes, which is why `H1display.root` decoded the way it did"
+
+[class.TCanvas]
+status = "gap"
+note = "graf2d/gpad; the top-level object of any file saved from a canvas"
+
+[class.TASImage]
+status = "gap"
+note = "graf2d; an embedded image"
+
+[class.TPolyLine3D]
+status = "gap"
+note = "graf3d/g3d"
+
+[class.TPolyMarker3D]
+status = "gap"
+note = "graf3d/g3d"
+
+[class.TMaterial]
+status = "gap"
+note = "graf3d/g3d, the pre-TGeo geometry"
+
+[class.TMixture]
+status = "gap"
+note = "graf3d/g3d, the pre-TGeo geometry"
+
+[class.TClassTree]
+status = "gap"
+note = "graf2d/gpad"
+
+[class.TGraphEdge]
+status = "gap"
+note = "graf2d/gviz"
+
+[class.TGraphNode]
+status = "gap"
+note = "graf2d/gviz"
+
+[class.TGraphStruct]
+status = "gap"
+note = "graf2d/gviz"
+
+# ---------------------------------------------------------- not persistable --
+
+[class.TCollectionStreamer]
+status = "not-persisted"
+spec = "[Collections](../02-serialization/Collections.md) — the STL streaming machinery, never an object in a file"
+
+[class.TGenCollectionProxy]
+status = "not-persisted"
+spec = "[Collections](../02-serialization/Collections.md)"
+
+[class.TGenCollectionStreamer]
+status = "not-persisted"
+spec = "[Collections](../02-serialization/Collections.md)"
+
+[class.TEmulatedCollectionProxy]
+status = "not-persisted"
+spec = "[Collections](../02-serialization/Collections.md)"
+
+[class.TEmulatedMapProxy]
+status = "not-persisted"
+spec = "[Collections](../02-serialization/Collections.md)"
+
+# ------------------------------------------------------------- out of scope --
+
+[class.TSQLFile]
+status = "out-of-scope"
+note = "a SQL database, not a ROOT file"
+
+[class.TTreeRow]
+status = "out-of-scope"
+note = "a `TSQLRow`, from the SQL backend"
+
+[class.TRemoteObject]
+status = "out-of-scope"
+note = "PROOF"
+
+[class.TEveTrans]
+status = "out-of-scope"
+note = "the event display"
+
+[class.REveTrans]
+status = "out-of-scope"
+note = "the ROOT 7 event display"
+
+[class.RModel]
+status = "out-of-scope"
+note = "TMVA SOFIE"
+
+[class.RooAbsBinning]
+status = "out-of-scope"
+note = "RooFit — common in published workspaces, but outside PLAN.md §2.4"
+
+[class.RooRealVar]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooLinkedList]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooRefArray]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooCFunction1Ref]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooCFunction2Ref]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooCFunction3Ref]
+status = "out-of-scope"
+note = "RooFit"
+
+[class.RooCFunction4Ref]
+status = "out-of-scope"
+note = "RooFit"

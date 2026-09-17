@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Inventory the classes whose `Streamer` is hand-written, and what it does on disk.
+
+`spec/02-serialization/StreamerDriven.md` is the specification for almost every
+class in a ROOT file: the streamer info recorded *in the file* describes the
+bytes, and a reader needs no per-class knowledge. The exception is a class that
+replaces the `Streamer` its `ClassDef` would generate — and **nothing in the file
+says which classes those are**. A reader that assumes the streamer info is
+authoritative decodes such a class into garbage without any error.
+
+So the set matters, and until now the specification asserted its size from a
+spot-check. This extracts it from the pinned submodule instead, and sorts each
+member by what its `Streamer` actually does when reading:
+
+`delegating`
+    The reading branch calls `ReadClassBuffer` with no version test around it.
+    The custom code runs *after* the bytes are consumed — fixups, caches,
+    back-pointers — so on disk the class is indistinguishable from a generated
+    one. **A reader needs nothing.**
+
+`guarded`
+    The reading branch calls `ReadClassBuffer` above a version threshold and
+    hand-decodes below it. Current files take the generated path; the custom
+    layout is a legacy concern, tracked in `PLAN.md` §9.1.
+
+`custom`
+    The reading branch never calls `ReadClassBuffer`. The streamer info does not
+    describe the bytes at *any* version. **These need hand-written text**, and a
+    class here that the specification does not account for is a hole.
+
+Every row carries a `path:line` citation, and every `custom` row must be resolved
+in `spec/99-appendix/streamers.toml` — to the document that specifies it, or
+explicitly to a gap. A submodule bump that adds a hand-written `Streamer` fails
+`--check` until someone says which it is, so the list cannot rot silently the way
+`tools/test_bootstrap.py` exists to stop the bootstrap list rotting.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+SUBMODULE = REPO / "root"
+DOCUMENT = REPO / "spec/99-appendix/HandWrittenStreamers.md"
+SIDECAR = REPO / "spec/99-appendix/streamers.toml"
+
+#: A definition of `X::Streamer(TBuffer &)`. The class name may carry template
+#: arguments (`TParameter<Long64_t>`), which are dropped: the sidecar and the
+#: specification name the template, not each specialization. A second parameter
+#: is allowed — `ROOT::v5::TFormula` takes an on-file `TClass*` as well.
+DEFINITION = re.compile(
+    r"\bvoid\s+([A-Za-z_]\w*)(<[^;{}()]*>)?\s*::\s*Streamer\s*\(\s*TBuffer\s*&")
+
+#: `namespace X {`, and the anonymous form. Classes in an anonymous namespace are
+#: file-local and cannot be persisted, so they are dropped rather than reported
+#: under a name no file can contain.
+NAMESPACE = re.compile(r"\bnamespace\s+([A-Za-z_]\w*)?\s*\{")
+
+#: The variable a hand-written `Streamer` reads its version word into. `rootcling`
+#: spells it `R__v` and most hand-edited streamers keep that, but not all:
+#: `ROOT::v5::TFormula` and `ROOT::v5::TF1Data` call it `v`. Taking the name from
+#: the `ReadVersion` call instead of assuming one avoids classifying a version
+#: guard as unconditional delegation, which is the error that would matter — it
+#: understates what a reader has to know.
+READ_VERSION = re.compile(
+    r"\b(?:Version_t|Short_t|Int_t)\s+([A-Za-z_]\w*)\s*=\s*[^;]*\bReadVersion\s*\(")
+
+#: Paths that define classes ROOT does not ship: its own test suite, the
+#: tutorials, and generated dictionaries.
+EXCLUDED = re.compile(r"/(test|tests|tutorials|roottest)/|Dict\.|\bG__")
+
+SOURCES = ("*.cxx", "*.cc", "*.cu", "*.h", "*.hxx")
+
+BEGIN = "<!-- BEGIN GENERATED: {} -->"
+END = "<!-- END GENERATED -->"
+
+KINDS = ("custom", "guarded", "delegating")
+
+
+def blank(text: str) -> str:
+    """`text` with comments and literals replaced by spaces, length preserved.
+
+    Everything here is done by scanning source text, so a `{` inside a string and
+    a `ReadClassBuffer` inside a comment both have to stop counting — the first
+    would desynchronize the namespace tracking (`ROOT::v5::TFormula`'s file parses
+    formula syntax and is full of braces in string literals), and the second would
+    classify a class by code that does not run. Replacing rather than deleting
+    keeps every offset and line number the same as in the original.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif c == "/" and i + 1 < n and text[i + 1] == "*":
+            out[i] = out[i + 1] = " "
+            i += 2
+            while i < n and not (text[i] == "*" and i + 1 < n
+                                 and text[i + 1] == "/"):
+                if text[i] != "\n":
+                    out[i] = " "
+                i += 1
+            for _ in range(2):
+                if i < n:
+                    out[i] = " "
+                    i += 1
+        elif c in "\"'":
+            quote = c
+            i += 1
+            while i < n and text[i] != quote:
+                if text[i] == "\\":
+                    out[i] = " "
+                    i += 1
+                if i < n:
+                    if text[i] != "\n":
+                        out[i] = " "
+                    i += 1
+            if i < n:
+                out[i] = " "
+                i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def enclosing(text: str, offsets: list[int]) -> dict[int, list[str] | None]:
+    """The namespace path around each offset, or `None` inside an anonymous one.
+
+    One linear pass over the braces, with a stack that records which of them
+    opened a namespace. `text` must already have been through `blank`.
+    """
+    opens = {m.end() - 1: m.group(1) for m in NAMESPACE.finditer(text)}
+    wanted = sorted(offsets)
+    result: dict[int, list[str] | None] = {}
+    #: A namespace name, `None` for the anonymous namespace, or `False` for an
+    #: ordinary brace.
+    stack: list[str | None | bool] = []
+    at = 0
+
+    def record(offset: int) -> None:
+        if None in stack:
+            result[offset] = None
+        else:
+            result[offset] = [n for n in stack if isinstance(n, str)]
+
+    for i, c in enumerate(text):
+        while at < len(wanted) and wanted[at] <= i:
+            record(wanted[at])
+            at += 1
+        if c == "{":
+            stack.append(opens[i] if i in opens else False)
+        elif c == "}" and stack:
+            stack.pop()
+    while at < len(wanted):
+        record(wanted[at])
+        at += 1
+    return result
+
+
+def body(text: str, start: int) -> str | None:
+    """The braced body of the definition whose match begins at `start`.
+
+    Returns `None` for a declaration — `template <> void X::Streamer(TBuffer &);`
+    — which has no body. Without that check the next unrelated `{` in the file is
+    read as the function, which is how a header's forward declaration first came
+    out classified as `custom`.
+    """
+    paren = text.find("(", start)
+    if paren < 0:
+        return None
+    depth = 0
+    for i in range(paren, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                rest = text[i + 1:]
+                head = rest.lstrip()
+                if not head.startswith("{"):
+                    return None
+                open_brace = len(rest) - len(head)
+                break
+    else:
+        return None
+
+    depth = 0
+    for i in range(open_brace, len(rest)):
+        if rest[i] == "{":
+            depth += 1
+        elif rest[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return rest[open_brace:i + 1]
+    return None
+
+
+def classify(source: str) -> str:
+    if "ReadClassBuffer" not in source:
+        return "custom"
+    names = set(READ_VERSION.findall(source)) | {"R__v"}
+    guard = re.compile(r"\b(?:%s)\b\s*(?:[<>]=?|[!=]=)"
+                       % "|".join(re.escape(n) for n in sorted(names)))
+    return "guarded" if guard.search(source) else "delegating"
+
+
+def streamers() -> dict[str, dict]:
+    """Every hand-written `Streamer` in the submodule, by class name.
+
+    Three classes define more than one, because a `Streamer` taking an on-file
+    `TClass*` sits beside the one-argument form: `ROOT::v5::TFormula` (three),
+    `ROOT::v5::TF1Data` and `TGenCollectionProxy`. The strongest classification
+    wins, because a reader has to cope with the hardest one — any `custom`
+    definition makes the class `custom`.
+    """
+    found: dict[str, dict] = {}
+    for pattern in SOURCES:
+        for path in sorted(SUBMODULE.rglob(pattern)):
+            relative = str(path.relative_to(REPO))
+            if EXCLUDED.search("/" + relative):
+                continue
+            try:
+                text = path.read_text(errors="ignore")
+            except OSError:
+                continue
+            if "::Streamer" not in text:
+                continue
+            code = blank(text)
+            matches = list(DEFINITION.finditer(code))
+            if not matches:
+                continue
+            scopes = enclosing(code, [m.start() for m in matches])
+            for match in matches:
+                source = body(code, match.start())
+                scope = scopes[match.start()]
+                if source is None or scope is None:
+                    continue
+                name = "::".join(scope + [match.group(1)])
+                kind = classify(source)
+                line = code.count("\n", 0, match.start()) + 1
+                entry = found.setdefault(
+                    name, {"kind": kind, "cite": f"{relative}:{line}"})
+                if KINDS.index(kind) < KINDS.index(entry["kind"]):
+                    entry["kind"] = kind
+                    entry["cite"] = f"{relative}:{line}"
+    return found
+
+
+def notes() -> dict[str, dict]:
+    with SIDECAR.open("rb") as handle:
+        return tomllib.load(handle).get("class", {})
+
+
+def rows(names: list[str], found: dict[str, dict],
+         annotations: dict[str, dict], resolved: bool) -> list[str]:
+    if not resolved:
+        return ["| Class | Defined |", "|---|---|"] + [
+            f"| `{n}` | `{found[n]['cite']}` |" for n in names]
+    out = ["| Class | Defined | Status | Where |", "|---|---|---|---|"]
+    for name in names:
+        note = annotations.get(name, {})
+        where = note.get("spec") or note.get("note") or "—"
+        out.append(f"| `{name}` | `{found[name]['cite']}` | "
+                   f"{note.get('status', '?')} | {where} |")
+    return out
+
+
+def render(found: dict[str, dict], annotations: dict[str, dict],
+           kind: str) -> list[str]:
+    names = sorted(n for n, e in found.items() if e["kind"] == kind)
+    return rows(names, found, annotations, resolved=(kind == "custom"))
+
+
+def summary(found: dict[str, dict],
+            annotations: dict[str, dict]) -> list[str]:
+    counts = {k: sum(1 for e in found.values() if e["kind"] == k)
+              for k in KINDS}
+    out = ["| Classification | Count | What a reader has to do |", "|---|---|---|",
+           f"| `delegating` | {counts['delegating']} | nothing — the bytes are "
+           "streamer-info driven |",
+           f"| `guarded` | {counts['guarded']} | nothing for a current file; the "
+           "custom layout is below a version threshold |",
+           f"| `custom` | {counts['custom']} | know the layout; the streamer info "
+           "does not describe the bytes at any version |",
+           "", "Of the `custom` classes:", "",
+           "| Status | Count |", "|---|---|"]
+    statuses: dict[str, int] = {}
+    for name, entry in found.items():
+        if entry["kind"] == "custom":
+            status = annotations.get(name, {}).get("status", "unclassified")
+            statuses[status] = statuses.get(status, 0) + 1
+    for status in ("specified", "gap", "not-persisted", "out-of-scope",
+                   "unclassified"):
+        if status in statuses:
+            out.append(f"| `{status}` | {statuses[status]} |")
+    return out
+
+
+def block(lines: list[str], name: str) -> tuple[int, int]:
+    begin = BEGIN.format(name)
+    try:
+        start = lines.index(begin)
+    except ValueError:
+        sys.exit(f"{DOCUMENT}: no block {begin!r}")
+    for i in range(start + 1, len(lines)):
+        if lines[i] == END:
+            return start, i
+    sys.exit(f"{DOCUMENT}: block {name!r} is not closed")
+
+
+def rebuild(found: dict[str, dict], annotations: dict[str, dict]) -> str:
+    lines = DOCUMENT.read_text().splitlines()
+    for kind in KINDS:
+        start, stop = block(lines, kind)
+        lines[start + 1:stop] = render(found, annotations, kind)
+    start, stop = block(lines, "summary")
+    lines[start + 1:stop] = summary(found, annotations)
+    return "\n".join(lines) + "\n"
+
+
+def unresolved(found: dict[str, dict],
+               annotations: dict[str, dict]) -> list[str]:
+    """`custom` classes the sidecar does not account for, and stale entries."""
+    custom = {n for n, e in found.items() if e["kind"] == "custom"}
+    problems = [f"{n}: hand-written at every version, not in {SIDECAR.name}"
+                for n in sorted(custom - set(annotations))]
+    problems += [f"{n}: in {SIDECAR.name} but no longer has a custom Streamer"
+                 for n in sorted(set(annotations) - custom)]
+    return problems
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="fail if the document is stale (what CI runs)")
+    args = parser.parse_args(argv)
+
+    if not (SUBMODULE / "README").exists():
+        sys.exit("root/ submodule is not checked out")
+
+    found = streamers()
+    annotations = notes()
+    counts = {k: sum(1 for e in found.values() if e["kind"] == k)
+              for k in KINDS}
+
+    problems = unresolved(found, annotations)
+    wanted = rebuild(found, annotations)
+    stale = wanted != DOCUMENT.read_text()
+
+    if args.check:
+        for problem in problems:
+            print(f"UNRESOLVED {problem}", file=sys.stderr)
+        if stale:
+            print(f"STALE {DOCUMENT.relative_to(REPO)} does not match the "
+                  f"submodule; run tools/inventory.py", file=sys.stderr)
+        if problems or stale:
+            return 1
+    else:
+        DOCUMENT.write_text(wanted)
+        for problem in problems:
+            print(f"UNRESOLVED {problem}", file=sys.stderr)
+
+    total = sum(counts.values())
+    print(f"{total} hand-written Streamer(s): "
+          + ", ".join(f"{counts[k]} {k}" for k in KINDS))
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

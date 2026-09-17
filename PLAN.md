@@ -647,11 +647,48 @@ load-bearing of them. The ~30 regime-3 classes in `03-classes/`, hand-written. P
 pays for itself from phase 4 onward.
 Deliverable: enough to read `TFile` internals and the standard containers.
 
-**☐ Phase 4 — standard classes**
-Run the generator over everything persistable (~440 classes) in one pass, then
-hand-review by family: hist → graf → func → math → misc. The generated pass is
-mechanical and cheap; the review is where the time goes, and it can be
-interleaved with later phases or accept contributions.
+**◐ Phase 4 — standard classes, rescoped 2026-09-17**
+
+As written this phase was "run `gen_tables.py` over everything persistable
+(~440 classes), then hand-review by family". **That is aimed at the wrong
+target**, and the measurement that shows it is now in the repository.
+
+A generated member table restates what the streamer info in the file already
+says. Since this phase was planned, `tools/rootfile.py` has demonstrated the
+point at scale: it decodes **99.7% of branch-baskets across both corpora** from
+the streamer info alone, with no per-class knowledge beyond the bootstrap. For
+those classes a generated table is not a specification, it is a copy — and
+`spec/03-classes/index.md` had already said so.
+
+What a reader genuinely cannot get from a file is **which classes the file is
+lying about**: a class whose `Streamer` is hand-written still has a streamer
+info, and that info can be fiction (`StreamerDriven.md` §7). Nothing in the file
+marks it. That list is the real content of this phase, and
+✅ `tools/inventory.py` now extracts it from the pinned submodule into
+[`spec/99-appendix/HandWrittenStreamers.md`](spec/99-appendix/HandWrittenStreamers.md),
+CI-checked, with every class resolved in `streamers.toml` — so a submodule bump
+that adds or drops a hand-written `Streamer` fails until someone says which it
+is.
+
+**185 hand-written `Streamer` definitions**, sorted by what the reading branch
+actually does:
+
+| | Count | What a reader has to do |
+|---|---|---|
+| `delegating` | 35 | nothing — calls `ReadClassBuffer` unconditionally; the custom code runs after the bytes are consumed. All of RooFit's workspace machinery is here |
+| `guarded` | 86 | nothing for a current file — `ReadClassBuffer` above a version threshold, a legacy layout below. These are §9.1 gaps, not phase-4 work |
+| `custom` | 64 | know the layout; the streamer info describes the bytes at no version |
+
+Of the 64: **27 are already specified**, 5 are never objects in a file, 14 are
+outside §2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **18 are gaps** —
+which is the entire remaining worklist of this phase, against an estimate of
+~440. The ordinary ones among them are `TMap`, `TExMap`, `TBtree`,
+`ROOT::v5::TFormula`/`TF1Data` (every file holding a fitted function),
+`TStringLong`, `TQObject`, `TCanvas` and `TBranchClones`.
+
+So phase 4 is now: write those 18, ranked by how often they occur in the two
+corpora. `gen_tables.py` is not planned; `inventory.py` replaced it and is a
+different tool for a different reason.
 
 **◐ Phase 5 — TTree**
 ✅ `04-ttree/TBasket.md`, done early because the coverage probe named it the last
@@ -935,9 +972,13 @@ Phases 0–2 are done (§5). The next things, in order:
    work order rather than by layer. `tools/test_bootstrap.py` checks its class
    lists against what `tools/rootfile.py` hardcodes, in both directions, because
    a list like that rots without anything failing.
-2. ◐ **`tools/inventory.py`.** Parses every `ClassDef*` in the submodule into the
-   authoritative class/version list. It turns the phase-3 scope from an estimate
-   into a checked-in file, and phase 3 cannot be planned properly without it.
+2. ✅ **`tools/inventory.py`.** Built 2026-09-17, and it answers a sharper
+   question than the one this item asked. A `ClassDef` list would have given the
+   phase-4 scope as a count of persistable classes; what phase 4 actually needs
+   is the set whose *streamer info does not describe their bytes*, which is a
+   property of the `Streamer` body, not of the macro. The tool extracts that
+   instead — see phase 4 in §5 — and the answer is **18 unspecified classes**,
+   not ~440.
 
    Half of it exists: ✅ `tools/check_versions.py` does the extraction — **2166
    distinct classes across 8899 headers**, of which 24 names are ambiguous
@@ -1469,12 +1510,26 @@ is transient (`root/core/base/inc/TQObject.h:50-53`). Counting the bytes of the
 exhaust it, leaving `TQObject` contributing nothing at all, and the reader then
 takes the following bytes for a version word.
 
-So the open question is narrow: **what does a `kBase` element whose class has no
-persistent members occupy on disk — nothing, or a bare framed version word?** If it
-is nothing, that is a rule `StreamerDriven.md` should state, and it would follow
-from the same place as §7's "a hand-written streamer's recorded info can be
-fiction". Not diagnosed further; `TQObject` is named in the `NOT CHECKED` output
-meanwhile, so nothing is hidden and nothing is assumed.
+**Resolved 2026-09-17, and the question was the wrong one.** It is not about
+having no persistent members. `TStreamerBase::ReadBuffer` does not begin with
+`ReadClassBuffer` at all: it begins with the base class's own `Streamer`
+(`fStreamerFunc`, set at `root/core/meta/src/TStreamerElement.cxx:760`, called at
+`root/core/meta/src/TStreamerElement.cxx:820`), then an adopted `TClassStreamer`,
+and only then `ReadClassBuffer` with the version word that implies. `TQObject`'s
+`Streamer` is hand-written to read nothing and write nothing in either direction
+(`root/core/base/src/TQObject.cxx:1033-1040`), so a `TQObject` base occupies
+**zero bytes**. The `H1display.root` byte count was right.
+
+A class with no members but a *generated* `Streamer` would still write a version
+word, which is why the two cases had to be told apart. Written up as
+`StreamerDriven.md` §4.4, and the reason a reader cannot work it out from the
+file — `TQObject`'s info is present and empty — is why
+`spec/99-appendix/HandWrittenStreamers.md` exists.
+
+This does **not** explain the `aod_flushed.root` lead below: `TVirtualPerfStats`
+has no hand-written `Streamer`, so its `kBase` element takes the
+`ReadClassBuffer` branch and should carry a version word. The two leads looked
+like one question and are two.
 
 #### A second lead, found 2026-09-16
 
@@ -1502,7 +1557,9 @@ What is established:
   of its own**. Reading it with a version word puts `fTreeCacheSize` at
   −131072000, which is not a cache size.
 
-So the narrow question is the same shape as the `H1display.root` lead above:
+The question is **not** the same as the `H1display.root` lead above, which
+turned out to be about a hand-written `Streamer` and is resolved.
+`TVirtualPerfStats` has none, so this one stands on its own:
 **what does a `kBase` element contribute when its class declares version 0?**
 `Buffer.md` §4 predicts a version word of 0 followed by nothing; these bytes look
 like nothing at all. `TStreamerBase::ReadBuffer` goes through `ReadClassBuffer`
