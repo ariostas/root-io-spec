@@ -26,13 +26,18 @@ known gap.
 | Layer | State |
 |---|---|
 | Conventions | written |
-| Container — all of it | written |
+| Container — all of it; the >2 GB variants are specified field by field, not yet collected in one page | written |
 | Serialization — framing, streamer info, element types, the reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes — the divergent set, bar nine narrow classes | written |
+| Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
+
+Behind it: **65 reference files with 1563 byte-level assertions, 1111 source
+citations checked against the pinned ROOT tree across 39 documents**, and the
+invariants of every layer run over 226 files this project did not write — ROOT
+2.24/00 to 6.36/02 — with **0 failures**.
 
 ## How to read it
 
@@ -79,7 +84,7 @@ not have in ordinary English, and
 [Bibliography](99-appendix/Bibliography.md) says what else exists and what each of
 it is good for.
 
-## Two things to know before implementing
+## Scope
 
 **It is descriptive, not normative.** This describes ROOT 6.40.04, pinned as a
 submodule. Where this specification and that submodule disagree, the submodule is
@@ -90,6 +95,78 @@ right and this has a bug. Source citations link to that exact commit.
 validate its own output. Free-space allocation, basket sizing and key ordering are
 deliberately left unspecified — they are ROOT's choices, not requirements of the
 format.
+
+### How far back it reads
+
+The two halves of the format have different floors, and the difference is
+measured rather than estimated: 226 files written by ROOT releases from 2.24/00
+to 6.36/02 are read end to end whenever the checks run.
+
+**The container layer has no practical floor.** The oldest file available,
+`pippa.root` at ROOT 2.24/00, walks completely: all 517 of its records are
+located, framed and decompressed by the rules in
+[Records and keys](01-container/Record.md) and
+[Directories](01-container/Directory.md),
+including its 24 version-1 directory records, which carry no UUID at all.
+
+**Decoding the objects inside needs the file to carry streamer infos**, and a
+file that old carries none. `pippa.root` is such a file, so its 468 histogram
+records are located and not one of them is decodable — nothing in the file says
+what a `TH1F` looked like in 1997, and reading it would mean hardcoding every
+class's layout at every version, which this document does not attempt. The
+oldest files that do carry streamer infos are from ROOT 3.04/02, and they decode.
+
+**Object reading is therefore specified for ROOT 4.00 and later, and works in
+practice back to 3.04/02.** Below that, the container layer alone applies.
+
+### What is missing rather than excluded
+
+Across both corpora 94% of records decode. Everything that does not has a name,
+and `tools/coverage_probe.py` prints the reason per record:
+
+| Cause | Reads | What it is |
+|---|---|---|
+| No streamer infos in the file | 468 | the version floor above |
+| RooFit's own classes | 216 | out of scope, below |
+| `TBranch` class versions 7, 8 and 9 | 50 | **a gap** — the layout below version 10, [TBranch §13](04-ttree/TBranch.md#13-class-versions) |
+| `TASImage` | 8 | **a gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
+| An LZ4 payload where the `lz4` package is absent | 137 | the checker's environment, not the format |
+
+Those two are the only **specification** gaps a file in either corpus hits. The
+remainder is a tail of single records of three kinds, none of them a hole in this
+document: a class used by a file whose streamer info that file does not contain,
+so no reader could decode it either; entry offsets the probe declines to
+regenerate from the leaf, which
+[TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets) specifies;
+and one file ROOT itself refuses to open.
+
+**No other class in 226 files is below a hand-written version threshold.** The
+classes that keep a legacy layout under one — `TH1`, `TGraph`, `TFormula`, `TF1`,
+`TAxis`, `TTree`, `TLeafObject`, [listed here](03-classes/index.md#how-small-that-set-is)
+— occur only at versions above it, `TBranch` excepted. That is why those legacy
+branches are a low priority and not a hole underneath the reader.
+
+### What is deliberately out of scope
+
+Four groups. The first is recorded class by class in
+[Hand-written streamers](99-appendix/HandWrittenStreamers.md), which is generated
+from `spec/99-appendix/streamers.toml` and CI-checked, so the list cannot quietly
+drift:
+
+- **Frameworks that ship inside ROOT and define their own persistent classes** —
+  RooFit, whose workspaces are common in published files and which a reader will
+  meet; the SQL backend, where `TSQLFile` names a database rather than a ROOT
+  file; PROOF's `TRemoteObject`; both event displays; and TMVA SOFIE. Fifteen
+  classes, each with its reason beside it.
+- **What `TGeo*` fields mean.** Its 88 persistable classes are streamer-info
+  driven and decode by the generic algorithm like anything else; what is out of
+  scope is a hand-written account of the geometry they describe.
+- **The compression algorithms themselves.**
+  [Compression](01-container/Compression.md) specifies ROOT's block header, how a
+  payload over 16 MiB is split, which two-byte tag selects which algorithm, and
+  the two places that trip a reader up — but DEFLATE, LZMA, LZ4 and Zstandard are
+  somebody else's standards.
+- **Writing algorithms**, as above: constrained by invariants, not specified.
 
 ## Reference files
 

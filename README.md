@@ -3,45 +3,55 @@
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.
 
-ROOT ships exactly one real format specification — the
-[RNTuple binary format](root/tree/ntuple/doc/BinaryFormatSpecification.md). The
+ROOT ships exactly one real format specification — the RNTuple binary format,
+[tracked here verbatim](spec/05-rntuple/BinaryFormatSpecification.md). The
 TFile/TTree documentation in `root/io/doc/TFile/` describes release 3.02.06 and is
 substantially out of date. Everything else lives in the source code, which is why
-third-party implementations (uproot, groot, UnROOT.jl, root-io, jsroot) have been
+third-party implementations (uproot, groot, UnROOT.jl, root-io, JSROOT) have been
 built largely by reverse engineering.
 
 This repository aims to be the shared, testable artifact those projects can rely on.
 
 ## Status
 
-The **container** and **object serialization** layers are written and checked:
-enough to locate any object in a ROOT file and decode any user-defined class from
-the file's own streamer info. `spec/03-classes/` has `TArray`; `spec/04-ttree/`
-covers reading an entry out of an unsplit tree; `spec/05-rntuple/` is not
-started.
+All four layers of the classic format are written and checked: the **container**
+(header, records, directories, compression, the free list), **object
+serialization** (framing, streamer info, element types, collections, schema
+evolution, references), the **standard classes** whose recorded streamer info does
+not describe their bytes, and **`TTree`** — the tree record, branches, leaves,
+baskets, splitting, and reading an entry out of a split or an unsplit tree.
 
 | Layer | State |
 |---|---|
 | Conventions | written |
-| Container — header, records, directories, compression, free list | written |
+| Container — header, records, directories, compression, free list | written, bar the >2 GB layout |
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes — `TArray` | written |
-| `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket` | written |
-| Standard classes and `TTree` — everything else, RNTuple | not started |
+| Standard classes — the divergent set, bar ten narrow classes | written |
+| `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
+| Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
+| RNTuple — ROOT's own specification tracked verbatim, plus six errata from auditing it | partly |
 
-29 reference files, 723 byte-level assertions, 583 checked source citations.
-The invariants also run clean over 154 files written by other people and other
-ROOT releases, from ROOT 4.00 to 6.36 — which is where eleven errors in this
-specification were found and fixed (`PLAN.md` §9.8).
-See [PLAN.md](PLAN.md) for the structure, phasing and decisions; §9 there lists
-every known gap — in each case the behaviour is specified and cited, and what is
-missing is a reference file proving it.
+**65 reference files, 1563 byte-level assertions, and 1111 source citations
+checked against the pinned submodule across 39 documents.** The invariants also
+run over 226 files this project did not write — 154 from uproot's regression
+corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
+with **0 failures**, and 94% of the records in them decode. Those files are where
+fourteen errors in this specification were found and fixed — plus one compression
+codec it had written off as unreadable (`PLAN.md` §9.8 and §9.9).
+
+**Start at [spec/99-appendix/ReaderChecklist.md](spec/99-appendix/ReaderChecklist.md)**
+if you are here to implement something: it is the whole specification as a work
+order, eight milestones, each one a state in which something works.
+[spec/index.md](spec/index.md) states the scope — which releases are covered for
+reading, what is deliberately out of scope, and the two gaps a file in either
+corpus still hits. See [PLAN.md](PLAN.md) for the structure, phasing and
+decisions; §8 is the route to a first release and §9 lists every known gap.
 
 Scope in brief: reading is specified normatively; writing is covered by per-layer
 invariants a conforming file must satisfy, rather than by prescribing ROOT's
-allocation strategy. The document is descriptive of ROOT 6.40.04 — where it and the
-pinned submodule disagree, the submodule wins.
+allocation strategy. The document is descriptive of ROOT 6.40.04 — where it and
+the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation
 

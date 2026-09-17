@@ -364,16 +364,16 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Conventions | ✅ |
 | Container | ✅ except `LargeFiles.md` (§2.2) |
 | Serialization | ✅ all seven documents |
-| Standard classes | ✅ the divergent set, bar nine narrow classes (§2.4) |
+| Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
 | RNTuple | ◐ upstream tracked, envelopes audited, six errata; the type mapping is partial |
-| Appendix | ◐ three of six documents |
+| Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ☐ §8 |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
-is retired: phases 0–3 and 5 are complete, 4 is complete bar the nine narrow
+is retired: phases 0–3 and 5 are complete, 4 is complete bar the ten narrow
 classes, and what is left of 6 and 7 is listed in §8 by value rather than by
 phase.
 
@@ -387,8 +387,8 @@ phase.
 | 4 | Upstream relationship | Standalone repo, not blocking on review. RNTuple errata go upstream as PRs; open a conversation with the ROOT I/O team about eventually replacing `io/doc/TFile/` |
 | 5 | Fixture distribution | Core corpus committed (<10 MB). Legacy-ROOT and >2 GB cases as release artifacts with a committed manifest — superseded in practice by the two corpora (§3.4, §3.5) |
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
-| 7 | **Version floor** (new, §8 item M4) | The specification claims **reading** for files written by ROOT 4.00 and later. Older files are in scope for the container layer only — they carry no streamer infos at all, so their object layouts would have to be hardcoded per class and per version (§9.10). To be stated in `spec/index.md`, not left implicit |
-| 8 | **What is out of scope** (new, §8 item M4) | RooFit's own classes, EVE, SOFIE, the SQL backend, GUI classes, and hand-written analysis of `TGeo*`. Recorded per class in `streamers.toml` so the list stays complete, and to be stated once in `spec/index.md` |
+| 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims **reading** for files written by ROOT 4.00 and later, and M4 measured that it works back to **3.04/02**. The floor is not a release number but a property of the file: object decoding needs streamer infos, and a file old enough carries none. Exactly one corpus file is in that state — `pippa.root`, ROOT 2.24/00 — and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
+| 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope) | Four groups: the frameworks inside ROOT that define their own persistent classes (RooFit, the SQL backend, PROOF, both event displays, SOFIE — 15 classes in `streamers.toml`, each with its reason); what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and writing algorithms, per decision 3. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
 
 ## 7. Open items
 
@@ -474,7 +474,8 @@ missing on-ramp documents, an unstated scope, and no licence.
 1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
    claim was the violation.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
-   is deliberately out of scope (decisions 7 and 8).
+   is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
+   §Scope.
 3. **A reader can find the path in**: an ordered implementation checklist and a
    pitfalls page, both linking into the normative text. ✅ M3.
 4. **Zero unexplained failures over both corpora.** ✅ as of M2: the last one,
@@ -482,8 +483,8 @@ missing on-ramp documents, an unstated scope, and no licence.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
    published site.
-6. **The front pages are accurate.** `README.md` and `spec/index.md` both still
-   say RNTuple is not started and quote fixture counts from 29 files.
+6. **The front pages are accurate.** ✅ M4; both now quote the measured counts
+   and are regenerated against them when they change.
 
 ### 8.2 The work, in order
 
@@ -615,18 +616,55 @@ pages are collation rather than research.*
 `spec/index.md` now opens with the checklist, since "I am here to implement
 something" is the common case, and two stale claims on that page went with it.
 
-**M4 — state the scope, and refresh the front pages.**
-*A reader cannot currently tell whether a gap is unknown or deliberate.*
+**M4 — ✅ done 2026-09-17. The scope is stated, and the front pages say what is
+true.**
+*A reader could not tell whether a gap was unknown or deliberate, and the README
+still described the repository as it was at 29 fixtures.*
 
-Write decisions 7 and 8 into `spec/index.md`: the version floor for reading
-(ROOT 4.00 and later for objects; the container layer reaches 2.24/00), what a
-pre-4 file needs that this document does not give, and the out-of-scope list.
-Then bring `README.md` and `spec/index.md` up to date — both still say RNTuple is
-not started and quote 29 fixtures and 723 assertions against today's 64 and 1515
-— and replace the phase-by-phase status with the table in §5.
+`spec/index.md` gained a **Scope** section: descriptive status, reading against
+writing, how far back it reads, what is missing rather than excluded, and the
+four out-of-scope groups. Writing it meant measuring the floor rather than
+asserting it, and the measurement moved decision 7:
 
-*Done when*: both front pages state the measured numbers, and the scope paragraph
-names the four out-of-scope groups and the version floor.
+- **The floor is a property of the file, not a release number.** Object decoding
+  needs streamer infos. `pippa.root` (2.24/00) carries none — all 517 of its
+  records are located and framed, and not one of its 468 histograms is
+  decodable — but `mlpHiggs.root` (3.04/02) and `H1display.root` (3.05/07)
+  **do** carry them and do decode. Decision 7's "older files carry no streamer
+  infos at all" was true of one file and wrong as a rule; the claim is now
+  "specified for 4.00 and later, works in practice back to 3.04/02".
+- **`TBranch` is the only class in 226 files below a hand-written threshold.**
+  Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
+  `TLeafObject` that occurs anywhere in either corpus is above the version at
+  which that class becomes streamer-info driven. That is what makes §9.1's
+  legacy branches a low priority rather than a hole, and it is now said out loud
+  on the front page.
+- **Of the ten `gap` classes, exactly one occurs in either corpus**: `TASImage`,
+  8 records in `galaxy.root` and `gallery.root`. The other nine are named but
+  unwitnessed.
+- **GUI classes are not an out-of-scope group.** Decision 8 listed them; the M2
+  extraction shows why it did not need to — `gui/gui` alone contributes 197
+  classes to `ForwardingStreamers.md`, and no `TG*` class has a hand-written
+  `Streamer` at all. The four groups that remain are the frameworks with their
+  own persistent classes, `TGeo*` semantics, the compression algorithms as
+  against ROOT's framing of them, and writing.
+
+The blocked-record census behind the new table, over both corpora — 31 628
+records, **94% decoded**: 468 no-streamer-info (the floor), 216 RooFit (out of
+scope), 137 an LZ4 payload with no `lz4` package here, 50 `TBranch` 7/8/9,
+8 `TASImage`, and a tail of single records. Two of those six are the project's,
+and both are named on the front page.
+
+`README.md` was rewritten around the same numbers: 65 fixtures, 1563 assertions,
+1111 citations across 39 documents, 226 corpus files at 0 failures, and the
+reader's checklist as the first link rather than the last.
+
+*Also corrected while checking M6's own claim*: directory record versions 1, 3
+and 4 are **not** blocked — `rootfile.py` reads all 31, and `pippa.root`'s 24
+version-1 records (no UUID at all) walk clean. What they lack is a fixture. The
+one directory form nothing exercises is version 2, which occurs in neither
+corpus, and it is the one where ROOT's own reader is suspect (`Directory.md`
+§7).
 
 **M5 — `LargeFiles.md`.** *Decided: collect it.*
 
@@ -646,10 +684,10 @@ is cited as its check, and `zensical build --strict` resolves its links.
 *The largest remaining in-scope blocked category over files ROOT wrote, and
 §9.10 shows it is not blocked on `gen/legacy/` at all.*
 
-| What | Records blocked | Reproducer |
+| What | Records affected | Reproducer |
 |---|---|---|
-| `TBranch` class versions 7, 8, 9 | 50 across both corpora | `mlpHiggs.root` 3.04/02 (v7), `uproot-from-geant4.root` 4.00/00 (v8), `stock.root` 4.00/07 (v9) |
-| Directory record versions 1, 3, 4 | 31 directory records | `pippa.root` 2.24/00, and see §9.10 |
+| `TBranch` class versions 7, 8, 9 — **the only one that blocks a record** | 50 across both corpora | `mlpHiggs.root` 3.04/02 (v7), `uproot-from-geant4.root` 4.00/00 (v8), `stock.root` 4.00/07 (v9) |
+| Directory record versions 1, 3, 4 — read, but unwitnessed by a fixture (M4) | 31 directory records | `pippa.root` 2.24/00, and see §9.10 |
 | `TStreamerElement` at base version 2 | 979 elements | 6 corpus files; `rootfile.py` already reads them, the spec describes the shape only in passing |
 | `TStreamerInfo` record versions 2, 4, 5, 6 | 695 infos | same files; the collection layouts below info version 8 are the live question |
 
@@ -659,9 +697,11 @@ selector** (`root/tree/tree/src/TBranch.cxx:3062-3066`) — byte-verified on
 `stock.root`. What is missing is the full member order per version, and the
 reader's refusal below version 10 turned into a decode.
 
-*Done when*: `rootfile.py` reads `TBranch` 7–9 and directory versions 1–4, both
-corpora still report 0 failures, and `coverage_probe.py` no longer names either
-as a blocker.
+*Done when*: `rootfile.py` reads `TBranch` 7–9, both corpora still report
+0 failures, and `coverage_probe.py` no longer names it as a blocker. The
+directory row needs a fixture rather than a reader, and version 2 — in neither
+corpus, and the form ROOT's own loader appears to misparse (`Directory.md` §7) —
+is the one to write it for.
 
 **M7 — release plumbing.** *Without this the corpus cannot legally be vendored
 as test vectors, which is the main way a third party would use it.*
@@ -698,7 +738,7 @@ the document specifies, ROOT does not implement, and JSROOT does — two readers
 one repository disagreeing about the type set) plus §7.1's eight bug candidates.
 Deferred to the end by standing decision, and the natural opening for open item 1.
 
-**Not in the MVP, deliberately**: the nine narrow `custom` classes (§2.4);
+**Not in the MVP, deliberately**: the ten narrow `custom`/`extending` classes (§2.4);
 `TGeo*` hand-review; `gen/legacy/`; the pre-ROOT-4 object layouts (decision 7);
 semantic `case.toml` assertions; `WriterInvariants.md`; `TBranchSTL` entry
 decoding and `kStreamLoop` values (`PLAN-ttree.md` §10).
@@ -835,8 +875,8 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **1 failure**, and 154 files at **0** on the
-other side (§9.8). The probe: 1396 decoded, 264
+72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 154 files
+(4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
 `RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with
