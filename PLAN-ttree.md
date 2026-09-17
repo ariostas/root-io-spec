@@ -83,8 +83,8 @@ Leaves on the 6736: `TLeafElement` 6472, `TLeafObject` 2. The remaining 262 have
 **no leaf at all** — see §3.3.
 
 `TBranchClones` and `TBranchSTL` appear in no file in either corpus and in no
-file's `StreamerInfo`. Whether they are still reachable from a current ROOT is an
-open question (§8).
+file's `StreamerInfo`. **Both are reachable from a current ROOT** — resolved 2026-09-17
+for the first and earlier for the second, see §10 — and each now has a fixture.
 
 ### 3.2 `fType`, and the two `fID` sentinels
 
@@ -337,7 +337,23 @@ Item 3 is the one that changes what we can claim. It should land with
 1. ~~**Is `TBranchSTL` reachable?**~~ **Resolved: yes.** A `std::vector<T*>`
    branched at `kSplitCollectionOfPointers + n` produces one, and
    `split-ptr-collection` is the fixture. `Splitting.md` §5 writes it up.
-   `TBranchClones` is still open, still with zero occurrences in 178 files.
+   ~~`TBranchClones` is still open.~~ **Also resolved: yes.**
+   `TTree::BranchOld` on a class with a `TClonesArray*` member produces one, and
+   `ttree/branch-clones` is the fixture. It is the only call site in ROOT
+   (`root/tree/tree/src/TTree.cxx:2223`), and it makes the parent a
+   `TBranchObject`, so the same file closes that gap too.
+   [`TBranchElement.md` §13](spec/04-ttree/TBranchElement.md) writes it up: no
+   `TBranch` base, ten of `TBranch`'s fields written individually, no streamer
+   info anywhere, an `fBranchCount` that must be *read* rather than skipped
+   because the sub-branches reference the classes it declares, and sub-branch
+   names that lose the parent's prefix to a `&name[1]` ROOT's own comment calls
+   wrong.
+
+   It left one thing unfinished, recorded here rather than in a commit message:
+   the count branch keeps its basket **embedded in the `TTree` record**, and
+   `check_invariants.py` can only fetch a basket *record*, so four branch-baskets
+   report `counter basket unavailable`. The bytes are present and `TBranch.md` §5
+   specifies them; it is the one merely-unimplemented skip in the suite.
 2. **Why is `fParentName` empty on 16 of 21 `fType == 3` branches** when their
    `fID >= 0`? Everywhere else the empty case lines up with `fID < 0` (§3.5).
 3. **Does `fBranchCount`'s back-reference use the same map-position convention as

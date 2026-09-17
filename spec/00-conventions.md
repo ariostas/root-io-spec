@@ -130,6 +130,41 @@ a pointer, not by value.
 > 392 with `05 68 65 6c 6c 6f`, the bare counted string for `hello`, immediately
 > after the base `TObject` and with nothing in between.
 
+### 5.1.1 `TStringLong` — the same idea with a four-byte count
+
+`TStringLong` derives from `TString` and replaces the encoding entirely
+(`root/core/base/src/TStringLong.cxx:131-147`):
+
+```
+n:i32   payload:n bytes
+```
+
+No length byte, no escape, **no version word and no byte count** — the whole
+streamer is a count and the characters, so it is bare wherever it appears, exactly
+as §5.1's form is. The count is signed, and each character is written one at a
+time rather than as a block, which changes nothing on disk.
+
+The two encodings differ only below 255 characters:
+
+| Length | `TString` | `TStringLong` |
+|---|---|---|
+| 0 | `00` | `00 00 00 00` |
+| 6 | `06` + 6 | `00 00 00 06` + 6 |
+| 300 | `ff` + `00 00 01 2c` + 300 | `00 00 01 2c` + 300 |
+
+So above 254 characters `TString` costs one byte more, and below it `TStringLong`
+costs three. That is the whole difference, and it is why the class exists: it
+predates the 255 escape being added to `TString`.
+
+**Nothing in ROOT uses it.** The only files naming `TStringLong` are its own
+header and source and a `LinkDef`, so it reaches a file only through a
+user-defined class — which is what `serialization/stringlong` does.
+
+> `serialization/stringlong` puts both in one object: at offset 373 a
+> `TStringLong` writes `00 00 00 06` for `abcdef` and at 383 a `TString` writes
+> `06` for the same text. In the second object, 300 characters, the counts are
+> `00 00 01 2c` at 443 and `ff 00 00 01 2c` at 747.
+
 ### 5.2 Null-terminated string
 
 Bytes up to and including a `0x00` terminator. Used **only** for the class name in a

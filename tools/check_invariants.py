@@ -2188,7 +2188,10 @@ class Checker:
                     rootfile.resolve_leaf_count(lf, leaves)
                 except rootfile.FormatError as exc:
                     self.bad("TLeaf 10.4", f"{where}: {exc}")
-            if i == 0 and lf.offset != 0:
+            if i == 0 and lf.offset != 0 and br.via != "TBranchClones":
+                # A sub-branch of a TBranchClones carries the member's offset
+                # inside the object, and ROOT forces it to -1 on read
+                # (root/tree/tree/src/TBranchClones.cxx:413). TLeaf.md 10.8.
                 self.bad("TLeaf 10.8",
                          f"{where}: the first leaf has fOffset {lf.offset}")
 
@@ -2330,9 +2333,19 @@ class Checker:
                     f"counter leaf {counter.name!r} belongs to no branch")
             i = rootfile.find_basket(owner, entry)
             rec = self.basket_record(owner.basket_seek[i])
-            payload = self.data(rec) if rec is not None else None
+            if rec is None:
+                # Two different causes used to share one message. This one is a
+                # basket that was never written as its own record: the counter
+                # branch kept it embedded in the TTree record (TBranch.md 5), and
+                # this lookup can only fetch a record. Reachable, unimplemented.
+                raise rootfile.UnsupportedClass(
+                    f"counter basket {i} of branch {owner.name!r} is embedded in "
+                    f"the tree record, which this lookup cannot fetch")
+            payload = self.data(rec)
             if payload is None:
-                raise rootfile.UnsupportedClass("counter basket unavailable")
+                raise rootfile.UnsupportedClass(
+                    f"counter basket {i} of branch {owner.name!r} could not be "
+                    f"decompressed")
             basket = self.basket(rec, payload)
             spans = rootfile.entry_spans(payload, rec, basket, owner,
                                          entry - owner.basket_entry[i], {}, leaves)

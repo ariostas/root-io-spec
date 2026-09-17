@@ -24,8 +24,8 @@ Of the `custom` classes:
 
 | Status | Count |
 |---|---|
-| `specified` | 32 |
-| `gap` | 11 |
+| `specified` | 34 |
+| `gap` | 9 |
 | `not-persisted` | 5 |
 | `out-of-scope` | 14 |
 <!-- END GENERATED -->
@@ -88,7 +88,7 @@ fails on one that is not. `gap` is the worklist.
 | `TArrayL64` | `root/core/cont/src/TArrayL64.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TArrayS` | `root/core/cont/src/TArrayS.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TBasket` | `root/tree/tree/src/TBasket.cxx:979` | specified | [TBasket](../04-ttree/TBasket.md) |
-| `TBranchClones` | `root/tree/tree/src/TBranchClones.cxx:386` | gap | PLAN-ttree.md §10 — the one branch kind with no fixture |
+| `TBranchClones` | `root/tree/tree/src/TBranchClones.cxx:386` | specified | [TBranchElement 13](../04-ttree/TBranchElement.md) |
 | `TBtree` | `root/core/cont/src/TBtree.cxx:459` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TCanvas` | `root/graf2d/gpad/src/TCanvas.cxx:2221` | specified | [TCanvas](../03-classes/Canvas.md) |
 | `TClassTree` | `root/graf2d/gpad/src/TClassTree.cxx:1102` | gap | graf2d/gpad |
@@ -127,7 +127,7 @@ fails on one that is not. `gap` is the worklist.
 | `TStreamerElement` | `root/core/meta/src/TStreamerElement.cxx:541` | specified | [Streamer information §7](../02-serialization/StreamerInfo.md) |
 | `TStreamerInfo` | `root/io/io/src/TStreamerInfo.cxx:5608` | specified | [Streamer information](../02-serialization/StreamerInfo.md) |
 | `TString` | `root/core/base/src/TString.cxx:1418` | specified | [Conventions §5.1](../00-conventions.md#51-counted-string) |
-| `TStringLong` | `root/core/base/src/TStringLong.cxx:131` | gap | a four-byte length where `TString` uses one |
+| `TStringLong` | `root/core/base/src/TStringLong.cxx:131` | specified | [Conventions 5.1.1](../00-conventions.md) |
 | `TTreeIndex` | `root/tree/treeplayer/src/TTreeIndex.cxx:631` | specified | [Auxiliary structures §2](../04-ttree/Auxiliary.md) |
 | `TTreeRow` | `root/tree/tree/src/TTreeRow.cxx:172` | out-of-scope | a `TSQLRow`, from the SQL backend |
 | `TVirtualStreamerInfo` | `root/core/meta/src/TVirtualStreamerInfo.cxx:256` | specified | [Streamer information](../02-serialization/StreamerInfo.md) |

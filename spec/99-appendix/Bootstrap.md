@@ -126,8 +126,10 @@ with what goes wrong if it is skipped.
 | `TDatime` | expects framing; it is four bare bytes | [Records and keys §3.7](../01-container/Record.md#37-fdatime) |
 | `std::string` | no file contains an info for it at all | [Collections §10](../02-serialization/Collections.md#10-stdstring) |
 | `TCollection`, `TSeqCollection` | reachable only through the fictional infos above; a reader that never follows those never meets them | not specified, deliberately |
+| `TBranchClones` | no streamer info at all; derives from `TBranch` and streams ten of its fields individually instead of a base | [TBranchElement §13](../04-ttree/TBranchElement.md) |
 | `TBasket` | no streamer info at all, and its fields sit inside the key | [TBasket](../04-ttree/TBasket.md) |
 | `TTreeIndex` | no streamer info at all, and its arrays carry no is-present flag | [Auxiliary classes §2](../04-ttree/Auxiliary.md#2-ttreeindex-the-one-class-with-no-streamer-info) |
+| `TStringLong` | appears as element code 62, so the reader looks for a frame; no file carries an info for it either | [Conventions §5.1.1](../00-conventions.md#511-tstringlong-the-same-idea-with-a-four-byte-count) |
 | `TQObject` | its `kBase` element occupies **zero** bytes, and a modern file carries no info for it at all; following the element desynchronises immediately. Every `TPad` and `TCanvas` has one | [Streamer-driven reading §4.4](../02-serialization/StreamerDriven.md), [Canvas §3](../03-classes/Canvas.md) |
 | `TCanvas` | seven trailing bytes its info does not mention, five of them `fBits` flags | [Canvas](../03-classes/Canvas.md) |
 | `TMap`, `TExMap`, `TBtree` | pointer-streamed pairs, a forced hash bit, and a `TCollection` frame reached through a class that adds nothing | [TMap, TExMap and TBtree](../03-classes/Containers.md) |

@@ -1,0 +1,222 @@
+id   = "ttree/branch-clones"
+file = "data/ttree/branch-clones.root"
+size = 22693
+
+description = """
+The one branch kind the corpora do not contain: a **`TBranchClones`**, with the
+only **`TBranchObject`** here as its parent.
+
+Nothing in ROOT's modern interface makes one. `TTree::Branch` gives a
+`TBranchElement`; the only `new TBranchClones` in the codebase is in
+`TTree::BranchOld`, for a data member that is a pointer to a `TClonesArray`, at a
+split level other than 2. `Splitting.md` said of this class "appears in no file and
+has no known way to produce one" -- there is one, and this is it.
+TBranchElement.md 13.
+
+**It derives from `TBranch` and streams no `TBranch` base.** After the `TNamed` at
+1484 come ten of `TBranch`'s own fields written individually -- `fCompress` through
+`fOffset`, at 1507 to 1562 -- and then nothing else of `TBranch`: no `fLeaves`, no
+`fBaskets`, no `fBasketSeek`, no `fFileName`, no `fIOFeatures`. A reader cannot
+reach this class through `TBranch`'s layout, and no `kBase` element says so.
+
+**And no streamer info describes it.** The file carries 23 infos, `TBranchObject`
+v1 and `TBranch` v13 among them, and no `TBranchClones` -- its `Streamer` never
+calls `WriteClassBuffer`. Like `TBasket` and `TTreeIndex`, the failure is that a
+reader cannot proceed rather than that it silently follows a fiction.
+
+**`fBranchCount` must be read, not skipped.** The slot at 1563 holds a whole
+673-byte `TBranch` -- the count branch `fHits_` -- and the classes it declares are
+referenced by *position* from the sub-branches that follow. The first sub-branch's
+class tag at 2271 is `80 00 02 37`, a back-reference to map position 567, which is
+the `ff ff ff ff` **inside** `fBranchCount` at file offset 1567. Skip the body and
+that reference cannot be resolved; `tools/rootfile.py` failed exactly that way
+before it read the slot properly.
+
+**The name lost its prefix.** The branch was created as `ev`, and the
+`TBranchClones` is called `fHits` rather than `ev.fHits`, because `BranchOld`
+passes `&branchname.Data()[1]` on the non-dotted path -- dropping the first
+character on the assumption that it is a `*`, which ROOT's own comment there calls
+wrong. Its children are `fHits.fI`, `fHits.fX`, `fHits.fUniqueID`, `fHits.fBits`.
+
+Note `fEntries` is 3 while `fEntryNumber` is **0**: the clones branch keeps the
+entry count and not the entry number. And `fOffset` is 16, the offset of the
+member within the object, where a top-level branch would have 0.
+
+The case needs a compiled dictionary, hence `classes.h`.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+  "spec/04-ttree/Splitting.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 184
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 1002
+nbytes = 5233
+class  = "TTree"
+role   = "the tree, with the TBranchObject and TBranchClones inside it"
+[[records]]
+offset = 6235
+nbytes = 16236
+class  = "TList"
+role   = "StreamerInfo -- 23 infos, and no TBranchClones among them"
+
+# --- the TBranchClones, at 1456 --------------------------------------------
+
+[[bytes]]
+name = "the slot's byte count"
+offset = 1456
+type = "u32"
+value = 0x40000b36
+
+[[bytes]]
+name = "kNewClassTag -- the first TBranchClones in the buffer"
+offset = 1460
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "and its class name, which no streamer info in this file describes"
+offset = 1464
+type = "bytes"
+value = "TBranchClones"
+
+[[bytes]]
+name = "the object's byte count"
+offset = 1478
+type = "u32"
+value = 0x40000b20
+
+[[bytes]]
+name = "class version 2"
+offset = 1482
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "the TNamed base -- and no TBranch base anywhere"
+offset = 1484
+type = "u32"
+value = 0x40000013
+
+[[bytes]]
+name = "fName: fHits, not ev.fHits"
+offset = 1500
+type = "string"
+value = "fHits"
+
+[[bytes]]
+name = "fTitle, empty"
+offset = 1506
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fCompress, the first of ten TBranch fields written individually"
+offset = 1507
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBasketSize"
+offset = 1511
+type = "i32"
+value = 32000
+
+[[bytes]]
+name = "fEntryOffsetLen"
+offset = 1515
+type = "i32"
+value = 1000
+
+[[bytes]]
+name = "fMaxBaskets"
+offset = 1519
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "fWriteBasket"
+offset = 1523
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fEntryNumber -- 0, and not the 3 of fEntries"
+offset = 1527
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fEntries"
+offset = 1535
+type = "i64"
+value = 3
+
+[[bytes]]
+name = "fTotBytes"
+offset = 1543
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fZipBytes"
+offset = 1551
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fOffset, the member's offset in the object"
+offset = 1559
+type = "i32"
+value = 16
+
+[[bytes]]
+name = "fBranchCount: a pointer-streamed TBranch of 673 bytes"
+offset = 1563
+type = "u32"
+value = 0x4000029d
+
+[[bytes]]
+name = "fBranchCount: kNewClassTag, at map position 567"
+offset = 1567
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "fBranchCount: the class it declares"
+offset = 1571
+type = "bytes"
+value = "TBranch"
+
+[[bytes]]
+name = "fClassName, after the whole nested branch"
+offset = 2236
+type = "string"
+value = "CHitC"
+
+[[bytes]]
+name = "fBranches: a TObjArray"
+offset = 2242
+type = "u32"
+value = 0x40000824
+
+[[bytes]]
+name = "fBranches: four sub-branches"
+offset = 2259
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fBranches: the first one's class is a back-reference to position 567 -- inside fBranchCount"
+offset = 2271
+type = "u32"
+value = 0x80000237

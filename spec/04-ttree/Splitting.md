@@ -307,9 +307,11 @@ does with the result:
 | `ttree/split-stl-toplevel` | A collection as the branch itself: three branches, no split node above them, and the shortest arrangement ROOT produces |
 | `ttree/split-ptr-collection` | All of §5: `fSplitLevel` above 100, a `TBranchSTL`, and an `fType` 4 branch with `fID` −1 |
 
-Not covered: `TBranchClones`, which appears in no file and has no known way to
-produce one; and the `ReadLeavesCollectionSplitPtrMember` half of §5, which needs
-a non-`vector` collection of pointers.
+Not covered: the `ReadLeavesCollectionSplitPtrMember` half of §5, which needs a
+non-`vector` collection of pointers. `TBranchClones` used to be on this list as
+having "no known way to produce one"; there is one —
+[TBranchElement §13](TBranchElement.md#13-tbranchclones-and-the-only-api-that-makes-one),
+and `ttree/branch-clones` is the fixture.
 
 Invariants 1 to 4 are confirmed by corrupting a copy of `ttree/split-nested` and
 checking that the intended invariant is what rejects it. Invariant 5 cannot be:

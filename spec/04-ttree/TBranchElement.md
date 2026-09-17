@@ -400,16 +400,80 @@ name and type-code lists, because the recorded type *names* changed (`Int_t` to
 
 Other branch classes seen in the corpora:
 
-| Class | Class version | Count |
+| Class | Class version | Count in the corpora |
 |---|---|---|
 | `TBranchObject` | 1 (`root/tree/tree/inc/TBranchObject.h:71`) | 2, carrying the only two `TLeafObject`s |
 | `TBranchClones` | 2 (`root/tree/tree/inc/TBranchClones.h:66`) | **0** |
 | `TBranchSTL` | 1 (`root/tree/tree/inc/TBranchSTL.h:42`) | **0** |
 
-`TBranchClones` and `TBranchSTL` appear in no file and in no file's streamer info
-across 178 files. Whether a current ROOT can still be made to write one is open.
+`TBranchClones` and `TBranchSTL` appear in no file of the 178 and in no file's
+streamer info. Both can be produced on demand, though: §13 for the first,
+[Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) for the
+second.
 
-## 13. Reference files
+## 13. `TBranchClones`, and the only API that makes one
+
+Nothing in ROOT's modern interface produces a `TBranchClones`. `TTree::Branch`
+gives a `TBranchElement`; the only constructor call in the codebase is in
+`TTree::BranchOld`, for a data member that is a **pointer to a `TClonesArray`**, at
+a split level other than 2 (`root/tree/tree/src/TTree.cxx:2216-2227`). `BranchOld`
+also makes the parent a `TBranchObject`, so one call produces both of the classes
+the corpora lack.
+
+### 13.1 It derives from `TBranch` and does not stream a `TBranch` base
+
+```
+bc:u32  ver:i16=2
+<TNamed>
+fCompress:i32  fBasketSize:i32  fEntryOffsetLen:i32  fMaxBaskets:i32
+fWriteBasket:i32
+fEntryNumber:i64  fEntries:i64  fTotBytes:i64  fZipBytes:i64
+fOffset:i32
+fBranchCount:object        -- a whole TBranch, pointer-streamed
+fClassName:string
+<TObjArray>                -- fBranches
+```
+
+`root/tree/tree/src/TBranchClones.cxx:386-466`. The ten fields between the
+`TNamed` and `fBranchCount` are **`TBranch`'s own members, written individually**:
+the class inherits from `TBranch` and its streamer never calls
+`TBranch::Streamer` and emits no `kBase` element. So a reader cannot reach it
+through `TBranch`'s layout, and thirty-odd `TBranch` fields — `fLeaves`,
+`fBaskets`, `fBasketBytes`, `fBasketEntry`, `fBasketSeek`, `fFileName`,
+`fIOFeatures` and the rest ([TBranch §2](TBranch.md)) — are simply absent.
+
+**And no file carries a streamer info for it**, because its `Streamer` never calls
+`WriteClassBuffer`. `ttree/branch-clones` has 23 infos, `TBranchObject` and
+`TBranch` among them, and no `TBranchClones`. That puts it with `TBasket` and
+`TTreeIndex` in the category
+[Bootstrap classes §5](../99-appendix/Bootstrap.md) calls the better failure: a
+reader cannot follow a wrong info, because there is none.
+
+### 13.2 `fBranchCount` must be read, not skipped
+
+`fBranchCount` is the branch holding the clones count, written as an object
+pointer — in `ttree/branch-clones` a 673-byte `TBranch` named `fHits_`. A reader
+that treats the slot as opaque and jumps over it by its byte count **desynchronises
+later**: the classes that object declares, `TBranch` and `TLeafI` among them, are
+referenced by *position* from the sub-branches in `fBranches`
+([Buffer framing §5.2](../02-serialization/Buffer.md)), and a skipped body never
+records them. `tools/rootfile.py` got this wrong first and failed with
+`slot at 2458 references class position 760, which was not seen earlier`.
+
+### 13.3 The sub-branch names lose the parent's prefix
+
+`BranchOld` builds each sub-branch name as `parent.member` and then, unless the
+parent's name ends in a dot, passes `&branchname.Data()[1]` — dropping the first
+character on the assumption that it is a `*`
+(`root/tree/tree/src/TTree.cxx:2224-2227`, where ROOT's own comment reads
+`FIXME: This is wrong!  The asterisk is not usually in the front!`).
+
+In `ttree/branch-clones` the parent is `ev` and the `TBranchClones` is named
+**`fHits`**, not `ev.fHits`, and its children are `fHits.fI`, `fHits.fX`,
+`fHits.fUniqueID` and `fHits.fBits`. A reader must not assume a sub-branch name
+begins with its parent's.
+
+## 14. Reference files
 
 | Case | What it covers |
 |---|---|
@@ -421,10 +485,12 @@ across 178 files. Whether a current ROOT can still be made to write one is open.
 | `ttree/split-ptr-collection` | `fSplitLevel` ≥ 100 and a `TBranchSTL`; see [Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) |
 | `ttree/split-double32` | Five truncated-float members behind identical `TLeafElement` leaves, whose widths differ and are recoverable only from the streamer element's title |
 
-Seven of the eight `fType` values now have a fixture. Not covered, and tracked in
-`PLAN-ttree.md` §5: **`fType` −1**, which needs a class with a hand-written
-`Streamer`; a non-null `fBranchCount2`, which no file in 178 has;
-`TBranchObject`; and `TBranchClones`.
+| `ttree/branch-clones` | §13 in full: the only `TBranchClones` here, under the only `TBranchObject`, with its ten hand-written `TBranch` fields, its pointer-streamed `fBranchCount`, and the lost name prefix of §13.3 |
+
+Seven of the eight `fType` values now have a fixture, and `TBranchClones` and
+`TBranchObject` now have one too. Not covered, and tracked in `PLAN-ttree.md` §5:
+**`fType` −1**, which needs a class with a hand-written `Streamer`; and a non-null
+`fBranchCount2`, which no file in 178 has.
 
 Eight of the nine invariants of §10 were confirmed by corrupting a copy of
 `ttree/split-object` and checking that the intended invariant is what rejects

@@ -1173,6 +1173,15 @@ CUSTOM_STREAMER = {
     # and seven bytes of fBits that its info does not mention.
     # spec/03-classes/Canvas.md.
     "TCanvas",
+    # An i32 count and then the characters: no length byte, no 255 escape, no
+    # version word and no byte count. It appears as element code 62 (kAny), so
+    # the streamer-driven path would look for a frame, and no file carries an
+    # info for it. Conventions 5.1.1.
+    "TStringLong",
+    # Derives from TBranch and streams a TNamed plus ten hand-picked TBranch
+    # fields instead of a TBranch base. No file carries an info for it, the same
+    # as TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 12.1.
+    "TBranchClones",
 }
 
 _PI_LITERALS = {
@@ -1360,6 +1369,18 @@ class Decoder:
                          note="TQObject: contributes no bytes")
         if cls == "TCanvas":
             return self.read_tcanvas(offset)
+        if cls == "TBranchClones":
+            return self.read_branch_clones(offset)
+        if cls == "TStringLong":
+            # A signed count and then that many bytes, bare
+            # (root/core/base/src/TStringLong.cxx:131-147). Not TString's
+            # encoding: no length byte and no escape. Conventions 5.1.1.
+            n = _i32(self.buf, offset)
+            if n < 0:
+                raise FormatError(
+                    f"TStringLong at {offset} has a negative length {n}")
+            return Value(name="TStringLong", ftype=62, start=offset,
+                         end=offset + 4 + n, type_name="TStringLong")
         if cls == "TDatime":
             # A hand-written streamer that writes fDatime and nothing else: no
             # version word and no byte count. Record.md section 3.7.
@@ -1396,6 +1417,67 @@ class Decoder:
         ("kShowEventStatus", 18, 1), ("kAutoExec", 18, 1),
         ("kMenuBar", 18, 1),
     )
+
+    #: What TBranchClones::Streamer writes after the TNamed, in order. Ten of
+    #: TBranch's fields, hand-picked: it derives from TBranch and never streams a
+    #: TBranch base. TBranchElement.md 12.1.
+    BRANCH_CLONES_FIELDS = (
+        ("fCompress", 3, 4), ("fBasketSize", 3, 4), ("fEntryOffsetLen", 3, 4),
+        ("fMaxBaskets", 3, 4), ("fWriteBasket", 3, 4),
+        ("fEntryNumber", 16, 8), ("fEntries", 16, 8), ("fTotBytes", 16, 8),
+        ("fZipBytes", 16, 8), ("fOffset", 3, 4),
+    )
+
+    def read_branch_clones(self, offset: int) -> Value:
+        """A TBranchClones. TBranchElement.md 12.1.
+
+        No file carries a streamer info for it, so this is the only way to read
+        one -- the same situation as TBasket and TTreeIndex.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"TBranchClones at {offset} has no byte count")
+        named = self.read_object("TNamed", frame.body)
+        members = [named]
+        at = named.end
+        for name, code, width in self.BRANCH_CLONES_FIELDS:
+            members.append(Value(name=name, ftype=code, start=at,
+                                 end=at + width))
+            at += width
+        count = read_slot(self.buf, at, self.base)
+        nested = None
+        if count.kind == "object":
+            # The slot must be READ, not skipped. It holds a whole TBranch, and
+            # the classes that object declares -- TBranch itself, TLeafI, TLeaf --
+            # are referenced by position from the sub-branches in fBranches
+            # (Buffer.md 5.2). Skipping the body leaves those references
+            # unresolvable, which is how this was first got wrong.
+            name, body = resolve_class(count, self.classes)
+            nested = self.read_object(name, body)
+            if nested.end != count.end:
+                raise FormatError(
+                    f"fBranchCount at {at}: {name} consumed "
+                    f"{nested.end - body} bytes, slot says {count.end - body}")
+        members.append(Value(name="fBranchCount", ftype=64, start=at,
+                             end=count.end, type_name="TBranch",
+                             members=nested.members if nested else None,
+                             note=f"object slot: {count.kind}"))
+        at = count.end
+        _, end = _counted_string(self.buf, at)
+        members.append(Value(name="fClassName", ftype=65, start=at, end=end,
+                             type_name="TString"))
+        branches = self.read_object("TObjArray", end)
+        members.append(Value(name="fBranches", ftype=61, start=end,
+                             end=branches.end, type_name="TObjArray",
+                             members=branches.members))
+        if branches.end != frame.end:
+            raise FormatError(
+                f"TBranchClones at {offset} consumed "
+                f"{branches.end - offset} bytes, byte count says "
+                f"{frame.end - offset}")
+        return Value(name="TBranchClones", ftype=61, start=offset,
+                     end=frame.end, type_name="TBranchClones",
+                     members=members)
 
     def read_tcanvas(self, offset: int) -> Value:
         """A TCanvas. Canvas.md sections 1 and 2.
@@ -2676,6 +2758,9 @@ class Branch:
     # The eleven TBranchElement members. TBranchElement.md section 2. `cls` is
     # the branch's own class; every field below it is None or 0 on a plain
     # TBranch, which has none of them.
+    #: Set when this branch stood under a TBranchClones, which is not
+    #: itself a readable TBranch (TBranchElement.md 13.1).
+    via: str | None = None
     cls: str = "TBranch"
     class_name: str = ""
     parent_name: str = ""
@@ -2842,8 +2927,50 @@ def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
     return out
 
 
+def _branch_list(buf: bytes, entries: list[Value], base: int) -> list[Branch]:
+    """Read a branch list, flattening any TBranchClones into its children.
+
+    A TBranchClones has no TBranch base and so no fLeaves, fBaskets or basket
+    arrays of its own (TBranchElement.md 13.1): the data is in its sub-branches,
+    which are ordinary TBranches with ordinary baskets. Raising on it would
+    abandon the whole tree and leave those baskets unchecked, so its children take
+    its place, each carrying a note that says where it came from. The structure is
+    still visible in the record: `fBranches` of the parent holds the
+    TBranchClones, and the byte assertions in `ttree/branch-clones` pin it.
+    """
+    out: list[Branch] = []
+    for entry in entries:
+        if entry.type_name == "TBranchClones":
+            m = _named(buf, entry.members or [])
+            children = []
+            # fBranchCount first, and it is not optional: it holds the count leaf
+            # -- `fHits_` in ttree/branch-clones -- that every sub-branch's
+            # fLeafCount refers to by position. Dropping it makes those
+            # references unresolvable, which is how this was first got wrong.
+            count = m.get("fBranchCount")
+            if count is not None and count.members:
+                children.append(_read_branch(buf, count, base))
+            inner = m.get("fBranches")
+            if inner is not None:
+                children.extend(_branch_list(buf, inner.members or [], base))
+            for child in children:
+                child.via = "TBranchClones"
+            out.extend(children)
+            continue
+        out.append(_read_branch(buf, entry, base))
+    return out
+
+
 def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
     m = _named(buf, entry.members or [])
+    if entry.type_name == "TBranchClones":
+        # Not a low TBranch version: a TBranchClones writes ten of TBranch's
+        # fields individually and none of the rest, so the generic algorithm has
+        # nothing to work with however new the file is.
+        # TBranchElement.md 13.1.
+        raise UnsupportedClass(
+            "TBranchClones streams ten TBranch fields and no TBranch base, so "
+            "the generic branch layout does not apply: TBranchElement.md 13.1")
     if "fFirstEntry" not in m:
         # fFirstEntry arrived at TBranch version 11, and below version 10 the
         # entry counters are Stat_t rather than Long64_t. spec/04-ttree/TBranch.md
@@ -2879,8 +3006,7 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
                 if e.reference is None],
         leaf_refs=[e.reference for e in (m["fLeaves"].members or [])
                    if e.reference is not None],
-        branches=[_read_branch(buf, e, base)
-                  for e in (m["fBranches"].members or [])],
+        branches=_branch_list(buf, m["fBranches"].members or [], base),
         cls=entry.type_name or "TBranch",
         **_element_members(buf, m, base))
 
@@ -3142,8 +3268,7 @@ def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:
     members = _named(buf, tree.members or [])
     if "fBranches" not in members:
         raise FormatError("no fBranches member")
-    top = [_read_branch(buf, e, base)
-           for e in (members["fBranches"].members or [])]
+    top = _branch_list(buf, members["fBranches"].members or [], base)
     _resolve_leaf_refs(top, base)
     return top
 

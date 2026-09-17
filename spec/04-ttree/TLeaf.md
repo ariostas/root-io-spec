@@ -430,7 +430,18 @@ consumed, and read nothing if the remainder is zero.
    basket's `fNevBufSize`, and the basket has no entry-offset array.
 7. For any branch, the sum over its leaves of that entry's bytes equals the length
    of the entry's byte range, exactly.
-8. `fOffset` of the first leaf of a branch is 0.
+8. `fOffset` of the first leaf of a branch is 0, **unless the branch stands under
+   a `TBranchClones`** — see below.
+
+**Invariant 8's exception is not a weakening.** A sub-branch of a
+`TBranchClones` is one member of a `TClonesArray`, and its leaf's `fOffset` is that
+member's offset inside the object: in `ttree/branch-clones` the four sub-branches
+of `CHitC` carry 8, 12, 16 and 20 — `TObject`'s `fUniqueID` and `fBits`, then `fI`
+and `fX`. ROOT writes those values and then **throws them away on read**, forcing
+`fOffset` to −1 for every such leaf (`root/tree/tree/src/TBranchClones.cxx:413`).
+So the field is written, is not 0, and is not used; a reader must neither require 0
+nor trust the value. See
+[TBranchElement §13](TBranchElement.md#13-tbranchclones-and-the-only-api-that-makes-one).
 
 **Invariants 5 to 7 are about what a branch's leaves say, so a branch with no
 leaf at all is outside them.** Two shapes reach that state, both added by the

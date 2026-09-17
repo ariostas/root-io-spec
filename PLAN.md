@@ -676,12 +676,16 @@ actually does:
 | | Count | What a reader has to do |
 |---|---|---|
 | `delegating` | 35 | nothing — calls `ReadClassBuffer` unconditionally; the custom code runs after the bytes are consumed. All of RooFit's workspace machinery is here |
-| `guarded` | 86 | nothing for a current file — `ReadClassBuffer` above a version threshold, a legacy layout below. These are §9.1 gaps, not phase-4 work |
-| `custom` | 64 | know the layout; the streamer info describes the bytes at no version |
+| `guarded` | 88 | nothing for a current file — `ReadClassBuffer` above a version threshold, a legacy layout below. These are §9.1 gaps, not phase-4 work |
+| `custom` | 62 | know the layout; the streamer info describes the bytes at no version |
 
-Of the **62**: **30 are specified**, 5 are never objects in a file, 14 are outside
-§2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **13 are gaps** — the
+Of the **62**: **34 are specified**, 5 are never objects in a file, 14 are outside
+§2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **9 are gaps** — the
 entire remaining worklist of this phase, against an estimate of ~440.
+
+The counts above are copied from
+`spec/99-appendix/HandWrittenStreamers.md`, where they are generated and
+CI-checked; that page is the authority if the two ever disagree.
 
 The count was 64 until `ROOT::v5::TFormula` and `ROOT::v5::TF1Data` came off it,
 and how they came off is worth recording: **a class's `Streamer` overloads are one
@@ -712,8 +716,33 @@ ever wrote it. Four class versions are now checked by `check_versions.py`, three
 invariants by `check_invariants.py`, and `classes/formula` pins the ROOT 6 side —
 including the `0x99` `kBool` of §7.1 item 0.
 
-What is left: `TStringLong`, `TQObject`, `TCanvas`, `TBranchClones`, and nine of
-narrower reach. `gen_tables.py` is not planned; `inventory.py` replaced it and is
+✅ `spec/03-classes/Canvas.md` — `TCanvas` and `TQObject` together, since a canvas
+is where a reader meets the zero-byte base. Seven trailing bytes its streamer info
+does not mention, five of them `fBits` flags written as individual `Bool_t`s and
+one an `fBatch` that is written and discarded; the `ClassMember` annotations that
+make the streamer look self-describing while emitting nothing; and `TAttBBox2D`
+six bytes away, an equally empty class that writes **six** bytes where `TQObject`
+writes none.
+
+✅ `TStringLong`, in [Conventions §5.1.1](spec/00-conventions.md) rather than a
+document of its own, because it *is* a string encoding: a signed four-byte count
+and the characters, with no length byte, no 255 escape, no version word and no
+byte count. Nothing in ROOT uses it, so `serialization/stringlong` needs a class
+of its own, and puts the same text in a `TString` beside it at six characters and
+at 300 — all four forms in two records.
+
+✅ `TBranchClones`, in [TBranchElement §13](spec/04-ttree/TBranchElement.md) — the
+branch kind `PLAN-ttree.md` had recorded as having "no known way to produce one".
+There is one: `TTree::BranchOld` on a class with a `TClonesArray*` member, the
+only call site in ROOT, which makes the parent a `TBranchObject` and so closes
+that gap too.
+
+**What is left is nine classes, all of narrow reach**: `TASImage`, `TClassTree`,
+`TMaterial`, `TMixture`, `TPolyLine3D`, `TPolyMarker3D` and the three
+`graf2d/gviz` graph-drawing wrappers. None is something a physics file is likely
+to hold, so the phase has reached the point where the next fixture returns less
+than it costs — §8's remaining items and phase 6's type mapping are better
+value. `gen_tables.py` is not planned; `inventory.py` replaced it and is
 a different tool for a different reason.
 
 **◐ Phase 5 — TTree**

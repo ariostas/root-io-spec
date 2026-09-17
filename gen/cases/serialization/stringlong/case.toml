@@ -1,0 +1,141 @@
+id   = "serialization/stringlong"
+file = "data/serialization/stringlong.root"
+size = 1855
+
+description = """
+`TStringLong` against `TString`, in the same object, twice.
+
+`TStringLong` derives from `TString` and throws away its encoding: a signed
+four-byte count and then the characters, with no length byte, no 255 escape, no
+version word and no byte count (Conventions 5.1.1). It predates the escape being
+added to `TString`, and **nothing in ROOT uses it** -- the only files naming it are
+its own header and source and a `LinkDef` -- so a user-defined class is the only
+way to get one into a file.
+
+Two objects put every branch of both encodings side by side:
+
+`small` holds `abcdef`. At 373 the `TStringLong` writes `00 00 00 06`; ten bytes
+later, at 383, the `TString` writes `06`. Below 255 characters `TStringLong` costs
+three bytes more.
+
+`big` holds 300 `x`. At 443 the `TStringLong` writes `00 00 01 2c`; at 747 the
+`TString` writes `ff` and then `00 00 01 2c` -- the escape -- so above 254
+characters it is `TString` that costs one byte more. Above that length the two
+encodings differ in nothing but that byte.
+
+The case needs a compiled dictionary, hence `classes.h`. Both members are of
+standard-library-independent width, so the digest is portable, but note that
+`sizeof(TString)` differs between standard libraries and `tools/normalize.py`
+masks every `fSize` for that reason -- which is why the two `fSize` values in this
+file's streamer info are not asserted.
+"""
+
+spec = [
+  "spec/00-conventions.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 218
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 318
+nbytes = 72
+class  = "SText"
+role   = "six characters: the short form of both encodings"
+[[records]]
+offset = 390
+nbytes = 662
+class  = "SText"
+role   = "300 characters: the long form of both"
+[[records]]
+offset = 1052
+nbytes = 523
+class  = "TList"
+role   = "StreamerInfo"
+
+# --- six characters, at 357 ------------------------------------------------
+
+[[bytes]]
+name = "small: byte count"
+offset = 357
+type = "u32"
+value = 0x4000001d
+
+[[bytes]]
+name = "small: SText class version 1"
+offset = 361
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "small: the TObject base, version 1"
+offset = 363
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "small: TStringLong's count -- four bytes, and no length byte before it"
+offset = 373
+type = "i32"
+value = 6
+
+[[bytes]]
+name = "small: and its characters"
+offset = 377
+type = "bytes"
+value = "abcdef"
+
+[[bytes]]
+name = "small: TString's count for the same text -- one byte"
+offset = 383
+type = "u8"
+value = 6
+
+[[bytes]]
+name = "small: and its characters, ending the object"
+offset = 384
+type = "bytes"
+value = "abcdef"
+
+# --- 300 characters, at 427 -----------------------------------------------
+
+[[bytes]]
+name = "big: byte count"
+offset = 427
+type = "u32"
+value = 0x4000026d
+
+[[bytes]]
+name = "big: TStringLong's count -- unchanged in form"
+offset = 443
+type = "i32"
+value = 300
+
+[[bytes]]
+name = "big: the first characters"
+offset = 447
+type = "bytes"
+value = "xxxx"
+
+[[bytes]]
+name = "big: TString's escape byte"
+offset = 747
+type = "u8"
+value = 0xff
+
+[[bytes]]
+name = "big: and then the same four-byte count"
+offset = 748
+type = "u32"
+value = 300
+
+[[bytes]]
+name = "big: after which the two encodings are identical"
+offset = 752
+type = "bytes"
+value = "xxxx"

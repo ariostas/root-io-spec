@@ -122,9 +122,20 @@ Over the two corpora that is **25937 of 26011, 99.7%**, with 0 failures. Read a
 things checked. The 74 skips are named individually, and **every one of them is
 something no reader could decode from the file**: a collection whose value class
 has no streamer info in it (49), a branch or class whose `Streamer` is
-hand-written (18), and a basket whose codec is not available here (7). There is
-no longer a category that is merely unimplemented. `PLAN-ttree.md` §10 tracks
-what that leaves.
+hand-written (18), and a basket whose codec is not available here (7). No skip
+over the corpora is merely unimplemented. `PLAN-ttree.md` §10 tracks what that
+leaves.
+
+**One skip over the fixtures is.** `ttree/branch-clones` has four branch-baskets
+whose counter branch keeps its basket **embedded in the `TTree` record** rather
+than as its own key, and the counter lookup only knows how to fetch a basket
+record. The bytes are in the file and `TBranch.md` §5 specifies them; this is
+plumbing, and it is the one place the paragraph above does not hold.
+
+Two causes used to share the message `counter basket unavailable` — that one, and
+a basket whose codec is missing — so they are now spelled out separately. Worth
+remembering when reading a skip line: the count is only as informative as the
+reason, and a shared message hides a category.
 
 **`spec/05-rntuple/` is not ours to edit.** `BinaryFormatSpecification.md` there
 is a byte-for-byte copy of ROOT's own RNTuple specification, and

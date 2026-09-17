@@ -139,12 +139,12 @@ status = "specified"
 spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
 
 [class.TBranchClones]
-status = "gap"
-note = "PLAN-ttree.md §10 — the one branch kind with no fixture"
+status = "specified"
+spec = "[TBranchElement 13](../04-ttree/TBranchElement.md)"
 
 [class.TStringLong]
-status = "gap"
-note = "a four-byte length where `TString` uses one"
+status = "specified"
+spec = "[Conventions 5.1.1](../00-conventions.md)"
 
 [class.TQObject]
 status = "specified"
