@@ -214,13 +214,24 @@ def classify(source: str) -> str:
 def streamers() -> dict[str, dict]:
     """Every hand-written `Streamer` in the submodule, by class name.
 
-    Three classes define more than one, because a `Streamer` taking an on-file
-    `TClass*` sits beside the one-argument form: `ROOT::v5::TFormula` (three),
-    `ROOT::v5::TF1Data` and `TGenCollectionProxy`. The strongest classification
-    wins, because a reader has to cope with the hardest one — any `custom`
-    definition makes the class `custom`.
+    A class may define several overloads, and they are classified **together**
+    rather than separately, because ROOT's multi-overload streamers are one
+    streamer that dispatches between its own forms. `ROOT::v5::TFormula` is the
+    case that forced this: its one- and two-argument forms read the version word
+    and hand off to `Streamer(TBuffer&, Int_t, UInt_t, UInt_t, const TClass*)`,
+    and *that* is where `ReadClassBuffer` is. Classified separately the class
+    comes out `custom` -- "the streamer info describes the bytes at no version"
+    -- when in fact every version a released ROOT ever wrote is streamer-info
+    driven, and only versions 1 to 3 are hand-decoded.
+
+    Three classes have more than one: `ROOT::v5::TFormula` (three),
+    `ROOT::v5::TF1Data` and `TGenCollectionProxy`. All three were read before
+    this rule was adopted; the last is `custom` either way.
+
+    The citation kept is the first definition, in file and line order.
     """
-    found: dict[str, dict] = {}
+    bodies: dict[str, list[str]] = {}
+    cites: dict[str, str] = {}
     for pattern in SOURCES:
         for path in sorted(SUBMODULE.rglob(pattern)):
             relative = str(path.relative_to(REPO))
@@ -243,14 +254,11 @@ def streamers() -> dict[str, dict]:
                 if source is None or scope is None:
                     continue
                 name = "::".join(scope + [match.group(1)])
-                kind = classify(source)
+                bodies.setdefault(name, []).append(source)
                 line = code.count("\n", 0, match.start()) + 1
-                entry = found.setdefault(
-                    name, {"kind": kind, "cite": f"{relative}:{line}"})
-                if KINDS.index(kind) < KINDS.index(entry["kind"]):
-                    entry["kind"] = kind
-                    entry["cite"] = f"{relative}:{line}"
-    return found
+                cites.setdefault(name, f"{relative}:{line}")
+    return {name: {"kind": classify("\n".join(sources)), "cite": cites[name]}
+            for name, sources in bodies.items()}
 
 
 def notes() -> dict[str, dict]:

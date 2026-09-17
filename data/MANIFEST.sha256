@@ -1,6 +1,7 @@
 # Normalized SHA-256 digests of the reference files.
 # Timestamps and UUIDs are masked first; see tools/normalize.py.
 32bf14785e90e07c808ed7fa74d9f7ae254325b1496175793e908dbb0140232c  data/classes/containers.root
+37dceaae92ac9621229a2fc15cb079f5a47369ccaaf752c5895c95d03473aad9  data/classes/formula.root
 65e3a22455757e7061a364ec4e1c4f05cd2843b567a21ccc6a44b9a2e877fd78  data/classes/tarray-histogram.root
 7bb13cc10d87e766a31d363dc749f2e1bc0b4071defc9667d5ba86b067197938  data/classes/tarray.root
 f4d52fe4c1dd83d740685e32f84db3a8ea57d3cb23b5e1e0dfb96a9099d588ad  data/container/compress-lz4.root

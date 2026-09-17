@@ -95,7 +95,7 @@ Widths are fixed by the code, **not** by the element's `fSize`
 | 14 | `kULong` | unsigned, **always 8** | 8 |
 | 16 | `kLong64` | signed | 8 |
 | 17 | `kULong64` | unsigned | 8 |
-| 18 | `kBool` | 0 or 1 | 1 |
+| 18 | `kBool` | **any byte**; nonzero is true — §2.5 | 1 |
 
 `kLong` and `kULong` are 8 bytes even where the writer's `long` was 4, with
 sign-extension for the signed form
@@ -188,6 +188,45 @@ the same source, can disagree on both.
 > exactly 28 bytes — seven members times four characters of type name — while
 > every one of the case's 50 byte assertions still passes. That is why the case
 > carries `digest = false`; `PLAN.md` §9.6 has the reasoning.
+
+### 2.5 A value can be `0x99` because nobody wrote one
+
+`kBool` is a single byte and **ROOT does not guarantee it is 0 or 1.** A reader
+must take any nonzero byte as true and must not validate the field, because a file
+the pinned ROOT wrote can hold `0x99` there.
+
+The value is not random. `TObject::operator new` goes through
+`TStorage::ObjectAlloc`, which `memset`s the whole object with
+`kObjectAllocMemValue`, `0x99999999`
+(`root/core/base/src/TStorage.cxx:291-295`, `root/core/base/inc/TStorage.h:48`).
+Only the low byte of that survives `memset`, so **every byte of a freshly
+heap-allocated `TObject` is `0x99`** before any constructor runs. The reason is
+not debugging: `TStorage::FilledByObjectAlloc` reads the pattern back so that the
+`TObject` constructor can tell it is on the heap, which cannot be done by
+comparing stack addresses when there is one stack per thread
+(`root/core/base/inc/TStorage.h:93-109`).
+
+So a **persistent member that no code path ever assigns is written out as `0x99`
+bytes**, for any type, not only `kBool`:
+
+| Code | Bytes on disk | Reads back as |
+|---|---|---|
+| `kBool` (18) | `99` | true |
+| `kInt` (3) | `99 99 99 99` | −1717986919 |
+| `kUInt` (13) | `99 99 99 99` | 2576980377 |
+| `kDouble` (8) | `99 99 99 99 99 99 99 99` | ≈ −2.35e−185 |
+| `kFloat` (5) | `99 99 99 99` | ≈ −1.59e−23 |
+
+`classes/formula` has one: byte 665 is `TFormula::fAllParametersSetted`, and
+`TF1("g", "gaus", -3, 3)` never assigns it. It is **deterministic** — a `memset`
+pattern, not uninitialized heap contents — so the fixture is byte-reproducible
+across platforms, and the pattern is a usable diagnostic: `0x99999999` in a member
+almost always means the writer never set it, rather than that the reader is out of
+step.
+
+> Not an invariant, for the reason the section exists: a reader that rejected a
+> `kBool` outside `{0, 1}` would reject a file ROOT wrote and reads back without
+> complaint. `PLAN.md` §7.1 carries the underlying `TFormula` bug.
 
 ## 3. `kOffsetL + T` (20 + T) — fixed-size array
 

@@ -17,15 +17,15 @@ hand-written `Streamer` in a later release cannot pass unnoticed.
 | Classification | Count | What a reader has to do |
 |---|---|---|
 | `delegating` | 35 | nothing — the bytes are streamer-info driven |
-| `guarded` | 86 | nothing for a current file; the custom layout is below a version threshold |
-| `custom` | 64 | know the layout; the streamer info does not describe the bytes at any version |
+| `guarded` | 88 | nothing for a current file; the custom layout is below a version threshold |
+| `custom` | 62 | know the layout; the streamer info does not describe the bytes at any version |
 
 Of the `custom` classes:
 
 | Status | Count |
 |---|---|
 | `specified` | 30 |
-| `gap` | 15 |
+| `gap` | 13 |
 | `not-persisted` | 5 |
 | `out-of-scope` | 14 |
 <!-- END GENERATED -->
@@ -71,8 +71,6 @@ fails on one that is not. `gap` is the worklist.
 |---|---|---|---|
 | `REveTrans` | `root/graf3d/eve7/src/REveTrans.cxx:941` | out-of-scope | the ROOT 7 event display |
 | `RModel` | `root/tmva/sofie/src/RModel.cxx:1914` | out-of-scope | TMVA SOFIE |
-| `ROOT::v5::TF1Data` | `root/hist/hist/src/TF1Data_v5.cxx:58` | gap | written by the same files as ROOT::v5::TFormula |
-| `ROOT::v5::TFormula` | `root/hist/hist/src/TFormula_v5.cxx:3469` | gap | the pre-6.02 formula, still in every file holding a fitted function |
 | `RooAbsBinning` | `root/roofit/roofitcore/src/RooAbsBinning.cxx:117` | out-of-scope | RooFit — common in published workspaces, but outside PLAN.md §2.4 |
 | `RooCFunction1Ref` | `root/roofit/roofit/inc/RooCFunction1Binding.h:145` | out-of-scope | RooFit |
 | `RooCFunction2Ref` | `root/roofit/roofit/inc/RooCFunction2Binding.h:161` | out-of-scope | RooFit |
@@ -140,6 +138,8 @@ fails on one that is not. `gap` is the worklist.
 <!-- BEGIN GENERATED: guarded -->
 | Class | Defined |
 |---|---|
+| `ROOT::v5::TF1Data` | `root/hist/hist/src/TF1Data_v5.cxx:58` |
+| `ROOT::v5::TFormula` | `root/hist/hist/src/TFormula_v5.cxx:3469` |
 | `RooCategory` | `root/roofit/roofitcore/src/RooCategory.cxx:431` |
 | `RooDataHist` | `root/roofit/roofitcore/src/RooDataHist.cxx:2361` |
 | `RooDataSet` | `root/roofit/roofitcore/src/RooDataSet.cxx:1576` |

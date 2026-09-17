@@ -1,0 +1,301 @@
+id   = "classes/formula"
+file = "data/classes/formula.root"
+size = 7732
+
+description = """
+A `TF1` written by the pinned ROOT: class version **12**, holding a `TFormula` at
+class version **14** as a pointer member.
+
+The case exists for the contrast with a pre-6.02 file, which is what
+`03-classes/Formula.md` is about. `TF1` v7 lists `TFormula` as its **first base
+class**; `TF1` v12 has no `TFormula` base and holds one as a member. And the two
+`TFormula`s are different C++ classes -- `ROOT::v5::TFormula` and `TFormula` --
+sharing one name on disk, told apart only by the version word. Both are described
+by the streamer info in their own file, so a reader that follows the info needs
+neither layout written down; a reader that hardcodes a layout for "TFormula" is
+wrong for one of them.
+
+`gaus` rather than a compiled function, so `fType` is `kFormula` (0) and the write
+path does not sample the function into `fSave` -- which is why `fSave` is an empty
+`vector<double>` at offset 566 and not 100 points.
+
+**The byte at 665 is the reason this case earns its place.** It is
+`TFormula::fAllParametersSetted`, element code 18, `kBool`, and it is **0x99** --
+neither 0 nor 1. `TF1("g", "gaus", ...)` never assigns it, and ROOT's
+`TObject::operator new` pre-fills every byte of a heap object with `0x99` so that
+the constructor can detect heap allocation. So an unassigned persistent member
+reaches the file as that pattern. It is deterministic, not garbage: this fixture
+is byte-reproducible. See ElementTypes.md 2.5.
+
+ROOT reads the file back correctly, because it takes any nonzero byte as true.
+
+The three parameters are asserted where they land twice over: in
+`TFormula::fClingParameters` at 641, and by name in `fParams`, which is a
+`map<TString,int,TFormulaParamOrder>` -- an STL map with a **custom comparator**,
+written as an ordinary member-wise pair sequence at code 500.
+
+The `00 0a` version words at 468, 635 and 670 are `TStreamerInfo`'s class version
+in the writing ROOT, not a collection version: 10 because the pin is 6.40.04
+(ElementTypes.md 8.1).
+"""
+
+spec = [
+  "spec/03-classes/Formula.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 198
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 298
+nbytes = 500
+class  = "TF1"
+role   = "the function, with its TFormula nested inside it"
+[[records]]
+offset = 798
+nbytes = 6713
+class  = "TList"
+role   = "StreamerInfo -- 8 infos, TF1 v12 and TFormula v14 among them"
+
+# --- the TF1 frame and its bases ------------------------------------------
+
+[[bytes]]
+name = "TF1: byte count"
+offset = 335
+type = "u32"
+value = 0x400001cb
+
+[[bytes]]
+name = "TF1: class version 12"
+offset = 339
+type = "i16"
+value = 12
+
+[[bytes]]
+name = "TF1: the TNamed base -- and NOT a TFormula base, which v7 had"
+offset = 341
+type = "u32"
+value = 0x40000013
+
+[[bytes]]
+name = "TF1: fName"
+offset = 357
+type = "string"
+value = "g"
+
+[[bytes]]
+name = "TF1: fTitle -- the formula as given, not as expanded"
+offset = 359
+type = "string"
+value = "gaus"
+
+[[bytes]]
+name = "TF1: fXmin"
+offset = 400
+type = "f64"
+value = -3.0
+
+[[bytes]]
+name = "TF1: fXmax"
+offset = 408
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "TF1: fNpar"
+offset = 416
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TF1: fNdim"
+offset = 420
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "TF1: fNpx"
+offset = 424
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "TF1: fType = kFormula, which is why fSave stays empty"
+offset = 428
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TF1: fMinimum, the kNoDraw sentinel"
+offset = 448
+type = "f64"
+value = -1111.0
+
+[[bytes]]
+name = "TF1: fParErrors, a vector<double> at code 500"
+offset = 464
+type = "u32"
+value = 0x4000001e
+
+[[bytes]]
+name = "TF1: and its version word is TStreamerInfo's, 10 in 6.40.04"
+offset = 468
+type = "i16"
+value = 10
+
+[[bytes]]
+name = "TF1: fParErrors holds fNpar values"
+offset = 470
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TF1: fSave, an empty vector -- ten bytes, not 100 points"
+offset = 566
+type = "u32"
+value = 0x40000006
+
+[[bytes]]
+name = "TF1: fSave's count"
+offset = 572
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TF1: fNormalized, a kBool that IS 0"
+offset = 576
+type = "u8"
+value = 0
+
+# --- the nested TFormula --------------------------------------------------
+
+[[bytes]]
+name = "TFormula: the pointer slot's byte count"
+offset = 585
+type = "u32"
+value = 0x400000c9
+
+[[bytes]]
+name = "TFormula: kNewClassTag"
+offset = 589
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "TFormula: the class name on disk is TFormula, with no namespace"
+offset = 593
+type = "bytes"
+value = "TFormula"
+
+[[bytes]]
+name = "TFormula: the object's byte count"
+offset = 602
+type = "u32"
+value = 0x400000b8
+
+[[bytes]]
+name = "TFormula: class version 14 -- the version is the only thing separating this class from ROOT::v5::TFormula"
+offset = 606
+type = "i16"
+value = 14
+
+[[bytes]]
+name = "TFormula: fClingParameters, three values"
+offset = 637
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TFormula: parameter 0"
+offset = 641
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "TFormula: parameter 1"
+offset = 649
+type = "f64"
+value = 0.5
+
+[[bytes]]
+name = "TFormula: parameter 2"
+offset = 657
+type = "f64"
+value = 1.5
+
+[[bytes]]
+name = "TFormula: fAllParametersSetted -- a kBool that is neither 0 nor 1, but ROOT's allocator fill pattern"
+offset = 665
+type = "u8"
+value = 0x99
+
+[[bytes]]
+name = "TFormula: fParams, a map with a custom comparator"
+offset = 666
+type = "u32"
+value = 0x40000026
+
+[[bytes]]
+name = "TFormula: three pairs"
+offset = 672
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "TFormula: the first key"
+offset = 676
+type = "string"
+value = "Constant"
+
+[[bytes]]
+name = "TFormula: and its value, the parameter index"
+offset = 685
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TFormula: fFormula, the expanded expression"
+offset = 708
+type = "string"
+value = "[Constant]*exp(-0.5*((x-[Mean])/[Sigma])*((x-[Mean])/[Sigma]))"
+
+[[bytes]]
+name = "TFormula: fNdim"
+offset = 771
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "TFormula: fNumber -- gaus is 100"
+offset = 775
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "TFormula: fLinearParts, empty"
+offset = 779
+type = "u32"
+value = 0x40000006
+
+[[bytes]]
+name = "TFormula: fVectorized"
+offset = 789
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "TF1: fParams, a null TF1Parameters* -- four zero bytes and no byte count"
+offset = 790
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "TF1: fComposition, also null, and the last four bytes of the record"
+offset = 794
+type = "u32"
+value = 0

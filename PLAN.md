@@ -679,9 +679,20 @@ actually does:
 | `guarded` | 86 | nothing for a current file — `ReadClassBuffer` above a version threshold, a legacy layout below. These are §9.1 gaps, not phase-4 work |
 | `custom` | 64 | know the layout; the streamer info describes the bytes at no version |
 
-Of the 64: **30 are now specified**, 5 are never objects in a file, 14 are
-outside §2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **15 are gaps** —
-the entire remaining worklist of this phase, against an estimate of ~440.
+Of the **62**: **30 are specified**, 5 are never objects in a file, 14 are outside
+§2.4's scope (RooFit, EVE, SOFIE, the SQL backend), and **13 are gaps** — the
+entire remaining worklist of this phase, against an estimate of ~440.
+
+The count was 64 until `ROOT::v5::TFormula` and `ROOT::v5::TF1Data` came off it,
+and how they came off is worth recording: **a class's `Streamer` overloads are one
+streamer.** Both classes read the version word in a one-argument form and hand off
+to a five-argument one, and that is where `ReadClassBuffer` is. Classified per
+definition they came out `custom` — "the streamer info describes the bytes at no
+version" — when in fact every version a released ROOT ever wrote is streamer-info
+driven. `inventory.py` now classifies the union of a class's overloads, which is
+the only conservative reading, and `tools/test_inventory.py` pins the case: taken
+separately the two halves are wrong in *opposite* directions, `custom` and
+`delegating`.
 
 ✅ The first three are written: `spec/03-classes/Containers.md` covers `TMap`,
 `TExMap` and `TBtree`, with `classes/containers` as the fixture (46 byte
@@ -691,8 +702,17 @@ corruption — and readers for all three in `rootfile.py`. It found the version-
 file holding all three carries **one** streamer info, for the `TObjString`s
 inside them.
 
-What is left: `ROOT::v5::TFormula`/`TF1Data` (every file holding a fitted
-function), `TStringLong`, `TQObject`, `TCanvas`, `TBranchClones`, and ten of
+✅ And `spec/03-classes/Formula.md`, which the two `v5` classes earned even after
+leaving the gap list: being streamer-info driven is not enough when **one class
+name covers two unrelated C++ classes**. `TFormula` ≤ 8 is the ROOT 5 class and
+≥ 9 the ROOT 6 one, with the boundary established from `git log -L` — the new class
+was briefly `ClassDef(TFormula, 1)`, colliding with the old class's version 1, but
+both that commit and the jump to 9 landed inside `v6-03-04`, so no released ROOT
+ever wrote it. Four class versions are now checked by `check_versions.py`, three
+invariants by `check_invariants.py`, and `classes/formula` pins the ROOT 6 side —
+including the `0x99` `kBool` of §7.1 item 0.
+
+What is left: `TStringLong`, `TQObject`, `TCanvas`, `TBranchClones`, and nine of
 narrower reach. `gen_tables.py` is not planned; `inventory.py` replaced it and is
 a different tool for a different reason.
 
@@ -875,6 +895,18 @@ These do not block starting, but should be resolved before the phase they affect
 
 Verified against the pinned submodule and real bytes; not yet reported.
 
+0. **`TFormula::fAllParametersSetted` is written to file uninitialized.** A
+   `TF1("g", "gaus", -3, 3)` never assigns it on any path taken, so what reaches
+   the file is ROOT's heap fill pattern: `classes/formula` byte 665 is **0x99**
+   for a `Bool_t`. Harmless in practice, because every reader takes nonzero as
+   true, and deterministic rather than random — `TStorage::ObjectAlloc`
+   `memset`s new `TObject`s with `kObjectAllocMemValue`
+   (`root/core/base/src/TStorage.cxx:291-295`). Worth reporting because it is
+   *silent*: nothing on the write side notices, and the same mechanism will write
+   any unassigned persistent member of any type
+   ([Element types §2.5](spec/02-serialization/ElementTypes.md)). The smallest
+   reproducer is two lines and the check is one byte.
+
 1. **A `std::vector<T>` of an interpreted class writes an unreadable file.**
    When `T` has no dictionary and the only reference to it in the written class
    is through a collection, `T`'s streamer info is not recorded. The bytes are
@@ -1032,6 +1064,7 @@ is a claim verified once rather than twice (`CLAUDE.md`, "the central discipline
 | `TBranch` class versions 6 to 9 | `04-ttree/TBranch.md` §13 — **reproducer available**: `stock.root` in §9.9, ROOT 4.00/07, ten trees at v9. §13.1 now gives the one fact that makes the generic algorithm inapplicable, byte-verified |
 | Collection layouts below `TStreamerInfo` version 8 | `02-serialization/Collections.md` |
 | `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `02-serialization/Collections.md` |
+| `TFormula` class versions 1 to 3 and `TF1` 1 to 4 — hand-decoded, and the only place a `TH1*` is read and discarded | `03-classes/Formula.md` §4 |
 
 ### 9.2 Needs a file over 2 GB (release artifact, §3.5)
 

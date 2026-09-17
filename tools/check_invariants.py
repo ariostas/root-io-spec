@@ -1029,6 +1029,60 @@ class Checker:
                          f"{rec.class_name} at {rec.offset} has fObjlen "
                          f"{rec.obj_len}, but fN {count} needs {want}")
 
+    #: Formula.md 1. The current class version of each, and the threshold at
+    #: which the class behind the name changes.
+    FORMULA_CURRENT = {"TF1": 12, "TFormula": 14}
+    FORMULA_NEW_FROM = {"TF1": 8, "TFormula": 9}
+
+    def check_formula(self) -> None:
+        """Formula.md invariants 1 to 3."""
+        for rec in self.records:
+            if rec.free or rec.class_name not in self.FORMULA_CURRENT:
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            start, _ = rootfile.payload_range(rec)
+            version = rootfile.read_frame(data, start).version
+            if not 1 <= version <= self.FORMULA_CURRENT[rec.class_name]:
+                self.bad("Formula 6.1",
+                         f"{rec.class_name} at {rec.offset} has version "
+                         f"{version}, outside 1 to "
+                         f"{self.FORMULA_CURRENT[rec.class_name]}")
+
+        _, _, infos = self.streamer_infos()
+        for info in infos or []:
+            if info.name not in self.FORMULA_CURRENT:
+                continue
+            new = info.class_version >= self.FORMULA_NEW_FROM[info.name]
+            names = {el.name for el in info.elements}
+            where = f"{info.name} v{info.class_version}"
+            if info.name == "TF1":
+                first = info.elements[0] if info.elements else None
+                if first is None:
+                    self.bad("Formula 6.2", f"{where} has no elements")
+                elif new and not (first.ftype == 67 and first.name == "TNamed"):
+                    self.bad("Formula 6.2",
+                             f"{where} begins with {first.name} at code "
+                             f"{first.ftype}, not TNamed at 67")
+                elif not new and not (first.ftype == 0
+                                      and first.name == "TFormula"):
+                    self.bad("Formula 6.2",
+                             f"{where} begins with {first.name} at code "
+                             f"{first.ftype}, not a TFormula base at 0")
+            else:
+                old_only, new_only = "fNoper" in names, "fClingParameters" in names
+                if old_only and new_only:
+                    self.bad("Formula 6.3",
+                             f"{where} has both fNoper and fClingParameters")
+                elif new and not new_only:
+                    self.bad("Formula 6.3",
+                             f"{where} is the ROOT 6 class but has no "
+                             f"fClingParameters")
+                elif not new and not old_only:
+                    self.bad("Formula 6.3",
+                             f"{where} is the ROOT 5 class but has no fNoper")
+
     def check_containers(self) -> None:
         """Containers.md invariants 1 to 6.
 
@@ -2263,6 +2317,7 @@ class Checker:
         self.check_collections()
         self.check_tarray()
         self.check_containers()
+        self.check_formula()
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()

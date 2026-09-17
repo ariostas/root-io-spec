@@ -24,6 +24,8 @@ keeps a legacy layout below it:
 | Class | Hand-written below | Streamer-info driven at |
 |---|---|---|
 | `TH1`, `TH2`, `TH3`, `TGraph` | class version 3 | version 3 and above |
+| `TFormula` | 3 | 4 and above |
+| `TF1` | 4 | 5 and above |
 | `TAxis` | 6 | 6 and above |
 | `TAttAxis` | 4 | 4 and above |
 | `TTree` | 5 | 5 and above |
@@ -34,9 +36,15 @@ keeps a legacy layout below it:
 | `TBranchElement`, `TRefTable` | — | every version |
 
 Every version a current file contains is on the right-hand side, so **histograms,
-graphs and `TTree` metadata are ordinary streamer-info-driven objects** and need
-no hand-written specification. The legacy layouts below each threshold need files
-older than ROOT 6 to test against and are tracked as gaps in `PLAN.md` §9.1.
+graphs, formulas and `TTree` metadata are ordinary streamer-info-driven objects**
+and need no hand-written specification. The legacy layouts below each threshold
+need files older than ROOT 6 to test against and are tracked as gaps in
+`PLAN.md` §9.1.
+
+`TFormula` and `TF1` still get a document, because being streamer-info driven is
+not enough there: one class *name* covers two unrelated C++ classes on either side
+of ROOT 6.04, and only the version word separates them — see
+[TFormula and TF1](Formula.md).
 
 ## The classes that diverge at every version
 

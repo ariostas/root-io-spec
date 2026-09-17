@@ -94,6 +94,49 @@ class Classification(unittest.TestCase):
         self.assertEqual(kind, "custom")
 
 
+class Overloads(unittest.TestCase):
+    """A class's `Streamer` overloads are one streamer and classify together."""
+
+    SOURCE = """
+        namespace ROOT { namespace v5 {
+        void TFormula::Streamer(TBuffer &b) {
+           Version_t v = b.ReadVersion(&R__s, &R__c);
+           Streamer(b, v, R__s, R__c, nullptr);
+        }
+        void TFormula::Streamer(TBuffer &b, Int_t v, UInt_t R__s, UInt_t R__c,
+                                const TClass *onfile_class) {
+           if (v > 3) {
+              b.ReadClassBuffer(TFormula::Class(), this, v, R__s, R__c, onfile_class);
+              return;
+           }
+           TNamed::Streamer(b);
+        }
+        } }
+        """
+
+    def kinds(self):
+        code = inventory.blank(self.SOURCE)
+        matches = list(inventory.DEFINITION.finditer(code))
+        scopes = inventory.enclosing(code, [m.start() for m in matches])
+        return [(("::".join(scopes[m.start()] + [m.group(1)])),
+                 inventory.classify(inventory.body(code, m.start())))
+                for m in matches]
+
+    def test_separately_both_halves_are_wrong(self):
+        """Neither half classifies correctly on its own, and they are wrong in
+        opposite directions: the dispatching form has no `ReadClassBuffer` and
+        reads `custom`, while the form that has one takes its version as a
+        parameter rather than from `ReadVersion` and reads `delegating`. The
+        class is neither -- it is streamer-info driven above version 3."""
+        self.assertEqual([k for _, k in self.kinds()], ["custom", "delegating"])
+
+    def test_together_they_are_guarded(self):
+        joined = "\n".join(inventory.body(inventory.blank(self.SOURCE), m.start())
+                           for m in inventory.DEFINITION.finditer(
+                               inventory.blank(self.SOURCE)))
+        self.assertEqual(inventory.classify(joined), "guarded")
+
+
 class Naming(unittest.TestCase):
 
     def test_a_namespace_qualifies_the_class(self):
@@ -168,8 +211,12 @@ class AgainstTheSubmodule(unittest.TestCase):
         self.assertEqual(self.found["TQObject"]["kind"], "custom")
 
     def test_the_two_formulas_are_separate_classes(self):
+        """Both are `guarded`, and they are still two entries: a namespace is
+        part of the name. The on-disk class name for both is `TFormula`, which
+        is what `03-classes/Formula.md` is about."""
         self.assertEqual(self.found["TFormula"]["kind"], "guarded")
-        self.assertEqual(self.found["ROOT::v5::TFormula"]["kind"], "custom")
+        self.assertEqual(self.found["ROOT::v5::TFormula"]["kind"], "guarded")
+        self.assertIn("TFormula_v5", self.found["ROOT::v5::TFormula"]["cite"])
 
     def test_the_bootstrap_classes_are_all_custom(self):
         """If any of these ever became streamer-info driven, `rootfile.py`'s

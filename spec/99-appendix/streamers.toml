@@ -146,14 +146,6 @@ note = "PLAN-ttree.md §10 — the one branch kind with no fixture"
 status = "gap"
 note = "a four-byte length where `TString` uses one"
 
-[class."ROOT::v5::TFormula"]
-status = "gap"
-note = "the pre-6.02 formula, still in every file holding a fitted function"
-
-[class."ROOT::v5::TF1Data"]
-status = "gap"
-note = "written by the same files as ROOT::v5::TFormula"
-
 [class.TQObject]
 status = "gap"
 note = "streams nothing in either direction; a base that occupies zero bytes, which is why `H1display.root` decoded the way it did"
