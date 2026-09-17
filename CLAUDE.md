@@ -153,11 +153,22 @@ tools/sync_rntuple.py --check  # what CI runs
 `inventory.py` answers the one question a reader cannot put to a file: **which
 classes is the streamer info lying about?** It reads every
 `X::Streamer(TBuffer &)` in the submodule and sorts it by what the reading branch
-does — `delegating` (calls `ReadClassBuffer` unconditionally, so the bytes are
-generated), `guarded` (above a version threshold), or `custom` (never, so the
-streamer info describes the bytes at no version). Only `custom` needs
-specification, and each one must be resolved in `spec/99-appendix/streamers.toml`
-or `--check` fails, so a submodule bump cannot add one silently.
+does — `delegating` (calls `ReadClassBuffer` unconditionally and reads nothing
+after it, so the bytes are generated), `guarded` (above a version threshold),
+`extending` (calls it and then reads **more bytes**, which no streamer info
+describes and which sit outside the byte count), or `custom` (never, so the
+streamer info describes the bytes at no version). `custom` and `extending` need
+specification, and each one must be resolved in
+`spec/99-appendix/streamers.toml` or `--check` fails, so a submodule bump cannot
+add one silently.
+
+`extending` exists because the three-way split published a wrong claim for two
+months: `TMatrixTSym` reads the upper-right triangle after `ReadClassBuffer`, and
+calling that `delegating` told a reader it needed nothing. Two smaller traps in
+the same tool are worth remembering when editing it — a definition may spell its
+own scope (`void ROOT::RNTuple::Streamer`), and a version dispatch may be a
+`switch` rather than a comparison. Both failure modes were silent and both
+understated what a reader has to know, which is the direction that matters.
 
 It scans source text with comments and string literals blanked out, which is not
 fussiness: `TStreamerInfo::Streamer` has its `ReadClassBuffer` call commented out

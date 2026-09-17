@@ -332,34 +332,40 @@ class Checker:
     UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket"}
                 | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
-    # Classes with a hand-written streamer that spec/ does not describe, verified
-    # one at a time against the pinned source. Their records are reported as not
-    # checked rather than as failures, so the gap stays visible instead of being
-    # silently tolerated. PLAN.md 9.8.
-    #
-    #   TMatrixT, TMatrixTSym, TVectorT  the leading byte count spans only the base
-    #   RooLinkedList  writes _size then that many object pointers then _name,
-    #                  while its info lists a _hashThresh that is not on disk
-    #                  (root/roofit/roofitcore/src/RooLinkedList.cxx:891-924)
-    # Classes whose hand-written Streamer diverges from their streamer info and
-    # which no document here describes yet. Reported as NOT CHECKED with the
-    # class named, never passed over silently.
-    UNSPECIFIED_STREAMERS = ("TMatrixT", "TMatrixTSym", "TVectorT",
-                             "RooLinkedList", "RooAbsCollection",
-                             # A base whose streamer info has NO elements. The
-                             # file carries a TQObject info with zero elements and
-                             # TVirtualPad v2 lists it as a kBase, yet the bytes
-                             # for it appear to be absent entirely. Diagnosed only
-                             # this far; see PLAN.md 9.9.
-                             "TQObject",
-                             # ReadClassBuffer, then an 8-byte XXH3-64 checksum
-                             # outside the byte count
-                             # (root/tree/ntuple/src/RNTuple.cxx:25-49).
-                             # spec/05-rntuple/ material.
-                             "ROOT::RNTuple")
+    # Classes whose records this reader cannot decode, each with the reason,
+    # verified one at a time against the pinned source. Their records are
+    # reported as NOT CHECKED with the class named, never passed over silently,
+    # and the reason is per class because a shared message hides a category --
+    # `tools/inventory.py` classifies two of these very differently.
+    # PLAN.md 9.8.
+    UNSPECIFIED_STREAMERS = {
+        "RooLinkedList":
+            "writes _size, that many object pointers and _name, while its info "
+            "lists a _hashThresh that is not on disk "
+            "(root/roofit/roofitcore/src/RooLinkedList.cxx:891-924) -- RooFit, "
+            "outside PLAN.md 2.4",
+        "RooAbsCollection":
+            "a hand-written streamer this specification does not describe -- "
+            "RooFit, outside PLAN.md 2.4",
+        "ROOT::RNTuple":
+            "an RNTuple anchor: ReadClassBuffer and then an 8-byte XXH3-64 "
+            "checksum outside the byte count. Specified in spec/05-rntuple/ and "
+            "read by rootfile.read_rntuple_anchor, not by the streamer-driven "
+            "path",
+    }
+
+    #: Classes whose `Streamer` writes past the byte count it opened, so that
+    #: Buffer.md invariant 9.9 does not hold for them and Buffer.md 2.4 says why.
+    #: `tools/inventory.py` extracts this set from the submodule and calls it
+    #: `extending`; the two must agree, which `tools/test_inventory.py` checks.
+    EXTENDING = ("TMatrixTSym", "TPointSet3D", "ROOT::RNTuple")
+
+    def extends_past_byte_count(self, name: str) -> bool:
+        """Is `name` one of Buffer.md 2.4's classes? Templates match the template."""
+        return (name or "").split("<", 1)[0] in self.EXTENDING
 
     def unspecified_streamer(self, name: str) -> str | None:
-        """`name` reduced to an undescribed hand-written streamer, or None."""
+        """`name` reduced to a class this reader cannot decode, or None."""
         base = (name or "").split("<", 1)[0]
         return base if base in self.UNSPECIFIED_STREAMERS else None
 
@@ -422,7 +428,14 @@ class Checker:
         A record whose class the file does not describe cannot be checked against
         anything: StreamerDriven.md 6.
         """
-        if (name in rootfile.CUSTOM_STREAMER or name in self.UNFRAMED
+        # A template's hand-written layout is recorded under the template name,
+        # as `ClassDef` declares it, while a file names the specialization --
+        # `TMatrixTSym` against `TMatrixTSym<double>`. Both spellings count as
+        # described, or a class whose absence of an info is *specified* (Matrix.md
+        # 2.2) would be reported as a file that fails to describe itself.
+        template = (name or "").split("<", 1)[0]
+        if (name in rootfile.CUSTOM_STREAMER or template in rootfile.CUSTOM_STREAMER
+                or name in self.UNFRAMED
                 or name in rootfile.Decoder.SEQUENCES
                 or name in ("TClonesArray", "TDatime")):
             return True         # described by hand, not by a streamer info
@@ -471,9 +484,18 @@ class Checker:
                          f"{rec.class_name} at {rec.offset} has no leading byte count")
                 continue
             if start + 4 + frame.byte_count != end:
-                self.bad("Buffer 9.9",
-                         f"{rec.class_name} at {rec.offset}: byte count {frame.byte_count} "
-                         f"ends at {start + 4 + frame.byte_count}, payload ends at {end}")
+                if self.extends_past_byte_count(rec.class_name):
+                    # Buffer.md 2.4: for an `extending` class the byte count is a
+                    # lower bound by design, and how much longer the object is is
+                    # checked instead by the class's own invariants -- Matrix 5.4
+                    # and 5.5 for a TMatrixTSym.
+                    pass
+                else:
+                    self.bad("Buffer 9.9",
+                             f"{rec.class_name} at {rec.offset}: byte count "
+                             f"{frame.byte_count} ends at "
+                             f"{start + 4 + frame.byte_count}, payload ends at "
+                             f"{end}")
             # 9.1
             if frame.byte_count > rootfile.MAX_MAP_COUNT:
                 self.bad("Buffer 9.1",
@@ -722,8 +744,7 @@ class Checker:
                 needed = self.needs_unspecified_streamer(data, target)
                 if needed is not None:
                     self.no_codec.add(
-                        f"{needed} has a hand-written streamer this specification "
-                        f"does not describe")
+                        f"{needed}: {self.UNSPECIFIED_STREAMERS[needed]}")
                     continue
                 self.bad("StreamerDriven 10.1",
                          f"{target.class_name} {target.name!r} at "
@@ -1093,6 +1114,118 @@ class Checker:
                 if value < lowest:
                     self.bad("Canvas 5.3",
                              f"TCanvas at {rec.offset} has {name} {value}")
+
+    def check_matrix(self) -> None:
+        """Matrix.md invariants 1 to 7.
+
+        Invariants 4 and 5 are the load-bearing ones: the bytes past the byte
+        count are exactly one element per stored position, so the object is
+        longer than its own byte count by exactly that much. They are what
+        catches a reader that treats `TMatrixTSym` as an ordinary delegating
+        class, since such a reader stops at the byte count and reports nothing.
+
+        Confirmed by corrupting a copy of `classes/matrix`, one field at a time:
+        the version word (5.1), `fNcols` and `fNelems` (5.2), `fNrowIndex`
+        (5.3), the byte count and `fNrows` (5.4, where the element span no
+        longer reaches the end of the payload). Invariant 6 is the exception --
+        no corruption can add a streamer info under a longer name than the one
+        that is there, so it is checked but not corruption-tested.
+        """
+        _, _, infos = self.streamer_infos()
+        for rec in self.records:
+            if rec.free or not rec.class_name:
+                continue
+            cls = rec.class_name
+            symmetric = cls.startswith("TMatrixTSym<")
+            ordinary = (cls.startswith("TMatrixT<")
+                        or cls.startswith("TVectorT<"))
+            if not (symmetric or ordinary):
+                continue
+            if infos is None:
+                self.skip("Matrix 5.1", "no StreamerInfo record")
+                continue
+            names = {i.name for i in infos}
+            if cls in names and symmetric:
+                # Invariant 6. Nothing writes such an info; if one appears it is
+                # a claim about the layout that the bytes do not honour.
+                self.bad("Matrix 5.6",
+                         f"the file carries a streamer info for {cls}, which "
+                         f"ROOT never records")
+            data = self.data(rec)
+            if data is None:
+                continue
+            start, _ = rootfile.payload_range(rec)
+            try:
+                frame = rootfile.read_frame(data, start)
+                value = rootfile.decode_record(data, rec, infos)
+            except rootfile.UnsupportedClass as exc:
+                self.skip("Matrix 5.1", str(exc))
+                continue
+            except (rootfile.FormatError, struct.error, IndexError) as exc:
+                # For a symmetric matrix the frame itself is ordinary, so a
+                # failure here is the element span: either it does not reach the
+                # end of the payload or it runs past the buffer. Reported as 5.4
+                # rather than as a generic decode failure.
+                self.bad("Matrix 5.4" if symmetric else "Matrix 5.7",
+                         f"{cls} at {rec.offset}: {exc}")
+                continue
+            payload_end = rec.offset + rec.nbytes if data is self.buf else None
+            if not symmetric:
+                # Invariant 7: an ordinary member of the family ends where its
+                # byte count says.
+                if frame.end is not None and value.end != frame.end:
+                    self.bad("Matrix 5.7",
+                             f"{cls} at {rec.offset} consumed to {value.end}, "
+                             f"byte count ends at {frame.end}")
+                continue
+            element = rootfile.template_args(cls)[0]
+            width = rootfile.SCALAR_WIDTH[rootfile.FUNDAMENTAL[element]]
+            base = f"TMatrixTBase<{element}>"
+            versions = {i.class_version for i in infos if i.name == base}
+            if not versions:
+                self.skip("Matrix 5.1", f"no streamer info for {base}")
+                continue
+            if frame.version != max(versions):
+                # Invariant 1. A version word that is not the base's current one
+                # is either an older file -- legitimate, and then the info in it
+                # says so -- or a misread frame.
+                if frame.version not in versions:
+                    self.bad("Matrix 5.1",
+                             f"{cls} at {rec.offset} has version word "
+                             f"{frame.version}, and no {base} info in this file "
+                             f"has that class version")
+            shape = {m.name: m for m in value.members}
+            rows = rootfile._int_member(data, shape["fNrows"])
+            cols = rootfile._int_member(data, shape["fNcols"])
+            nelems = rootfile._int_member(data, shape["fNelems"])
+            row_index = rootfile._int_member(data, shape["fNrowIndex"])
+            if rows != cols:
+                self.bad("Matrix 5.2",
+                         f"{cls} at {rec.offset} has fNrows {rows} and fNcols "
+                         f"{cols}; a symmetric matrix is square")
+            elif nelems != rows * cols:
+                self.bad("Matrix 5.2",
+                         f"{cls} at {rec.offset} has fNelems {nelems}, not "
+                         f"fNrows*fNcols = {rows * cols}")
+            if row_index != 0:
+                self.bad("Matrix 5.3",
+                         f"{cls} at {rec.offset} has fNrowIndex {row_index}, "
+                         f"which only a sparse matrix carries")
+            if frame.end is None:
+                self.bad("Matrix 5.5", f"{cls} at {rec.offset} has no byte count")
+                continue
+            stored = rows * (rows + 1) // 2
+            if value.end - frame.end != width * stored:
+                self.bad("Matrix 5.4",
+                         f"{cls} at {rec.offset} has {value.end - frame.end} "
+                         f"bytes past its byte count, not {width * stored} for "
+                         f"{stored} elements of {width}")
+            if payload_end is not None and value.end != payload_end:
+                # Invariant 5, for a top-level record: the object is longer than
+                # its own byte count claims, by exactly the elements.
+                self.bad("Matrix 5.5",
+                         f"{cls} at {rec.offset} ends at {value.end}, and the "
+                         f"record's payload ends at {payload_end}")
 
     def check_formula(self) -> None:
         """Formula.md invariants 1 to 3."""
@@ -2392,6 +2525,7 @@ class Checker:
         self.check_containers()
         self.check_formula()
         self.check_canvas()
+        self.check_matrix()
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()

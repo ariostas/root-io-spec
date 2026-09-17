@@ -130,6 +130,17 @@ def claims(path: Path,
                 if class_per_row:
                     names = BACKTICKED.findall(cells[0])
                     version_cell = cells[1] if len(cells) > 1 else ""
+                    if not names and "`" in cells[0]:
+                        # A backticked cell that is not a bare identifier: a
+                        # template specialization such as `TMatrixTBase<T>`, or
+                        # a `pair<int,int>`. `ClassDef` names the template, so
+                        # there is nothing to compare against — said out loud,
+                        # because the alternative is a table that looks checked
+                        # and is not. Spell the template in the table to fix it.
+                        narrowed.append(
+                            f"{path.relative_to(REPO)}:{start + 1}: "
+                            f"{cells[0]} is not a name ClassDef declares; "
+                            f"its version is not checked")
                     if ELLIPSIS.search(cells[0]):
                         # "`TLeafO`…`TLeafD`" names classes it does not spell,
                         # so only the endpoints can be checked. Said out loud

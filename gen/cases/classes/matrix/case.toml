@@ -1,0 +1,386 @@
+id   = "classes/matrix"
+file = "data/classes/matrix.root"
+size = 4592
+
+description = """
+`TMatrixTSym` -- the class whose `Streamer` calls `ReadClassBuffer` and then keeps
+reading. `tools/inventory.py` calls that kind `extending`, and this file is why
+the kind exists: three things about it are invisible to a reader that trusts the
+streamer info.
+
+**The version word is the base class's.** `TMatrixTSym<Element>::Streamer` hands
+`ReadClassBuffer` the `TClass` of `TMatrixTBase<Element>`
+(`root/math/matrix/src/TMatrixTSym.cxx:2030`), so the `00 05` at offset 333 is
+`TMatrixTBase<double>`'s class version 5. `TMatrixTSym`'s own class version is 2
+and never reaches a file.
+
+**The file carries no streamer info for `TMatrixTSym<double>` at all** -- only for
+`TMatrixTBase<double>`, because that is the class `WriteClassBuffer` was given. A
+reader that looks the class up by the name in the key finds nothing, which is the
+same position `TBasket` puts it in.
+
+**The elements are outside the byte count.** The byte count at 329 is 44, which
+covers the version word, the `TObject` base and the six integers and `fTol` of
+`TMatrixTBase` -- and stops. The six doubles from 377 to 425 are the upper-right
+triangle, read row by row, `fNcols - i` at a time, with the lower triangle
+reconstructed rather than stored. Nine elements, six values, and
+`CheckByteCount` succeeds for a reader that stops at 377.
+
+Four contrasts in the same file:
+
+- `symf` is a `TMatrixFSym`, the same layout with **4-byte** elements and a
+  4-byte `fTol`. The width comes from the template argument, not from anything
+  in the record.
+- `gen` is a `TMatrixD` and ordinary: a nested `TMatrixTBase` frame, then
+  `fElements` as a counted pointer with its `01` present byte at 634 and all six
+  values inside the byte count.
+- `vec` is a `TVectorD`, also ordinary, and the member of this family whose
+  hand-written `Streamer` is a plain version guard.
+- `holder` is a `TObjArray` holding a 2x2 `TMatrixDSym`, so the same object sits
+  **inside another object's frame**. The pointer-streamed slot's byte count at
+  882 is 96 and **includes** the triangle; the `TMatrixTBase` byte count at 910
+  is 44 and does not. The extra bytes are unaccounted for only by the class's own
+  frame -- every enclosing frame counts them, which is why a corrupt-looking
+  record never appears.
+"""
+
+spec = [
+  "spec/03-classes/Matrix.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 178
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 278
+nbytes = 147
+class  = "TMatrixTSym<double>"
+role   = "3x3, six doubles on disk for nine elements"
+[[records]]
+offset = 425
+nbytes = 107
+class  = "TMatrixTSym<float>"
+role   = "2x2, three floats -- the element width follows the template argument"
+[[records]]
+offset = 532
+nbytes = 151
+class  = "TMatrixT<double>"
+role   = "2x3, ordinary streamer-info driven data"
+[[records]]
+offset = 683
+nbytes = 105
+class  = "TVectorT<double>"
+role   = "four elements, ordinary"
+[[records]]
+offset = 788
+nbytes = 194
+class  = "TObjArray"
+role   = "one TMatrixDSym inside another object's frame"
+[[records]]
+offset = 982
+nbytes = 3185
+class  = "TList"
+role   = "StreamerInfo -- TMatrixTBase<double> and <float>, TMatrixT, TVectorT, TObjArray; no TMatrixTSym"
+
+# --- sym: TMatrixDSym 3x3, payload at 329 ----------------------------------
+
+[[bytes]]
+name = "sym: byte count, 44 -- the framed part only"
+offset = 329
+type = "u32"
+value = 0x4000002c
+
+[[bytes]]
+name = "sym: version word 5, which is TMatrixTBase's class version, not TMatrixTSym's 2"
+offset = 333
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "sym: the TObject base, version 1, with no frame of its own"
+offset = 335
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "sym: fNrows"
+offset = 345
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "sym: fNcols -- equal to fNrows for every symmetric matrix"
+offset = 349
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "sym: fRowLwb"
+offset = 353
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "sym: fColLwb"
+offset = 357
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "sym: fNelems, the full square -- nine, where six values follow"
+offset = 361
+type = "i32"
+value = 9
+
+[[bytes]]
+name = "sym: fNrowIndex, zero for everything but a sparse matrix"
+offset = 365
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "sym: fTol, sqrt(DBL_EPSILON), the last member inside the byte count"
+offset = 369
+type = "f64"
+value = 2.220446049250313e-16
+
+[[bytes]]
+name = "sym: element (0,0), the first byte past the byte count"
+offset = 377
+type = "f64"
+value = 11.0
+
+[[bytes]]
+name = "sym: element (0,1)"
+offset = 385
+type = "f64"
+value = 12.0
+
+[[bytes]]
+name = "sym: element (0,2) -- the first row is fNcols long"
+offset = 393
+type = "f64"
+value = 13.0
+
+[[bytes]]
+name = "sym: element (1,1) -- the second row starts on the diagonal, not at column 0"
+offset = 401
+type = "f64"
+value = 22.0
+
+[[bytes]]
+name = "sym: element (1,2)"
+offset = 409
+type = "f64"
+value = 23.0
+
+[[bytes]]
+name = "sym: element (2,2), the last of the fNrows*(fNrows+1)/2 = 6 values"
+offset = 417
+type = "f64"
+value = 33.0
+
+# --- symf: TMatrixFSym 2x2, payload at 476 ---------------------------------
+
+[[bytes]]
+name = "symf: byte count, 40 -- four less than sym, because fTol is a float here"
+offset = 476
+type = "u32"
+value = 0x40000028
+
+[[bytes]]
+name = "symf: version word 5, TMatrixTBase<float>'s class version"
+offset = 480
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "symf: fNrows"
+offset = 492
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "symf: fNelems"
+offset = 508
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "symf: fTol as a 4-byte float, sqrt(FLT_EPSILON)"
+offset = 516
+type = "f32"
+value = 1.1920928955078125e-07
+
+[[bytes]]
+name = "symf: element (0,0) as a 4-byte float"
+offset = 520
+type = "f32"
+value = 1.5
+
+[[bytes]]
+name = "symf: element (0,1)"
+offset = 524
+type = "f32"
+value = 2.5
+
+[[bytes]]
+name = "symf: element (1,1), the third and last value"
+offset = 528
+type = "f32"
+value = 3.5
+
+# --- gen: TMatrixD 2x3, payload at 580 -------------------------------------
+
+[[bytes]]
+name = "gen: byte count of the whole TMatrixT frame"
+offset = 580
+type = "u32"
+value = 0x40000063
+
+[[bytes]]
+name = "gen: TMatrixT<double> class version 4 -- its own, because it delegates with its own TClass"
+offset = 584
+type = "i16"
+value = 4
+
+[[bytes]]
+name = "gen: the TMatrixTBase base, framed -- the byte count sym does not nest"
+offset = 586
+type = "u32"
+value = 0x4000002c
+
+[[bytes]]
+name = "gen: the base's version word, 5"
+offset = 590
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "gen: fNrows"
+offset = 602
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "gen: fNelems, six for a 2x3 -- and all six values are on disk"
+offset = 618
+type = "i32"
+value = 6
+
+[[bytes]]
+name = "gen: fElements is a counted pointer -- the is-present byte"
+offset = 634
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "gen: element (0,0), inside the byte count unlike sym's"
+offset = 635
+type = "f64"
+value = 100.0
+
+# --- vec: TVectorD, payload at 731 -----------------------------------------
+
+[[bytes]]
+name = "vec: byte count -- 53, and the elements are inside it"
+offset = 731
+type = "u32"
+value = 0x40000035
+
+[[bytes]]
+name = "vec: TVectorT<double> class version 4"
+offset = 735
+type = "i16"
+value = 4
+
+[[bytes]]
+name = "vec: fNrows"
+offset = 747
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "vec: the is-present byte of fElements"
+offset = 755
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "vec: the first element"
+offset = 756
+type = "f64"
+value = 0.5
+
+# --- holder: a TMatrixDSym inside a TObjArray, payload at 851 --------------
+
+[[bytes]]
+name = "holder: the TObjArray byte count"
+offset = 851
+type = "u32"
+value = 0x4000007f
+
+[[bytes]]
+name = "holder: TObjArray class version 3"
+offset = 855
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "holder: the object count"
+offset = 874
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "holder: the slot's byte count, 96 -- this one DOES include the triangle"
+offset = 882
+type = "u32"
+value = 0x40000060
+
+[[bytes]]
+name = "holder: kNewClassTag"
+offset = 886
+type = "u32"
+value = 0xffffffff
+
+[[bytes]]
+name = "holder: the class name, NUL terminated"
+offset = 890
+type = "bytes"
+value = "TMatrixTSym<double>\u0000"
+
+[[bytes]]
+name = "holder: the inner TMatrixTBase byte count, 44 -- this one does not"
+offset = 910
+type = "u32"
+value = 0x4000002c
+
+[[bytes]]
+name = "holder: the inner version word, 5"
+offset = 914
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "holder: inner element (0,0), the first byte past the inner byte count"
+offset = 958
+type = "f64"
+value = 7.0
+
+[[bytes]]
+name = "holder: inner element (0,1)"
+offset = 966
+type = "f64"
+value = 8.0
+
+[[bytes]]
+name = "holder: inner element (1,1), the last byte of the record"
+offset = 974
+type = "f64"
+value = 9.0

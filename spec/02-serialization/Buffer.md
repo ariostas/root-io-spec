@@ -78,6 +78,15 @@ A byte count larger than `kMaxMapCount` cannot be written
 (`root/io/io/src/TBufferFile.cxx:351-354`), which caps a single serialized
 object at just under 1 GiB.
 
+### 2.2 Two code paths, one encoding
+
+ROOT writes a byte count either as a plain `cnt | kByteCountMask` or, when the
+count must be readable by `ReadVersion`, as two `Version_t` halves with
+`kByteCountVMask` set on the high one (`root/io/io/src/TBufferFile.cxx:335-348`).
+
+These produce **identical bytes**. There is one on-disk encoding; a reader need
+not distinguish the two cases.
+
 ### 2.3 A record's object data does not always begin with one
 
 Most record payloads open with a byte count, because most classes are written
@@ -118,14 +127,34 @@ a payload is framed, and what the first word then means. Reading a `TArray`'s
 `00 00 00 02` as a byte count gives 2; reading a `TRef`'s `00 01 00 00` as one
 gives 65536. Neither is obviously wrong at the point of the mistake.
 
-### 2.2 Two code paths, one encoding
+### 2.4 An object may be longer than its byte count says
 
-ROOT writes a byte count either as a plain `cnt | kByteCountMask` or, when the
-count must be readable by `ReadVersion`, as two `Version_t` halves with
-`kByteCountVMask` set on the high one (`root/io/io/src/TBufferFile.cxx:335-348`).
+A byte count is written by the `Streamer` that opens the frame, and a
+hand-written `Streamer` may keep writing after `WriteClassBuffer` has closed it.
+Three classes in ROOT do (`tools/inventory.py` calls them `extending`, and
+[Hand-written streamers §3](../99-appendix/HandWrittenStreamers.md) lists them),
+and the consequence is a rule a reader has to know:
 
-These produce **identical bytes**. There is one on-disk encoding; a reader need
-not distinguish the two cases.
+> **A byte count is a lower bound on the length of the object, not the length of
+> the object.** It is exact for every generated streamer and for most
+> hand-written ones, and a reader may use it to *find the end* only for a class
+> it knows does not extend past it.
+
+`TMatrixTSym` is the case to test against: its byte count covers the members its
+base class's streamer info describes, and the matrix elements follow outside it
+([Matrices and vectors §2.4](../03-classes/Matrix.md)). Two consequences:
+
+- **`CheckByteCount` cannot see the difference**, so nothing warns. ROOT's own
+  reader goes on past the count because the class's `Streamer` tells it to.
+- **Skipping such an object by its byte count lands short.**
+  `TBufferFile::SkipObjectAny` seeks to `start + count + 4`
+  (`root/io/io/src/TBufferFile.cxx:2499-2503`), which is correct for every other
+  class and wrong for these.
+
+An enclosing frame is unaffected: its own byte count is written after the whole
+nested object has been streamed, so it covers the extra bytes. A file containing
+one of these classes is therefore never internally inconsistent — the only thing
+that goes wrong is a reader that trusts the inner count.
 
 ## 3. Version words
 
@@ -474,7 +503,8 @@ To read a version word at the current position:
    less than the position of the reference itself.
 9. At the outermost level, the bytes consumed equal `fObjLen` exactly. For a
    class whose streamer emits a byte count, that count spans the payload
-   exactly; for the classes of §2.3 there is no outermost count to check
+   exactly — **except** for the classes of §2.4, which write past their own byte
+   count by design; for the classes of §2.3 there is no outermost count to check
    against.
 
 Invariant 9 is the one that legitimately fails in the wild: a class whose

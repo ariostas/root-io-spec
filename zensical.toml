@@ -39,6 +39,7 @@ nav = [
       { "TMap, TExMap and TBtree" = "03-classes/Containers.md" },
       { "TFormula and TF1" = "03-classes/Formula.md" },
       { "TCanvas" = "03-classes/Canvas.md" },
+      { "Matrices and vectors" = "03-classes/Matrix.md" },
   ] },
   { "TTree" = [
       { "The tree record" = "04-ttree/TTree.md" },

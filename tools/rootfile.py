@@ -1182,6 +1182,12 @@ CUSTOM_STREAMER = {
     # fields instead of a TBranch base. No file carries an info for it, the same
     # as TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 12.1.
     "TBranchClones",
+    # `extending`: calls ReadClassBuffer with TMatrixTBase's TClass and then
+    # reads the upper-right triangle, outside the byte count. The name in a file
+    # is a specialization -- TMatrixTSym<double> -- so read_object dispatches on
+    # the prefix; this entry is the template, which is what the sidecar and
+    # Bootstrap.md name. spec/03-classes/Matrix.md.
+    "TMatrixTSym",
 }
 
 _PI_LITERALS = {
@@ -1386,6 +1392,8 @@ class Decoder:
             # version word and no byte count. Record.md section 3.7.
             return Value(name="TDatime", ftype=62, start=offset, end=offset + 4,
                          type_name="TDatime")
+        if cls.startswith("TMatrixTSym<"):
+            return self.read_matrix_sym(cls, offset)
         try:
             frame = read_frame(self.buf, offset)
             version, body = self.resolve_version(cls, frame)
@@ -1394,6 +1402,56 @@ class Decoder:
             return self.skip_or_fail(cls, offset, exc)
         end = frame.end if frame.end is not None else (
             members[-1].end if members else body)
+        return Value(name=cls, ftype=61, start=offset, end=end,
+                     type_name=cls, members=members)
+
+    def read_matrix_sym(self, cls: str, offset: int) -> Value:
+        """A symmetric matrix: TMatrixTBase's frame, then the upper triangle.
+
+        `TMatrixTSym<Element>::Streamer` hands `ReadClassBuffer` the *base*
+        class's TClass (root/math/matrix/src/TMatrixTSym.cxx:2036), so the frame
+        carries TMatrixTBase's class version and the file holds an info for
+        TMatrixTBase and none for this class. Past the byte count come
+        fNrows*(fNrows+1)/2 elements, row i holding fNcols-i of them from the
+        diagonal on, with the lower triangle reconstructed rather than stored.
+        Matrix.md section 2.
+        """
+        args = template_args(cls)
+        element = args[0] if args else ""
+        if element not in FUNDAMENTAL:
+            raise UnsupportedClass(
+                f"{cls}: element type {element!r} is not a fundamental type")
+        width = SCALAR_WIDTH[FUNDAMENTAL[element]]
+        base = f"TMatrixTBase<{element}>"
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"{cls} at {offset} has no byte count")
+        version, body = self.resolve_version(base, frame)
+        members = self.read_members(base, version, body, frame.end)
+        shape = {m.name: m for m in members}
+        if "fNrows" not in shape or "fNcols" not in shape:
+            raise UnsupportedClass(
+                f"{base} version {version} has no fNrows/fNcols: "
+                f"it cannot describe a symmetric matrix")
+        rows = _int_member(self.buf, shape["fNrows"])
+        cols = _int_member(self.buf, shape["fNcols"])
+        if rows != cols:
+            raise FormatError(
+                f"{cls} at {offset}: fNrows {rows} != fNcols {cols}, "
+                f"and a symmetric matrix is square -- Matrix.md invariant 2")
+        if rows < 0:
+            raise FormatError(f"{cls} at {offset}: fNrows {rows} is negative")
+        stored = rows * (rows + 1) // 2
+        end = frame.end + width * stored
+        if end > len(self.buf):
+            raise FormatError(
+                f"{cls} at {offset}: {stored} elements of {width} bytes run "
+                f"past the buffer")
+        members.append(Value(name="fElements", ftype=FUNDAMENTAL[element] + 20,
+                             start=frame.end, end=end, type_name=element,
+                             note=f"the upper-right triangle, {stored} of "
+                                  f"{rows * cols} elements, outside the byte "
+                                  f"count"))
         return Value(name=cls, ftype=61, start=offset, end=end,
                      type_name=cls, members=members)
 

@@ -16,33 +16,39 @@ hand-written `Streamer` in a later release cannot pass unnoticed.
 <!-- BEGIN GENERATED: summary -->
 | Classification | Count | What a reader has to do |
 |---|---|---|
-| `delegating` | 35 | nothing — the bytes are streamer-info driven |
-| `guarded` | 88 | nothing for a current file; the custom layout is below a version threshold |
-| `custom` | 62 | know the layout; the streamer info does not describe the bytes at any version |
+| `delegating` | 32 | nothing — the bytes are streamer-info driven |
+| `guarded` | 89 | nothing for a current file; the custom layout is below a version threshold |
+| `extending` | 3 | know the bytes that follow the streamer-info-driven ones, at every version |
+| `custom` | 63 | know the layout; the streamer info does not describe the bytes at any version |
 
-Of the `custom` classes:
+Of the `custom` and `extending` classes, which are the ones a reader must know:
 
 | Status | Count |
 |---|---|
-| `specified` | 34 |
-| `gap` | 9 |
+| `specified` | 36 |
+| `gap` | 10 |
 | `not-persisted` | 5 |
-| `out-of-scope` | 14 |
+| `out-of-scope` | 15 |
 <!-- END GENERATED -->
 
 ## 1. Why most of them cost a reader nothing
 
 Defining `Streamer` yourself is not the same as changing the bytes. Sorting the
-definitions by what the reading branch actually does splits them three ways:
+definitions by what the reading branch actually does splits them four ways:
 
 `delegating`
-:   The reading branch calls `ReadClassBuffer` with no version test around it.
-    Whatever else the function does — rebuilding caches, fixing up back-pointers,
-    re-registering objects — happens *after* the bytes are consumed, and the
-    bytes themselves are exactly what the streamer info describes.
-    `RooWorkspace` is the clearest case: its `Streamer` exists to run
-    `ioStreamerPass2()` over every node it just read
+:   The reading branch calls `ReadClassBuffer` with no version test around it,
+    and reads nothing afterwards. Whatever else the function does — rebuilding
+    caches, fixing up back-pointers, re-registering objects — happens *after*
+    the bytes are consumed, and the bytes themselves are exactly what the
+    streamer info describes. `RooWorkspace` is the clearest case: its `Streamer`
+    exists to run `ioStreamerPass2()` over every node it just read
     (`root/roofit/roofitcore/src/RooWorkspace.cxx:2540`).
+
+`extending`
+:   The reading branch calls `ReadClassBuffer` **and then reads more bytes of its
+    own**. The streamer info describes a prefix of the object and stops. This is
+    the one kind that looks harmless and is not: see §3.
 
 `guarded`
 :   The reading branch calls `ReadClassBuffer` above a version threshold and
@@ -79,6 +85,7 @@ fails on one that is not. `gap` is the worklist.
 | `RooLinkedList` | `root/roofit/roofitcore/src/RooLinkedList.cxx:891` | out-of-scope | RooFit |
 | `RooRealVar` | `root/roofit/roofitcore/src/RooRealVar.cxx:1252` | out-of-scope | RooFit |
 | `RooRefArray` | `root/roofit/roofitcore/src/RooAbsArg.cxx:2195` | out-of-scope | RooFit |
+| `RooWorkspace::CodeRepo` | `root/roofit/roofitcore/src/RooWorkspace.cxx:2427` | out-of-scope | RooFit — the code repository nested inside a workspace |
 | `TASImage` | `root/graf2d/asimage/src/TASImage.cxx:6080` | gap | graf2d; an embedded image |
 | `TArrayC` | `root/core/cont/src/TArrayC.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TArrayD` | `root/core/cont/src/TArrayD.cxx:148` | specified | [TArray](../03-classes/TArray.md) |
@@ -133,13 +140,46 @@ fails on one that is not. `gap` is the worklist.
 | `TVirtualStreamerInfo` | `root/core/meta/src/TVirtualStreamerInfo.cxx:256` | specified | [Streamer information](../02-serialization/StreamerInfo.md) |
 <!-- END GENERATED -->
 
-## 3. `guarded` — hand-written below a version threshold
+## 3. `extending` — the streamer info describes a prefix and stops
+
+Three classes call `ReadClassBuffer` and then read further bytes of their own.
+They are the dangerous kind, for three reasons that compound:
+
+- **Nothing frames the extra bytes.** They are not in the class's streamer info,
+  not in any other class's, and not announced by a version word of their own.
+- **They are outside the byte count.** In all three cases the byte count that
+  precedes the version word covers only the streamer-info-driven part, so
+  `CheckByteCount` succeeds for a reader that stops early — and for ROOT, which
+  goes on reading past it.
+- **The class may have no streamer info at all.** For `TMatrixTSym` ROOT records
+  an info for the *base* class and none for the class itself, because the
+  `Streamer` hands `ReadClassBuffer` the base's `TClass`. A reader looking the
+  class up by name finds nothing.
+
+Every row is resolved in `streamers.toml`, like `custom`.
+
+<!-- BEGIN GENERATED: extending -->
+| Class | Defined | Status | Where |
+|---|---|---|---|
+| `ROOT::RNTuple` | `root/tree/ntuple/src/RNTuple.cxx:25` | specified | [RNTuple](../05-rntuple/index.md) — `extending`: an 8-byte XXH3-64 checksum follows the anchor's members, outside the byte count ([errata 2 and 3](../05-rntuple/ERRATA.md)) |
+| `TMatrixTSym` | `root/math/matrix/src/TMatrixTSym.cxx:2030` | specified | [Matrices and vectors](../03-classes/Matrix.md) — `extending`: the upper-right triangle follows the base class's members, outside the byte count |
+| `TPointSet3D` | `root/graf3d/g3d/src/TPointSet3D.cxx:156` | gap | graf3d/g3d; `extending` — when `fOwnIds` is set, an `Int_t` count and then that many object references follow the framed part (`root/graf3d/g3d/src/TPointSet3D.cxx:156`) |
+<!-- END GENERATED -->
+
+A reader that treats these as `delegating` stops at the end of the framed part
+and reports no error. That is what this page said until 2026-09-17, and the
+corpora had been showing the consequence for as long: five `TMatrixTSym<double>`
+records in one file, each decoding 48 bytes of 3528 or 13736 and passing every
+consistency check on the way (`PLAN.md` §9.8).
+
+## 4. `guarded` — hand-written below a version threshold
 
 <!-- BEGIN GENERATED: guarded -->
 | Class | Defined |
 |---|---|
 | `ROOT::v5::TF1Data` | `root/hist/hist/src/TF1Data_v5.cxx:58` |
 | `ROOT::v5::TFormula` | `root/hist/hist/src/TFormula_v5.cxx:3469` |
+| `RooBinning` | `root/roofit/roofitcore/src/RooBinning.cxx:298` |
 | `RooCategory` | `root/roofit/roofitcore/src/RooCategory.cxx:431` |
 | `RooDataHist` | `root/roofit/roofitcore/src/RooDataHist.cxx:2361` |
 | `RooDataSet` | `root/roofit/roofitcore/src/RooDataSet.cxx:1576` |
@@ -228,7 +268,7 @@ fails on one that is not. `gap` is the worklist.
 | `TVirtualPad` | `root/core/base/src/TVirtualPad.cxx:124` |
 <!-- END GENERATED -->
 
-## 4. `delegating` — custom code, generated bytes
+## 5. `delegating` — custom code, generated bytes
 
 <!-- BEGIN GENERATED: delegating -->
 | Class | Defined |
@@ -236,7 +276,6 @@ fails on one that is not. `gap` is the worklist.
 | `PiecewiseInterpolation` | `root/roofit/histfactory/src/PiecewiseInterpolation.cxx:456` |
 | `RooAbsArg` | `root/roofit/roofitcore/src/RooAbsArg.cxx:2120` |
 | `RooAbsData` | `root/roofit/roofitcore/src/RooAbsData.cxx:2364` |
-| `RooBinning` | `root/roofit/roofitcore/src/RooBinning.cxx:298` |
 | `RooHistFunc` | `root/roofit/roofitcore/src/RooHistFunc.cxx:494` |
 | `RooHistPdf` | `root/roofit/roofitcore/src/RooHistPdf.cxx:625` |
 | `RooONNXFunc` | `root/roofit/roofit/src/RooONNXFunc.cxx:435` |
@@ -262,15 +301,13 @@ fails on one that is not. `gap` is the worklist.
 | `TLinearFitter` | `root/math/minuit/src/TLinearFitter.cxx:1939` |
 | `TListOfDataMembers` | `root/core/meta/src/TListOfDataMembers.cxx:529` |
 | `TMatrixTSparse` | `root/math/matrix/src/TMatrixTSparse.cxx:2991` |
-| `TMatrixTSym` | `root/math/matrix/src/TMatrixTSym.cxx:2030` |
 | `TNtupleD` | `root/tree/tree/src/TNtupleD.cxx:228` |
-| `TPointSet3D` | `root/graf3d/g3d/src/TPointSet3D.cxx:156` |
 | `TRefTable` | `root/core/cont/src/TRefTable.cxx:390` |
 | `TSchemaRuleSet` | `root/core/meta/src/TSchemaRuleSet.cxx:561` |
 | `TStreamerObjectAnyPointer` | `root/core/meta/src/TStreamerElement.cxx:1691` |
 <!-- END GENERATED -->
 
-## 5. What this means for a base class
+## 6. What this means for a base class
 
 A `kBase` element does **not** mean "read the base class by its streamer info".
 `TStreamerBase::ReadBuffer` dispatches to the base class's own `Streamer`
@@ -300,7 +337,7 @@ was written to contribute nothing, and a class with no members but a *generated*
 [Streamer-driven reading §7](../02-serialization/StreamerDriven.md) describes.
 The class name is the only signal, which is what this page is for.
 
-## 6. What the extraction does and does not see
+## 7. What the extraction does and does not see
 
 `tools/inventory.py` reads the submodule's sources with comments and string
 literals blanked out, so that neither can be mistaken for code. Both cases are
@@ -316,6 +353,18 @@ real:
   different class with a different classification, and merging them would hide
   one behind the other. Namespaces are tracked by brace, which is only sound once
   braces inside string literals are gone — and that file parses formula syntax.
+- The opposite spelling has to be handled too. `ROOT::RNTuple::Streamer` is
+  defined **qualified**, at file scope with no `namespace` block around it
+  (`root/tree/ntuple/src/RNTuple.cxx:25`), and so is
+  `RooWorkspace::CodeRepo::Streamer`
+  (`root/roofit/roofitcore/src/RooWorkspace.cxx:2427`). Matching only an
+  unqualified name dropped both from this page entirely — including the one class
+  in §3 that the RNTuple specification already documents.
+- A version dispatch need not be a comparison. `RooBinning` selects its layout
+  with `switch (R__v)` and hand-decodes version 1 in a `case`
+  (`root/roofit/roofitcore/src/RooBinning.cxx:298`); tested for comparisons alone
+  it read as `delegating`, which is the reading that tells a reader it needs
+  nothing.
 
 Two declarations are deliberately **not** counted:
 `TParameter<Long64_t>::Streamer` and `TNDArrayT<double>::Streamer` are forward
@@ -332,8 +381,8 @@ are in the table because they also define `Streamer`; a class that used only the
 adopted path would not be. No such class is known here, and the gap is recorded
 rather than assumed away.
 
-## 7. Reference files
+## 8. Reference files
 
 This page is derived from the pinned submodule, not from bytes, and is checked
-against it rather than against a fixture. The byte-level evidence for §5 is the
+against it rather than against a fixture. The byte-level evidence for §6 is the
 `H1display.root` reading in `PLAN.md` §9.9, over a file in `gen/cern/`.

@@ -54,6 +54,14 @@ list, extracted from ROOT's source rather than asserted: every class whose
 specifies it or recorded as a gap. Its counts are generated and CI-checked, which
 is why they are not repeated here.
 
+**And one kind that is not "never".** A class may call `ReadClassBuffer` and then
+read further bytes of its own, which no streamer info describes and which sit
+outside the byte count — so the object is longer than it claims and nothing
+warns. Three classes do; the one a physics file is likely to hold is
+`TMatrixTSym`, because a covariance matrix is symmetric. See
+[Matrices and vectors](Matrix.md) and
+[Buffer framing §2.4](../02-serialization/Buffer.md#24-an-object-may-be-longer-than-its-byte-count-says).
+
 The ones this layer indexes are specified where their behaviour arises rather
 than collected here — see `PLAN.md` decision 6:
 
@@ -68,6 +76,7 @@ than collected here — see `PLAN.md` decision 6:
 | `TArray*` | [TArray](TArray.md) |
 | `TMap`, `TExMap`, `TBtree` | [TMap, TExMap and TBtree](Containers.md) |
 | `TCanvas`, `TQObject` | [TCanvas](Canvas.md) |
+| `TMatrixTSym` | [Matrices and vectors](Matrix.md) — and `TMatrixT`, `TMatrixTSparse` and `TVectorT` beside it, which need nothing |
 | `TDatime` | [Records and keys §3.7](../01-container/Record.md#37-fdatime) — four bare bytes as a member, exactly as in a key |
 | `TCollection` | not specified; reachable only through `TList`'s fictional streamer info, which no reader should follow ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)) |
 

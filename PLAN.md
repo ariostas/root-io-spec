@@ -11,13 +11,13 @@ Measured, 2026-09-17, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 34, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 64 / 1515, 0 failures |
-| Source citations checked | 1085, 0 failures |
-| Class versions checked against `ClassDef` | 20 |
-| Invariants over the fixtures | 64 files, 0 failures |
+| Specification documents | 35, plus the tracked RNTuple copy |
+| Reference files / byte assertions | 65 / 1563, 0 failures |
+| Source citations checked | 1103, 0 failures |
+| Class versions checked against `ClassDef` | 25 |
+| Invariants over the fixtures | 65 files, 0 failures |
 | Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **1 failure** (§9.9) |
-| Entries decoded and checked | 25937 of 26011 branch-baskets, 99.7% |
+| Entries decoded and checked | 25938 of 26011 branch-baskets, 99.7% |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register — every gap the written documents record, so they can be picked up
@@ -156,19 +156,22 @@ does:
 
 | | Count | What a reader has to do |
 |---|---|---|
-| `delegating` | 35 | nothing — `ReadClassBuffer` with no version test. **Except three that read more bytes afterwards; see §8 item M1, this is a published error** |
-| `guarded` | 88 | nothing for a current file: `ReadClassBuffer` above a version threshold, a legacy layout below. Those legacy layouts are §9.1 |
-| `custom` | 62 | know the layout; the streamer info describes the bytes at no version |
+| `delegating` | 32 | nothing — `ReadClassBuffer` with no version test and no reads after it |
+| `guarded` | 89 | nothing for a current file: `ReadClassBuffer` above a version threshold, a legacy layout below. Those legacy layouts are §9.1 |
+| `extending` | 3 | know the bytes that follow the streamer-info-driven ones, at every version — `TMatrixTSym`, `TPointSet3D`, `ROOT::RNTuple` |
+| `custom` | 63 | know the layout; the streamer info describes the bytes at no version |
 
-Of the 62 `custom`: **34 specified**, 5 never objects in a file, 14 outside scope
-(RooFit, EVE, SOFIE, the SQL backend), **9 gaps** — `TASImage`, `TClassTree`,
-`TMaterial`, `TMixture`, `TPolyLine3D`, `TPolyMarker3D` and the three
+Of the 66 `custom` and `extending` — the two kinds a reader must know —
+**36 specified**, 5 never objects in a file, 15 outside scope (RooFit, EVE,
+SOFIE, the SQL backend), **10 gaps**: `TASImage`, `TClassTree`, `TMaterial`,
+`TMixture`, `TPolyLine3D`, `TPolyMarker3D`, `TPointSet3D` and the three
 `graf2d/gviz` wrappers. All of narrow reach; none is something a physics file is
 likely to hold, and they are **not** in the MVP (§8).
 
 Written so far: ✅ `TArray.md`, ✅ `Containers.md` (`TMap`, `TExMap`, `TBtree`),
 ✅ `Formula.md` (`ROOT::v5::TFormula`/`TF1Data` against the ROOT 6 classes),
-✅ `Canvas.md` (`TCanvas`, `TQObject`, and the zero-byte base), ✅ `index.md`
+✅ `Canvas.md` (`TCanvas`, `TQObject`, and the zero-byte base),
+✅ `Matrix.md` (`TMatrixTSym` and the family around it), ✅ `index.md`
 mapping every divergent class to wherever it is specified. `TStringLong` went to
 Conventions §5.1.1 and `TBranchClones` to `TBranchElement.md` §13, per decision 6.
 
@@ -440,7 +443,16 @@ reported** (§8 item M10).
    (`root/tree/tree/src/TBranch.cxx:436`), so `c/C:x/I` reads `x` from the second
    byte of the string. Silent, verified at byte level. `TLeaf.md` §3.2.
 6. **The suspected `TFile::Recover` gap bug** — banked, still unverified.
-7. **A `pair<K,V>`'s checksum can be computed before its members are known**, and
+7. **An object of an `extending` class cannot be skipped by its byte count.**
+   `TBufferFile::SkipObjectAny` seeks to `start + count + 4`
+   (`root/io/io/src/TBufferFile.cxx:2499-2503`), and for `TMatrixTSym`,
+   `TPointSet3D` and `ROOT::RNTuple` the object continues past that point
+   (`Matrix.md` §2.4, `Buffer.md` §2.4). A pointer member is safe, because the
+   slot's own byte count covers the extra bytes; a **by-value** member is not.
+   Reachable only when a schema change makes ROOT skip such a member, which is
+   why this is source-verified and **not** demonstrated by a file. Verify before
+   reporting.
+8. **A `pair<K,V>`'s checksum can be computed before its members are known**, and
    `TClass::GetCheckSum` then caches it forever
    (`root/core/meta/src/TClass.cxx:6655-6666`), so several distinct pairs share
    one value. `data/serialization/pairs.root` has three pairs all carrying
@@ -458,7 +470,8 @@ missing on-ramp documents, an unstated scope, and no licence.
 
 ### 8.1 Release criteria
 
-1. **No published claim is known to be wrong.** ← violated today, item M1.
+1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
+   claim was the violation.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8).
 3. **A reader can find the path in**: an ordered implementation checklist and a
@@ -477,48 +490,63 @@ Each item says why it is in the MVP, what it touches, and what proves it done.
 Items M1–M7 are the MVP; M8–M10 are the next tier and are listed so the order is
 explicit.
 
-**M1 — `delegating` is wrong for three classes, and the inventory misses two.**
-*The only known-wrong published claim, and it mis-decodes a class that real
-physics files contain.*
+**M1 — ✅ done 2026-09-17. `delegating` was wrong for three classes, and the
+inventory missed two.**
+*The only known-wrong published claim, and it mis-decoded a class real physics
+files contain.*
 
-`HandWrittenStreamers.md` says of `delegating`: "the bytes themselves are exactly
-what the streamer info describes". For three of the 35 that is false — the read
-branch consumes **more bytes** after `ReadClassBuffer`, inside the same byte
-count:
+`HandWrittenStreamers.md` said of `delegating` that the bytes are "exactly what
+the streamer info describes". For three of the 35 that was false — the read
+branch consumes **more bytes** after `ReadClassBuffer`, and in all three cases
+outside the byte count, so `CheckByteCount` succeeds for a reader that stops
+early:
 
 | Class | What follows `ReadClassBuffer` | Cite |
 |---|---|---|
-| `TMatrixTSym<Element>` | the upper-right triangle, `fNcols-i` elements per row, read with `ReadFastArray`; the lower triangle is reconstructed, not read | `root/math/matrix/src/TMatrixTSym.cxx:2030` |
-| `TPointSet3D` | an `Int_t` and then an array | `root/graf3d/g3d/src/TPointSet3D.cxx:156` |
-| `RooBinning` | four `operator>>` reads | `root/roofit/roofitcore/src/RooBinning.cxx:298` |
+| `TMatrixTSym<Element>` | the upper-right triangle, `fNcols-i` elements per row; the lower triangle is reconstructed, not read | `root/math/matrix/src/TMatrixTSym.cxx:2040` |
+| `TPointSet3D` | when `fOwnIds` is set, an `Int_t` and then that many object references | `root/graf3d/g3d/src/TPointSet3D.cxx:156` |
+| `ROOT::RNTuple` | an 8-byte XXH3-64 checksum | `root/tree/ntuple/src/RNTuple.cxx:25-49` |
 
-The same shape as `ROOT::RNTuple`, whose `Streamer` reads an 8-byte XXH3 checksum
-after `ReadClassBuffer` and **outside** the byte count
-(`root/tree/ntuple/src/RNTuple.cxx:25-49`) — and which `inventory.py` does not
-list at all, because `DEFINITION` does not match an out-of-line definition
-written with a qualified name. The two it misses are `ROOT::RNTuple` and
-`RooWorkspace::CodeRepo` (`root/roofit/roofitcore/src/RooWorkspace.cxx:2427`).
+`tools/inventory.py` now has a fourth kind, `extending`, detected by looking for
+buffer I/O after the call in the same block and before any `return`, `break` or
+`case` label; `custom` and `extending` are the two kinds the sidecar must
+resolve. Three further things came out of building it, each a bug in the tool
+rather than in ROOT:
 
-The corpora have been saying so: `TMatrixTSym<double>` "consumed 48 of 3528
-bytes" is five blocked records in `gen/foreign/` and more in `gen/cern/`, and it
-was filed as a divergent class the specification had not written up rather than
-as a contradiction of the `delegating` claim.
+- **A qualified out-of-line definition was invisible.** `DEFINITION` matched only
+  an unqualified name, so `void ROOT::RNTuple::Streamer` and
+  `void RooWorkspace::CodeRepo::Streamer`
+  (`root/roofit/roofitcore/src/RooWorkspace.cxx:2427`) were not in the inventory
+  at all — and the first is an `extending` class, so the omission was in the
+  direction of "nothing to do". The count went 185 → 187.
+- **A version dispatch need not be a comparison.** `RooBinning` switches on the
+  version word and hand-decodes version 1 in a `case`
+  (`root/roofit/roofitcore/src/RooBinning.cxx:298`). Tested for comparisons alone
+  it read as `delegating`; it is `guarded`. It was also the one false positive of
+  the extending detector, which is why the window stops at `break` and `case`.
+- **No `guarded` class reads past `ReadClassBuffer`**, so that table's "nothing
+  for a current file" stands. Checked over all 89, and pinned by a test.
 
-Work:
-- `inventory.py`: match qualified out-of-line definitions; add a fourth kind for
-  a read branch that does I/O after `ReadClassBuffer` in the same block (the
-  scan that found these three is 30 lines and found **zero** such cases among
-  the 88 `guarded`, so the `guarded` claim stands); tests for both.
-- Re-word §1 of `HandWrittenStreamers.md` around four kinds.
-- Specify `TMatrixTSym` — and with it `TMatrixT`'s modern path and `TVectorT`,
-  which are the same family and are what a `TFitResult` holds — with a fixture
-  and invariants. New `spec/03-classes/Matrix.md`.
-- `rootfile.py` reads the triangle; the blocked records in both corpora clear.
-- `TPointSet3D` and `RooBinning` get `streamers.toml` entries with the new kind.
+Specified as `spec/03-classes/Matrix.md`, with `classes/matrix` (48 assertions:
+a 3 × 3 `TMatrixDSym`, a 2 × 2 `TMatrixFSym` for the element width, an ordinary
+`TMatrixD` and `TVectorD`, and a `TMatrixDSym` inside a `TObjArray` so both byte
+counts are visible), seven invariants in `check_invariants.py`, and a reader in
+`rootfile.py`. Three findings worth more than the fixture:
 
-*Done when*: `inventory.py --check` passes with four kinds, `Matrix.md` has a
-fixture and invariants, and `coverage_probe.py` no longer reports
-`TMatrixTSym<double>` as blocked in either corpus.
+- **A `TMatrixTSym` has no streamer info of its own in any file.** Its `Streamer`
+  hands `ReadClassBuffer` the `TClass` of `TMatrixTBase<Element>`, and recording
+  an info is a side effect of `WriteClassBuffer`, so what the file carries is the
+  base's info and the version word on disk is the base's class version, 5.
+  `TMatrixTSym`'s own `ClassDef` version 2 never reaches a file. Confirmed over
+  both corpora: **no file has such an info**, and five files carry
+  `TMatrixTBase<double>`.
+- **A byte count is a lower bound, not a length.** Now
+  `Buffer.md` §2.4, with invariant 9.9 carrying the exception explicitly rather
+  than the checker carrying it silently.
+- **`uproot-issue-359.root` was the witness all along**: five `TMatrixTSym<double>`
+  records written by ROOT 5.34/34, at 29 × 29 and 58 × 58, each reported as
+  "consumed 48 of 3528" — which is exactly the framed prefix. They now decode,
+  and the foreign corpus is at 0 failures with one more branch-basket reached.
 
 **M2 — publish the list a reader cannot derive from a file.**
 *Clears the last corpus failure and hands over the one piece of out-of-band
@@ -774,6 +802,14 @@ locally. The triage that got there turned **10 047 failures into 0** and found
 - `fIsRange` may be set on a `TLeafElement`;
 - `nfree` in the header is advisory and ROOT never uses it.
 
+A twelfth was found in the same corpus without a new run: five
+`TMatrixTSym<double>` records in `uproot-issue-359.root` had been reported as
+"consumed 48 of 3528" and filed as a class the specification had not written up,
+when they were the symptom of `HandWrittenStreamers.md`'s `delegating` claim
+being wrong (§8 item M1). The lesson is about reading the output rather than
+about the format: a `NOT CHECKED` line naming a class is a *diagnosis*, and this
+one had been accepted without being made.
+
 Plus two format facts (a split parent counts `fEntries` but never
 `fEntryNumber`; a slot may wrap an object *reference* in a byte count, which ROOT
 never writes and its reader accepts) and six reader gaps. Two files are ignored
@@ -783,7 +819,8 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **1 failure**. The probe: 1396 decoded, 264
+72 files, ROOT 2.24/00 – 6.35/01, **1 failure**, and 154 files at **0** on the
+other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
 `RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with

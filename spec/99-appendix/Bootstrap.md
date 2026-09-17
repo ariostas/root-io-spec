@@ -133,11 +133,15 @@ with what goes wrong if it is skipped.
 | `TQObject` | its `kBase` element occupies **zero** bytes, and a modern file carries no info for it at all; following the element desynchronises immediately. Every `TPad` and `TCanvas` has one | [Streamer-driven reading §4.4](../02-serialization/StreamerDriven.md), [Canvas §3](../03-classes/Canvas.md) |
 | `TCanvas` | seven trailing bytes its info does not mention, five of them `fBits` flags | [Canvas](../03-classes/Canvas.md) |
 | `TMap`, `TExMap`, `TBtree` | pointer-streamed pairs, a forced hash bit, and a `TCollection` frame reached through a class that adds nothing | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
+| `TMatrixTSym` | the elements sit **past** the byte count and the file carries no info for the class, only for its base. A reader that stops where the byte count says loses the whole matrix and reports nothing | [Matrices and vectors](../03-classes/Matrix.md) |
 | `TFile`, `TDirectoryFile` | the container rather than objects in it | [Directories](../01-container/Directory.md) |
 
 Two entries are on the list for the opposite of the usual reason. `TBasket` and
 `TTreeIndex` have **no** recorded streamer info, so a reader does not silently
 follow a wrong one — it simply cannot proceed, which is the better failure.
+`TMatrixTSym` is the worst of both: no info of its own, and a byte count that
+makes stopping too early look correct
+([Buffer framing §2.4](../02-serialization/Buffer.md#24-an-object-may-be-longer-than-its-byte-count-says)).
 
 ## 6. The list cannot be closed
 

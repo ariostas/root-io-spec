@@ -325,6 +325,15 @@ what the class actually writes. A `Streamer` written by hand may write the
 members in a different order, write fewer of them, write extra values, or write a
 different shape entirely.
 
+It may also write a **prefix**: apply an info correctly and then keep reading.
+There the info is not fiction, it is incomplete, and the failure is quieter than
+a mismatch — the byte count agrees, every consistency check passes, and the
+object is simply longer than the reader thinks
+([Buffer framing §2.4](Buffer.md#24-an-object-may-be-longer-than-its-byte-count-says)).
+`TMatrixTSym` goes further and hands `ReadClassBuffer` its **base class's**
+`TClass`, so the info the file carries is the base's and none is recorded for the
+class itself ([Matrices and vectors §2.2](../03-classes/Matrix.md)).
+
 **Nothing in the file marks this.** `TClass::fStreamerType`, which is what ROOT
 dispatches on, is a transient member (`root/core/meta/inc/TClass.h:285`,
 `root/core/meta/inc/TClass.h:344`) computed from the compiled dictionary. A

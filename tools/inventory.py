@@ -13,10 +13,19 @@ spot-check. This extracts it from the pinned submodule instead, and sorts each
 member by what its `Streamer` actually does when reading:
 
 `delegating`
-    The reading branch calls `ReadClassBuffer` with no version test around it.
-    The custom code runs *after* the bytes are consumed — fixups, caches,
-    back-pointers — so on disk the class is indistinguishable from a generated
-    one. **A reader needs nothing.**
+    The reading branch calls `ReadClassBuffer` with no version test around it,
+    and reads nothing afterwards. The custom code runs *after* the bytes are
+    consumed — fixups, caches, back-pointers — so on disk the class is
+    indistinguishable from a generated one. **A reader needs nothing.**
+
+`extending`
+    The reading branch calls `ReadClassBuffer` and then **reads more bytes of
+    its own**. The streamer info describes a prefix of the object and stops;
+    what follows it is in no info anywhere, and it is usually outside the byte
+    count as well, so `CheckByteCount` does not notice. `TMatrixTSym` is the
+    case that forced this category out of `delegating`: it reads the upper-right
+    triangle after the base class's members and reconstructs the lower one.
+    **These need hand-written text**, like `custom`.
 
 `guarded`
     The reading branch calls `ReadClassBuffer` above a version threshold and
@@ -28,8 +37,8 @@ member by what its `Streamer` actually does when reading:
     describe the bytes at *any* version. **These need hand-written text**, and a
     class here that the specification does not account for is a hole.
 
-Every row carries a `path:line` citation, and every `custom` row must be resolved
-in `spec/99-appendix/streamers.toml` — to the document that specifies it, or
+Every row carries a `path:line` citation, and every `custom` and `extending` row
+must be resolved in `spec/99-appendix/streamers.toml` — to the document that specifies it, or
 explicitly to a gap. A submodule bump that adds a hand-written `Streamer` fails
 `--check` until someone says which it is, so the list cannot rot silently the way
 `tools/test_bootstrap.py` exists to stop the bootstrap list rotting.
@@ -52,8 +61,19 @@ SIDECAR = REPO / "spec/99-appendix/streamers.toml"
 #: arguments (`TParameter<Long64_t>`), which are dropped: the sidecar and the
 #: specification name the template, not each specialization. A second parameter
 #: is allowed — `ROOT::v5::TFormula` takes an on-file `TClass*` as well.
+#:
+#: The name may also be **qualified**, as `void ROOT::RNTuple::Streamer` is: a
+#: definition written that way is not inside a `namespace` block, so `enclosing`
+#: cannot see the qualifier and it has to be read off the definition itself.
+#: Without this the inventory silently missed `ROOT::RNTuple`, whose `Streamer`
+#: reads a checksum outside the byte count, and `RooWorkspace::CodeRepo`.
+#:
+#: The buffer parameter's name is captured because `extending` is detected by
+#: looking for I/O on *that* name after the `ReadClassBuffer` call; ROOT spells
+#: it `R__b`, `b` or `buf` depending on the file.
 DEFINITION = re.compile(
-    r"\bvoid\s+([A-Za-z_]\w*)(<[^;{}()]*>)?\s*::\s*Streamer\s*\(\s*TBuffer\s*&")
+    r"\bvoid\s+((?:[A-Za-z_]\w*(?:<[^;{}()]*>)?\s*::\s*)*?)"
+    r"([A-Za-z_]\w*)(<[^;{}()]*>)?\s*::\s*Streamer\s*\(\s*TBuffer\s*&\s*(\w+)?")
 
 #: `namespace X {`, and the anonymous form. Classes in an anonymous namespace are
 #: file-local and cannot be persisted, so they are dropped rather than reported
@@ -78,7 +98,10 @@ SOURCES = ("*.cxx", "*.cc", "*.cu", "*.h", "*.hxx")
 BEGIN = "<!-- BEGIN GENERATED: {} -->"
 END = "<!-- END GENERATED -->"
 
-KINDS = ("custom", "guarded", "delegating")
+KINDS = ("custom", "extending", "guarded", "delegating")
+
+#: The kinds whose bytes a reader has to know, and which the sidecar must resolve.
+RESOLVED = ("custom", "extending")
 
 
 def blank(text: str) -> str:
@@ -202,13 +225,94 @@ def body(text: str, start: int) -> str | None:
     return None
 
 
-def classify(source: str) -> str:
+def _enclosing_block(source: str, start: int) -> str:
+    """`source` from `start` to the end of the block that encloses it.
+
+    Stopping at the enclosing `}` is what keeps the *writing* branch out of the
+    window: a `Streamer` is `if (R__b.IsReading()) { ... } else { ... }`, so the
+    reads in the else-branch are on the far side of a closing brace and are not
+    reached from inside the reading one.
+    """
+    depth = 0
+    for i in range(start, len(source)):
+        if source[i] == "{":
+            depth += 1
+        elif source[i] == "}":
+            if depth == 0:
+                return source[start:i]
+            depth -= 1
+    return source[start:]
+
+
+def reads_after_class_buffer(source: str, buffers: set[str]) -> bool:
+    """Does the reading branch consume bytes after `ReadClassBuffer` returns?
+
+    Looked for in the same block as the call and before any `return`, on the
+    buffer parameter's own name — so `R__b >> x` and `R__b.ReadFastArray(...)`
+    count, and a `memcpy`, a `Clear()` or a `MakeValid()` do not. A second
+    `ReadClassBuffer` does not count either: those bytes are described by an
+    info like the first lot.
+
+    The window is deliberately narrow. Reads that follow the *whole* if/else,
+    rather than the `ReadClassBuffer` branch of it, are not seen — no class in
+    the pinned submodule is written that way, and widening the window would
+    start counting the legacy branch of every `guarded` streamer instead.
+
+    It also ends at a `return`, a `break` or the next `case` label. `break` and
+    `case` are there because of `RooBinning`, which dispatches on the version
+    word with a `switch`: its `ReadClassBuffer` and its version-1 legacy decode
+    are two cases of one block, so without those terminators the legacy reads
+    look like reads after the call (`root/roofit/roofitcore/src/RooBinning.cxx:298`).
+    """
+    names = "|".join(re.escape(b) for b in sorted(buffers) if b) or "R__b"
+    io = re.compile(r"\b(?:%s)\s*(?:>>|\.\s*Read(?!ClassBuffer)\w*\s*\()" % names)
+    for call in re.finditer(r"\bReadClassBuffer\s*\(", source):
+        semicolon = source.find(";", call.end())
+        if semicolon < 0:
+            continue
+        window = _enclosing_block(source, semicolon + 1)
+        stop = re.search(r"\breturn\b|\bbreak\b|\bcase\b[^;:]*:", window)
+        if stop:
+            window = window[:stop.start()]
+        if io.search(window):
+            return True
+    return False
+
+
+def classify(source: str, buffers: set[str]) -> str:
+    """Which of the four kinds `source` is, most demanding on a reader first.
+
+    `extending` outranks `guarded` because it is the stronger requirement: a
+    reader must know the extra bytes at *every* version, where a guard only
+    matters below its threshold. No class in the pinned submodule is both — the
+    detector finds extra reads in three of the 35 otherwise-`delegating`
+    streamers and in none of the 88 `guarded` ones — so the precedence has no
+    effect today and is recorded here rather than left implicit.
+    """
     if "ReadClassBuffer" not in source:
         return "custom"
-    names = set(READ_VERSION.findall(source)) | {"R__v"}
+    if reads_after_class_buffer(source, buffers):
+        return "extending"
+    names = "|".join(re.escape(n) for n in
+                     sorted(set(READ_VERSION.findall(source)) | {"R__v"}))
+    #: A version test: a comparison, or a `switch` on the version word.
+    #: `RooBinning` is the reason for the second form — it hand-decodes its
+    #: version 1 in a `case 1:` and nothing in it compares anything, so a
+    #: comparison-only test called it `delegating`, i.e. "a reader needs
+    #: nothing", for a class with a legacy layout on disk.
     guard = re.compile(r"\b(?:%s)\b\s*(?:[<>]=?|[!=]=)"
-                       % "|".join(re.escape(n) for n in sorted(names)))
+                       r"|\bswitch\s*\(\s*(?:%s)\s*\)" % (names, names))
     return "guarded" if guard.search(source) else "delegating"
+
+
+def qualifier(prefix: str) -> list[str]:
+    """The `A::B::` prefix of an out-of-line definition, as a list of names.
+
+    Template arguments are dropped, matching how the class name itself is
+    handled: the sidecar and the specification name the template.
+    """
+    prefix = re.sub(r"<[^<>]*>", "", prefix)
+    return [part for part in (p.strip() for p in prefix.split("::")) if part]
 
 
 def streamers() -> dict[str, dict]:
@@ -232,6 +336,7 @@ def streamers() -> dict[str, dict]:
     """
     bodies: dict[str, list[str]] = {}
     cites: dict[str, str] = {}
+    buffers: dict[str, set[str]] = {}
     for pattern in SOURCES:
         for path in sorted(SUBMODULE.rglob(pattern)):
             relative = str(path.relative_to(REPO))
@@ -253,11 +358,14 @@ def streamers() -> dict[str, dict]:
                 scope = scopes[match.start()]
                 if source is None or scope is None:
                     continue
-                name = "::".join(scope + [match.group(1)])
+                name = "::".join(scope + qualifier(match.group(1))
+                                 + [match.group(2)])
                 bodies.setdefault(name, []).append(source)
+                buffers.setdefault(name, set()).add(match.group(4) or "R__b")
                 line = code.count("\n", 0, match.start()) + 1
                 cites.setdefault(name, f"{relative}:{line}")
-    return {name: {"kind": classify("\n".join(sources)), "cite": cites[name]}
+    return {name: {"kind": classify("\n".join(sources), buffers[name]),
+                   "cite": cites[name]}
             for name, sources in bodies.items()}
 
 
@@ -283,7 +391,7 @@ def rows(names: list[str], found: dict[str, dict],
 def render(found: dict[str, dict], annotations: dict[str, dict],
            kind: str) -> list[str]:
     names = sorted(n for n, e in found.items() if e["kind"] == kind)
-    return rows(names, found, annotations, resolved=(kind == "custom"))
+    return rows(names, found, annotations, resolved=(kind in RESOLVED))
 
 
 def summary(found: dict[str, dict],
@@ -295,13 +403,16 @@ def summary(found: dict[str, dict],
            "streamer-info driven |",
            f"| `guarded` | {counts['guarded']} | nothing for a current file; the "
            "custom layout is below a version threshold |",
+           f"| `extending` | {counts['extending']} | know the bytes that follow "
+           "the streamer-info-driven ones, at every version |",
            f"| `custom` | {counts['custom']} | know the layout; the streamer info "
            "does not describe the bytes at any version |",
-           "", "Of the `custom` classes:", "",
+           "", "Of the `custom` and `extending` classes, which are the ones a "
+           "reader must know:", "",
            "| Status | Count |", "|---|---|"]
     statuses: dict[str, int] = {}
     for name, entry in found.items():
-        if entry["kind"] == "custom":
+        if entry["kind"] in RESOLVED:
             status = annotations.get(name, {}).get("status", "unclassified")
             statuses[status] = statuses.get(status, 0) + 1
     for status in ("specified", "gap", "not-persisted", "out-of-scope",
@@ -335,12 +446,19 @@ def rebuild(found: dict[str, dict], annotations: dict[str, dict]) -> str:
 
 def unresolved(found: dict[str, dict],
                annotations: dict[str, dict]) -> list[str]:
-    """`custom` classes the sidecar does not account for, and stale entries."""
-    custom = {n for n, e in found.items() if e["kind"] == "custom"}
-    problems = [f"{n}: hand-written at every version, not in {SIDECAR.name}"
-                for n in sorted(custom - set(annotations))]
-    problems += [f"{n}: in {SIDECAR.name} but no longer has a custom Streamer"
-                 for n in sorted(set(annotations) - custom)]
+    """Classes the sidecar does not account for, and stale entries.
+
+    Both `custom` and `extending` have to be resolved: in each case bytes reach
+    the file that no streamer info describes, and the difference is only whether
+    any of the object is described.
+    """
+    must = {n for n, e in found.items() if e["kind"] in RESOLVED}
+    problems = [f"{n}: {found[n]['kind']} bytes no streamer info describes, "
+                f"not in {SIDECAR.name}"
+                for n in sorted(must - set(annotations))]
+    problems += [f"{n}: in {SIDECAR.name} but its Streamer no longer writes "
+                 "bytes outside its streamer info"
+                 for n in sorted(set(annotations) - must)]
     return problems
 
 

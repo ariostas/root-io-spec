@@ -13,6 +13,9 @@
 #   not-persisted — never an object in a file; the `Streamer` is machinery
 #   out-of-scope  — ships in ROOT but outside the formats this project specifies
 #                   (`PLAN.md` §2.4), recorded so the list stays complete
+#
+# Both `custom` and `extending` classes are resolved here: in either case bytes
+# reach the file that no streamer info describes.
 
 # ---------------------------------------------------------------- specified --
 
@@ -124,6 +127,14 @@ spec = "[Auxiliary structures §2](../04-ttree/Auxiliary.md)"
 status = "specified"
 spec = "[Streamer-driven reading §7](../02-serialization/StreamerDriven.md) — reachable only through `TList`'s fictional streamer info, which no reader should follow"
 
+[class.TMatrixTSym]
+status = "specified"
+spec = "[Matrices and vectors](../03-classes/Matrix.md) — `extending`: the upper-right triangle follows the base class's members, outside the byte count"
+
+[class."ROOT::RNTuple"]
+status = "specified"
+spec = "[RNTuple](../05-rntuple/index.md) — `extending`: an 8-byte XXH3-64 checksum follows the anchor's members, outside the byte count ([errata 2 and 3](../05-rntuple/ERRATA.md))"
+
 # --------------------------------------------------------------------- gaps --
 
 [class.TMap]
@@ -157,6 +168,10 @@ spec = "[TCanvas](../03-classes/Canvas.md)"
 [class.TASImage]
 status = "gap"
 note = "graf2d; an embedded image"
+
+[class.TPointSet3D]
+status = "gap"
+note = "graf3d/g3d; `extending` — when `fOwnIds` is set, an `Int_t` count and then that many object references follow the framed part (`root/graf3d/g3d/src/TPointSet3D.cxx:156`)"
 
 [class.TPolyLine3D]
 status = "gap"
@@ -253,6 +268,10 @@ note = "RooFit"
 [class.RooRefArray]
 status = "out-of-scope"
 note = "RooFit"
+
+[class."RooWorkspace::CodeRepo"]
+status = "out-of-scope"
+note = "RooFit — the code repository nested inside a workspace"
 
 [class.RooCFunction1Ref]
 status = "out-of-scope"
