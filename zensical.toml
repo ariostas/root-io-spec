@@ -59,6 +59,7 @@ nav = [
       { "Writing an object" = "06-writing/WritingObjects.md" },
       { "Writing histograms" = "06-writing/WritingHistograms.md" },
       { "Writing trees" = "06-writing/WritingTrees.md" },
+      { "Element lists" = "06-writing/ElementLists.md" },
   ] },
   { "RNTuple" = [
       { "Overview" = "05-rntuple/index.md" },

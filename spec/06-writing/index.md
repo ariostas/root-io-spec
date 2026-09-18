@@ -69,6 +69,7 @@ with a plain `sha256`.
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
 | [Writing histograms](WritingHistograms.md) | `TH1F` and `TH1D`, member by member, at the current class version |
 | [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf, and its baskets |
+| [Element lists](ElementLists.md) | The streamer info of each of the twenty-seven classes the other three documents need: every element, with every field |
 
 Each is written as a numbered procedure, with a table per record or per class
 giving every field and, for each, whether its value is **fixed** (only one value is
@@ -177,21 +178,19 @@ word.
   `TLeafC` appears in the leaf table and in the invariants because a writer must
   know it forces an offset array, but the per-entry layout of a `TLeafC` value is
   specified only on the reading side ([TLeaf §5](../04-ttree/TLeaf.md)).
-- **The streamer-info element lists themselves.** This is the largest omission and
-  the one most likely to block a third party. §7 of each class document says *which*
-  classes need an info — fifteen for a histogram, eighteen for a flat tree — and
-  [Writing an object §7](WritingObjects.md#7-the-streamerinfo-record) specifies the
-  record's nesting and the checksum exactly. What is **not** in `spec/` is the
-  element list of each of those classes: every member's name, `fType`, `fSize`,
-  `fTypeName`, array extents and counter. They exist in executable form in
-  `tools/rootwrite.py` (`histogram_infos`, `tree_infos`), which is where a writer
-  should read them from today. Three ways to obtain them without that file, in
-  decreasing convenience: `TFile::ShowStreamerInfo` on any ROOT-written file;
-  reading the `StreamerInfo` record of a reference file in `data/` with
-  [Streamer information §12](../02-serialization/StreamerInfo.md#12-reading); or
-  **copying that record verbatim** into the file being written, which is legitimate
-  — a `StreamerInfo` record is self-contained, and `data/written/` demonstrates that
-  a byte-identical copy is what ROOT itself produces.
+- **The streamer-info element lists of any other class.**
+  [Element lists](ElementLists.md) publishes the twenty-seven a histogram or a flat
+  tree needs, which was the largest omission here until 2026-09-18 and the one
+  thing that made the writing layer unimplementable from the prose. It does not
+  generalise: a `TH2F`, a `TProfile`, a `TGraph` or a user-defined class needs infos
+  that are not published, and there is no procedure for *deriving* an element list
+  from a class definition — `TStreamerInfo::Build` is a dictionary walk, and this
+  project specifies its output rather than reimplementing it. Two ways to obtain a
+  list that is not published: `TFile::ShowStreamerInfo` on any ROOT-written file, or
+  reading that file's `StreamerInfo` record with
+  [Streamer information §12](../02-serialization/StreamerInfo.md#12-reading) — and
+  **copying the record verbatim** into the file being written is legitimate, since
+  a `StreamerInfo` record is self-contained.
 
 ## 5. A writer in one page
 
@@ -206,7 +205,7 @@ links to where it is specified.
 3. Write each **data record**: stream the object into a buffer, compress it if the
    file says to, and write a key in front of it.
 4. Write the **`StreamerInfo` record**, a `TList` of `TStreamerInfo` objects for
-   the classes used in step 3.
+   the classes used in step 3 — [their element lists](ElementLists.md).
 5. Write the **key list**: the count, then a copy of each data record's key.
 6. Write the **free list**: one entry for the gap that is the rest of the address
    space, since a file written once has no gaps in it.

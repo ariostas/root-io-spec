@@ -39,16 +39,17 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **72 reference files with 1838 byte-level assertions, 1394 source
-citations checked against the pinned ROOT tree across 46 documents**, and the
+Behind it: **72 reference files with 1838 byte-level assertions, 1402 source
+citations checked against the pinned ROOT tree across 47 documents**, and the
 invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
 The writing layer adds four files this project *did* write, with 198 assertions of
 their own. Three of them are the strongest check here: **every object-bearing
 record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
-`TTree`, two `TBasket`s, and a `StreamerInfo` record of fifteen class
-descriptions.
+`TTree`, two `TBasket`s, a `StreamerInfo` record of fifteen class descriptions,
+and the eighteen of a tree file bar the one entry a file written today cannot
+use.
 
 ## How to read it
 
@@ -193,9 +194,10 @@ drift:
 - **On the write side**, everything [Writing §4](06-writing/index.md#4-what-is-not-specified)
   lists: earlier class versions, updating an existing file, producing a split
   `TBranchElement`, subdirectories, trees of more than one basket per branch, the
-  streamer-info element lists themselves, and ROOT's policy choices. The first three
-  are out of scope by decision; the rest are limits of what has been written so far,
-  and `PLAN.md` §8.5 ranks them.
+  element list of any class beyond the twenty-seven
+  [published](06-writing/ElementLists.md), and ROOT's policy choices. The first
+  three are out of scope by decision; the rest are limits of what has been written
+  so far, and `PLAN.md` §8.5 ranks them.
 
 ## Reference files
 

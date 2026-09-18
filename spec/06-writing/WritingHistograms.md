@@ -240,7 +240,8 @@ THashList  TList  TSeqCollection  TCollection  TString  TH1D
 ```
 
 That is ROOT's own order — registration order, not alphabetical — and
-`tools/rootwrite.py` reproduces it. Four things in the list are not obvious:
+[Element lists](ElementLists.md) publishes every one of the fifteen, member by
+member, with the checksum beside it. Four things in the list are not obvious:
 
 - **`THashList`, `TList`, `TSeqCollection` and `TCollection` are there** although
   a histogram with no labels and no functions contains no collection data. They
@@ -254,7 +255,9 @@ That is ROOT's own order — registration order, not alphabetical — and
   itself, because their streamers are hand-written and nothing marks them
   ([Writing an object §7.2](WritingObjects.md#72-which-classes-need-an-info)).
   Their **checksums** are still needed, as the `fBaseCheckSum` of `TH1F` and
-  `TH1D`, so a writer has to compute them from element lists it never emits.
+  `TH1D`, so a writer has to compute them from element lists it never emits;
+  those three lists are
+  [Element lists §7](ElementLists.md#7-three-classes-no-file-describes).
 - **Two checksums cannot be computed from an element list at all.**
   `THashList` and `TSeqCollection` are class version 0, so their infos list only
   their bases while their checksums fold their members

@@ -48,8 +48,8 @@ descriptions with their checksums computed from scratch.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**72 reference files, 1838 byte-level assertions, and 1394 source citations
-checked against the pinned submodule across 46 documents**, plus 4 files this
+**72 reference files, 1838 byte-level assertions, and 1402 source citations
+checked against the pinned submodule across 47 documents**, plus 4 files this
 project wrote with 198 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
@@ -78,9 +78,11 @@ sufficiently.** What it covers is a file, an object, `TH1F`/`TH1D` and a flat
 `TTree` of one basket per branch.
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
 not, and `PLAN.md` §8.5 ranks the same list by how much each item blocks a third
-party — the streamer-info element lists, which live in `tools/rootwrite.py` rather
-than in the prose, and trees of more than one basket per branch are the two that
-matter. The document is descriptive of ROOT 6.40.04 — where it
+party — trees of more than one basket per branch, and the cluster ranges that come
+with them, are now the two that matter. The largest item, the streamer-info
+element lists of all twenty-seven classes a writer has to describe, is published
+as [Element lists](spec/06-writing/ElementLists.md), read out of the ROOT-written
+fixtures rather than transcribed from this project's writer. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation

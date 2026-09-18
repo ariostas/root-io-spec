@@ -25,6 +25,12 @@ jobs:
       # invariants accept what it wrote. Gate 3 needs ROOT and runs below.
       - name: Verify the files tools/rootwrite.py produces
         run: tools/check_write.py
+      # The published element lists are read out of the ROOT-written fixtures,
+      # so this needs no submodule either: it fails if they drift, if a fixture
+      # disagrees with another, if tools/rootwrite.py disagrees with any of
+      # them, or if a published list stops producing its own checksum.
+      - name: Streamer-info element lists match the reference files
+        run: tools/element_lists.py --check
 
   # Checks that compare spec/ against the pinned ROOT source.
   spec:

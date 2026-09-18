@@ -1,7 +1,7 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **224
-entries across 30 documents**, counted as the numbered items in every section
+Every layer of this specification ends with an `Invariants` section — **229
+entries across 31 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
 adds the column that matters most on the write side: **who notices when you get it
@@ -54,8 +54,9 @@ From [File header](../01-container/FileHeader.md),
 From [Buffer framing](../02-serialization/Buffer.md),
 [Streamer information](../02-serialization/StreamerInfo.md),
 [Element types](../02-serialization/ElementTypes.md),
-[Compression](../01-container/Compression.md) and
-[Writing an object §9](../06-writing/WritingObjects.md#9-invariants).
+[Compression](../01-container/Compression.md),
+[Writing an object §9](../06-writing/WritingObjects.md#9-invariants) and
+[Element lists §10](../06-writing/ElementLists.md#10-invariants).
 
 | Invariant | Where | Who notices |
 |---|---|---|
@@ -69,6 +70,9 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | An info's `fCheckSum` is what the algorithm produces for the class it describes | StreamerInfo 11 | ROOT — `BuildCheck` warns at equal version |
 | Every `TList` entry in the `StreamerInfo` record is followed by one option byte; `TObjArray` entries by none | StreamerInfo 4, 5 | nothing |
 | Every class whose version word is above 0 has an info in the file, or is one a reader knows out of band | WritingObjects 9.5 | nothing for ROOT; everything for every other reader |
+| A `TStreamerBase` element's `fMaxIndex[1]` is the base class's own checksum, at the version its `fBaseVersion` gives | ElementLists 10.2 | nothing — it is folded into the derived class's checksum, which ROOT checks instead |
+| A `TStreamerBasicPointer`'s counter exists in the class `fCountClass` names, and that member's `fType` is 6 `kCounter` | ElementLists 10.3 | nothing |
+| Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 10.1 | ROOT — `CompareContent` compares type names when a checksum mismatches |
 
 ## 4. A histogram
 

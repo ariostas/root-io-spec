@@ -8,6 +8,10 @@ Prerequisites: [Conventions](../00-conventions.md),
 [Records and keys](../01-container/Record.md),
 [Buffer framing](Buffer.md). All integers are big-endian.
 
+This document is how to **read** an info. What a writer has to **put** in one, for
+each class a histogram or a flat tree contains, is
+[Element lists](../06-writing/ElementLists.md).
+
 ## 1. The bootstrap problem
 
 The streamer information is stored as ordinary objects of ordinary classes —

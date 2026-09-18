@@ -442,6 +442,31 @@ class Trees(unittest.TestCase):
                 [(e.cls, e.name, e.title, e.ftype, e.type_name, e.fsize)
                  for e in theirs[name].elements], name)
 
+    def test_streamer_info_entries_are_identical(self):
+        """All eighteen infos, byte for byte, against ROOT's own record.
+
+        The two records cannot be compared whole: ROOT's carries a nineteenth
+        entry of I/O rules that a file written at version 20 cannot use
+        (below). Everything before it is identical -- which is a stricter claim
+        than the element-by-element comparison above, because it also covers the
+        subclass tail of every element, and `tools/element_lists.py` found four
+        wrong values there that nothing else looked at.
+        """
+        ours = self.written()
+        root_buf, _, root_recs = rootfile.load(REPO / "data/ttree/basket.root")
+        header = rootfile.read_header(root_buf)
+        rec = [r for r in root_recs if r.offset == header.seek_info][0]
+        data = rootfile.object_data(root_buf, rec)
+        theirs = bytes(data[rec.offset + rec.key_len:rec.offset + rec.nbytes])
+        payload = rw.Payload(rec.key_len)
+        payload.tlist("", [i.write for i in rw.tree_infos(("I", "F"))])
+        mine = bytes(payload.buf)
+        # The TList's own header differs in two fields and nothing else: its
+        # byte count, and 18 entries against 19.
+        self.assertEqual(mine[21:], theirs[21:len(mine)])
+        self.assertEqual(rw.i32(18), mine[17:21])
+        self.assertEqual(rw.i32(19), theirs[17:21])
+
     def test_root_appends_two_obsolete_io_rules(self):
         """The one difference between the two StreamerInfo records.
 

@@ -351,8 +351,10 @@ Three of them are there for reasons a writer would not guess:
   which makes it the cleanest proof in the format that ROOT reads a class the file
   does not describe.
 
-`tools/rootwrite.py` emits all eighteen, with the element lists and checksums
-ROOT's own record carries; `tools/test_write.py` compares them element by element.
+[Element lists](ElementLists.md) publishes all eighteen, member by member, with
+the checksum beside each. A writer that emits them in the order above produces a
+record **byte-identical** to ROOT's up to the one entry below
+(`tools/test_write.py`).
 
 ### 7.1 ROOT appends two rules that a new file cannot use
 
@@ -367,7 +369,15 @@ type=read sourceClass="TTree" version="[-18]" target="fNClusterRange" …
 
 Both apply to `TTree` versions at or below 18. A file written at version 20 can
 never trigger them, so this writer omits the entry — and that is the **only**
-difference between `data/written/tree.root` and `data/ttree/basket.root`.
+difference between `data/written/tree.root` and `data/ttree/basket.root`. The
+record's `TList` header therefore differs in two fields, its byte count and 18
+entries against 19, and every byte after them is the same.
+
+That equality is recent: until `tools/element_lists.py` compared an element's
+**subclass tail** against ROOT's, `TRefTable::fProcessGUIDs` carried the wrong
+`fCtype` here, and the record differed from ROOT's in that one field. The tail is in
+no checksum and in no byte count, which is why nothing had noticed
+([Element lists §11](ElementLists.md#11-errata)).
 
 ## 8. Invariants
 

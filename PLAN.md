@@ -1242,12 +1242,8 @@ is not yet, and the review of 2026-09-18 made every shortfall explicit in
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) rather than leaving
 it implied. Ordered by how much it blocks a third party:
 
-1. **The streamer-info element lists are not in `spec/`.** Each class document says
-   *which* infos a file needs — fifteen for a histogram, eighteen for a flat tree —
-   and `WritingObjects.md` §7 specifies the record and the checksum exactly, but the
-   per-class element lists live only in `tools/rootwrite.py`. This is the one item
-   that stops a reader of the prose alone from producing a conforming file. Three
-   workarounds are documented; publishing the tables is the fix.
+1. ~~**The streamer-info element lists are not in `spec/`.**~~ **Done, 2026-09-18**
+   — §8.6.
 2. **More than one basket per branch.** §3 writes one basket per branch and states
    the general rule for the three counted arrays, but exercises it only at length 1.
    Any tree big enough to flush is past what is written.
@@ -1263,10 +1259,67 @@ it implied. Ordered by how much it blocks a third party:
 7. **`TGraph`**, which no writing document mentions and which is as common in real
    files as `TH1`.
 
-Items 1 and 2 are the ones worth doing next: without them the writing layer
-describes a demonstration rather than a usable writer. Nothing in the list is a
-correction — the documents are accurate about what they cover — and each is now
-stated as a limit rather than left for a reader to discover.
+Items 2 and 3 are now the ones worth doing next, and they are one piece of work:
+a tree big enough to flush has more than one basket per branch *and* a populated
+cluster range, so neither is useful without the other. Nothing in the list is a
+correction — the documents are accurate about what they cover — and each is stated
+as a limit rather than left for a reader to discover.
+
+### 8.6 The element lists, published (2026-09-18)
+
+[`spec/06-writing/ElementLists.md`](spec/06-writing/ElementLists.md): the streamer
+info of each of the **27 classes, 157 elements** a writer of histograms and flat
+trees has to describe, with every field of every element — the element subclass and
+its version, `fType`, `fSize`, `fTypeName`, the subclass tail, and the declaration
+comment — plus the write order of each set, the class versions, and the two
+checksums that cannot be recomputed.
+
+**It is generated from the fixtures, not from the writer.** `tools/element_lists.py`
+reads the `StreamerInfo` records of `data/classes/histogram.root`,
+`data/ttree/basket.root` and `data/classes/tarray-histogram.root`, so the published
+tables are evidence about ROOT rather than a transcription of `tools/rootwrite.py`,
+and the third fixture is what makes `TArray`, `TArrayF` and `TArrayD` publishable at
+all — no histogram file describes them, but a `TH2F` inside a `TTree` branch does.
+Four things run in the same pass, and each of them is a claim:
+
+1. every class carried by more than one fixture agrees across them, field for field
+   — 13 of the 27 are checked twice this way;
+2. every field of every element agrees with `tools/rootwrite.py`;
+3. every published element list reproduces the `fCheckSum` beside it through
+   `StreamerInfo.md` §11, except the two version-0 classes, which must fail and are
+   named;
+4. `--check` fails in CI if the document drifts.
+
+**Check 2 found four errors in `tools/rootwrite.py`**, and the interesting part is
+why they had survived. All four are in an element's **subclass tail** — the members
+after the `TStreamerElement` base — which is in no checksum and in no byte count,
+and the element-by-element comparison in `test_write.py` stopped at the base:
+
+| Class | Field | Was | ROOT |
+|---|---|---|---|
+| `TRefTable` | `fProcessGUIDs`'s `fCtype` | 365 `kSTLstring` | 61 `kObject` — a `vector<string>`'s value class has a dictionary (`root/core/meta/src/TStreamerElement.cxx:1810-1812`) |
+| `TArray` | `fN`'s `fType` | 3 `kInt` | 6 `kCounter` — promoted by whatever *points* at the member, not by its own declaration (`:99`) |
+| `TArrayF` | `fArray`'s `fSize` | 8 | 4 — the **element** type's size, not a pointer's (`root/io/io/src/TStreamerInfo.cxx:645`, `:783`) |
+| `TArrayF`, `TArrayD` | `fArray`'s `fCountClass` | the concrete class | `TArray`, which is where `fN` is declared |
+
+Only the first reaches a file, and fixing it made the tree file's `StreamerInfo`
+record **byte-identical** to ROOT's up to the one `listOfRules` entry a file written
+at `TTree` version 20 cannot use — an equality that did not hold before, and that
+`tools/test_write.py` now asserts. The other three are in infos a writer computes
+checksums from and never emits, which is exactly why nothing had compared them.
+
+Two facts worth keeping, both from writing §3 of the document:
+
+- **`TStreamerBasicType::Streamer` recomputes `fSize` from `fType` on read**
+  (`root/core/meta/src/TStreamerElement.cxx:1242-1269`), so for a basic member the
+  value in the file is discarded before anything can consult it. ROOT's own files
+  carry 0, 8, 16 and 24 for `TNamed::fName` across releases and pointer widths.
+- **An info's own `fTitle` is empty** in all 743 streamer infos in `data/`, which is
+  the answer to a question `WritingObjects.md` §7.1 leaves a writer holding.
+
+`check_versions.py` went from 40 versions across 9 documents to **48 across 10**,
+because §9 of the new document is a class-version table and is therefore compared
+with `ClassDef` like every other.
 
 ## 9. Known gaps
 

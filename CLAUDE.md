@@ -27,6 +27,7 @@ tools/check_citations.py       # every cited file and line exists, and the front
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
 tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream (needs submodule)
 tools/inventory.py --check     # the hand-written Streamer list matches the submodule
+tools/element_lists.py --check # the published element lists match the fixtures
 PYTHONPATH=. zensical build --clean --strict          # site; fails on broken links
 PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
 ```
@@ -158,8 +159,9 @@ cross-check that catches the difference.
 
 ### The writing layer, and why its checks are the strongest here
 
-`spec/06-writing/` is the write side: four documents, each a numbered procedure
-with every field marked **fixed**, **derived** or **free**. `tools/rootwrite.py` is
+`spec/06-writing/` is the write side: four numbered procedures with every field
+marked **fixed**, **derived** or **free**, plus `ElementLists.md`, which is a table
+document rather than a procedure. `tools/rootwrite.py` is
 the executable form — a pure-Python writer built from those documents, independent
 of `rootfile.py` — and `tools/check_write.py` puts each file through three gates
 (`spec/06-writing/index.md` §2):
@@ -186,6 +188,8 @@ inputs and the manifest is a plain sha256.
 error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
 `data/classes/histogram.root`, a `StreamerInfo` record of fifteen infos (9628),
 and both baskets plus the whole `TTree` record against `data/ttree/basket.root`.
+A fourth is identical bar one entry: the tree file's `StreamerInfo` record, where
+ROOT appends a `listOfRules` a file written at `TTree` version 20 cannot use.
 The tree comparison is the strictest, because a branch stores its baskets'
 *offsets*, so the two file names are deliberately the same length. When a
 comparison fails, the difference is the finding — that is how the `TObjArray`
@@ -197,6 +201,25 @@ Writing a class's streamer info is where a writer meets the checksum algorithm
 from an element list and are carried as constants in `rootwrite.KNOWN_CHECKSUMS`:
 `THashList` and `TSeqCollection`, both class version 0, whose infos list no members
 while their checksums fold them. §11.2 has the other two exception classes.
+
+`element_lists.py` publishes the element list of each of the twenty-seven classes
+those procedures need, into `spec/06-writing/ElementLists.md`, **read out of the
+ROOT-written fixtures** rather than out of `rootwrite.py` — and it compares the
+three sources against each other, compares every field with `rootwrite.py`, and
+recomputes each checksum from the list it publishes.
+
+```sh
+tools/element_lists.py          # rewrite the generated blocks
+tools/element_lists.py --check  # what CI runs
+```
+
+It exists because a whole category of field was unchecked: the **subclass tail** of
+an element — a `TStreamerSTL`'s `fCtype`, a basic pointer's `fCountClass` — is in
+no checksum and in no byte count, and the element-by-element comparison in
+`test_write.py` stopped at the `TStreamerElement` base. Four wrong values in
+`rootwrite.py` had survived there, all four in infos nothing compared byte for
+byte. Prefer a check that reads the whole record over one that reads the fields
+you thought of.
 
 **`spec/05-rntuple/` is not ours to edit.** `BinaryFormatSpecification.md` there
 is a byte-for-byte copy of ROOT's own RNTuple specification, and

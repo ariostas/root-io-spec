@@ -1204,18 +1204,24 @@ class InfoSet:
         base of `TH1F` and `TH1D`.
         """
         add, cs = self.add, self.cs
+        # fN is kCounter (6) rather than kInt (3) because TArrayF::fArray
+        # names it: the promotion is done by whatever points at the member, not
+        # by its own declaration (`ElementLists.md` erratum 1).
         add(Info("TArray", 1, [
-            _basic("fN", "Number of array elements", 3, 4, "int"),
+            _basic("fN", "Number of array elements", 6, 4, "int"),
         ]))
-        for kind, word in (("F", "float"), ("D", "double")):
+        for kind, word, width in (("F", "float", 4), ("D", "double", 8)):
             add(Info(f"TArray{kind}", 1, [
                 _base("TArray", "Abstract array base class", 0, 1,
                       cs("TArray")),
+                # fSize is the *element* type's size, not a pointer's, and
+                # fCountClass is the class that declares fN -- TArray, not the
+                # concrete one (`ElementLists.md` sections 1 and 3).
                 Element("TStreamerBasicPointer", "fArray",
                         f"[fN] Array of fN {word}s",
-                        40 + (5 if kind == "F" else 8), 8, f"{word}*",
+                        40 + (5 if kind == "F" else 8), width, f"{word}*",
                         count_version=1, count_name="fN",
-                        count_class=f"TArray{kind}"),
+                        count_class="TArray"),
             ]))
 
 
@@ -1426,9 +1432,12 @@ def tree_infos(leaf_kinds=("I", "F")) -> list:
                 "referenced objects", 64, 8, "TObjArray*"),
         Element("TStreamerObjectPointer", "fOwner",
                 "Object owning this TRefTable", 64, 8, "TObject*"),
+        # fCtype is kObject (61), not kSTLstring: std::string has a
+        # dictionary, so the collection's value class is found
+        # (`ElementLists.md` erratum 2).
         Element("TStreamerSTL", "fProcessGUIDs",
                 "UUIDs of TProcessIDs used in fParentIDs", 500, 24,
-                "vector<string>", stl_type=1, ctype=365),
+                "vector<string>", stl_type=1, ctype=61),
     ]))
     add(Info("TBranchRef", 1, [
         _base("TBranch", "Branch descriptor", 0, 13, cs("TBranch")),

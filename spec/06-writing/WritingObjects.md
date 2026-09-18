@@ -210,6 +210,8 @@ A `TObjString` holding `hello`, as `data/written/objstring.root` writes it:
 [Writing a file §6](WritingFiles.md#6-the-streamerinfo-record) places the record
 and says why it is worth writing at all. This is what goes in it: a `TList`,
 holding one `TStreamerInfo` per class, each holding a `TObjArray` of elements.
+The element list of each class a histogram or a flat tree needs is
+[Element lists](ElementLists.md); this section is the shape those lists go into.
 
 ### 7.1 The nesting
 

@@ -9,6 +9,25 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New: the streamer-info element lists a writer has to emit**
+  ([Element lists](spec/06-writing/ElementLists.md)). 27 classes and 157 elements —
+  everything a writer of `TH1F`/`TH1D` histograms or a flat `TTree` must describe —
+  with every field of every element, the two write orders, the class versions, and
+  the two checksums that cannot be recomputed from a list. This was the one part of
+  the writing layer that could not be implemented from the prose: the lists existed
+  only in `tools/rootwrite.py`. They are now read out of the ROOT-written reference
+  files by `tools/element_lists.py`, which fails CI if the tables drift, if the
+  fixtures disagree with each other, if the writer disagrees with any of them, or if
+  a published list stops producing its own checksum.
+- **Corrected, in four element fields nothing had been comparing.** An element's
+  subclass tail is in no checksum and in no byte count, so
+  `TRefTable::fProcessGUIDs` carried `fCtype` 365 where ROOT writes 61 `kObject`,
+  `TArray::fN` carried `fType` 3 where a counted-array member promotes it to 6
+  `kCounter`, and `TArrayF::fArray` carried a pointer's `fSize` and the wrong
+  `fCountClass`. A reader is unaffected — all four are in fields it must ignore —
+  but a writer emitting the first produced an info that disagreed with ROOT's.
+  Fixing it made a tree file's whole `StreamerInfo` record byte-identical to ROOT's
+  bar the one `listOfRules` entry a new file cannot use.
 - **A full self-consistency review**, which corrected the specification in more
   places than any previous change. The findings that matter most to a reader:
   a **`TBasket` ignores the 256-byte compression threshold** that `TKey` applies,
