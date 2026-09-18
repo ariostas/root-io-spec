@@ -9,6 +9,16 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **The RNTuple type mapping is audited for the stdlib types and for user-defined
+  classes and enums**, with two new fixtures — `rntuple/collections` (fourteen
+  stdlib types) and `rntuple/user-class` (a struct with a base class, two enums, a
+  vector of itself and a transient member) — and a test per subsection of the
+  tracked specification, parsing each claim out of the document rather than
+  transcribing it. Two new errata: **7**, `Double32_t` keeps a `SplitReal32` column
+  in an uncompressed ntuple where every other default drops to unsplit; **8**, the
+  field record's `Type Version` is a signed class version in an unsigned word, so a
+  class with no `ClassDef` arrives as 0xFFFFFFFF.
+
 - **Every branch-basket in the two corpora that any reader could decode is now
   decoded and checked**: 27969 of 28036, 99.8%, and 1696 of 1696 over the files
   the ROOT team published. The entry decoder reads a basket kept inside the

@@ -4259,6 +4259,8 @@ class RNField:
     type_name: str
     type_alias: str
     description: str
+    field_version: int = 0
+    type_version: int = 0
     array_size: int | None = None
     source_id: int | None = None
     type_checksum: int | None = None
@@ -4299,8 +4301,8 @@ class RNSchema:
 def _read_rn_field(buf: bytes, offset: int, field_id: int) -> RNField:
     frame = read_rn_frame(buf, offset)
     o = frame.body
-    o += 4                                       # field version
-    o += 4                                       # type version
+    field_version = _u32le(buf, o); o += 4
+    type_version = _u32le(buf, o); o += 4
     parent = _u32le(buf, o); o += 4
     structure = _u16le(buf, o); o += 2
     flags = _u16le(buf, o); o += 2
@@ -4311,7 +4313,8 @@ def _read_rn_field(buf: bytes, offset: int, field_id: int) -> RNField:
     field = RNField(start=offset, field_id=field_id, parent_id=parent,
                     structure=structure,
                     flags=flags, name=name, type_name=type_name,
-                    type_alias=type_alias, description=description)
+                    type_alias=type_alias, description=description,
+                    field_version=field_version, type_version=type_version)
     # The optional trailing values, in flag order.
     if flags & RN_FLAG_REPETITIVE:
         field.array_size = _u64le(buf, o); o += 8

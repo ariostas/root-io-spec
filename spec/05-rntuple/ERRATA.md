@@ -17,6 +17,8 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 4 | Locators and Envelope Links | open | — |
 | 5 | Envelopes | open | — |
 | 6 | Header Envelope → Column Description | open | — |
+| 7 | Low-precision Floating Points | open | — |
+| 8 | Header Envelope → Field Description | open | — |
 
 Bytes come from two files.
 
@@ -323,3 +325,96 @@ The fix is a choice upstream, not a correction here: implement `kSplitReal16` in
 C++, or drop the row. The encoding is meaningful either way — `kSplitInt16` and
 `kSplitUInt16` exist and split encoding on a two-byte type is well defined — so
 this reads like a row written in anticipation that was never built.
+
+---
+
+## 7. `Double32_t` is the one exception to the uncompressed-default rule
+
+Two sections state a default and neither mentions the other.
+
+*Fundamental Types* ends with:
+
+> If the ntuple is stored uncompressed, the default changes from split encoding
+> to non-split encoding where applicable.
+
+*Low-precision Floating Points* says, unconditionally:
+
+> The ROOT type `Double32_t` is stored on disk as a `double` field with a
+> `SplitReal32` column representation.
+
+A reader has no way to tell from the document which wins. **The `Double32_t`
+sentence does**, and not because anyone decided so: both rules live in one
+function, and the `Double32_t` override runs last.
+
+```cpp
+void RFieldBase::AutoAdjustColumnTypes(const RNTupleWriteOptions &options)
+{
+   if ((options.GetCompression() == 0) && HasDefaultColumnRepresentative()) {
+      ...                                    // every Split* becomes unsplit
+      SetColumnRepresentatives({rep});
+   }
+
+   if (fTypeAlias == "Double32_t")
+      SetColumnRepresentatives({{ROOT::ENTupleColumnType::kSplitReal32}});
+}
+```
+
+`root/tree/ntuple/src/RFieldBase.cxx:892-915`. The second `if` has no compression
+test and overwrites whatever the first one decided.
+
+> **Bytes.** `rntuple/collections` is written with compression 0. Every one of its
+> 26 other columns is unsplit — `Index64`, `Real32`, `Int32`, `Char`, `Bit`,
+> `Switch` — and `fDouble32` is **`SplitReal32`**, type `double`, type alias
+> `Double32_t`. `tools/test_rntuple.py` asserts both halves, so neither the
+> exception nor the rule can move silently.
+
+Split encoding on a single-element page is a no-op in practice, so nothing is
+corrupted; what a reader gets wrong is the **column type it expects**, and a
+reader that hardcodes "uncompressed means unsplit" will reject the one column
+that is not.
+
+The fix upstream is a sentence, not code: say that the `Double32_t`
+representation is not subject to the uncompressed adjustment. Whether the
+behaviour itself is intended is a question for the RNTuple authors — the override
+reads like it was written before the uncompressed rule existed.
+
+---
+
+## 8. `Type Version` is a signed class version in an unsigned field
+
+*Field Description* gives the field record's second word as
+
+```
+|                          Type Version                         |
+```
+
+and says of it, in full:
+
+> The field version and type version are used for schema evolution.
+
+What a writer puts there is `TClass::GetClassVersion()`
+(`root/tree/ntuple/src/RFieldMeta.cxx:645`), returned through a
+`std::uint32_t`-valued virtual
+(`root/tree/ntuple/inc/ROOT/RFieldBase.hxx:668`). That function returns a signed
+`Version_t`, and it is **−1 for a class with no `ClassDef`** — every class whose
+dictionary ROOT generated for it, which includes every class in a `classes.h`
+compiled by ACLiC and most user structs written by anybody.
+
+So the word on disk is **0xFFFFFFFF**, and a reader that compares type versions
+numerically — the obvious way to implement schema evolution, which is what the
+document says the field is for — reads it as newer than every version ever
+written.
+
+> **Bytes.** In `rntuple/user-class`, `RNHit` and `RNBase` both have `Type
+> Version` 0xFFFFFFFF and a `TClass` checksum; the non-class fields beside them
+> have 0. Both words are asserted.
+
+ROOT's own code knows the value can be negative and guards one use of it:
+`R__ASSERT(fSoAClass->GetClassVersion() >= 0)`
+(`root/tree/ntuple/src/RFieldMeta.cxx:706`) for the SoA form, which is exactly the
+case the document does describe. The regular-class path has no such check.
+
+The fix upstream is a sentence: say that 0xFFFFFFFF means the class carries no
+version, and that the type checksum is then its only identity. A reader today
+should treat 0xFFFFFFFF as "unversioned" rather than as a number, and fall back to
+the checksum — which is what the checksum flag is there for.

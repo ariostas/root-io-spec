@@ -132,13 +132,28 @@ including its field and column records.
 | Fundamental Types: the default column per C++ type | audited against bytes, clean |
 | Type Name Normalization: the standard-integer-typedef rule | audited against bytes, clean |
 | `std::string`'s field and columns | audited against bytes, clean |
+| Stdlib Types and Collections: `vector`, `RVec`, `array`, `variant`, `pair`, `tuple`, `bitset`, `unique_ptr`, `optional`, `set`, nested collections | audited against bytes, clean — `rntuple/collections` |
+| `std::atomic`, and the parent-with-one-child shape it shares with an enum | audited against bytes, clean |
+| Low-precision Floating Points | audited against bytes — **ERRATA 7** |
+| Type Name Normalization inside template arguments | audited against bytes, clean |
+| `std::map` and the unordered/multi variants | audited against the source only — ROOT aborts writing one here, §5 |
+| User-defined enums, scoped and unscoped | audited against bytes, clean — `rntuple/user-class` |
+| User-defined classes → Regular class / struct, base classes, transient members | audited against bytes, clean |
+| Field Description: the type version and checksum of a class field | audited against bytes — **ERRATA 8** |
 
-**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, most
-of the C++ type mapping — the rest of *Type Name Normalization*, low-precision
-floats, the stdlib collections beyond `std::string`, `std::atomic`, enums,
-user-defined classes, `RNTupleCardinality`, streamed types and untyped
-collections — plus *Limits*, *Naming specification*, *Defaults*, and *Notes on
-Backward and Forward Compatibility*.
+**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, the
+collection-proxy and SoA forms of a user class, `RNTupleCardinality`, ROOT streamed
+types, untyped collections and records, plus *Limits*, *Naming specification*,
+*Defaults*, and *Notes on Backward and Forward Compatibility*.
+
+Three of those need something this project has not built yet rather than another
+fixture of the same kind: a **collection proxy** and the **SoA layout** are
+dictionary attributes (`rntuple.streamerMode`, `rntuple.SoARecord`
+— `root/tree/ntuple/src/RFieldUtils.cxx:702-715`), which ACLiC cannot set from a
+plain header; `RNTupleCardinality` only exists as a **projected** field, so it
+needs the projection API; and a **streamed** field needs a class the dictionary
+marks unsplittable. All three are reachable, and each is one selection-XML or API
+call away rather than a new reading of the serializer.
 
 The type mapping is a different kind of material from the envelope sections. An
 envelope describes a byte layout, checkable field by field against the
@@ -153,6 +168,74 @@ sets is worth repeating: a fixture per group of types, decoded with
 claim **out of the tracked copy** and compares. That way neither side can move
 silently — not the document on a submodule bump, and not ROOT when a default
 changes.
+
+`gen/cases/rntuple/collections` is the second, and it audits *Stdlib Types and
+Collections* type by type. Three things came out of it that the document does not
+say, none of them a disagreement about bytes:
+
+- **There is no "repetitive" structure on disk.** The document calls a
+  `std::array` field repetitive; what the file carries is a **plain** field with
+  no columns and a repetition parameter of *N*. `std::bitset<8>` is the same shape
+  with a `Bit` column attached. The four structural roles are plain, collection,
+  record and variant, and repetition is a field of the record rather than a fifth
+  role.
+- **"An empty parent field" is the `record` role**, for `std::pair` and
+  `std::tuple` — no columns at all. `std::atomic` and a user-defined enum are
+  described in the same words but come out **plain**, so "empty parent" describes
+  the columns and not the role.
+- **Type name normalization reaches inside template arguments.** `int` is spelled
+  `std::int32_t` at every depth: `std::array<std::int32_t,3>`,
+  `std::variant<std::int32_t,float>`, `std::set<std::int32_t>`. And `RVec` is
+  written fully qualified, `ROOT::VecOps::RVec<float>`, exactly as the document
+  requires while also asking readers to accept the short alias.
+
+And one disagreement that is: `Double32_t` keeps its `SplitReal32` column in an
+**uncompressed** ntuple, where every other default drops to unsplit. That is
+ERRATA 7.
+
+`gen/cases/rntuple/user-class` is the third, and it audits the user-class half:
+a struct with a base class, two enums, a vector of itself and a transient member.
+Every claim in *User-defined classes → Regular class / struct* and
+*User-defined enums* holds — record parent with no columns, members keeping their
+C++ names, a base class as `:_0`, an enum as a plain parent over its underlying
+integer, and a `//!` member with no field at all. Two things worth keeping:
+
+- **A regular class carries a type checksum and a type version too.** The document
+  mentions both only under the SoA form; they are on every class field, and they
+  are what lets a reader match a class to a dictionary.
+- **The type version of a class with no `ClassDef` is 0xFFFFFFFF**, because
+  `TClass::GetClassVersion()` is −1 and the field is unsigned. ERRATA 8.
+
+## 5. `std::map` cannot be written from the interpreter in 6.40.04
+
+The one type in *Stdlib Types and Collections* that this project cannot put in a
+fixture. With the field empty and never touched:
+
+```cpp
+auto model = ROOT::RNTupleModel::Create();
+auto f = model->MakeField<std::map<int, float>>("f");
+ROOT::RNTupleWriteOptions opts; opts.SetCompression(0);
+auto w = ROOT::RNTupleWriter::Recreate(std::move(model), "t", "map.root", opts);
+w->Fill();      // <-- aborts
+```
+
+```
+Fatal: 0 violated at line 1530 of io/io/src/TGenCollectionProxy.cxx
+```
+
+which is `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`, a function whose own
+comment is "Should not be used"
+(`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`). The model and the writer are
+both built successfully; the abort is in `Fill()`. Assigning to the field first —
+`operator[]` or `insert` — segfaults earlier, before reaching `Fill()`.
+
+Two things this is **not**. It is not a format question: the document's `std::map`
+paragraph is a collection parent over a `std::pair<K, V>` child named `_0`, which
+is `std::vector<std::pair<K,V>>`'s shape and is consistent with everything else
+audited. And it is not necessarily a bug in RNTuple — the path taken here is the
+interpreted one, and ACLiC on this machine cannot compile a comparison (`CLAUDE.md`
+records why). What it is, is a reason the `std::map` row above says *source only*,
+and a candidate worth reporting with that caveat attached: `PLAN.md` §7.1 item 10.
 
 The frames section came out clean. Its size field is a signed 64-bit
 little-endian integer whose sign selects record (positive) from list (negative),
