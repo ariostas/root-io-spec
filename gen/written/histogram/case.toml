@@ -1,0 +1,299 @@
+id   = "written/histogram"
+file = "data/written/histogram.root"
+size = 11627
+
+description = """
+A `TH1F` and a `TH1D` written by `tools/rootwrite.py` from
+[Writing histograms](../../../spec/06-writing/WritingHistograms.md), with the
+fifteen `TStreamerInfo` records the chain needs.
+
+**Every object-bearing record in this file is byte-identical to the one ROOT
+wrote in `data/classes/histogram.root`**: the `TH1F`'s 596 bytes, the `TH1D`'s
+651, and the `StreamerInfo` record's 9628 -- fifteen infos, every element, every
+checksum and every class tag. `tools/test_write.py` asserts all three. The files
+differ only in what they are *about*: the directory record's name, the key
+timestamps, and the offsets that follow from them.
+
+That is the strongest check in this repository, and it is what the histogram
+document rests on. Two caveats it also documents:
+
+* the statistics are **supplied** for `h2`, not derived. `fEntries` counts fills
+  and the x moments remember where inside a bin each fill landed, so from binned
+  data they cannot be recovered -- for `h1`, where the weights are 1 and the
+  fills sit at bin centres, `stats_from_cells` happens to produce ROOT's values
+  exactly;
+* the Y axis's `fTitleOffset` is 0 while the X and Z axes carry 1. That is
+  `gStyle`'s default, not a rule, and it is why the three `TAttAxis` blocks in a
+  ROOT-written histogram are not identical.
+"""
+
+spec = [
+  "spec/06-writing/WritingHistograms.md",
+  "spec/06-writing/WritingObjects.md",
+]
+
+writer = "tools/rootwrite.py"
+
+[[records]]
+offset = 100
+nbytes = 208
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 308
+nbytes = 641
+class  = "TH1F"
+role   = "a TH1F, byte-identical to ROOT's"
+
+[[records]]
+offset = 949
+nbytes = 699
+class  = "TH1D"
+role   = "a TH1D with variable bin edges, byte-identical to ROOT's"
+
+[[records]]
+offset = 1648
+nbytes = 9692
+class  = "TList"
+role   = "StreamerInfo: fifteen infos, byte-identical to ROOT's"
+
+[[records]]
+offset = 11340
+nbytes = 187
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 11527
+nbytes = 100
+class  = "TFile"
+role   = "free segments"
+
+[[keys]]
+name = "h1"
+
+[[keys]]
+name = "h2"
+
+
+# --- The file header ---
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 11627
+
+[[bytes]]
+name = "fNbytesName"
+offset = 28
+type = "i32"
+value = 148
+
+[[bytes]]
+name = "fCompress: uncompressed, so the records can be compared with ROOT's"
+offset = 33
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 1648
+
+[[bytes]]
+name = "fNbytesInfo"
+offset = 41
+type = "i32"
+value = 9692
+
+
+# --- The TH1F record, identical to data/classes/histogram.root's ---
+
+[[bytes]]
+name = "fNbytes"
+offset = 308
+type = "i32"
+value = 641
+
+[[bytes]]
+name = "fObjlen"
+offset = 314
+type = "i32"
+value = 596
+
+[[bytes]]
+name = "fKeylen"
+offset = 322
+type = "i16"
+value = 45
+
+[[bytes]]
+name = "fClassName"
+offset = 334
+type = "string"
+value = "TH1F"
+
+[[bytes]]
+name = "TH1F byte count"
+offset = 353
+type = "u32"
+value = 1073742416
+
+[[bytes]]
+name = "TH1F class version"
+offset = 357
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "TH1 class version"
+offset = 363
+type = "u16"
+value = 8
+
+[[bytes]]
+name = "fNcells = nbins + 2"
+offset = 431
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fXaxis: TAxis class version"
+offset = 439
+type = "u16"
+value = 10
+
+[[bytes]]
+name = "fNbins"
+offset = 504
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fXmax"
+offset = 516
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "the Y axis's fTitleOffset is 0, where X and Z carry 1 -- gStyle, not a rule"
+offset = 605
+type = "f32"
+value = 0.0
+
+[[bytes]]
+name = "fEntries counts fills, the two out-of-range ones included"
+offset = 778
+type = "f64"
+value = 5.0
+
+[[bytes]]
+name = "fTsumw counts only the three in range"
+offset = 786
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fMaximum = -1111, the sentinel for 'not set'"
+offset = 818
+type = "f64"
+value = -1111.0
+
+[[bytes]]
+name = "fSumw2 has one entry per cell"
+offset = 846
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fStatOverflows = kNeutral"
+offset = 921
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "the TArrayF base's fN, which must equal fNcells"
+offset = 925
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "bin 1"
+offset = 933
+type = "f32"
+value = 2.0
+
+
+# --- The TH1D record ---
+
+[[bytes]]
+name = "fClassName"
+offset = 975
+type = "string"
+value = "TH1D"
+
+[[bytes]]
+name = "fXbins now holds nbins + 1 edges"
+offset = 1171
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "the last edge"
+offset = 1199
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "fEntries: two fills, though their weights sum to 2.5"
+offset = 1457
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "fTsumw"
+offset = 1465
+type = "f64"
+value = 2.5
+
+[[bytes]]
+name = "the TArrayD base's fN"
+offset = 1604
+type = "i32"
+value = 5
+
+
+# --- The StreamerInfo record: fifteen infos, identical to ROOT's ---
+
+[[bytes]]
+name = "fClassName"
+offset = 1674
+type = "string"
+value = "TList"
+
+[[bytes]]
+name = "fName"
+offset = 1680
+type = "string"
+value = "StreamerInfo"
+
+[[bytes]]
+name = "the TList's own byte count"
+offset = 1712
+type = "u32"
+value = 1073751448
+
+[[bytes]]
+name = "TList class version"
+offset = 1716
+type = "u16"
+value = 5
+
+[[bytes]]
+name = "the info count"
+offset = 1729
+type = "i32"
+value = 15

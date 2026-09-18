@@ -27,6 +27,21 @@ was established, which is the other half of the story.
   `TList` down to each element subclass. `tools/test_write.py` builds that record
   for `TObjString` from the document and asserts it is **byte-identical** to the one
   ROOT wrote in `data/container/file-minimal.root`, checksum computed from scratch.
+- [Writing histograms](spec/06-writing/WritingHistograms.md): `TH1F` and `TH1D`
+  member by member at the current class version, with every field marked fixed,
+  derived or free, and the fifteen `TStreamerInfo` records the chain needs.
+  **Every object-bearing record in `data/written/histogram.root` is byte-identical
+  to the one ROOT wrote in the new `data/classes/histogram.root`** — the `TH1F`'s
+  596 bytes, the `TH1D`'s 651 and the `StreamerInfo` record's 9628. Four things a
+  reader never has to know: the statistics are not derivable from the bin contents
+  (`fEntries` counts fills, `fTsumw2` sums squared weights); `-1111` in `fMaximum`
+  and `fMinimum` is a sentinel for "compute from the data"; `fFunctions` is
+  streamed **in place** because it is declared `//->`; and the Y axis's
+  `fTitleOffset` is 0 where X and Z carry 1.
+- A new reading-side fixture, `classes/histogram`, with 73 assertions: the
+  `TH1` -> `TAxis` -> `TAttAxis` hierarchy at byte level, a variable-bin-edge
+  `fXbins`, and the statistics of five fills two of which went out of range.
+  Nothing in the corpus carried the histogram chain before.
 - **How far the checksum algorithm can be applied**, new
   [StreamerInfo §11.1 and §11.2](spec/02-serialization/StreamerInfo.md). Recomputing
   `fCheckSum` for every streamer info in every reference file gives 614 of 653

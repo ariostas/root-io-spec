@@ -218,6 +218,101 @@ class Checksums(unittest.TestCase):
             fourth.checksum)
 
 
+class Histograms(unittest.TestCase):
+    """The writer's histograms against the ones ROOT wrote.
+
+    `data/classes/histogram.root` and `data/written/histogram.root` hold the
+    same two histograms, one written by ROOT and one by this project. Every
+    object-bearing record in them is byte-identical, which is what
+    `spec/06-writing/WritingHistograms.md` rests on.
+    """
+
+    def records(self, path):
+        buf, header, records = rootfile.load(REPO / path)
+        return buf, header, {r.name: r for r in records}
+
+    def payload(self, buf, rec):
+        return bytes(buf[rec.offset + rec.key_len: rec.offset + rec.nbytes])
+
+    def test_th1f_record_is_identical(self):
+        root_buf, _, root_recs = self.records("data/classes/histogram.root")
+        axis = rw.Axis(nbins=3, xmin=0.0, xmax=3.0)
+        cells = [1.0, 2.0, 1.0, 0.0, 1.0]
+        sumw2 = [1.0, 2.0, 1.0, 0.0, 1.0]
+        hist = rw.Hist1D("h1", "three bins", axis, cells,
+                         rw.stats_from_cells(cells, axis, sumw2),
+                         sumw2=sumw2, kind="F")
+        rec = root_recs["h1"]
+        self.assertEqual(hist.payload(rec.key_len), self.payload(root_buf, rec))
+
+    def test_th1d_record_is_identical(self):
+        root_buf, _, root_recs = self.records("data/classes/histogram.root")
+        edges = [0.0, 1.0, 4.0, 10.0]
+        axis = rw.Axis(nbins=3, xmin=0.0, xmax=10.0, edges=edges)
+        cells = [0.0, 2.0, 0.0, 0.5, 0.0]
+        sumw2 = [0.0, 4.0, 0.0, 0.25, 0.0]
+        # Supplied, not derived: fEntries counts fills and the x moments
+        # remember where inside a bin each fill landed.
+        stats = rw.Stats(entries=2.0, tsumw=2.5, tsumw2=4.25, tsumwx=3.5,
+                         tsumwx2=13.0)
+        hist = rw.Hist1D("h2", "variable bins", axis, cells, stats,
+                         sumw2=sumw2, kind="D")
+        rec = root_recs["h2"]
+        self.assertEqual(hist.payload(rec.key_len), self.payload(root_buf, rec))
+
+    def test_statistics_from_bin_contents(self):
+        """Derivable when the weights are 1 and the fills sit at bin centres."""
+        axis = rw.Axis(nbins=3, xmin=0.0, xmax=3.0)
+        cells = [1.0, 2.0, 1.0, 0.0, 1.0]
+        sumw2 = [1.0, 2.0, 1.0, 0.0, 1.0]
+        st = rw.stats_from_cells(cells, axis, sumw2)
+        self.assertEqual((st.entries, st.tsumw, st.tsumw2, st.tsumwx,
+                          st.tsumwx2), (5.0, 3.0, 3.0, 2.5, 2.75))
+        # Without fSumw2, unit weights are assumed, so fTsumw2 equals fTsumw.
+        self.assertEqual(rw.stats_from_cells(cells, axis).tsumw2, 3.0)
+
+    def test_streamer_info_record_is_identical(self):
+        """All fifteen infos, and ROOT's own order."""
+        root_buf, header, _ = self.records("data/classes/histogram.root")
+        _, _, records = rootfile.load(REPO / "data/classes/histogram.root")
+        rec = [r for r in records if r.offset == header.seek_info][0]
+        payload = rw.Payload(rec.key_len)
+        payload.tlist("", [i.write for i in rw.histogram_infos(("F", "D"))])
+        self.assertEqual(bytes(payload.buf), self.payload(root_buf, rec))
+
+    def test_infos_match_roots_element_by_element(self):
+        """Including fSize, which is deliberate.
+
+        `fSize` is `sizeof` on the writing machine, so this is the assertion
+        that would fail first if a standard library disagreed with the values
+        `tools/rootwrite.py` hardcodes -- `sizeof(TAxis)` 216,
+        `sizeof(TString)` 24. A reader must never use the field
+        (`StreamerInfo.md` 7); a writer still has to put something in it, and
+        putting ROOT's value there is what keeps the records comparable.
+        """
+        _, _, infos = streamer_infos(REPO / "data/classes/histogram.root")
+        theirs = {i.name: i for i in infos}
+        ours = {i.name: i for i in rw.histogram_infos(("F", "D"))}
+        self.assertEqual(list(ours), [i.name for i in infos])
+        for name, mine in ours.items():
+            self.assertEqual(mine.checksum, theirs[name].checksum,
+                             f"{name} checksum")
+            self.assertEqual(len(mine.elements), len(theirs[name].elements),
+                             f"{name} element count")
+            for a, b in zip(mine.elements, theirs[name].elements):
+                self.assertEqual(
+                    (a.cls, a.name, a.title, a.ftype, a.type_name, a.size),
+                    (b.cls, b.name, b.title, b.ftype, b.type_name, b.fsize),
+                    f"{name}.{a.name}")
+
+    def test_cell_count_is_checked(self):
+        axis = rw.Axis(nbins=3, xmin=0.0, xmax=3.0)
+        with self.assertRaises(rw.WriteError):
+            rw.Hist1D("h", "", axis, [0.0] * 4, rw.Stats())
+        with self.assertRaises(rw.WriteError):
+            rw.Hist1D("h", "", axis, [0.0] * 5, rw.Stats(), sumw2=[0.0] * 3)
+
+
 class Compression(unittest.TestCase):
     def test_block_round_trips_through_the_reader(self):
         data = b"hello " * 400

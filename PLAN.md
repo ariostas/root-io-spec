@@ -1096,10 +1096,47 @@ which is a **reading**-side improvement that only the writing work would have fo
 The milestone's other question is settled in `WritingFiles.md` §6.1 and the writer
 emits the record.
 
-**M13 — histograms.** `WritingHistograms.md` and `TH1F`/`TH1D` in the writer, then
-`TH2F` and `TProfile` if the layout holds. Done when ROOT reports the right
-`GetEntries`, `GetMean`, bin contents and bin errors, with `TH1::Streamer`'s
-hand-written parts accounted for rather than guessed at.
+**M13 — ✅ done 2026-09-18. Histograms, byte-identical to ROOT's.**
+*Every object-bearing record in the written file equals the one ROOT wrote.*
+
+`WritingHistograms.md` (298 lines), a new ROOT-written fixture
+`classes/histogram` (73 assertions) and a written one `written/histogram` (35),
+`TH1F`/`TH1D` in `rootwrite.py`, and the fifteen streamer infos the chain needs.
+
+**The check is byte equality, three times over.** `data/classes/histogram.root`
+and `data/written/histogram.root` hold the same two histograms, one written by
+ROOT and one from the document alone, and the `TH1F` record (596 bytes), the
+`TH1D` record (651) and the `StreamerInfo` record (9628 — fifteen infos, every
+element, every checksum, ROOT's own ordering) are identical. The files differ only
+in the directory record, the key timestamps, and the offsets that follow.
+
+What that took, and what it exposed:
+
+- **The statistics are not derivable from the bin contents**, which is the point
+  of the document. `fEntries` counts fills, `fTsumwx`/`fTsumwx2` remember the
+  true x of each one, and `fTsumw2` is Σ of squared *weights*. A writer starting
+  from binned data can only approximate with bin centres — which reproduces
+  ROOT's values exactly for the `TH1F` (unit weights, fills at centres) and
+  cannot for the `TH1D` (weighted, fills off-centre), so that case supplies them.
+- **`-1111` is a sentinel.** `fMaximum` and `fMinimum` mean "compute from the
+  data"; 0 gives a histogram ROOT draws with a ceiling of zero.
+- **`fFunctions` is streamed in place**, not as a pointer slot, because it is
+  declared `//->`. Four zero bytes for "null" makes ROOT read the `TList`'s
+  version word out of the next member.
+- **The Y axis's `fTitleOffset` is 0 where X and Z carry 1** — `gStyle`, not a
+  rule, and the reason the three `TAttAxis` blocks in a ROOT-written histogram are
+  not identical. It was the last difference before the records matched.
+- **`fBuffer` is persistent**, a counted pointer with a flag byte, sitting just
+  before four transient members that a writer walking the header must skip.
+- **Two checksums cannot be computed and must be carried as constants**:
+  `THashList` and `TSeqCollection`, both class version 0 — §11.2 of
+  `StreamerInfo.md` arriving as a practical constraint. `TArray`, `TArrayF` and
+  `TArrayD` get **no info at all** in a ROOT-written file, yet their checksums are
+  needed as the base of `TH1F`/`TH1D`, so the writer computes them from element
+  lists it never emits.
+- **Fifteen infos, not the four a histogram seems to need.** `THashList`, `TList`,
+  `TSeqCollection`, `TCollection` and `TString` arrive because a **null** object
+  pointer forces its class's info to be written, and `TAxis::fLabels` is one.
 
 **M14 — trees.** `WritingTrees.md` and a flat `TTree`: fundamental leaves, a
 fixed-size array, and one counted variable-size array. Done when `tree->Scan()`

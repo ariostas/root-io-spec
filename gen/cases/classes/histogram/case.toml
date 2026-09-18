@@ -1,0 +1,526 @@
+id   = "classes/histogram"
+file = "data/classes/histogram.root"
+size = 11587
+
+description = """
+The histogram chain at byte level -- `TH1F` and `TH1D` with the whole
+`TH1` -> `TAxis` -> `TAttAxis` hierarchy -- and the fourteen `TStreamerInfo`
+records ROOT writes for it. Nothing else in the corpus carries it: the only other
+histogram fixture, `classes/tarray-histogram`, is about `TArray`'s missing flag
+byte and holds a `TH2F` inside a `TTree` branch.
+
+It is the reference for [Writing histograms](../../../spec/06-writing/WritingHistograms.md),
+and the two histograms differ deliberately:
+
+* `h1` is a `TH1F` with fixed-width bins and an explicit `Sumw2()`. Five fills,
+  two of them out of range, so `fEntries` is 5 while `fTsumw` is 3 -- the pair a
+  reader needs to distinguish "how many fills" from "how much weight in range".
+* `h2` is a `TH1D` with **variable bin edges**, which is the only way a non-empty
+  `TAxis::fXbins` reaches a file, and it is filled with **weights**. A weighted
+  `Fill` populates `fSumw2` on its own, with no `Sumw2()` call.
+
+The two class version words are both 3, and the records differ in exactly one
+place beyond their contents: the `TArray` base, `TArrayF` against `TArrayD`.
+
+`fMaximum` and `fMinimum` are **-1111**, which is the sentinel for "not set"
+rather than a value; a writer that leaves them 0 produces a histogram ROOT draws
+with a hard ceiling at zero.
+"""
+
+spec = [
+  "spec/06-writing/WritingHistograms.md",
+  "spec/02-serialization/StreamerDriven.md",
+  "spec/03-classes/TArray.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 188
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 288
+nbytes = 641
+class  = "TH1F"
+role   = "a TH1F with fixed bins and Sumw2"
+
+[[records]]
+offset = 929
+nbytes = 699
+class  = "TH1D"
+role   = "a TH1D with variable bin edges and weighted fills"
+
+[[records]]
+offset = 1628
+nbytes = 9692
+class  = "TList"
+role   = "StreamerInfo: fourteen infos for the histogram chain"
+
+[[records]]
+offset = 11320
+nbytes = 177
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 11497
+nbytes = 90
+class  = "TFile"
+role   = "free segments"
+
+
+# --- The TH1F record, spec/06-writing/WritingHistograms.md 2 ---
+
+[[bytes]]
+name = "TH1F byte count: 0x40000000 | 592"
+offset = 333
+type = "u32"
+value = 1073742416
+
+[[bytes]]
+name = "TH1F class version"
+offset = 337
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "the TH1 base's byte count"
+offset = 339
+type = "u32"
+value = 1073742386
+
+[[bytes]]
+name = "TH1 class version"
+offset = 343
+type = "u16"
+value = 8
+
+[[bytes]]
+name = "fName"
+offset = 361
+type = "string"
+value = "h1"
+
+[[bytes]]
+name = "fTitle"
+offset = 364
+type = "string"
+value = "three bins"
+
+[[bytes]]
+name = "fLineColor -- gStyle's value for a histogram, not a requirement"
+offset = 381
+type = "i16"
+value = 602
+
+[[bytes]]
+name = "fFillStyle"
+offset = 395
+type = "i16"
+value = 1001
+
+[[bytes]]
+name = "fMarkerSize"
+offset = 407
+type = "f32"
+value = 1.0
+
+[[bytes]]
+name = "fNcells = nbins + 2"
+offset = 411
+type = "i32"
+value = 5
+
+
+# --- fXaxis, a TAxis at version 10 ---
+
+[[bytes]]
+name = "the axis's byte count"
+offset = 415
+type = "u32"
+value = 1073741933
+
+[[bytes]]
+name = "TAxis class version"
+offset = 419
+type = "u16"
+value = 10
+
+[[bytes]]
+name = "the axis's name, which ROOT always writes"
+offset = 437
+type = "string"
+value = "xaxis"
+
+[[bytes]]
+name = "the TAttAxis base's byte count"
+offset = 444
+type = "u32"
+value = 1073741860
+
+[[bytes]]
+name = "TAttAxis class version"
+offset = 448
+type = "u16"
+value = 4
+
+[[bytes]]
+name = "fNdivisions"
+offset = 450
+type = "i32"
+value = 510
+
+[[bytes]]
+name = "fLabelFont"
+offset = 458
+type = "i16"
+value = 42
+
+[[bytes]]
+name = "fNbins"
+offset = 484
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fXmin"
+offset = 488
+type = "f64"
+value = 0.0
+
+[[bytes]]
+name = "fXmax"
+offset = 496
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fXbins is an empty TArrayD for fixed-width bins: fN and nothing else"
+offset = 504
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fFirst"
+offset = 508
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fLast"
+offset = 512
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBits2"
+offset = 516
+type = "u16"
+value = 0
+
+[[bytes]]
+name = "fTimeDisplay is one byte"
+offset = 518
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fTimeFormat, an empty counted string"
+offset = 519
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fLabels, a null pointer: four zero bytes"
+offset = 520
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fModLabs, also null"
+offset = 524
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fYaxis exists even in a 1-D histogram, with fNbins 1"
+offset = 597
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fZaxis, likewise"
+offset = 710
+type = "i32"
+value = 1
+
+
+# --- TH1's own members ---
+
+[[bytes]]
+name = "fBarOffset"
+offset = 754
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "fBarWidth"
+offset = 756
+type = "i16"
+value = 1000
+
+[[bytes]]
+name = "fEntries counts every Fill, the two out-of-range ones included"
+offset = 758
+type = "f64"
+value = 5.0
+
+[[bytes]]
+name = "fTsumw counts only the three in range"
+offset = 766
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fTsumw2"
+offset = 774
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fTsumwx = 0.5 + 0.5 + 1.5"
+offset = 782
+type = "f64"
+value = 2.5
+
+[[bytes]]
+name = "fTsumwx2 = 0.25 + 0.25 + 2.25"
+offset = 790
+type = "f64"
+value = 2.75
+
+[[bytes]]
+name = "fMaximum = -1111, the sentinel for 'not set'"
+offset = 798
+type = "f64"
+value = -1111.0
+
+[[bytes]]
+name = "fMinimum, the same sentinel"
+offset = 806
+type = "f64"
+value = -1111.0
+
+[[bytes]]
+name = "fNormFactor"
+offset = 814
+type = "f64"
+value = 0.0
+
+[[bytes]]
+name = "fContour, an empty TArrayD"
+offset = 822
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fSumw2 has one entry per cell, because Sumw2() was called"
+offset = 826
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fSumw2[0], the underflow cell's squared weight"
+offset = 830
+type = "f64"
+value = 1.0
+
+[[bytes]]
+name = "fSumw2[1]"
+offset = 838
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "fOption, an empty counted string"
+offset = 870
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fFunctions is a TList streamed in place -- no class record"
+offset = 871
+type = "u32"
+value = 1073741841
+
+[[bytes]]
+name = "its class version"
+offset = 875
+type = "u16"
+value = 5
+
+[[bytes]]
+name = "fBufferSize"
+offset = 892
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBuffer: a counted pointer's flag byte, 0 for absent"
+offset = 896
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fBinStatErrOpt = kNormal"
+offset = 897
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fStatOverflows = kNeutral"
+offset = 901
+type = "i32"
+value = 2
+
+
+# --- the TArrayF base: fN then the values, with no version word ---
+
+[[bytes]]
+name = "fN, which must equal fNcells"
+offset = 905
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "the underflow cell"
+offset = 909
+type = "f32"
+value = 1.0
+
+[[bytes]]
+name = "bin 1"
+offset = 913
+type = "f32"
+value = 2.0
+
+[[bytes]]
+name = "bin 2"
+offset = 917
+type = "f32"
+value = 1.0
+
+[[bytes]]
+name = "bin 3"
+offset = 921
+type = "f32"
+value = 0.0
+
+[[bytes]]
+name = "the overflow cell"
+offset = 925
+type = "f32"
+value = 1.0
+
+
+# --- The TH1D record: variable bin edges ---
+
+[[bytes]]
+name = "TH1D class version, the same 3 as TH1F"
+offset = 981
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "fNcells"
+offset = 1058
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fXmax is the last edge"
+offset = 1143
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "fXbins now holds nbins + 1 edges"
+offset = 1151
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "the first edge"
+offset = 1155
+type = "f64"
+value = 0.0
+
+[[bytes]]
+name = "the second"
+offset = 1163
+type = "f64"
+value = 1.0
+
+[[bytes]]
+name = "the third"
+offset = 1171
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "the last"
+offset = 1179
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "fEntries"
+offset = 1437
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "fTsumw = 2.0 + 0.5, the weights"
+offset = 1445
+type = "f64"
+value = 2.5
+
+[[bytes]]
+name = "fTsumw2 = 4 + 0.25"
+offset = 1453
+type = "f64"
+value = 4.25
+
+[[bytes]]
+name = "fTsumwx = 2 x 0.5 + 0.5 x 5.0"
+offset = 1461
+type = "f64"
+value = 3.5
+
+[[bytes]]
+name = "fSumw2 is populated by a weighted Fill, with no Sumw2() call"
+offset = 1505
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "the TArrayD base's fN"
+offset = 1584
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "bin 1, filled with weight 2"
+offset = 1596
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "bin 3, which is where 5.0 lands"
+offset = 1612
+type = "f64"
+value = 0.5

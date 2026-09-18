@@ -2,6 +2,7 @@
 # Timestamps and UUIDs are masked first; see tools/normalize.py.
 32bf14785e90e07c808ed7fa74d9f7ae254325b1496175793e908dbb0140232c  data/classes/containers.root
 37dceaae92ac9621229a2fc15cb079f5a47369ccaaf752c5895c95d03473aad9  data/classes/formula.root
+14fe17bbc1297d152ba7da7736f4d9b57a604b744db1951c8577a290dd619e1d  data/classes/histogram.root
 8ffa690873df5c1ec8adf2cf55a4a8f3898227e7248fd71d85d60a15a96c474d  data/classes/matrix.root
 65e3a22455757e7061a364ec4e1c4f05cd2843b567a21ccc6a44b9a2e877fd78  data/classes/tarray-histogram.root
 7bb13cc10d87e766a31d363dc749f2e1bc0b4071defc9667d5ba86b067197938  data/classes/tarray.root

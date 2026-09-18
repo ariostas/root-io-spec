@@ -289,6 +289,18 @@ class FileWriter:
     def add(self, obj: Obj) -> None:
         self.objects.append(obj)
 
+    def add_hist(self, hist) -> None:
+        """Add a histogram, whose payload needs its own key's length.
+
+        Map positions are measured from the start of the record
+        (`WritingObjects.md` 4), so a payload cannot be built until the key is
+        sized -- and a histogram's key length depends on its name and title.
+        """
+        key_len = Key(class_name=hist.class_name, name=hist.name,
+                      title=hist.title, obj_len=0, nbytes=0, seek_key=0,
+                      seek_pdir=BEGIN).key_len
+        self.add(hist.obj(key_len))
+
     def add_info(self, info: Info) -> None:
         """Add a `TStreamerInfo` to the record this writer will emit.
 
@@ -751,3 +763,433 @@ def checksum(info: Info) -> int:
             inner = e.title[e.title.index("[") + 1:]
             acc = _acc_str(acc, inner[:inner.index("]")])
     return acc
+
+
+# ---------------------------------------------------------------------------
+# Histograms, spec/06-writing/WritingHistograms.md.
+# ---------------------------------------------------------------------------
+
+#: TH1::fMaximum and fMinimum when unset. Not a value -- a sentinel.
+NO_LIMIT = -1111.0
+#: TObject::kMustCleanup, which ROOT sets on a histogram (it lives in a
+#: directory), and the two bits it leaves on TH1::fFunctions.
+HIST_BITS = K_MUST_CLEANUP
+FUNCTIONS_BITS = 0x00014000
+
+#: What ROOT writes for a histogram's attribute bases, from gStyle. None of it
+#: is required; reproducing it keeps a diff against a ROOT-written file short.
+LINE_DEFAULTS = (602, 1, 1)          # fLineColor, fLineStyle, fLineWidth
+FILL_DEFAULTS = (0, 1001)            # fFillColor, fFillStyle
+MARKER_DEFAULTS = (1, 1, 1.0)        # fMarkerColor, fMarkerStyle, fMarkerSize
+
+
+@dataclass
+class Axis:
+    """A `TAxis` at class version 10.
+
+    `edges` holds `nbins + 1` bin edges for a variable-width axis and is the
+    only way `fXbins` is non-empty; for a fixed-width axis it is None and
+    `xmin`/`xmax` carry the range.
+    """
+
+    name: str = "xaxis"
+    title: str = ""
+    nbins: int = 1
+    xmin: float = 0.0
+    xmax: float = 1.0
+    edges: list | None = None
+    first: int = 0
+    last: int = 0
+    bits2: int = 0
+    time_display: bool = False
+    time_format: str = ""
+    # TAttAxis, all of it free; these are ROOT's own values.
+    ndivisions: int = 510
+    axis_color: int = 1
+    label_color: int = 1
+    label_font: int = 42
+    label_offset: float = 0.005
+    label_size: float = 0.035
+    tick_length: float = 0.03
+    title_offset: float = 1.0
+    title_size: float = 0.035
+    title_color: int = 1
+    title_font: int = 42
+
+    def write(self, p: Payload) -> None:
+        def body(q: Payload) -> None:
+            q.tnamed(self.name, self.title)
+
+            def att(r: Payload) -> None:
+                r.raw(i32(self.ndivisions) + i16(self.axis_color)
+                      + i16(self.label_color) + i16(self.label_font)
+                      + f32(self.label_offset) + f32(self.label_size)
+                      + f32(self.tick_length) + f32(self.title_offset)
+                      + f32(self.title_size) + i16(self.title_color)
+                      + i16(self.title_font))
+            q.framed(4, att)
+
+            q.raw(i32(self.nbins) + f64(self.xmin) + f64(self.xmax))
+            q.raw(tarray_d(self.edges or []))
+            q.raw(i32(self.first) + i32(self.last) + u16(self.bits2)
+                  + bytes([1 if self.time_display else 0])
+                  + counted_string(self.time_format))
+            q.null()          # fLabels
+            q.null()          # fModLabs
+        p.framed(10, body)
+
+
+def tarray_d(values) -> bytes:
+    """A `TArrayD` as a member object: `fN` and the values, nothing else."""
+    return i32(len(values)) + b"".join(f64(v) for v in values)
+
+
+def tarray_f(values) -> bytes:
+    return i32(len(values)) + b"".join(f32(v) for v in values)
+
+
+@dataclass
+class Stats:
+    """`TH1`'s statistics, which are not derivable from the bin contents.
+
+    `entries` counts every fill, in range or not; the four sums cover only the
+    fills inside the range. `GetMean` is `tsumwx / tsumw`, so a writer that
+    leaves them zero produces a histogram whose bins are right and whose mean
+    is not.
+    """
+
+    entries: float = 0.0
+    tsumw: float = 0.0
+    tsumw2: float = 0.0
+    tsumwx: float = 0.0
+    tsumwx2: float = 0.0
+
+
+def stats_from_cells(cells, axis: Axis, sumw2=None) -> Stats:
+    """Statistics for binned input, using bin centres.
+
+    The exact values ROOT would have written are unrecoverable once the data is
+    binned -- it accumulates the true x of each fill. Bin centres are the best a
+    writer starting from a histogram can do, and the result is self-consistent.
+
+    Two of the five need care:
+
+    * `entries` counts **fills**, not weight. From binned data the count is
+      gone, so the sum of the contents is used; for unit weights the two agree.
+    * `tsumw2` is the sum of squared *weights*, which is not the sum of squared
+      bin contents. When `sumw2` is known it is exactly its in-range sum;
+      without it, unit weights are assumed and it equals `tsumw`.
+    """
+    edges = axis.edges or [
+        axis.xmin + (axis.xmax - axis.xmin) * i / axis.nbins
+        for i in range(axis.nbins + 1)
+    ]
+    st = Stats(entries=float(sum(cells)))
+    for i in range(1, len(cells) - 1):
+        w = cells[i]
+        x = 0.5 * (edges[i - 1] + edges[i])
+        st.tsumw += w
+        st.tsumw2 += sumw2[i] if sumw2 is not None else w
+        st.tsumwx += w * x
+        st.tsumwx2 += w * x * x
+    return st
+
+
+@dataclass
+class Hist1D:
+    """A `TH1F` or `TH1D`: the `TH1` base at version 8, then the `TArray` base.
+
+    `cells` holds `nbins + 2` values -- underflow, the bins, overflow -- and its
+    length is `TH1::fNcells`. `sumw2` is either None or the same length.
+    """
+
+    name: str
+    title: str
+    axis: Axis
+    cells: list
+    stats: Stats
+    sumw2: list | None = None
+    kind: str = "F"                  # "F" for TH1F, "D" for TH1D
+    maximum: float = NO_LIMIT
+    minimum: float = NO_LIMIT
+    norm_factor: float = 0.0
+    bar_offset: int = 0
+    bar_width: int = 1000
+    option: str = ""
+    bin_stat_err_opt: int = 0        # kNormal
+    stat_overflows: int = 2          # kNeutral
+    contour: list | None = None
+
+    @property
+    def class_name(self) -> str:
+        return f"TH1{self.kind}"
+
+    def __post_init__(self):
+        if self.kind not in ("F", "D"):
+            raise WriteError("only TH1F and TH1D are implemented")
+        if len(self.cells) != self.axis.nbins + 2:
+            raise WriteError(
+                f"{len(self.cells)} cells for {self.axis.nbins} bins; "
+                "fNcells is nbins + 2 (WritingHistograms.md 3)")
+        if self.sumw2 is not None and len(self.sumw2) != len(self.cells):
+            raise WriteError("fSumw2 must be empty or one entry per cell")
+        if self.axis.edges and len(self.axis.edges) != self.axis.nbins + 1:
+            raise WriteError("fXbins holds nbins + 1 edges")
+
+    def payload(self, key_len: int) -> bytes:
+        p = Payload(key_len)
+
+        def th1(q: Payload) -> None:
+            q.tnamed(self.name, self.title, bits=HIST_BITS)
+
+            def line(r: Payload) -> None:
+                r.raw(b"".join(i16(v) for v in LINE_DEFAULTS))
+            q.framed(2, line)
+
+            def fill(r: Payload) -> None:
+                r.raw(b"".join(i16(v) for v in FILL_DEFAULTS))
+            q.framed(2, fill)
+
+            def marker(r: Payload) -> None:
+                r.raw(i16(MARKER_DEFAULTS[0]) + i16(MARKER_DEFAULTS[1])
+                      + f32(MARKER_DEFAULTS[2]))
+            q.framed(3, marker)
+
+            q.raw(i32(len(self.cells)))            # fNcells
+            self.axis.write(q)                     # fXaxis
+            # A 1-D histogram still carries a Y and a Z axis, each with one bin.
+            # The Y axis's fTitleOffset is 0 rather than 1 in ROOT's default
+            # style, which is why the three attribute blocks are not identical
+            # in a ROOT-written file. Free, like the rest of TAttAxis.
+            Axis(name="yaxis", title_offset=0.0).write(q)
+            Axis(name="zaxis").write(q)
+            q.raw(i16(self.bar_offset) + i16(self.bar_width))
+            q.raw(f64(self.stats.entries) + f64(self.stats.tsumw)
+                  + f64(self.stats.tsumw2) + f64(self.stats.tsumwx)
+                  + f64(self.stats.tsumwx2))
+            q.raw(f64(self.maximum) + f64(self.minimum) + f64(self.norm_factor))
+            q.raw(tarray_d(self.contour or []))    # fContour
+            q.raw(tarray_d(self.sumw2 or []))      # fSumw2
+            q.raw(counted_string(self.option))
+
+            # fFunctions is declared `//->`, so it is streamed in place: a
+            # framed TList with no class record and no pointer form.
+            def functions(r: Payload) -> None:
+                r.tobject(bits=FUNCTIONS_BITS)
+                r.raw(counted_string("") + i32(0))
+            q.framed(5, functions)
+
+            q.raw(i32(0))                          # fBufferSize
+            q.raw(b"\x00")                         # fBuffer: absent
+            q.raw(i32(self.bin_stat_err_opt) + i32(self.stat_overflows))
+
+        def body(q: Payload) -> None:
+            q.framed(8, th1)
+            q.raw(tarray_f(self.cells) if self.kind == "F"
+                  else tarray_d(self.cells))
+        p.framed(3, body)
+        return bytes(p.buf)
+
+    def obj(self, key_len: int) -> Obj:
+        return Obj(class_name=self.class_name, name=self.name,
+                   title=self.title, payload=self.payload(key_len))
+
+
+# ---------------------------------------------------------------------------
+# The streamer infos for the histogram chain. Fourteen classes, and a writer
+# that wants its histograms readable by anything but ROOT has to emit them.
+#
+# They are built in dependency order so that each TStreamerBase element takes
+# its fBaseCheckSum from the info built just before it: an error in one
+# checksum then shows up twice, which is what makes the arrangement worth the
+# awkwardness. Two checksums cannot be computed here and are supplied --
+# spec/02-serialization/StreamerInfo.md 11.2 says why.
+# ---------------------------------------------------------------------------
+
+def _basic(name, title, ftype, size, type_name, **kw) -> Element:
+    return Element("TStreamerBasicType", name, title, ftype, size, type_name,
+                   **kw)
+
+
+def _base(name, title, ftype, version, checksum) -> Element:
+    return Element("TStreamerBase", name, title, ftype, 0, "BASE",
+                   base_version=version, base_checksum=checksum)
+
+
+#: THashList and TSeqCollection are class version 0, so their infos list no
+#: members while their checksums fold them (StreamerInfo.md 11.2). A writer
+#: must carry these two values rather than compute them.
+KNOWN_CHECKSUMS = {
+    "THashList": 0xCC7E49C1,
+    "TSeqCollection": 0xFC6C3BC6,
+}
+
+
+def histogram_infos(kinds=("F",)) -> list:
+    """Every `TStreamerInfo` a `TH1F`/`TH1D` file needs, in ROOT's own order."""
+    by_name: dict = {}
+
+    def add(info: Info) -> Info:
+        if info.checksum is None:
+            info.checksum = KNOWN_CHECKSUMS.get(info.name) or checksum(info)
+        by_name[info.name] = info
+        return info
+
+    def cs(name: str) -> int:
+        return by_name[name].checksum
+
+    add(Info("TObject", 1, [
+        _basic("fUniqueID", "object unique identifier", 13, 4, "unsigned int"),
+        _basic("fBits", "bit field status word", 15, 4, "unsigned int"),
+    ]))
+    add(Info("TNamed", 1, [
+        _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
+        Element("TStreamerString", "fName", "object identifier", 65, 24,
+                "TString"),
+        Element("TStreamerString", "fTitle", "object title", 65, 24, "TString"),
+    ]))
+    add(Info("TAttLine", 2, [
+        _basic("fLineColor", "Line color", 2, 2, "short"),
+        _basic("fLineStyle", "Line style", 2, 2, "short"),
+        _basic("fLineWidth", "Line width", 2, 2, "short"),
+    ]))
+    add(Info("TAttFill", 2, [
+        _basic("fFillColor", "Fill area color", 2, 2, "short"),
+        _basic("fFillStyle", "Fill area style", 2, 2, "short"),
+    ]))
+    add(Info("TAttMarker", 3, [
+        _basic("fMarkerColor", "Marker color", 2, 2, "short"),
+        _basic("fMarkerStyle", "Marker style", 2, 2, "short"),
+        _basic("fMarkerSize", "Marker size", 5, 4, "float"),
+    ]))
+    add(Info("TAttAxis", 4, [
+        _basic("fNdivisions", "Number of divisions(10000*n3 + 100*n2 + n1)",
+               3, 4, "int"),
+        _basic("fAxisColor", "Color of the line axis", 2, 2, "short"),
+        _basic("fLabelColor", "Color of labels", 2, 2, "short"),
+        _basic("fLabelFont", "Font for labels", 2, 2, "short"),
+        _basic("fLabelOffset", "Offset of labels", 5, 4, "float"),
+        _basic("fLabelSize", "Size of labels", 5, 4, "float"),
+        _basic("fTickLength", "Length of tick marks", 5, 4, "float"),
+        _basic("fTitleOffset", "Offset of axis title", 5, 4, "float"),
+        _basic("fTitleSize", "Size of axis title", 5, 4, "float"),
+        _basic("fTitleColor", "Color of axis title", 2, 2, "short"),
+        _basic("fTitleFont", "Font for axis title", 2, 2, "short"),
+    ]))
+    # TString's info carries no elements at all, so its checksum -- which the
+    # class does have -- cannot come from them.
+    add(Info("TString", 2, [], checksum=0x00017419))
+    add(Info("TCollection", 3, [
+        _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
+        Element("TStreamerString", "fName", "name of the collection", 65, 24,
+                "TString"),
+        _basic("fSize", "number of elements in collection", 3, 4, "int"),
+    ]))
+    add(Info("TSeqCollection", 0, [
+        _base("TCollection", "Collection abstract base class", 0, 3,
+              cs("TCollection")),
+    ]))
+    add(Info("TList", 5, [
+        _base("TSeqCollection", "Sequenceable collection ABC", 0, 0,
+              cs("TSeqCollection")),
+    ]))
+    add(Info("THashList", 0, [
+        _base("TList", "Doubly linked list", 0, 5, cs("TList")),
+    ]))
+    add(Info("TAxis", 10, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _base("TAttAxis", "Axis attributes", 0, 4, cs("TAttAxis")),
+        _basic("fNbins", "Number of bins", 3, 4, "int"),
+        _basic("fXmin", "Low edge of first bin", 8, 8, "double"),
+        _basic("fXmax", "Upper edge of last bin", 8, 8, "double"),
+        Element("TStreamerObjectAny", "fXbins", "Bin edges array in X", 62, 24,
+                "TArrayD"),
+        _basic("fFirst", "First bin to display", 3, 4, "int"),
+        _basic("fLast", "Last bin to display", 3, 4, "int"),
+        _basic("fBits2", "Second bit status word", 12, 2, "unsigned short"),
+        _basic("fTimeDisplay",
+               "On/off displaying time values instead of numerics", 18, 1,
+               "bool"),
+        Element("TStreamerString", "fTimeFormat",
+                "Date&time format, ex: 09/12/99 12:34:00", 65, 24, "TString"),
+        Element("TStreamerObjectPointer", "fLabels", "List of labels", 64, 8,
+                "THashList*"),
+        Element("TStreamerObjectPointer", "fModLabs", "List of modified labels",
+                64, 8, "TList*"),
+    ]))
+    add(Info("TH1", 8, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _base("TAttLine", "Line attributes", 0, 2, cs("TAttLine")),
+        _base("TAttFill", "Fill area attributes", 0, 2, cs("TAttFill")),
+        _base("TAttMarker", "Marker attributes", 0, 3, cs("TAttMarker")),
+        _basic("fNcells", "Number of bins(1D), cells (2D) +U/Overflows", 3, 4,
+               "int"),
+        Element("TStreamerObject", "fXaxis", "X axis descriptor", 61, 216,
+                "TAxis"),
+        Element("TStreamerObject", "fYaxis", "Y axis descriptor", 61, 216,
+                "TAxis"),
+        Element("TStreamerObject", "fZaxis", "Z axis descriptor", 61, 216,
+                "TAxis"),
+        _basic("fBarOffset", "(1000*offset) for bar charts or legos", 2, 2,
+               "short"),
+        _basic("fBarWidth", "(1000*width) for bar charts or legos", 2, 2,
+               "short"),
+        _basic("fEntries", "Number of entries", 8, 8, "double"),
+        _basic("fTsumw", "Total Sum of weights", 8, 8, "double"),
+        _basic("fTsumw2", "Total Sum of squares of weights", 8, 8, "double"),
+        _basic("fTsumwx", "Total Sum of weight*X", 8, 8, "double"),
+        _basic("fTsumwx2", "Total Sum of weight*X*X", 8, 8, "double"),
+        _basic("fMaximum", "Maximum value for plotting", 8, 8, "double"),
+        _basic("fMinimum", "Minimum value for plotting", 8, 8, "double"),
+        _basic("fNormFactor", "Normalization factor", 8, 8, "double"),
+        Element("TStreamerObjectAny", "fContour",
+                "Array to display contour levels", 62, 24, "TArrayD"),
+        Element("TStreamerObjectAny", "fSumw2",
+                "Array of sum of squares of weights", 62, 24, "TArrayD"),
+        Element("TStreamerString", "fOption", "Histogram options", 65, 24,
+                "TString"),
+        Element("TStreamerObjectPointer", "fFunctions",
+                "->Pointer to list of functions (fits and user)", 63, 8,
+                "TList*"),
+        _basic("fBufferSize", "fBuffer size", 6, 4, "int"),
+        Element("TStreamerBasicPointer", "fBuffer", "[fBufferSize] entry buffer",
+                48, 8, "double*", count_version=8, count_name="fBufferSize",
+                count_class="TH1"),
+        _basic("fBinStatErrOpt", "Option for bin statistical errors", 3, 4,
+               "TH1::EBinErrorOpt", is_enum=True),
+        _basic("fStatOverflows",
+               "Per object flag to use under/overflows in statistics", 3, 4,
+               "TH1::EStatOverflows", is_enum=True),
+    ]))
+    # TArray, TArrayF and TArrayD get no info of their own in a ROOT-written
+    # file: their Streamer is hand-written, so nothing ever marks them
+    # (WritingObjects.md 7.2) and a reader has to know their layout out of band
+    # (TArray.md). Their checksums are needed all the same, as the base of
+    # TH1F/TH1D -- so they are built here and then left out of the record, which
+    # is exactly what ROOT does.
+    add(Info("TArray", 1, [
+        _basic("fN", "Number of array elements", 3, 4, "int"),
+    ]))
+    for kind, word in (("F", "float"), ("D", "double")):
+        add(Info(f"TArray{kind}", 1, [
+            _base("TArray", "Abstract array base class", 0, 1, cs("TArray")),
+            Element("TStreamerBasicPointer", "fArray",
+                    f"[fN] Array of fN {word}s", 40 + (5 if kind == "F" else 8),
+                    8, f"{word}*", count_version=1, count_name="fN",
+                    count_class=f"TArray{kind}"),
+        ]))
+    for kind in kinds:
+        cls = f"TH1{kind}"
+        array = f"TArray{kind}"
+        add(Info(cls, 3, [
+            _base("TH1", "1-Dim histogram base class", 0, 8, cs("TH1")),
+            _base(array, f"Array of {'floats' if kind == 'F' else 'doubles'}",
+                  0, 1, cs(array)),
+        ]))
+
+    order = ["TH1F", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
+             "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
+             "TSeqCollection", "TCollection", "TString", "TH1D"]
+    return [by_name[n] for n in order if n in by_name]

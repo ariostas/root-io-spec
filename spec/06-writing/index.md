@@ -64,7 +64,7 @@ with a plain `sha256`.
 |---|---|
 | [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, keys, the key list, the free list, and where the end of the file is |
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
-| `06-writing/WritingHistograms.md` | `TH1F` and `TH1D`, member by member, at the current class version |
+| [Writing histograms](WritingHistograms.md) | `TH1F` and `TH1D`, member by member, at the current class version |
 | `06-writing/WritingTrees.md` | A `TTree` of flat branches: the tree record, a branch, its leaf, and its baskets |
 
 Each is written as a numbered procedure, with a table per record or per class
