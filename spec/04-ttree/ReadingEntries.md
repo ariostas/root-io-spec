@@ -59,7 +59,7 @@ referenced `TObject` writes two extra bytes.
 A node with sub-branches reads its own basket only when `fType` is 3 or 4
 (`root/tree/tree/src/TBranchElement.cxx:2749-2752`). Every other interior node —
 `fType` 1, `fType` 2, and `fType` 0 with `fID` −2 — consumes **zero bytes** and
-exists only to be descended through; ROOT names exactly that set in
+exists only to be descended through; ROOT's own test for a split node is in
 `root/tree/tree/src/TBranchElement.cxx:5692`.
 
 ## 3. What an entry contains

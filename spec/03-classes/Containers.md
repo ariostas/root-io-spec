@@ -197,6 +197,11 @@ the corpus: the presence of an info and the meaning of the bytes are independent
    ([Buffer framing §2](../02-serialization/Buffer.md)).
 2. `TMap` and `TCollection` (and so `TBtree`'s tail): read a bare `TObject`
    (10 bytes, no frame), then `fName` as a counted string, then the count.
+   **Both are version-guarded** (§1): the `TObject` base is present only above
+   version 2 and `fName` only above version 1, so a `TMap` at version 1 or 2 has
+   neither or only the base. A reader that reads them unconditionally
+   desynchronises on such a record; refuse a version below 3 or follow the guards.
+   `TExMap` version 1 likewise has no slot index per entry (§2.2).
 3. For each of the count (twice that for a `TMap`), read one object reference by
    [Buffer framing §6](../02-serialization/Buffer.md). Resolve a class reference
    and an object reference against the same buffer, whose origin is the start of

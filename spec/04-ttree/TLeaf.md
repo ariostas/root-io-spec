@@ -452,7 +452,7 @@ consumed, and read nothing if the remainder is zero.
 member's offset inside the object: in `ttree/branch-clones` the four sub-branches
 of `CHitC` carry 8, 12, 16 and 20 — `TObject`'s `fUniqueID` and `fBits`, then `fI`
 and `fX`. ROOT writes those values and then **throws them away on read**, forcing
-`fOffset` to −1 for every such leaf (`root/tree/tree/src/TBranchClones.cxx:413`).
+`fOffset` to −1 for every such leaf, then overwrites each matched leaf's `fOffset` from the in-memory record (`root/tree/tree/src/TBranchClones.cxx:413`, `root/tree/tree/src/TBranchClones.cxx:439-446`) — so the stored value survives nowhere, which is why it must be neither required to be 0 nor trusted.
 So the field is written, is not 0, and is not used; a reader must neither require 0
 nor trust the value. See
 [TBranchElement §13](TBranchElement.md#13-tbranchclones-and-the-only-api-that-makes-one).

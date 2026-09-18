@@ -335,7 +335,7 @@ a four-byte checksum, then the member.
 This is the case [Buffer §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)
 describes, and `TBranch` is where an ordinary file meets it: every branch of every
 tree written since ROOT 6.12/02 contains one
-(`root/tree/tree/inc/TTree.h:757` and the measurement in
+(`root/tree/tree/inc/TBranch.h:304` and the measurement in
 [TTree §13](TTree.md#13-class-versions)). The checksum selects the streamer info,
 which the file carries under the name `ROOT::TIOFeatures`.
 
