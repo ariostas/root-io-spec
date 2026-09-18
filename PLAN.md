@@ -527,6 +527,16 @@ reported** (§8 item M10).
     interpreted path was tested, because ACLiC cannot compile on this machine
     (`CLAUDE.md`), so a compiled comparison is the first thing to ask for.
 
+11. **Writing an object of an emulated class does not complete.** `WriteObjectAny`
+    with a `TClass` in the `kEmulated` state — `Head` read from
+    `uproot-issue-214.root`, a class with no dictionary — segfaulted on one attempt
+    and ran for over three minutes without finishing on another. **Reading is
+    fine**: `TKey::ReadObjectAny(nullptr)` returns the object and the emulated
+    `TClass` reports the file's own class version, 2, which is the fact
+    `spec/06-writing/index.md` §3.1 needed. **Banked, not diagnosed.** The call may
+    simply be unsupported for an emulated class — nothing in its documentation says
+    so — and the usage needs checking before this goes anywhere.
+
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
 The specification is already more complete than anything else available, and the
@@ -982,7 +992,7 @@ made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the on
 unaudited form.
 
 **M10 — report upstream.** Ten RNTuple errata against a document the ROOT team
-owns, plus §7.1's eleven bug candidates. Lead with §7.1 item 9 — `fBranchCount`
+owns, plus §7.1's twelve bug candidates. Lead with §7.1 item 9 — `fBranchCount`
 naming another object's counter branch, byte-witnessed in a file the ROOT team
 published, and data loss — and with erratum 6, a column type the document
 specifies, ROOT does not implement and JSROOT does, so two readers in one

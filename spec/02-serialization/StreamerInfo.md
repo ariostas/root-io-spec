@@ -533,6 +533,15 @@ A reader matching an old file SHOULD try variants 1 through 7 when the current
 one does not match, which is what ROOT does
 (`root/core/meta/src/TClass.cxx:6604-6609`).
 
+> **The same class at the same version can carry two different checksums, and the
+> layout is identical.** `TAttAxis` version 4 is `0x532a3b8c` in a ROOT 5.28 file
+> and `0x5c6fff3e` in one 6.40.04 writes, with the same eleven members in the same
+> order — the difference is that the old file's `fTypeName` spellings are `Int_t`
+> and `Float_t` where the new one resolves them to `int` and `float`. So the
+> variants are not only historical curiosities: they are why `BuildCheck` says
+> nothing when it reads that file, and why a reader must not treat a checksum
+> mismatch at equal version as evidence of a layout change.
+
 Reference values, useful as test vectors:
 
 | Class | Checksum |

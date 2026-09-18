@@ -27,6 +27,23 @@ was established, which is the other half of the story.
   `TList` down to each element subclass. `tools/test_write.py` builds that record
   for `TObjString` from the document and asserts it is **byte-identical** to the one
   ROOT wrote in `data/container/file-minimal.root`, checksum computed from scratch.
+- **What "the current version" means**, new
+  [Writing §3.1](spec/06-writing/index.md). ROOT writes one version per class and it
+  is not a choice: both places a version word is emitted take the version compiled
+  into the writing process, so a read-and-write **upgrades** — a ROOT 5.28 `TH1F`
+  (`TH1` 6, `TAxis` 9) comes back out of 6.40.04 as `TH1` 8, `TAxis` 10. Four cases
+  put something else in the word: a foreign class writes 0 and a checksum, a
+  version-0 class writes its 0 (and a forwarding streamer writes nothing), a
+  member-wise collection sets `0x4000`, and an **emulated** class carries the
+  version the file it came from declared. And a copy is not a write: `hadd` moves
+  basket records verbatim, so an older ROOT's records survive into a new file at
+  their original versions.
+- **The same class at the same version can carry two different checksums with an
+  identical layout** ([StreamerInfo §11](spec/02-serialization/StreamerInfo.md)):
+  `TAttAxis` 4 is `0x532a3b8c` in a ROOT 5.28 file and `0x5c6fff3e` today, because
+  the old file spells its member types `Int_t` and `Float_t` where the new one
+  resolves them. That is what the eight checksum variants are for, and why a
+  mismatch at equal version is not evidence of a layout change.
 - [A writer's invariants](spec/99-appendix/WriterInvariants.md): the 223
   `Invariants` entries of the whole specification re-sorted by the order a file is
   produced in, with one column the reading side never needed — **who notices a

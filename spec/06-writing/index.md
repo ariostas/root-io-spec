@@ -73,11 +73,57 @@ correct), **derived** (computed from something else, with the formula), or **fre
 (any value in range; ROOT's own choice is given for reference, because matching it
 makes a diff against a ROOT-written file readable).
 
+### 3.1 What "the current version" means
+
+**ROOT writes one version per class and it is not a choice.** Both places a version
+word is emitted take `cl->GetClassVersion()` — the number compiled into the
+*writing* process — and there is no argument, option or API that asks for an older
+layout: objectwise at `root/io/io/src/TBufferFile.cxx:3162`, member-wise at
+`root/io/io/src/TBufferFile.cxx:3192`.
+
+So a read-and-write **upgrades**. Measured: a `TH1F` written by ROOT 5.28
+(`uproot-issue64.root`, class versions `TH1F` 1, `TH1` 6, `TAxis` 9) read and
+written straight back out by 6.40.04 comes out as `TH1F` 3, `TH1` 8, `TAxis` 10.
+Nothing preserves the old layout, and nothing can be asked to.
+
+That makes "the current version" precise but relative: it is the version of the
+**ROOT that writes**, not a property of the format. A file from 5.28 has `TH1` 6
+and is entirely conforming. These documents mean ROOT 6.40.04's numbers, which is
+the release the repository pins, and `tools/check_versions.py` checks every table
+here against `ClassDef` in it.
+
+Four cases put something else in the version word, and a writer meets three of
+them:
+
+| Case | What is written | Cite |
+|---|---|---|
+| A **foreign** class — no `ClassDef` at all — whose version is `<= 1` | `0`, then a four-byte checksum | `root/io/io/src/TBufferFile.cxx:3163-3166` |
+| A class whose `ClassDef` version is `<= 0` | that number; and a *forwarding* streamer writes no version word at all | [Forwarding streamers](../99-appendix/ForwardingStreamers.md) |
+| A **member-wise** collection | the version with `0x4000` (`kStreamedMemberWise`) set | `root/io/io/src/TBufferFile.cxx:3203` |
+| An **emulated** class — one the writing process has no dictionary for | the version **the file it was read from declared**, because the `TClass` is built from the streamer info as `new TClass(name, fClassVersion)` | `root/io/io/src/TStreamerInfo.cxx:927` |
+
+`ROOT::TIOFeatures` is the first case and is unavoidable: every `TTree` and every
+`TBranch` contains one
+([Writing trees §3.2](WritingTrees.md#32-fiofeatures-is-the-one-foreign-class-a-tree-contains)).
+The last case is why a file written today can carry a class version that is not
+current for anything — the class has no current version, only the one its file
+describes. Measured: `Head` in `uproot-issue-214.root` loads as an emulated class
+whose `GetClassVersion()` is **2**, the number that file declares.
+
+**And a copy is not a write.** `hadd` clones a tree by loading each basket's bytes
+and copying them to the output untouched
+(`root/tree/tree/src/TTreeCloner.cxx:753-761`), carrying the source file's streamer
+infos across with them (`root/tree/tree/src/TTreeCloner.cxx:472`) — so records
+produced by an older ROOT survive into a new file unchanged, at their original class
+versions. A reader must therefore not infer a class
+version from the file's `fVersion`, or from anything but the object's own version
+word.
+
 ## 4. What is not specified
 
-- **Earlier class versions.** A writer picks its own, and nothing benefits from
-  writing a layout ROOT last produced in 2008. The legacy layouts stay on the
-  reading side, where files force them —
+- **Earlier class versions.** ROOT does not write them either (§3.1), and there is
+  no mechanism in the format to request one: the version word says what the writer
+  emitted. The legacy layouts stay on the reading side, where files force them —
   [TBranch §13](../04-ttree/TBranch.md#13-class-versions) is the example.
 - **Updating an existing file.** Everything here creates a file from nothing. An
   update has to reuse free space, rewrite a key list in place, and bump a key's
