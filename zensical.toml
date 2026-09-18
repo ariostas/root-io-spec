@@ -56,6 +56,7 @@ nav = [
   { "Writing" = [
       { "Overview" = "06-writing/index.md" },
       { "Writing a file" = "06-writing/WritingFiles.md" },
+      { "Writing an object" = "06-writing/WritingObjects.md" },
   ] },
   { "RNTuple" = [
       { "Overview" = "05-rntuple/index.md" },

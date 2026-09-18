@@ -76,7 +76,7 @@ For a file with one directory and `k` data records:
    `fNbytesKeys` and `fSeekKeys`, which are not known yet; compute its *length*
    now and fill the values in at step 7.
 3. **Place each data record** (§5), in whatever order the writer likes. This is
-   where the objects are streamed: `06-writing/WritingObjects.md`.
+   where the objects are streamed: [Writing an object](WritingObjects.md).
 4. **Place the `StreamerInfo` record** (§6), if the writer emits one.
 5. **Place the key list** (§7): one entry per data record, by copying each key.
 6. **Place the free list** (§8). Its own length has to be known before its single
@@ -178,7 +178,7 @@ from `fObjlen > fNbytes - fKeylen` and nothing else (`root/io/io/src/TKey.cxx:82
 So the two fields are not independent bookkeeping: `fObjlen` equal to
 `fNbytes - fKeylen` *means* stored as-is. A writer that compresses and forgets to
 leave `fObjlen` at the uncompressed length hands its zip stream to the streamer as
-though it were object data. `06-writing/WritingObjects.md` has the block format;
+though it were object data. [Writing an object](WritingObjects.md) has the block format;
 [Compression](../01-container/Compression.md) is the reading side.
 
 ROOT only attempts compression when the file's level is above 0 **and** the payload
@@ -197,7 +197,7 @@ go in the header as `fSeekInfo` and `fNbytesInfo`, and **it is deliberately not 
 the key list**: `WriteStreamerInfo` removes it (`root/io/io/src/TFile.cxx:3555`)
 after the constructor has added it.
 
-What goes inside is `06-writing/WritingObjects.md`. The question this section
+What goes inside is [Writing an object](WritingObjects.md). The question this section
 answers is whether a writer needs it at all.
 
 ### 6.1 ROOT does not need it, and will not say so

@@ -20,6 +20,23 @@ was established, which is the other half of the story.
   compiled in — measured, not assumed — and the warning that says so fires only
   when the file's `fVersion` differs from the running ROOT's, so a writer stamping
   the current release silences it.
+- [Writing an object](spec/06-writing/WritingObjects.md): the two framings and the
+  three classes that have neither, the version word of 0 a foreign class needs, the
+  `TObject` base's masked `fBits`, the class and object maps with their two
+  different mapping positions, ZLIB blocks, and the `StreamerInfo` record from
+  `TList` down to each element subclass. `tools/test_write.py` builds that record
+  for `TObjString` from the document and asserts it is **byte-identical** to the one
+  ROOT wrote in `data/container/file-minimal.root`, checksum computed from scratch.
+- **How far the checksum algorithm can be applied**, new
+  [StreamerInfo §11.1 and §11.2](spec/02-serialization/StreamerInfo.md). Recomputing
+  `fCheckSum` for every streamer info in every reference file gives 614 of 653
+  exactly, and every failure has a named cause: an **enum** folds an extra 1 and is
+  recognisable by `fType` 3 with a non-primitive `fTypeName` — which is the test
+  ROOT's own checksum code uses; a **version-0 class** lists no members but folds
+  them anyway; a member ROOT **rewrote for I/O** (`std::array`, `std::unique_ptr`)
+  keeps its declared spelling in the checksum and not in the record; and three
+  `pair` instances where ROOT's own value is wrong. This affects checking and
+  writing a file, never decoding one.
 - `tools/rootwrite.py`, a pure-Python writer built from those documents, and
   `tools/check_write.py`, which puts what it produces through three gates: this
   project's reader and every applicable invariant accept it; the bytes are

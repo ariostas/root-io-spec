@@ -1,0 +1,210 @@
+id   = "written/streamerinfo"
+file = "data/written/streamerinfo.root"
+size = 970
+
+description = """
+A **compressed** data record and a `StreamerInfo` record, both produced by
+`tools/rootwrite.py` from `spec/06-writing/WritingObjects.md`.
+
+Three things are under test that `written/objstring` does not reach:
+
+* the **ZLIB block header** -- two 24-bit little-endian size fields inside an
+  otherwise big-endian format, with the compressed size excluding the nine
+  header bytes;
+* the `StreamerInfo` record: a `TList` at version 5 holding one
+  `TStreamerInfo` at version 10, whose `fElements` is a `TObjArray` **pointer
+  slot** and whose `TStreamerBase` element carries `TObject`'s checksum in
+  `fMaxIndex[1]`;
+* `fCheckSum` computed from scratch by the algorithm of `StreamerInfo.md` 11.
+  It equals the value ROOT's own `TObjString` carries, `0x9c8e4800`, which is
+  why ROOT prints no `BuildCheck` warning -- and the harness fails the case if
+  it prints one.
+
+The record's 370 bytes of object data are byte-identical to the `StreamerInfo`
+record ROOT wrote in `data/container/file-minimal.root`; `tools/test_write.py`
+asserts that directly, and it is the strongest evidence for `WritingObjects.md` 7.
+"""
+
+spec = [
+  "spec/06-writing/WritingObjects.md",
+  "spec/02-serialization/StreamerInfo.md",
+  "spec/01-container/Compression.md",
+]
+
+writer = "tools/rootwrite.py"
+
+[[records]]
+offset = 100
+nbytes = 214
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 314
+nbytes = 110
+class  = "TObjString"
+role   = "a compressed data record: 621 bytes stored in 44"
+
+[[records]]
+offset = 424
+nbytes = 280
+class  = "TList"
+role   = "StreamerInfo; located via fSeekInfo, and absent from the key list"
+
+[[records]]
+offset = 704
+nbytes = 163
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 867
+nbytes = 103
+class  = "TFile"
+role   = "free segments"
+
+[[keys]]
+name = "str"
+
+# --- File header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 970
+
+[[bytes]]
+name = "fCompress = algorithm 1 (ZLIB) x 100 + level 1"
+offset = 33
+type = "i32"
+value = 101
+
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 424
+
+[[bytes]]
+name = "fNbytesInfo"
+offset = 41
+type = "i32"
+value = 280
+
+# --- The compressed data record, spec/01-container/Compression.md ----------
+[[bytes]]
+name = "fNbytes: 66 bytes of key and 44 of payload"
+offset = 314
+type = "i32"
+value = 110
+
+[[bytes]]
+name = "fObjlen stays the UNCOMPRESSED length; that is the only compression flag"
+offset = 320
+type = "i32"
+value = 621
+
+[[bytes]]
+name = "fKeylen"
+offset = 328
+type = "i16"
+value = 66
+
+[[bytes]]
+name = "the block magic"
+offset = 380
+type = "bytes"
+value = "ZL"
+
+[[bytes]]
+name = "the method byte, 8 for DEFLATE"
+offset = 382
+type = "u8"
+value = 8
+
+[[bytes]]
+name = "compressed size, 24-bit little-endian, excluding this 9-byte header"
+offset = 383
+type = "bytes"
+value = [35, 0, 0]
+
+[[bytes]]
+name = "uncompressed size, 24-bit little-endian: 621 = 0x00026d"
+offset = 386
+type = "bytes"
+value = [109, 2, 0]
+
+# --- The StreamerInfo record, spec/02-serialization/StreamerInfo.md --------
+[[bytes]]
+name = "fObjlen of the uncompressed TList"
+offset = 430
+type = "i32"
+value = 370
+
+[[bytes]]
+name = "fKeylen"
+offset = 438
+type = "i16"
+value = 64
+
+[[bytes]]
+name = "fClassName is TList, not TStreamerInfo"
+offset = 450
+type = "string"
+value = "TList"
+
+[[bytes]]
+name = "fName -- the name is on the key, and the TList's own fName is empty"
+offset = 456
+type = "string"
+value = "StreamerInfo"
+
+[[bytes]]
+name = "fTitle is TList's class title"
+offset = 469
+type = "string"
+value = "Doubly linked list"
+
+[[bytes]]
+name = "the block magic again: this record is compressed too"
+offset = 488
+type = "bytes"
+value = "ZL"
+
+[[bytes]]
+name = "uncompressed size = fObjlen = 370 = 0x000172"
+offset = 494
+type = "bytes"
+value = [114, 1, 0]
+
+# --- The key list holds the data record only ------------------------------
+[[bytes]]
+name = "fObjlen = 4 + one 66-byte key image"
+offset = 710
+type = "i32"
+value = 70
+
+[[bytes]]
+name = "the count: the StreamerInfo record is not listed"
+offset = 797
+type = "i32"
+value = 1
+
+# --- The free list ---------------------------------------------------------
+[[bytes]]
+name = "entry version 1"
+offset = 960
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fFirst = fEND"
+offset = 962
+type = "i32"
+value = 970
+
+[[bytes]]
+name = "fLast, the sentinel"
+offset = 966
+type = "i32"
+value = 2000000000

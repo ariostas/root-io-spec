@@ -543,6 +543,53 @@ Reference values, useful as test vectors:
 | `TObjString` | `0x9c8e4800` |
 | `TList` | `0x69c5c3bb` |
 | `TObjArray` | `0xa99e6552` |
+
+### 11.1 An enum member is recognisable, and it changes the value
+
+`TStreamerInfo::Build` stores every enum as an `Int_t` and gives it `fType` **3**
+deliberately, to keep the file format unchanged across the introduction of
+sized enums (`root/io/io/src/TStreamerInfo.cxx:675-689`) — so an enum member and an
+`Int_t` member are indistinguishable by type code. They are distinguishable by
+`fTypeName`, which keeps the enum's own qualified name: `TH1::EBinErrorOpt`, not
+`int`.
+
+That distinction decides the checksum, because an enum folds an extra `1` before
+its name. **ROOT's own checksum code uses exactly that test** — `fType == 3` and a
+type name `gROOT->GetType` does not resolve — under a comment asking whether it can
+be done at all (`root/io/io/src/TStreamerInfo.cxx:3612-3620`). So the rule is not a
+heuristic for a third party to invent; it is the rule, and a reader can apply it
+with no dictionary by treating any `fType` 3 whose `fTypeName` is not a primitive
+spelling as an enum.
+
+`TH1`'s recorded `0x1c3740c4` is reproduced exactly when `fBinStatErrOpt` and
+`fStatOverflows` are treated this way and not otherwise.
+
+### 11.2 What cannot be recomputed
+
+**The checksum is computed from the class definition, not from the streamer info**
+(`root/core/meta/src/TClass.cxx:6604-6609`), and the two do not always contain the
+same information. Measured over every streamer info in this repository's reference
+files — **653 of them, of which 614 are reproduced exactly** by §11's algorithm
+applied to the info's own elements, `tools/test_write.py` — the remainder fall into
+three groups:
+
+| Cause | Classes | What the info lacks |
+|---|---|---|
+| **A version-0 class lists no members** | `THashList`, `TSeqCollection` | `TStreamerInfo::Build` skips every member of a class whose version is 0 (`root/io/io/src/TStreamerInfo.cxx:552-554`), but the checksum still folds them. `THashList`'s `0xcc7e49c1` is reproduced by adding `fTable`/`THashTable*` by hand |
+| **A member ROOT rewrote for I/O** | `TF1`, `CollectionForms` | `std::array<Int_t,3>` is recorded as a fixed C array of `int` with `fArrayDim` 1, and `std::unique_ptr<T>` as `T*` — but the checksum folds the **declared** type name and no extents. `CollectionForms` is reproduced with `array<int,3>`; `TF1` with `unique_ptr<TFormula,default_delete<TFormula> >`, default template argument spelled out |
+| **ROOT's own value is wrong** | three `pair<…>` instances | A `pair`'s checksum can be computed before its members are known and is then cached forever (`root/core/meta/src/TClass.cxx:6655-6666`); `data/serialization/pairs.root` has three distinct pairs all carrying `0x0b5fb752`, and the fourth pair in the same file is correct and recomputable |
+
+One further mismatch, `TPad`, has no explanation yet. It is listed in
+`tools/test_write.py` as unexplained rather than left out of the measurement.
+
+**For a reader** the consequence is narrow: matching an object to an info by
+checksum uses the value *in the file*, which is always self-consistent, so none of
+this affects decoding. It matters when checking a file, or when writing one.
+
+**For a writer** the consequence is that the checksum must be computed from the
+class as declared — including the `+1` per enum member and the declared spelling of
+a rewritten member — and not from the element list about to be emitted. See
+[Writing an object §7.3](../06-writing/WritingObjects.md#73-the-checksum).
 | `TStreamerInfo` | `0x90566883` |
 | `TStreamerElement` | `0xdd0eb253` |
 | `TStreamerBase` | `0x092715b0` |

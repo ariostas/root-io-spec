@@ -1047,14 +1047,54 @@ from the running ROOT's: the same file at 64004 is silent and at 63000 warns, bo
 verified. So the record is optional for ROOT, mandatory in practice, and M12 writes
 it.
 
-**M12 — the object layer.** `WritingObjects.md`: the byte count and version word,
-the string encodings from the writing side, the object map and class tags,
-compression, and the `StreamerInfo` record. One question this item has to settle
-rather than dodge — **how far must a writer go with streamer infos?** ROOT needs
-none for a class it has compiled in; that is measured, not assumed (a `TH1F` file
-with `fSeekInfo` and `fNbytesInfo` zeroed reads back correctly and silently,
-2026-09-18). Every other reader does need them. So the document states what each
-choice costs, and the writer emits them.
+**M12 — ✅ done 2026-09-18. The object layer, and a `StreamerInfo` record that is
+byte-identical to ROOT's.**
+*The strongest check in the project: 370 bytes built from the document alone, equal
+to ROOT's own.*
+
+`WritingObjects.md` (354 lines), `written/streamerinfo` (23 assertions, a
+compressed record and a compressed `StreamerInfo` record), `tools/test_write.py`
+(12 tests), and in `rootwrite.py`: the object map, ZLIB blocks, the streamer-info
+serializer and the checksum algorithm.
+
+The byte comparison is what makes it evidence rather than an account.
+`tools/test_write.py` builds the `StreamerInfo` record for `TObjString` from
+`WritingObjects.md` §7 and asserts equality with the record in
+`data/container/file-minimal.root` — class tags, `TList` option bytes,
+`kIsCompiled` in `fBits`, the base checksum in `fMaxIndex[1]`, and a `fCheckSum`
+computed from scratch. The last error before it matched is recorded in the document
+rather than quietly fixed: **`fElements` is a `TObjArray *` and takes the pointer
+slot form**, so a writer that emits the bare framed object is 18 bytes short.
+
+Then the checksum, which turned into the substantive finding of the milestone.
+`StreamerInfo.md` §11 had the algorithm; what it did not have is how far it can be
+applied. Recomputing `fCheckSum` for **every streamer info in every reference
+file** gives 614 of 653 exactly, and each of the 39 failures has a cause:
+
+- **An enum folds an extra 1**, and an enum is recognisable: `TStreamerInfo::Build`
+  stores every enum as an `Int_t` with `fType` 3 to keep the format stable
+  (`root/io/io/src/TStreamerInfo.cxx:675-689`), but `fTypeName` keeps the enum's own
+  name. **ROOT's checksum code uses exactly that test**, under a comment asking
+  whether it can be done at all (`:3612-3620`) — so it is the rule, not a heuristic
+  for a third party to invent. With it, `TH1` is reproduced exactly; new §11.1.
+- **A version-0 class's info lists no members but its checksum folds them**
+  (`:552-554`). `THashList`'s value is reproduced by adding `fTable`/`THashTable*`
+  by hand.
+- **A member ROOT rewrites for I/O keeps its declared spelling in the checksum.**
+  `std::array<Int_t,3>` is recorded as a fixed C array of `int`; `std::unique_ptr<T>`
+  as `T*`. `CollectionForms` is reproduced with `array<int,3>`, and `TF1` with
+  `unique_ptr<TFormula,default_delete<TFormula> >` — default template argument
+  spelled out, which is not guessable from the record.
+- **Three `pair` instances where ROOT's own value is wrong**, which is §7.1 item 8
+  arriving from a second direction: three distinct layouts all carrying
+  `0x0b5fb752`, while the fourth pair in the same file is correct and recomputable.
+
+`TPad` is the one mismatch with no explanation, and it is listed as such in the test
+rather than left out of the count. All of this is new §11.2 of `StreamerInfo.md`,
+which is a **reading**-side improvement that only the writing work would have found.
+
+The milestone's other question is settled in `WritingFiles.md` §6.1 and the writer
+emits the record.
 
 **M13 — histograms.** `WritingHistograms.md` and `TH1F`/`TH1D` in the writer, then
 `TH2F` and `TProfile` if the layout holds. Done when ROOT reports the right

@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Tests for `tools/rootwrite.py`, the writer of `spec/06-writing/`.
+
+Two of these are unusual and are the reason the file exists:
+
+* `StreamerInfoBytes` builds a `StreamerInfo` record from the procedure in
+  `spec/06-writing/WritingObjects.md` and asserts it is **byte-identical** to
+  the one ROOT wrote in `data/container/file-minimal.root`. Every rule in that
+  document is in the comparison: byte counts, version words, the class map's
+  two mapping positions, `TList`'s option bytes, `TObjArray` as a pointer slot,
+  the checksum in `fMaxIndex[1]`, and `kIsCompiled` in the info's own `fBits`.
+* `Checksums` recomputes `fCheckSum` for every streamer info in every reference
+  file and requires it to match, with a named exception list -- which is how the
+  limits of recomputation in `spec/02-serialization/StreamerInfo.md` 11.2 are
+  kept honest.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+import unittest
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "tools"))
+
+import rootfile  # noqa: E402
+import rootwrite as rw  # noqa: E402
+
+#: TObjString as ROOT records it, which is what file-minimal.root contains.
+TOBJSTRING_INFO = rw.Info("TObjString", 1, [
+    rw.Element("TStreamerBase", "TObject", "Basic ROOT object", 66, 0, "BASE",
+               base_version=1, base_checksum=0x901BC02D),
+    rw.Element("TStreamerString", "fString", "wrapped TString", 65, 24,
+               "TString"),
+])
+
+
+def streamer_infos(path: pathlib.Path):
+    """Every streamer info in a file, or an empty list if it has none.
+
+    The record may be compressed, in which case `object_data` hands back a
+    buffer with the payload decompressed in place. A record whose codec is not
+    available in this environment is skipped rather than failing the test, the
+    same convention `tools/check_invariants.py` uses.
+    """
+    buf, header, records = rootfile.load(path)
+    if header.seek_info <= header.begin:
+        return buf, None, []
+    at = [r for r in records if r.offset == header.seek_info]
+    if not at:
+        return buf, None, []
+    try:
+        data = rootfile.object_data(buf, at[0])
+    except rootfile.MissingCodec:
+        return buf, None, []
+    return data, at[0], rootfile.read_streamer_infos(data, at[0])
+
+
+class StreamerInfoBytes(unittest.TestCase):
+    def test_matches_root_byte_for_byte(self):
+        path = REPO / "data/container/file-minimal.root"
+        buf, record, infos = streamer_infos(path)
+        self.assertEqual([i.name for i in infos], ["TObjString"])
+
+        want = bytes(buf[record.offset + record.key_len:
+                         record.offset + record.nbytes])
+        # Map positions are measured from the start of the record, so the
+        # writer needs ROOT's key length to reproduce the class tags.
+        payload = rw.Payload(record.key_len)
+        payload.tlist("", [TOBJSTRING_INFO.write])
+        self.assertEqual(bytes(payload.buf), want)
+
+    def test_class_map_positions(self):
+        """A class is mapped at its tag, an object at its byte count."""
+        payload = rw.Payload(0)
+        payload.slot("TNamed", 1, lambda p: p.tnamed("a", "b"), key="first")
+        payload.slot("TNamed", 1, lambda p: p.tnamed("c", "d"), key="second")
+        # The first slot's byte count is at 0, so its tag is at 4 and the class
+        # is mapped at 6; the object is mapped at 2.
+        self.assertEqual(payload.classes["TNamed"], 6)
+        self.assertEqual(payload.objects["first"], 2)
+        # The second slot refers back with kClassMask | 6.
+        self.assertIn(rw.u32(rw.CLASS_MASK | 6), bytes(payload.buf))
+
+
+class Checksums(unittest.TestCase):
+    """`fCheckSum` recomputed from each info's own elements.
+
+    The exceptions are the substance of the test: they are the ways a checksum
+    can fail to be recomputable from a record, each documented in
+    `spec/02-serialization/StreamerInfo.md` 11.2 and each -- bar one --
+    reproduced exactly by the tests below from the class definition instead.
+    """
+
+    #: A class-version-0 info lists only its bases, but the checksum still
+    #: folds the members. test_omitted_member reproduces THashList's value.
+    OMITTED_MEMBERS = {"THashList", "TSeqCollection"}
+    #: Members ROOT rewrites for I/O -- std::array recorded as a fixed C array,
+    #: std::unique_ptr as a plain pointer -- keep their *declared* type name in
+    #: the checksum. test_transformed_type_name reproduces both values.
+    TRANSFORMED = {"TF1", "CollectionForms"}
+    #: ROOT's own value is wrong here: the checksum was computed before the
+    #: members were known and cached forever (PLAN.md 7.1 item 8).
+    PAIR_BUG = {"pair<TString,PHit*>", "pair<int,string>",
+                "pair<int,vector<short> >"}
+    #: One class whose mismatch is not explained. Listed rather than hidden.
+    UNEXPLAINED = {"TPad"}
+
+    def elements_of(self, info):
+        return [
+            rw.Element(
+                cls=e.cls, name=e.name, title=e.title, ftype=e.ftype,
+                size=e.fsize, type_name=e.type_name,
+                array_length=e.array_length, array_dim=e.array_dim,
+                max_index=tuple(e.max_index),
+                base_checksum=e.max_index[1] & 0xFFFFFFFF,
+                is_enum=rw.looks_like_enum(e.ftype, e.type_name),
+            )
+            for e in info.elements
+        ]
+
+    def infos_named(self, path, name):
+        _, _, infos = streamer_infos(REPO / path)
+        return [i for i in infos if i.name == name]
+
+    def test_every_info_in_every_reference_file(self):
+        known = (self.OMITTED_MEMBERS | self.TRANSFORMED | self.PAIR_BUG
+                 | self.UNEXPLAINED)
+        matched, unexpected = 0, []
+        for path in sorted((REPO / "data").rglob("*.root")):
+            _, _, infos = streamer_infos(path)
+            for info in infos:
+                got = rw.checksum(rw.Info(info.name, info.class_version,
+                                          self.elements_of(info)))
+                if got == info.checksum:
+                    matched += 1
+                elif info.name not in known:
+                    unexpected.append(
+                        f"{path.name}: {info.name} computed 0x{got:08x}, "
+                        f"file 0x{info.checksum:08x}")
+        self.assertEqual(unexpected, [])
+        # A floor, so adding a fixture cannot fail this; the exception list
+        # above is what makes the test strict.
+        self.assertGreater(matched, 600)
+
+    def test_reference_values(self):
+        """StreamerInfo.md 11's published test vectors."""
+        self.assertEqual(rw.checksum(TOBJSTRING_INFO), 0x9C8E4800)
+
+    def test_enum_member_folds_an_extra_one(self):
+        """TH1 is recomputable only because of the enum rule."""
+        info = self.infos_named("data/classes/tarray-histogram.root", "TH1")[0]
+        elements = self.elements_of(info)
+        self.assertEqual([e.name for e in elements if e.is_enum],
+                         ["fBinStatErrOpt", "fStatOverflows"])
+        self.assertEqual(rw.checksum(rw.Info("TH1", 8, elements)),
+                         info.checksum)
+        for e in elements:
+            e.is_enum = False
+        self.assertNotEqual(rw.checksum(rw.Info("TH1", 8, elements)),
+                            info.checksum)
+
+    def test_omitted_member(self):
+        """A version-0 class folds a member its info does not list."""
+        info = self.infos_named("data/classes/tarray-histogram.root",
+                                "THashList")[0]
+        self.assertEqual([e.name for e in info.elements], ["TList"])
+        elements = self.elements_of(info) + [
+            rw.Element("TStreamerObjectPointer", "fTable", "", 64, 8,
+                       "THashTable*"),
+        ]
+        self.assertEqual(rw.checksum(rw.Info("THashList", 0, elements)),
+                         info.checksum)
+
+    def test_transformed_type_name(self):
+        """std::array and std::unique_ptr keep their declared spelling."""
+        info = self.infos_named("data/serialization/collection-forms.root",
+                                "CollectionForms")[0]
+        elements = self.elements_of(info)
+        for e in elements:
+            if e.name == "fArrInt":
+                e.type_name, e.array_dim = "array<int,3>", 0
+            elif e.name == "fArrHit":
+                e.type_name, e.array_dim = "array<CHit,2>", 0
+        self.assertEqual(rw.checksum(rw.Info("CollectionForms", 1, elements)),
+                         info.checksum)
+
+        info = self.infos_named("data/classes/formula.root", "TF1")[0]
+        elements = self.elements_of(info)
+        for e in elements:
+            if e.type_name.endswith("*") and e.name in (
+                    "fFormula", "fParams", "fComposition"):
+                inner = e.type_name[:-1]
+                # The default template argument is spelled out, which is what
+                # makes this unguessable from the record.
+                e.type_name = f"unique_ptr<{inner},default_delete<{inner}> >"
+        self.assertEqual(rw.checksum(rw.Info("TF1", 12, elements)),
+                         info.checksum)
+
+    def test_the_three_pairs_share_one_wrong_value(self):
+        """PLAN.md 7.1 item 8, from the other direction."""
+        _, _, infos = streamer_infos(REPO / "data/serialization/pairs.root")
+        pairs = [i for i in infos if i.name.startswith("pair<")]
+        self.assertEqual(len(pairs), 4)
+        shared = [i for i in pairs if i.checksum == 0x0B5FB752]
+        self.assertEqual(len(shared), 3)
+        # Three distinct layouts, three distinct recomputed values, none of
+        # them the one ROOT wrote -- and the fourth pair, which escaped the
+        # caching, is recomputable like any other class.
+        computed = {rw.checksum(rw.Info(i.name, 1, self.elements_of(i)))
+                    for i in shared}
+        self.assertEqual(len(computed), 3)
+        self.assertNotIn(0x0B5FB752, computed)
+        fourth = [i for i in pairs if i.checksum != 0x0B5FB752][0]
+        self.assertEqual(
+            rw.checksum(rw.Info(fourth.name, 1, self.elements_of(fourth))),
+            fourth.checksum)
+
+
+class Compression(unittest.TestCase):
+    def test_block_round_trips_through_the_reader(self):
+        data = b"hello " * 400
+        blocks = rw.zlib_blocks(data, 1)
+        self.assertIsNotNone(blocks)
+        self.assertEqual(blocks[:3], b"ZL\x08")
+        # The compressed size excludes the 9-byte header (Compression.md 4).
+        self.assertEqual(9 + int.from_bytes(blocks[3:6], "little"), len(blocks))
+        self.assertEqual(int.from_bytes(blocks[6:9], "little"), len(data))
+        self.assertEqual(
+            rootfile.decompress_blocks(blocks, 0, len(blocks), len(data),
+                                       "test"),
+            data)
+
+    def test_incompressible_payload_is_declined(self):
+        import os
+        self.assertIsNone(rw.zlib_blocks(os.urandom(4096), 9))
+
+
+class Determinism(unittest.TestCase):
+    def test_two_builds_are_identical(self):
+        def build():
+            f = rw.FileWriter("data/written/objstring.root", "t")
+            f.add(rw.Obj("TObjString", "str", "", rw.tobjstring("hello")))
+            return f.to_bytes()
+        self.assertEqual(build(), build())
+
+    def test_datime_packing(self):
+        # 2000-01-01 00:00:00, the writer's default.
+        self.assertEqual(rw.pack_datime(2000, 1, 1, 0, 0, 0), 339869696)
+        with self.assertRaises(rw.WriteError):
+            rw.pack_datime(1994, 1, 1, 0, 0, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
