@@ -24,7 +24,7 @@ that is fine — almost everything below depends on this and nothing else.*
 |---|---|
 | [Conventions](../00-conventions.md) | Byte order, the primitive widths, the four string encodings |
 | [File header](../01-container/FileHeader.md) | The 64/100-byte header, and the `+1000000` flag that widens six fields |
-| [Records and keys](../01-container/Record.md) | The key layout, `fNbytes`/`fObjLen`/`fKeyLen`, cycles, the record chain |
+| [Records and keys](../01-container/Record.md) | The key layout, `fNbytes`/`fObjlen`/`fKeylen`, cycles, the record chain |
 | [Directories and key lists](../01-container/Directory.md) | The root directory record, nested directories, the list of keys |
 | [Free segments](../01-container/FreeSegments.md) | Only if you intend to write, or to explain gaps |
 
@@ -46,7 +46,7 @@ compression settings.*
 [Compression](../01-container/Compression.md) is a short document and almost all
 of it matters. The two things that bite:
 
-- **the test for "is this compressed" is an inequality**, `fObjLen > fNbytes - fKeyLen`,
+- **the test for "is this compressed" is an inequality**, `fObjlen > fNbytes - fKeylen`,
   not an inequality of the two ([§1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality));
 - a payload may be **several blocks**, each with its own 9-byte header, and you
   concatenate them ([§7](../01-container/Compression.md#7-multi-block-payloads)).

@@ -119,6 +119,12 @@ this is the wide diagram, which that page gives only as a column of offsets.
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
+> As in the small layout, the 4-byte grid stops being accurate at `fUnits` (offset
+> 40), which is one byte: every field after it straddles a row boundary, so the
+> rows below it show order rather than column position. The offset table in
+> [FileHeader §2.2](FileHeader.md#22-field-offsets) is
+> authoritative.
+
 `fBEGIN` never widens, and neither do the three lengths — `fNbytesFree`,
 `fNbytesName` and `fNbytesInfo` are record lengths, and
 [Records §5](Record.md#5-payload-size-limits) bounds a record well below 2 GB.
@@ -326,7 +332,11 @@ narrow, including the sentinel whose `fLast` is exactly 2 000 000 000.
 Checked by `tools/fetch_cern.py --headers` over the eight files of §6 rather
 than by `tools/check_invariants.py`, which has no file large enough.
 
-1. `fVersion >= 1000000` **iff** `fEND > 2000000000`.
+1. `fVersion >= 1000000` **if** `fEND > 2000000000`; the reverse holds on every
+   known file but is not guaranteed, because the flag is never cleared once set
+   (`root/io/io/src/TFile.cxx:2679`). See
+   [FileHeader §10](FileHeader.md#10-invariants) invariant 9, which
+   `tools/check_invariants.py` enforces as a strict `iff`.
 2. The number of entries parsed out of the free record equals `nfree`.
 3. The last free entry's `fLast` is greater than `fEND`.
 4. An entry's version word is `> 1000` **iff** its `fLast > 2000000000`. A

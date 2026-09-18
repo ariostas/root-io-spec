@@ -451,7 +451,7 @@ implemented for any class the reader claims to support.
 ## 10. Invariants
 
 1. Applying this procedure to a record's top-level object consumes exactly
-   `fObjLen` bytes.
+   `fObjlen` bytes.
 2. Applying it to any nested object consumes exactly the bytes its byte count
    delimits.
 3. Every element's `fCountName`, where non-empty, names an element of an integer

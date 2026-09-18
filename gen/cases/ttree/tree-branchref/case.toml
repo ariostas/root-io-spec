@@ -137,3 +137,26 @@ name = "TBranchRef: fZipBytes, below fTotBytes because it is compressed"
 offset = 2532
 type = "i64"
 value = 124
+
+# A basket compresses at any size. TKey refuses below 257 bytes
+# (root/io/io/src/TKey.cxx:264) but TBasket::WriteBuffer tests only the level
+# (root/tree/tree/src/TBasket.cxx:1300), so this 108-byte payload is zipped.
+# Compression.md 8.
+
+[[bytes]]
+name = "TBasket at 457: fObjlen 108, under TKey's 256-byte threshold"
+offset = 463
+type = "i32"
+value = 108
+
+[[bytes]]
+name = "TBasket at 457: fNbytes 124, so 51 bytes stored -- compressed anyway"
+offset = 457
+type = "i32"
+value = 124
+
+[[bytes]]
+name = "TBasket at 457: the payload is a ZL block, method 8"
+offset = 530
+type = "bytes"
+value = [90, 76, 8]

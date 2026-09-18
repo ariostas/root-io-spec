@@ -17,7 +17,7 @@ way, a length is a plausible number rather than an obvious error.
 [Conventions §3](../00-conventions.md#3-byte-order)
 
 **"Is this payload compressed" is an inequality, not a difference.** The test is
-`fObjLen > fNbytes - fKeyLen`. A payload *longer* than `fObjLen` is stored raw
+`fObjlen > fNbytes - fKeylen`. A payload *longer* than `fObjlen` is stored raw
 with slack after it, which RNTuple's own key writer produces — and a reader using
 `!=` finds a compression magic in the slack and rejects the whole file.
 [Compression §1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality)
@@ -51,7 +51,7 @@ because `TBasket` adds 1000 to `fVersion` unconditionally.
 **Buffer position 0 is the start of the key, not of the payload.** Every
 back-reference is expressed as a buffer position, so a reader that decompresses
 into a fresh array and counts from zero computes every one of them wrong, by
-exactly `fKeyLen`. [Buffer framing §1](../02-serialization/Buffer.md#1-what-a-buffer-is)
+exactly `fKeylen`. [Buffer framing §1](../02-serialization/Buffer.md#1-what-a-buffer-is)
 
 **A byte count is a lower bound on an object's length, not its length.** Three
 classes keep writing after the frame they opened — `TMatrixTSym` is the one you

@@ -69,7 +69,7 @@ Neither of the two apparent bounds is sufficient on its own:
 
 - **`nfree` in the header is advisory.** It is written correctly — the header is
   written after the free record — but ROOT never reads it back for this purpose
-  (`root/io/io/src/TFile.cxx:742`). A reader MAY use it as a cross-check.
+  (`root/io/io/src/TFile.cxx:743`). A reader MAY use it as a cross-check.
 - **The payload length is not a reliable bound.** `WriteFree` may zero-fill the
   tail of the payload when allocating the record consumed one of the entries it had
   already counted (`root/io/io/src/TFile.cxx:2649-2658`). A length-driven parse can
@@ -171,7 +171,11 @@ To walk the chain, per [Records §1](Record.md#1-the-record-chain):
 
 To read the list:
 
-1. If `fSeekFree` is 0, the file was never closed and there is no list.
+1. If `fSeekFree` is not greater than `fBEGIN`, there is no list to read — which
+   for 0 means the free list was never written (`FileHeader.md` §5.4). That is
+   ROOT's own test (`root/io/io/src/TFile.cxx:771`), and it is not the same as
+   "the file was never closed": a non-zero `fSeekFree` proves nothing about a
+   clean close.
 2. Read the record at `fSeekFree`, of `fNbytesFree` bytes.
 3. From the payload start, read entries: a version word, then two bounds of 4 or 8
    bytes according to whether the version exceeds 1000.
@@ -182,7 +186,9 @@ To read the list:
 1. `fEND` equals the last entry's `fFirst`.
 2. The last entry's `fLast > fEND`, and is at least 2000000000. Above that it is a
    multiple of 1000000000.
-3. `nfree` in the header equals the number of entries.
+3. `nfree` in the header equals the number of entries — **advisory only**, and
+   ROOT 4.00 wrote 0 against a two-entry list (`FileHeader.md` §5.4), which is why
+   `tools/check_invariants.py` exempts a file below ROOT 5.
 4. `fSeekFree` equals the free record's own `fSeekKey`, and `fNbytesFree` its
    `fNbytes`.
 5. Entries are in strictly ascending order, non-overlapping and **non-adjacent** —

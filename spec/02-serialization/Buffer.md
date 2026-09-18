@@ -17,12 +17,12 @@ payload, decompressed if necessary.
 > **Buffer position 0 is the start of the key, not the start of the payload.**
 
 This matters because back-references (§6) are expressed as buffer positions, so
-every one of them is offset by `fKeyLen`. A reader that decompresses the payload
+every one of them is offset by `fKeylen`. A reader that decompresses the payload
 into a fresh array and counts from zero will compute every back-reference wrong,
-by exactly `fKeyLen` bytes.
+by exactly `fKeylen` bytes.
 
 > Demonstrated by `serialization/object-tags`, whose record starts at 308 with
-> `fKeyLen` 55: an object at file offset 387 is referenced as 81, which is
+> `fKeylen` 55: an object at file offset 387 is referenced as 81, which is
 > `387 - 308 + 2`, not `387 - 363 + 2`.
 
 ROOT corroborates this where it reads a payload without its key. RNTuple's mini
@@ -108,7 +108,7 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
   anything — is decided by that branch. See [TBasket](../04-ttree/TBasket.md).
 
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
-> `fObjLen` 12 and its payload begins `00 01` — the `TObject` version word —
+> `fObjlen` 12 and its payload begins `00 01` — the `TObject` version word —
 > where every other object record in that file begins `40 00`. And by
 > `classes/tarray`, whose eight records begin with an `i32` count.
 
@@ -501,7 +501,7 @@ To read a version word at the current position:
    back-reference is at least 2.
 8. A class or object back-reference above 1 points **backwards**: its position is
    less than the position of the reference itself.
-9. At the outermost level, the bytes consumed equal `fObjLen` exactly. For a
+9. At the outermost level, the bytes consumed equal `fObjlen` exactly. For a
    class whose streamer emits a byte count, that count spans the payload
    exactly — **except** for the classes of §2.4, which write past their own byte
    count by design; for the classes of §2.3 there is no outermost count to check
@@ -521,7 +521,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 2 | — | Nothing states that a byte count is optional before a version word, or that its absence is detected structurally rather than from the file version (§3) |
 | 3 | — | `kByteCountVMask` and `kStreamedMemberWise` are both `0x4000` and apply to different words (§3.1) |
 | 4 | — | A version word of 0 is ambiguous: a checksum follows for a foreign class but not for a class that declares version 0 (§4). This is the single most consequential gap |
-| 5 | — | Buffer positions are measured from the start of the **key**, so every back-reference includes `fKeyLen` (§1) |
+| 5 | — | Buffer positions are measured from the start of the **key**, so every back-reference includes `fKeylen` (§1) |
 | 6 | — | A class is mapped at its tag word but an object at its byte-count word, four bytes apart (§6.1) |
 | 7 | — | A class name in a `kNewClassTag` record is null-terminated, not a counted string — the only such string in the format (§5.1) |
 | 8 | — | `TObject`'s version word is ignored on reading, `kIsReferenced` adds a trailing `u16`, `fUniqueID` is then truncated to 24 bits, and the whole base may be absent (§7) |
@@ -529,13 +529,13 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 10 | `dobject.md`: only the class back-reference is described | Neither the **object** back-reference nor the null pointer is documented at all, so a reader built from it cannot parse either (§6) |
 | 11 | `dobject.md`: the two byte counts are given identical wording | They have different owners and different extents: the outer one spans the class record **and** the object, the inner one only the version and members (§2, §5) |
 | 12 | — | Not every record's object data starts with a byte count: a `TRef` record's starts with a version word (§2.3) |
-| 13 | `streamerinfo.md`: the `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | Not so: in `container/file-minimal` the file is uncompressed and `fNbytes - fKeyLen == fObjLen` for that record, so it is stored uncompressed |
+| 13 | `streamerinfo.md`: the `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | Not so: in `container/file-minimal` the file is uncompressed and `fNbytes - fKeylen == fObjlen` for that record, so it is stored uncompressed |
 
 ## 11. Reference files
 
 | Case | Exercises |
 |---|---|
-| `serialization/object-tags` | New-class records, a class back-reference, an object back-reference, and the `fKeyLen` offset |
+| `serialization/object-tags` | New-class records, a class back-reference, an object back-reference, and the `fKeylen` offset |
 | `serialization/objects` | A null pointer, and byte-count-plus-class-record pointers |
 | `serialization/basic-types` | A foreign class: version word 0 followed by a checksum |
 | `serialization/version-zero` | A declared-version-0 class: version word 0 followed by no checksum |

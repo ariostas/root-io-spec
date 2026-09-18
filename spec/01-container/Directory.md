@@ -23,9 +23,12 @@ copy is written by `TFile::Init` rather than by the directory streamer
 part.
 
 > ROOT never reads that copy back. Every reader jumps `fNbytesName` bytes from
-> `fSeekDir`, and `TFile::Init` re-reads the name from the *key*, deliberately
-> discarding the stored one so that a renamed file still opens
-> (`root/io/io/src/TFile.cxx:837-839`).
+> `fSeekDir`, and `TFile::Init` reads the payload's class name and name into a
+> throwaway `TString` — twice into the same variable, with the comment *"file may
+> have been renamed"* — keeping only `fTitle`
+> (`root/io/io/src/TFile.cxx:836-839`). `fName` is never taken from the file at
+> all: it stays the path the caller passed to `TFile::Open`, which is what lets a
+> renamed file open.
 
 A **subdirectory** record has no such prefix; its fields begin immediately after
 its key. Both cases are covered by one rule, because `fNbytesName` differs:

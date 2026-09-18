@@ -194,7 +194,7 @@ Given a buffer position where an object of class `TMatrixTSym<T>` begins, with
    `sizeof(T) × fNrows × (fNrows + 1) / 2`.
 5. The byte count covers the version word, the `TObject` base and
    `TMatrixTBase`'s members, and **no** elements — so for a top-level record,
-   `fObjLen` exceeds the byte count's span by invariant 4's amount.
+   `fObjlen` exceeds the byte count's span by invariant 4's amount.
 6. No file contains a streamer info named `TMatrixTSym<T>`.
 7. For `TMatrixT<T>` and `TVectorT<T>` above their version guards, the object
    ends exactly where its byte count says: these are ordinary.

@@ -630,7 +630,7 @@ a rewritten member — and not from the element list about to be emitted. See
 1. If `fSeekInfo` is 0 or not greater than `fBEGIN`, the file records no streamer
    information.
 2. Read the record at `fSeekInfo`, of `fNbytesInfo` bytes, and decompress its
-   payload if `fNbytes - fKeyLen != fObjLen`.
+   payload if `fNbytes - fKeylen != fObjlen`.
 3. Parse the payload as a `TList` (§4). Remember that buffer positions count from
    the start of the **key** ([Buffer framing §1](Buffer.md#1-what-a-buffer-is)).
 4. For each entry, resolve its class from the class tag or class back-reference.
@@ -671,7 +671,7 @@ a rewritten member — and not from the element list about to be emitted. See
 11. `fArrayDim` is between 0 and 5, and when it is non-zero the first `fArrayDim`
     entries of `fMaxIndex` are all positive and their product equals
     `fArrayLength`.
-12. The bytes consumed by the outer list equal `fObjLen` exactly.
+12. The bytes consumed by the outer list equal `fObjlen` exactly.
 
 Invariant 11 is the one that legitimately fails: an STL element's `fArrayDim` was
 not written at all before ROOT 6.24/02 (§10).
@@ -682,7 +682,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 
 | # | Claim | Actually |
 |---|---|---|
-| 1 | The `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | It uses the file's own algorithm and level, and is uncompressed when the level is 0. In `container/file-minimal` the record satisfies `fNbytes - fKeyLen == fObjLen` (§2) |
+| 1 | The `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | It uses the file's own algorithm and level, and is uncompressed when the level is 0. In `container/file-minimal` the record satisfies `fNbytes - fKeylen == fObjlen` (§2) |
 | 2 | The list's elements are "sequentially, TStreamerInfo objects" | Each entry is followed by a `TList` option length byte. This was already true in 3.02.06, where `TList` was version 4, so the document is wrong even for its own release; a reader following it desynchronises after the first entry (§4) |
 | 3 | The list holds only `TStreamerInfo` objects, one per class used in data records | It may end with a `TList` named `listOfRules`, and it may contain infos for the bootstrap classes themselves (§3.1, §3.3) |
 | 4 | — | An empty list is written deliberately and means "no classes described" (§3.2) |

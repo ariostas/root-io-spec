@@ -32,7 +32,7 @@ To walk the chain, read a 4-byte signed integer at the current offset:
 > Nothing in `TFile::Open` walks the chain: objects are reached through
 > `fSeekDir`, `fSeekKeys` and `fSeekFree`. Only `TFile::Map` walks, and when it
 > meets a zero it prints `=====E R R O R=======` and abandons the rest of the
-> file (`root/io/io/src/TFile.cxx:1676-1680`) — ROOT agrees a zero is a defect,
+> file (`root/io/io/src/TFile.cxx:1592`, from the node marked at `root/io/io/src/TFile.cxx:1676-1680`) — ROOT agrees a zero is a defect,
 > but goes on reading the file's contents regardless.
 >
 > A reader whose job is to enumerate *everything* — a checker, a repair tool —
@@ -41,6 +41,45 @@ To walk the chain, read a 4-byte signed integer at the current offset:
 > a 70-byte hole with a zero where a record header should be, between the last
 > data record and the free-list record, and ROOT opens it and reads its `TTree`
 > without a word.
+
+### 1.1 Recovering a file whose key list was never written
+
+A file abandoned before a close or a `TFile::Write` has `fSeekFree` 0 and a
+`fSeekKeys` that names no record, so **nothing in the directory layer can find its
+objects** ([FileHeader §5.4](FileHeader.md#54-fseekfree-fnbytesfree-nfree)). Crashed
+jobs produce these, and the records themselves are usually intact. Walking the chain
+of §1 is what recovers them, and ROOT's own `TFile::Recover` is exactly that walk
+(`root/io/io/src/TFile.cxx:2118-2199`):
+
+1. Take the bound from the **actual file size**, not from the header: ROOT assigns
+   `fEND = size` before scanning (`root/io/io/src/TFile.cxx:2118`), because a
+   never-closed file's `fEND` is stale.
+2. Walk from `fBEGIN` by the rules of §1 — a negative value is a free span to skip,
+   a zero aborts the scan.
+3. At each record read the key (§2). If the class-name length is outside `1..100`,
+   **stop**: ROOT treats that as the end of usable data
+   (`root/io/io/src/TFile.cxx:2163`), and it is the check that keeps a scan from
+   running away through arbitrary bytes.
+4. Accept the key as an object of *this* directory only when `fSeekPdir` equals the
+   directory's own `fSeekDir`, and skip any key whose class name is `TBasket` or
+   which inherits from `TFile` (`root/io/io/src/TFile.cxx:2171-2172`). Baskets are
+   skipped because they are reached through their branch, never by name
+   ([TBasket §6](../04-ttree/TBasket.md)).
+5. A key named `StreamerInfo` is not an object: take `fSeekKey` and `fNbytes` from
+   it into `fSeekInfo`/`fNbytesInfo` (`root/io/io/src/TFile.cxx:2175-2178`), which is
+   how a recovered file still gets its streamer information.
+
+> **One condition a third-party reader should not copy.** ROOT also requires
+> `TClass::GetClass(classname)` to be non-null — a class it has a dictionary for
+> (`root/io/io/src/TFile.cxx:2171`). A reader working from this specification has no
+> dictionaries and SHOULD accept any class name instead; the streamer info in the
+> file is what decides whether the object can be decoded, and dropping the test
+> recovers strictly more than ROOT does.
+
+Recovery is a separate decision from reading the free list: ROOT calls it only when
+`fSeekKeys` is past `fBEGIN` and `fEND` fits the file
+(`root/io/io/src/TFile.cxx:869`, `root/io/io/src/TFile.cxx:899`), and it writes the
+recovered keys back only if the file was opened writable.
 
 ## 2. Key layout
 
@@ -128,7 +167,7 @@ for overflow when building a key, only when reading one back
 
 For a `TBasket`, `fKeylen` covers the basket-specific fields streamed *after* the
 ten fields above, not just the key (`root/tree/tree/src/TBasket.cxx:89`). See
-§3.7, and [TBasket](../04-ttree/TBasket.md).
+§3.11, and [TBasket](../04-ttree/TBasket.md).
 
 ### 3.4 `fVersion`
 
@@ -278,7 +317,7 @@ Truncated to `kTitleMax = 32000` characters when the key is built
 (`root/io/io/src/TKey.cxx:71`, `:459`), before `fKeylen` is computed, so the
 truncation is reflected in `fKeylen`. No truncation is applied on read.
 
-### 3.7 A key can be longer than its strings
+### 3.11 A key can be longer than its strings
 
 §3.3 notes that a `TBasket`'s `fKeylen` covers more than the key. This section
 states the consequence, because it is the one that breaks readers.
@@ -328,7 +367,8 @@ the two rules it implements, since ROOT is not self-consistent here.
 
 Special values used when parsing a `name;cycle` string
 (`root/core/base/src/TDirectory.cxx:1316-1372`): no `;` means 9999, `;*` means
-10000, and a non-numeric suffix means 9999.
+10000, a non-numeric suffix means 9999, and a numeric suffix at or above
+`Short_t`'s maximum means **0** (`root/core/base/src/TDirectory.cxx:1365-1366`).
 
 > Demonstrated by `container/cycles`: three records named `str` with cycles 1, 2
 > and 3, all present.
@@ -394,7 +434,7 @@ Apart from the large layout, the fixed part of the key has not changed since
 3. `fKeylen` equals the actual length of the key: 26 or 34 plus the three counted
    strings, with the `"TDirectory"` substitution applied — **except for a `TKey`
    subclass that appends fields of its own**, where it is larger by exactly those
-   fields. `TBasket` is the case that occurs; see §3.7.
+   fields. `TBasket` is the case that occurs; see §3.11.
 4. `fSeekKey + fNbytes <= fEND`.
 5. `fObjlen >= 0` and `fKeylen <= INT_MAX - fObjlen`
    (`root/io/io/src/TKey.cxx:84-93`).
@@ -424,7 +464,7 @@ worth knowing: the `Streamer` read path performs the same checks *except*
 | 8 | The `fDatime` formula is given without qualification | The year field is 6 bits, valid 1995-2058, wrapping silently; and it is local time with no zone (§3.7) |
 | 9 | `keyslist.md`: the class name is "'TFile' or 'TDirectory'", length 5 or 10 | It is the containing directory's class, so any `TFile` subclass name can appear (§3.9) |
 | 10 | Neither states any payload size ceiling | ~1 GiB for a single streamed object (§5) |
-| 11 | `datarecord.md` names the members `fObjLen` and `fKeyLen` | They are `fObjlen` and `fKeylen` — relevant when grepping the source |
+| 11 | `datarecord.md` names the members `fObjLen` and `fKeyLen` | In `TKey` they are `fObjlen` and `fKeylen` — relevant when grepping the source. Confusingly, RNTuple's own key writer does spell them `fObjLen`/`fKeyLen` (`root/tree/ntuple/src/RMiniFile.cxx:207-209`), which is why `spec/05-rntuple/` uses that spelling and this layer does not |
 
 One inconsistency inside ROOT itself: `TKey` tests `fVersion > 1000` everywhere,
 while RNTuple's independent key parser uses `>= 1000`

@@ -60,6 +60,13 @@ Two layouts exist, selected by `fVersion`:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
+> **The rows are 4 bytes wide, but the header stops being 4-byte aligned at
+> `fUnits`.** `fUnits` is a single byte at offset 32, so `fCompress`, `fSeekInfo`,
+> `fNbytesInfo`, the `TUUID` version word and the UUID each straddle a row
+> boundary. From that point the diagram shows the **order** of the fields, not
+> their column positions; §2.2's offsets are authoritative and are what a reader
+> should implement against.
+
 The wide layout, which the right-hand column below gives as offsets, is drawn
 out in [Large files §2](LargeFiles.md#2-the-file-header).
 
@@ -157,9 +164,13 @@ compares the two only to detect truncation, so trailing bytes past `fEND` are
 simply outside the format. Two different things produce them:
 
 - **A file that was never closed** — the value on disk is then whatever the last
-  successful header write left. `fSeekFree == 0` is the reliable signal for that
-  case (§5.4), because ROOT writes the free list before the header when closing
-  (`root/io/io/src/TFile.cxx:1024-1025`).
+  successful header write left. `fSeekFree == 0` proves that case, because ROOT
+  writes the free list before the header when closing
+  (`root/io/io/src/TFile.cxx:1024-1025`). **The converse does not hold**: a
+  non-zero `fSeekFree` is not evidence of a clean close, because `TFile::Write`
+  also writes the free list and then the header (`root/io/io/src/TFile.cxx:2508-2510`),
+  and `TTree::AutoSave` goes through it. A job that wrote a tree and then crashed
+  leaves a plausible-looking header behind (§5.4).
 - **A cleanly closed file with slack all the same.** `pippa.root` in the corpus of
   `PLAN.md` §9.9 — ROOT 2.24/00, `fSeekFree` 391546, so closed by that signal — is
   391 645 bytes long with `fEND` 391 641 and four unexplained trailing bytes.
@@ -178,14 +189,14 @@ Two different offsets are in play here, and conflating them is a common error:
 
 | Offset | What starts there |
 |---|---|
-| `fBEGIN + fKeyLen` | the record's payload, beginning with the duplicated name and title |
+| `fBEGIN + fKeylen` | the record's payload, beginning with the duplicated name and title |
 | `fBEGIN + fNbytesName` | the `TDirectoryFile` fields proper, starting with its class version |
 
 `fNbytesName` exists precisely to give the second offset, since the duplicated name
 and title are variable-length. `TFile::Init()` uses it that way
 (`root/io/io/src/TFile.cxx:804`).
 
-In `container/file-minimal`: `fKeyLen` is 91, the name is 32 bytes and the title 25,
+In `container/file-minimal`: `fKeylen` is 91, the name is 32 bytes and the title 25,
 each with a 1-byte length prefix, so `fNbytesName = 91 + 33 + 26 = 150`. The payload
 starts at 191 and the `TDirectoryFile` fields at 250.
 
@@ -218,8 +229,23 @@ wrote it is never zero: the list always ends with a sentinel segment running to
 > A reader that trusts `nfree` as a count, rather than walking the list, is wrong
 > on those.
 
-`fSeekFree == 0` marks a file that was created but never closed. ROOT warns and
-attempts recovery rather than failing (`root/io/io/src/TFile.cxx:771-775`).
+`fSeekFree == 0` marks a file whose free list was never written — created and
+abandoned before any close or `TFile::Write`. **It is a one-way signal**: a file
+that crashed after an `AutoSave` has a non-zero `fSeekFree` and was still never
+closed, so there is no field that proves a clean close (§5.2).
+
+ROOT's reaction is narrower than it looks. Only when the file is opened
+**writable** does it touch the free list at all, the test is `fSeekFree > fBEGIN`
+rather than non-zero, and the failure path is a warning that skips the list — not
+recovery (`root/io/io/src/TFile.cxx:769-776`):
+
+```
+file %s probably not closed, cannot read free segments
+```
+
+Recovery is a separate decision, gated on `fSeekKeys` and `fEND`
+(`root/io/io/src/TFile.cxx:869`, `root/io/io/src/TFile.cxx:899`), and a reader that
+only reads objects never needs the free list at all.
 
 ### 5.5 `fSeekInfo`, `fNbytesInfo`
 
@@ -355,7 +381,7 @@ A conforming reader performs the following steps.
 4. Read the remaining fields at the offsets for the selected layout.
 5. Reject if `fBEGIN < 0` or `fBEGIN > fEND`.
 6. The root directory record's key begins at `fBEGIN`. Its payload begins at
-   `fBEGIN + fKeyLen` with a duplicated name and title; the `TDirectoryFile` fields
+   `fBEGIN + fKeylen` with a duplicated name and title; the `TDirectoryFile` fields
    begin at `fBEGIN + fNbytesName` (§5.3). Continue with
    [Directories and key lists](Directory.md).
 
@@ -376,18 +402,24 @@ make the data ambiguous.
    the only direction ROOT rejects (`root/io/io/src/TFile.cxx:881-889`). A file
    longer than `fEND` carries trailing bytes outside the format; ROOT never looks
    at them and neither should a reader (§5.2).
-6. `fSeekFree == 0` **iff** the file was never closed. Otherwise
-   `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes` of the
-   record at `fSeekFree`.
+6. `fSeekFree == 0` **implies** the file was never closed; the converse does not
+   hold, since `TFile::Write` writes the free list mid-job (§5.4). When it is
+   non-zero, `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes`
+   of the record at `fSeekFree` — which is the direction
+   `tools/check_invariants.py` checks.
 7. `nfree` equals the number of entries in the free list at `fSeekFree`, and is
    at least 1 — on a file written by ROOT 5 or later. It is advisory (§5.4) and
    ROOT 4 wrote 0.
 8. `fSeekInfo` is either `<= fBEGIN` (no streamer info) or satisfies
    `fBEGIN < fSeekInfo < fEND` with `fNbytesInfo` equal to the `fNbytes` of the
    record there.
-9. `fVersion >= 1000000` **iff** `fEND > 2000000000` at the time of the last header
-   write. The converse does not hold: a file that shrank below the threshold keeps
-   the flag.
+9. `fVersion >= 1000000` **if** `fEND > 2000000000`, and on every file seen so far
+   the reverse holds too. It is not guaranteed: the flag is set when `fEND` crosses
+   the threshold (`root/io/io/src/TFile.cxx:2679`) and is never cleared, so a file
+   that shrank below it again would keep the flag and still be readable.
+   `tools/check_invariants.py` enforces the strict `iff`, which is therefore
+   slightly stricter than the format requires; no file in either corpus violates
+   it. A reader MUST take the key width from the flag, never from `fEND`.
 10. `fUnits` is 4 when `fVersion < 1000000` and 8 otherwise. ROOT does not enforce
     this and does not read the field.
 
@@ -407,12 +439,13 @@ Against `root/io/doc/TFile/header.md` in the pinned submodule:
 |---|---|---|
 | 1 | Widening is triggered when "END, SeekFree, or SeekInfo" exceed 2000000000 | The test is on `fEND` alone, strictly greater-than (§3) |
 | 2 | *This document, until 2026-09-15*: invariant 5 required `fEND == filesize` for a cleanly closed file | `fEND <= filesize`. ROOT compares them only to detect truncation, and a cleanly closed ROOT 2.24/00 file in the corpus has four trailing bytes past `fEND` (§5.2) |
-| 2 | `Compress` is a "Zip compression level (i.e. 0-9)" | `100 * algorithm + level` since ~5.30 (§5.8); typical values like `505` are unexplainable under the stated rule |
-| 3 | `Units` is "Number of bytes for file pointers (4)" | Also 8; and ROOT never reads it (§5.7) |
-| 4 | Padding is "extra space to allow END, SeekFree, or SeekInfo to become 64 bit" | True as intent, but the padding is never written and may hold stale data (§7) |
-| 5 | `END` "will be == to file size in bytes" | Only for a cleanly closed file (§5.2) |
-| 6 | `NbytesFree` / `NbytesInfo` are "Number of bytes in" the record | Specifically `TKey::fNbytes`, including the key (§5.4) |
-| 7 | — | `fBEGIN` is not flagged as never widening despite being 64-bit in memory (§1) |
+| 3 | `Compress` is a "Zip compression level (i.e. 0-9)" | `100 * algorithm + level` since ~5.30 (§5.8); typical values like `505` are unexplainable under the stated rule |
+| 4 | `Units` is "Number of bytes for file pointers (4)" | Also 8; and ROOT never reads it (§5.7) |
+| 5 | Padding is "extra space to allow END, SeekFree, or SeekInfo to become 64 bit" | True as intent, but the padding is never written and may hold stale data (§7) |
+| 6 | `END` "will be == to file size in bytes" | Only for a cleanly closed file (§5.2) |
+| 7 | `NbytesFree` / `NbytesInfo` are "Number of bytes in" the record | Specifically `TKey::fNbytes`, including the key (§5.4) |
+| 8 | — | `fBEGIN` is not flagged as never widening despite being 64-bit in memory (§1) |
+| 9 | *This document, until 2026-09-18*: invariant 6 made `fSeekFree == 0` an **iff** for "never closed" | One-way only. `TFile::Write` writes the free list and header mid-job, so a crashed job leaves a non-zero `fSeekFree` in a file that was never closed (§5.4) |
 | 8 | — | No statement anywhere that the byte order is big-endian |
 | 9 | — | Bytes 96-99 are required to be zero by the registered media type (§4) |
 | 10 | — | Reproducible mode zeroes the UUID (§6) |

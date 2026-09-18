@@ -37,7 +37,7 @@ The total size is therefore `4 + fN × width`, exactly, in every context.
 > and `TArrayL64` are indistinguishable from their bytes alone.
 
 > Demonstrated by `classes/tarray`, which writes all seven as standalone records:
-> their `fObjLen` values are 6, 8, 12, 20, 20, 12 and 20 for two elements each.
+> their `fObjlen` values are 6, 8, 12, 20, 20, 12 and 20 for two elements each.
 
 ## 2. The streamer info, where it exists, is wrong by one byte
 
@@ -128,7 +128,7 @@ nothing.
 ### 3.3 As a standalone record
 
 The record's object data is the array and nothing else, so
-`fObjLen == 4 + fN × width`.
+`fObjlen == 4 + fN × width`.
 
 > Demonstrated by `classes/tarray`.
 
@@ -147,7 +147,7 @@ delimits a `TArray`. Getting `fN` or the width wrong is unrecoverable until the
 
 1. `fN` is not negative.
 2. A `TArray` occupies exactly `4 + fN × width` bytes.
-3. A standalone `TArray` record has `fObjLen == 4 + fN × width`.
+3. A standalone `TArray` record has `fObjlen == 4 + fN × width`.
 
 Invariant 2 is checked through the enclosing object's byte count, as §4 explains:
 a wrong width shifts everything after it and the enclosing count catches it.

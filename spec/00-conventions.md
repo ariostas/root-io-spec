@@ -46,6 +46,7 @@ choices. See `PLAN.md` §2.8.
 | Everything serialized through `TBuffer` — i.e. all object data | **big-endian** |
 | RNTuple envelopes and page payloads | **little-endian** |
 | The `ROOT::RNTuple` anchor, because it is an ordinary `TKey` payload | **big-endian** |
+| The two size fields of a **compression block header** — 24-bit, at block offsets 3-5 and 6-8 | **little-endian** |
 
 Big-endian is unconditional and independent of the host: it is applied by the
 `tobuf`/`frombuf` helpers in `root/core/base/inc/Bytes.h`, which byte-swap on
@@ -53,7 +54,11 @@ little-endian hosts. A reader MUST NOT assume host order anywhere.
 
 Unless a document says otherwise, every integer in `spec/01-container/`,
 `spec/02-serialization/`, `spec/03-classes/` and `spec/04-ttree/` is big-endian.
-`spec/05-rntuple/` states its own rules.
+`spec/05-rntuple/` states its own rules. The one exception inside the classic
+format is the compression block header, whose two 24-bit sizes are little-endian —
+[Compression §2](01-container/Compression.md#2-block-header) calls it the
+single most common mistake in a new implementation, so it is in the table above
+rather than left to that document alone.
 
 ## 4. Primitive types
 
@@ -167,8 +172,12 @@ user-defined class — which is what `serialization/stringlong` does.
 
 ### 5.2 Null-terminated string
 
-Bytes up to and including a `0x00` terminator. Used **only** for the class name in a
-`kNewClassTag` record. See [Buffer framing](02-serialization/Buffer.md#51-a-new-class).
+Bytes up to and including a `0x00` terminator. Its main use is the class name in a
+`kNewClassTag` record — see [Buffer framing](02-serialization/Buffer.md#51-a-new-class)
+— but it is **not** exclusive to it: a hand-written streamer that does
+`buf << someCharPointer` produces this form too, because `WriteCharP` writes
+`strlen + 1` bytes (`root/io/io/inc/TBufferFile.h:376`,
+`root/io/io/src/TBufferFile.cxx:3404-3407`). §5.4 notes the same thing.
 
 ### 5.3 `std::string`
 
@@ -215,7 +224,7 @@ byte, matching the big-endian byte order:
 |                          fNbytes                              |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |          fVersion             |                               |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          fObjLen              +
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          fObjlen              +
 |                               |                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```

@@ -17,7 +17,7 @@ Prerequisites: [Records and keys](../01-container/Record.md),
 `TBasket` derives from `TKey`, and its `Streamer` calls `TKey::Streamer` first and
 then writes more (`root/tree/tree/src/TBasket.cxx:987-988`). Because `fKeylen` is
 measured *after* the key has been written
-([Record §3.7](../01-container/Record.md#37-a-key-can-be-longer-than-its-strings)),
+([Record §3.11](../01-container/Record.md#311-a-key-can-be-longer-than-its-strings)),
 those extra fields land inside the key:
 
 ```

@@ -16,19 +16,19 @@ There is **no flag**. A reader determines it arithmetically, from three
 [key](Record.md) fields:
 
 ```
-payload length = fNbytes - fKeyLen
-compressed     if  fObjLen >  payload length
-stored raw     if  fObjLen <= payload length
+payload length = fNbytes - fKeylen
+compressed     if  fObjlen >  payload length
+stored raw     if  fObjlen <= payload length
 ```
 
-`fObjLen` is always the uncompressed length. A record whose payload is at least
-`fObjLen` bytes long is stored verbatim, with **no block header at all** — not a
+`fObjlen` is always the uncompressed length. A record whose payload is at least
+`fObjlen` bytes long is stored verbatim, with **no block header at all** — not a
 header declaring zero compression. See §6.
 
 ### 1.1 Why the test is an inequality
 
-The two differ only when the payload is **longer** than `fObjLen`, and such a
-record is stored raw: a reader takes the first `fObjLen` bytes and ignores the
+The two differ only when the payload is **longer** than `fObjlen`, and such a
+record is stored raw: a reader takes the first `fObjlen` bytes and ignores the
 rest. ROOT's test is `fObjlen > fNbytes-fKeylen`, in all eight places `TKey` makes
 the decision (`root/io/io/src/TKey.cxx:827`, `root/io/io/src/TKey.cxx:871`,
 `root/io/io/src/TKey.cxx:948`, `root/io/io/src/TKey.cxx:983`,
@@ -36,20 +36,20 @@ the decision (`root/io/io/src/TKey.cxx:827`, `root/io/io/src/TKey.cxx:871`,
 `root/io/io/src/TKey.cxx:1179`, `root/io/io/src/TKey.cxx:1191`).
 
 `TFile::Map()` is where the confusion comes from: its `CX` column is printed
-whenever the two are **unequal** (`root/io/io/src/TFile.cxx:1616`), so a record
+whenever the two are **unequal** (`root/io/io/src/TFile.cxx:1617`), so a record
 with trailing slack is displayed with a compression ratio below 1 while being read
 as raw. The display test and the read test are not the same test.
 
 This is not hypothetical. An RNTuple page blob has exactly this shape, because
 RNTuple's key writer takes the on-disk and in-memory lengths as independent
-arguments — `fNbytes = fKeyLen + szObjOnDisk` and `fObjLen = szObjInMem`
+arguments — `fNbytes = fKeylen + szObjOnDisk` and `fObjlen = szObjInMem`
 (`root/tree/ntuple/src/RMiniFile.cxx:230-235`) — and its own comment says the
 object length is kept only "for seeing compression ratios in `TFile::Map()`"
-(`root/tree/ntuple/src/RMiniFile.cxx:1437-1438`). For an `RBlob`, `fObjLen`
+(`root/tree/ntuple/src/RMiniFile.cxx:1437-1438`). For an `RBlob`, `fObjlen`
 is decorative and a reader must not derive the payload length from it.
 
 > Measured on `RNTuple.root` from the corpus of `PLAN.md` §9.9, written by ROOT
-> 6.35/01: the `RBlob` at offset 586 has `fNbytes` 789, `fKeylen` 34 and `fObjLen`
+> 6.35/01: the `RBlob` at offset 586 has `fNbytes` 789, `fKeylen` 34 and `fObjlen`
 > **723** — a 755-byte payload holding 723 bytes of object data. `TFile::Map()`
 > prints `CX = 0.96` for it and `TFile::Open` reads the file without complaint. A
 > reader using the `!=` test tries to decompress it, finds the magic `05 00`, and
@@ -100,10 +100,19 @@ Cited at `root/core/zip/src/RZip.cxx:226-228` (ZLIB),
 `root/core/lzma/src/ZipLZMA.c:84-86`, `root/core/lz4/src/ZipLZ4.cxx:65-67`,
 `root/core/zstd/src/ZipZSTD.cxx:50-52` and `root/core/zip/src/RZip.cxx:156-158`.
 
-The algorithm is determined **only** by the magic bytes. ROOT probes them in the
-order ZSTD, ZLIB, LZ4, LZMA, legacy (`root/core/zip/src/RZip.cxx:278-295`); the
-order is irrelevant to a correct reader, since the magics are distinct. Note that
-`ZL` and `ZS` differ in one byte, as do `ZS` and `CS`.
+The algorithm is determined by the magic bytes **and, for four of the five, the
+method byte as well**. ROOT's validators are
+`root/core/zip/src/RZip.cxx:247-269`: `ZL` requires `src[2] == Z_DEFLATED` (8),
+`CS` the same, `XZ` requires 0, `ZS` requires 1, and only `L4` looks at the magic
+alone. A block whose magic matches but whose method byte does not is **rejected
+outright** rather than decompressed — `R__unzip` refuses it at
+`root/core/zip/src/RZip.cxx:354` — so a reader that switches on the magic alone is
+more liberal than ROOT, not less.
+
+ROOT probes the five in the order ZSTD, ZLIB, LZ4, LZMA, legacy
+(`root/core/zip/src/RZip.cxx:278-295`); the order is irrelevant to a correct
+reader, since the magics are distinct. Note that `ZL` and `ZS` differ in one byte,
+as do `ZS` and `CS`.
 
 `CS` is the original algorithm — the initials of its authors,
 `root/core/zip/src/RZip.cxx:156` — and predates ROOT's use of the zlib library. It
@@ -170,8 +179,8 @@ Two properties follow, and both are load-bearing:
 For a single-block payload:
 
 ```
-9 + compressed size == fNbytes - fKeyLen
-uncompressed size   == fObjLen
+9 + compressed size == fNbytes - fKeylen
+uncompressed size   == fObjlen
 ```
 
 Both relations are asserted for all four algorithms in the fixtures.
@@ -220,16 +229,17 @@ no degenerate block. The payload begins immediately with object data.
 This happens when:
 
 - compression is disabled for the file or the record, or
-- `fObjLen <= 256`, since ROOT does not attempt compression below that threshold
-  (`root/io/io/src/TKey.cxx:264`), or
+- `fObjlen <= 256` **for a record written through `TKey`**, since ROOT does not
+  attempt compression below that threshold (`root/io/io/src/TKey.cxx:264`). This
+  does **not** apply to a `TBasket`, which compresses at any size — see §8 — or
 - the compressor produced output no smaller than the input.
 
-The detection rule is the one in §1: `fObjLen <= fNbytes - fKeyLen`.
+The detection rule is the one in §1: `fObjlen <= fNbytes - fKeylen`.
 
 > `container/compress-none-fallback` requests zlib on an incompressible payload.
-> The record's payload is 533 bytes with `fObjLen` 533, and begins with the object
+> The record's payload is 533 bytes with `fObjlen` 533, and begins with the object
 > byte-count word rather than any magic. `container/file-minimal` shows the
-> `fObjLen <= 256` case.
+> `fObjlen <= 256` case.
 
 Note that ROOT's incompressibility test compares a *single block's* output against
 the *whole object's* length, which is a loose test for multi-block payloads. It
@@ -240,7 +250,7 @@ affects only which files ROOT produces, never how a reader interprets one.
 `root/io/doc/TFile/README.md` states that the StreamerInfo record's payload is
 "always compressed at level 1 … even if no compression is selected". **This is not
 true in 6.40.04.** In `container/file-minimal`, written with compression disabled,
-the StreamerInfo record has `fNbytes - fKeyLen == fObjLen == 370` — uncompressed,
+the StreamerInfo record has `fNbytes - fKeylen == fObjlen == 370` — uncompressed,
 despite exceeding the 256-byte threshold. A reader MUST apply the same rule to the
 StreamerInfo record as to any other.
 
@@ -254,19 +264,19 @@ blocks written back to back. Every block but the last holds exactly `kMAXZIPBUF`
 **The block count is not stored anywhere.** A reader walks the chain, using each
 block's own header to find the next (`root/io/io/src/TKey.cxx:403-427`):
 
-1. Let the input cursor be `fKeyLen` and the output cursor 0.
+1. Let the input cursor be `fKeylen` and the output cursor 0.
 2. While at least 9 bytes of payload remain and the output cursor is below
-   `fObjLen`:
+   `fObjlen`:
    1. Read the block header. Verify the magic.
    2. Let `nin = 9 + compressed size` and `nout = uncompressed size`.
    3. Reject if `nin` exceeds the remaining input or `nout` the remaining output.
    4. Decompress `nin - 9` bytes (`nin - 17` for LZ4, from offset 17) into `nout`
       bytes at the output cursor.
    5. Advance the input cursor by `nin` and the output cursor by `nout`.
-3. Stop when the output cursor reaches `fObjLen`.
+3. Stop when the output cursor reaches `fObjlen`.
 
 Equivalently, for a payload written by ROOT, the count is
-`1 + (fObjLen - 1) / kMAXZIPBUF`. A reader MAY compute it that way, but MUST still
+`1 + (fObjlen - 1) / kMAXZIPBUF`. A reader MAY compute it that way, but MUST still
 take each block's length from its own header, since compressed lengths vary.
 
 Blocks are not padded and not aligned; they cannot be indexed arithmetically.
@@ -276,24 +286,38 @@ Blocks are not padded and not aligned; they cannot be indexed arithmetically.
 Never compressed:
 
 - The file header.
-- The key portion of any record. `fKeyLen` bytes are always plain.
+- The key portion of any record. `fKeylen` bytes are always plain.
 
-Compressed according to the usual rules, `fObjLen > 256` and a compressor that
+Compressed according to the usual rules, `fObjlen > 256` and a compressor that
 helps:
 
-- Application data records, the keys list, the free-segment list, the
-  StreamerInfo record, and `TTree` baskets.
+- Application data records, the keys list, the free-segment list and the
+  StreamerInfo record — everything written through `TKey::WriteBuffer`.
+
+**A `TBasket` is the exception, and it is the common case.** `TBasket::WriteBuffer`
+has its own compression path whose only test is on the level —
+`if (cxlevel > 0)` (`root/tree/tree/src/TBasket.cxx:1300`) — with **no size test at
+all**, where `TKey` has `if (cxlevel > 0 && fObjlen > 256)`
+(`root/io/io/src/TKey.cxx:264`). So a 40-byte basket in a compressed file *is*
+compressed, and a reader that assumes a small payload must be raw will mis-parse
+the baskets of any sparsely filled tree. The detection rule of §1 is unaffected: it
+never consults the size.
+
+> Witnessed by `ttree/tree-branchref`, written by ROOT with compression on: the
+> basket at offset 457 has `fObjlen` **108** — well under the threshold — stored in
+> **51** bytes, so `fObjlen > fNbytes - fKeylen` and the payload carries a `ZL`
+> block. Under the `TKey` rule that record could not exist.
 
 `TBasket` performs its own splitting with the same constants
 (`root/tree/tree/src/TBasket.cxx:1300-1355`); see [TBasket](../04-ttree/TBasket.md).
 
 ## 9. Invariants
 
-1. For every record, `fNbytes - fKeyLen` is either at least `fObjLen` (raw) or
+1. For every record, `fNbytes - fKeylen` is either at least `fObjlen` (raw) or
    the exact total length of a chain of compression blocks.
 2. For each block, the total length is `9 + compressed size`, and the block lies
    entirely within the record's payload.
-3. The sum of the blocks' uncompressed sizes equals `fObjLen`.
+3. The sum of the blocks' uncompressed sizes equals `fObjlen`.
 4. Every block's magic is one of the five in §3, and the method byte matches that
    algorithm.
 5. No block declares an uncompressed size greater than `0xFFFFFF`, and every block
@@ -315,9 +339,9 @@ Against the pinned submodule:
 |---|---|---|
 | 1 | `root/io/doc/TFile/README.md`: there are "ten compression levels, 0-9" and the algorithm is "an in memory ZIP compression written for the DELPHI collaboration" | Five algorithms exist (§3); the setting is `100 * algorithm + level` (see [File header](FileHeader.md#58-fcompress)) |
 | 2 | `root/io/doc/TFile/README.md`: the StreamerInfo payload is "always compressed at level 1 … even if no compression is selected" | Not in 6.40.04; disproved by `container/file-minimal` (§6) |
-| 3 | `root/io/doc/TFile/README.md`: records "where the uncompressed size of the data portion is 256 bytes or less" are not compressed | Correct, but the threshold is `fObjLen > 256` strictly, and it is one of three reasons a payload may be raw (§6) |
+| 3 | `root/io/doc/TFile/README.md`: records "where the uncompressed size of the data portion is 256 bytes or less" are not compressed | True of `TKey` only, and strictly `fObjlen > 256`. A `TBasket` has no size test and compresses at any size (§8), which the shipped documentation does not mention |
 | 4 | `root/core/lz4/src/ZipLZ4.cxx:23-31`, comment: the header holds "3 bytes of uncompressed size, 3 bytes of compressed size" | Reversed; the code writes compressed at 3-5 and uncompressed at 6-8, like every other algorithm (§4) |
-| 5 | *This document, until 2026-09-15*: a payload is compressed when `fNbytes - fKeyLen != fObjLen` | Compressed when `fObjLen > fNbytes - fKeyLen`. The `!=` form is `TFile::Map()`'s display test, not `TKey`'s read test, and a reader using it rejects any file containing an RNTuple page blob (§1.1) |
+| 5 | *This document, until 2026-09-15*: a payload is compressed when `fNbytes - fKeylen != fObjlen` | Compressed when `fObjlen > fNbytes - fKeylen`. The `!=` form is `TFile::Map()`'s display test, not `TKey`'s read test, and a reader using it rejects any file containing an RNTuple page blob (§1.1) |
 
 ## 11. Reference files
 
@@ -328,7 +352,7 @@ Against the pinned submodule:
 | `container/compress-lz4` | `L4` magic, the XXH64 checksum, the 17-byte header |
 | `container/compress-zstd` | `ZS` magic, method 1 |
 | `container/compress-none-fallback` | Raw storage despite `fCompress` requesting zlib |
-| `container/file-minimal` | Raw storage via the `fObjLen <= 256` threshold |
+| `container/file-minimal` | Raw storage via the `fObjlen <= 256` threshold |
 
 All five compressed cases hold the same 8221-byte payload, so their block sizes
 are directly comparable:
