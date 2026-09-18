@@ -1138,11 +1138,67 @@ What that took, and what it exposed:
   `TSeqCollection`, `TCollection` and `TString` arrive because a **null** object
   pointer forces its class's info to be written, and `TAxis::fLabels` is one.
 
-**M14 — trees.** `WritingTrees.md` and a flat `TTree`: fundamental leaves, a
-fixed-size array, and one counted variable-size array. Done when `tree->Scan()`
-and `GetEntry(i)` return what went in for every branch and every entry — the
-strongest check available, since it drives ROOT's own basket and leaf code over
-bytes this project produced.
+**M14 — ✅ done 2026-09-18. A `TTree`, byte-identical to ROOT's in every
+record.**
+*The strongest check in the project, and the one that had the most to get right.*
+
+`WritingTrees.md` (400 lines), `written/tree` (81 assertions), and in
+`rootwrite.py`: leaves, branches, baskets, the tree record and the eighteen
+streamer infos the chain needs.
+
+**`data/written/tree.root` reproduces `data/ttree/basket.root` record for record**
+— both baskets and the `TTree`, keys included, once the wall-clock timestamp is
+masked. That is stricter than the histogram comparison, because a branch stores
+its baskets' **offsets**: one byte's difference anywhere earlier in the file would
+change the tree record. The two names are the same length for that reason, and
+`tools/test_write.py` asserts the equality.
+
+The only difference in the whole file is one `StreamerInfo` entry: ROOT appends a
+`listOfRules` of two read rules for `TTree` versions ≤ 16 and ≤ 18, which a file
+written at version 20 can never trigger.
+
+What a writer needs that no reading document had reason to state:
+
+- **A basket's key version is 1004 whatever the file's size.** `TBasket`'s
+  constructor adds 1000 unconditionally (`root/tree/tree/src/TBasket.cxx:71`), so
+  a 16 KB file has 8-byte offsets in those keys — and its `fKeylen` covers the
+  19-byte basket header, which lives *inside* the key.
+- **A basket is never in the directory's key list**, and ROOT's own destructor
+  comment says so. The key list holds the `TTree` key alone.
+- **`fLeafCount` is an object reference, not a name**, and `fLeaves` holds
+  references to the same leaf objects `fBranches` holds. So the **counter branch
+  must be written before the counted one** — a write-side ordering constraint
+  with no reading-side counterpart.
+- **A counter leaf's `fMaximum` must cover every count in the file** before the
+  tree record can be written, so a writer needs a full pass over the data. Too
+  small and ROOT **clamps** the read with a raw `printf`, desynchronising the rest
+  of the entry (`root/tree/tree/src/TLeafI.cxx:174-180`).
+- **`fNevBufSize` means two things** — the fixed entry stride, or the offset
+  array's capacity — and the wrong one is read silently at the wrong stride.
+- **`fBaskets` is `fWriteBasket + 1` slots of null**, not an empty array, because
+  `TObjArray::Streamer` writes `fLast + 1` entries after `TBranch::Streamer` has
+  removed every basket already on disk.
+- **`fBranches` and `fLeaves` are member objects, not pointers** (`fType` 61), so
+  no class record — the same 18-byte trap as `fElements` in M12, in the other
+  direction.
+- **`fMaxVirtualSize` must not be negative** and **`fWeight` must be 1.0**, two
+  fields a reading spec would call decorative: the first diverts basket reading
+  onto an unbounded cluster path, the second multiplies every `Draw`.
+- **`fEntryOffsetLen` is shrunk at flush** to `4 × fNevBuf`, which is why ROOT
+  writes 12 where the branch was created with 1000.
+- **`ROOT::TIOFeatures` has no `ClassDef`**, so its eleven bytes are a version
+  word of 0 and the checksum `0x1aa12f10` — the one foreign class in the classic
+  format a writer cannot avoid.
+- **`TBasket` gets no streamer info**, although every basket in the file is one:
+  the cleanest proof in the format that ROOT reads a class the file does not
+  describe. `TBranchRef` and `TRefTable` *do* get one, because `fBranchRef` is a
+  null pointer and a null forces its class's info to be written.
+
+ROOT reads the result through its own machinery: `Scan`, `GetEntry` returning 8,
+12 and 16 bytes for the three entries, and `Draw` selecting six values from three
+entries — which only works if the counted array's offsets and `fLeafCount`
+resolved. And `check_invariants.py` decodes both baskets' entries and checks their
+byte spans, exactly as it does for a ROOT-written fixture.
 
 **M15 — `WriterInvariants.md`** and the front pages: the collected index of every
 `Invariants` entry, organised for a writer rather than by layer, and the status

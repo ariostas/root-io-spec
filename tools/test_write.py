@@ -313,6 +313,132 @@ class Histograms(unittest.TestCase):
             rw.Hist1D("h", "", axis, [0.0] * 5, rw.Stats(), sumw2=[0.0] * 3)
 
 
+class Trees(unittest.TestCase):
+    """The writer's tree against the one ROOT wrote.
+
+    `data/ttree/basket.root` and `data/written/tree.root` hold the same tree,
+    and both basket records and the `TTree` record are byte-identical -- keys
+    included, once the wall-clock timestamp is masked. The file names are the
+    same length on purpose, because a branch stores its baskets' offsets.
+    """
+
+    def build(self):
+        tree = rw.Tree("t", "a tree")
+        n = tree.branch("n", "I")
+        tree.branch("a", "F", counter=n)
+        for i in range(3):
+            tree.fill({"n": i + 1, "a": [float(i)] * (i + 1)})
+        return tree
+
+    def written(self):
+        f = rw.FileWriter("data/written/tree.root", "basket layouts")
+        for record in self.build().records():
+            f.add(record)
+        for info in rw.tree_infos(("I", "F")):
+            f.add_info(info)
+        return f.to_bytes()
+
+    @staticmethod
+    def mask_datime(record: bytes) -> bytes:
+        """A key's fDatime is four bytes at offset 10 (`Record.md` 2)."""
+        return record[:10] + b"\x00" * 4 + record[14:]
+
+    def test_records_are_identical_to_roots(self):
+        ours = self.written()
+        root_buf, _, root_recs = rootfile.load(REPO / "data/ttree/basket.root")
+        header = rootfile.read_header(ours)
+        our_recs = rootfile.read_records(ours, header)
+        wanted = [(r.class_name, r.name) for r in root_recs
+                  if r.class_name in ("TBasket", "TTree")]
+        self.assertEqual(
+            [(r.class_name, r.name) for r in our_recs
+             if r.class_name in ("TBasket", "TTree")], wanted)
+        for cls, name in wanted:
+            a = [r for r in root_recs
+                 if r.class_name == cls and r.name == name][0]
+            b = [r for r in our_recs
+                 if r.class_name == cls and r.name == name][0]
+            self.assertEqual(a.offset, b.offset, f"{cls} {name} offset")
+            self.assertEqual(
+                self.mask_datime(bytes(root_buf[a.offset:a.offset + a.nbytes])),
+                self.mask_datime(bytes(ours[b.offset:b.offset + b.nbytes])),
+                f"{cls} {name} record")
+
+    def test_basket_key_is_the_large_form(self):
+        basket = self.build().branches[0].basket()
+        self.assertEqual(basket.key_version, 1004)
+        self.assertEqual(len(basket.key_extra), 19)
+        # fCycle is the basket number, and nothing reads it.
+        self.assertEqual(basket.cycle, 0)
+        # And a basket is never in the directory's key list.
+        self.assertFalse(basket.in_key_list)
+
+    def test_offset_array_only_when_entries_vary(self):
+        tree = self.build()
+        n, a = tree.branches
+        self.assertFalse(n.variable)
+        self.assertTrue(a.variable)
+        # The count is fNevBuf + 1 and the last element is never read.
+        payload = a.basket().payload
+        self.assertEqual(len(payload), 24 + 4 + 16)
+        self.assertEqual(payload[24:28], rw.i32(4))
+        self.assertEqual(payload[-4:], rw.i32(0))
+
+    def test_entry_offset_len_is_shrunk_at_flush(self):
+        tree = self.build()
+        a = tree.branches[1]
+        self.assertEqual(a.entry_offset_len, 1000)
+        self.assertEqual(a.flushed_entry_offset_len(), 12)
+
+    def test_counter_leaf_carries_is_range_and_the_maximum(self):
+        tree = self.build()
+        n, a = tree.branches
+        self.assertTrue(n.leaf.is_range)
+        self.assertFalse(a.leaf.is_range)
+        self.assertEqual(n.leaf.maximum, 3)
+        self.assertIs(a.leaf.counter, n.leaf)
+
+    def test_a_count_mismatch_is_refused(self):
+        tree = self.build()
+        with self.assertRaises(rw.WriteError):
+            tree.fill({"n": 2, "a": [1.0]})
+        with self.assertRaises(rw.WriteError):
+            tree.fill({"n": 1})
+
+    def test_infos_match_roots(self):
+        _, _, infos = streamer_infos(REPO / "data/ttree/basket.root")
+        theirs = {i.name: i for i in infos}
+        ours = {i.name: i for i in rw.tree_infos(("I", "F"))}
+        self.assertEqual(list(ours), [i.name for i in infos])
+        for name, mine in ours.items():
+            self.assertEqual(mine.checksum, theirs[name].checksum,
+                             f"{name} checksum")
+            self.assertEqual(
+                [(e.cls, e.name, e.title, e.ftype, e.type_name, e.size)
+                 for e in mine.elements],
+                [(e.cls, e.name, e.title, e.ftype, e.type_name, e.fsize)
+                 for e in theirs[name].elements], name)
+
+    def test_root_appends_two_obsolete_io_rules(self):
+        """The one difference between the two StreamerInfo records.
+
+        ROOT's list has a nineteenth entry, a `listOfRules` of two read rules
+        for `TTree` versions <= 16 and <= 18. A file written at version 20
+        cannot use them, so the writer omits them -- which is why only this
+        record differs between the two files.
+        """
+        buf, _, records = rootfile.load(REPO / "data/ttree/basket.root")
+        header = rootfile.read_header(buf)
+        rec = [r for r in records if r.offset == header.seek_info][0]
+        slots = rootfile.read_tlist(buf, rec)
+        self.assertEqual(len(slots), 19)
+        name, rules = rootfile.read_rule_list(buf, rec, slots[-1])
+        self.assertEqual(name, "listOfRules")
+        self.assertEqual(len(rules), 2)
+        for rule in rules:
+            self.assertIn('sourceClass="TTree"', rule)
+
+
 class Compression(unittest.TestCase):
     def test_block_round_trips_through_the_reader(self):
         data = b"hello " * 400

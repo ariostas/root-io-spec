@@ -27,6 +27,20 @@ was established, which is the other half of the story.
   `TList` down to each element subclass. `tools/test_write.py` builds that record
   for `TObjString` from the document and asserts it is **byte-identical** to the one
   ROOT wrote in `data/container/file-minimal.root`, checksum computed from scratch.
+- [Writing trees](spec/06-writing/WritingTrees.md): a flat `TTree` -- the basket
+  records, the branch and leaf descriptions inside the tree record, and the fields
+  that must agree with one another. **`data/written/tree.root` reproduces
+  `data/ttree/basket.root` record for record**, both baskets and the `TTree`, keys
+  included. Nine things a reader never needs: a basket's key version is **1004**
+  whatever the file's size, and its `fKeylen` covers the 19-byte basket header; a
+  basket is never in the key list; `fLeafCount` and `fLeaves` are **object
+  references**, so the counter branch must be written first; a counter leaf's
+  `fMaximum` must cover every count in the file or ROOT clamps the read;
+  `fNevBufSize` means the entry stride or the offset array's capacity depending on
+  the branch; `fBaskets` is `fWriteBasket + 1` slots of null; `fBranches` and
+  `fLeaves` are member objects rather than pointers; `fMaxVirtualSize` must not be
+  negative and `fWeight` must be 1.0; and `ROOT::TIOFeatures` has no `ClassDef`,
+  so its version word is 0 and a checksum.
 - [Writing histograms](spec/06-writing/WritingHistograms.md): `TH1F` and `TH1D`
   member by member at the current class version, with every field marked fixed,
   derived or free, and the fifteen `TStreamerInfo` records the chain needs.

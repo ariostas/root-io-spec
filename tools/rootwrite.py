@@ -37,6 +37,9 @@ UNITS_SMALL = 4
 BIG = 2000000000
 #: The default ROOT writes for a fresh key (spec/01-container/Record.md 4.6).
 CYCLE = 1
+#: A key whose version exceeds this stores 8-byte offsets. A TBasket always
+#: does, whatever the file's size (spec/06-writing/WritingTrees.md 5).
+LARGE_KEY_VERSION = 1000
 
 #: TObject::kMustCleanup, which ROOT sets on anything owned by a directory.
 K_MUST_CLEANUP = 0x8
@@ -217,22 +220,33 @@ class Key:
     datime: int = DEFAULT_DATIME
     cycle: int = CYCLE
     version: int = 4
+    #: Bytes that follow the three strings and count inside fKeylen. Only a
+    #: TBasket has any: its own header lives there (WritingTrees.md 5).
+    extra: bytes = b""
+
+    @property
+    def large(self) -> bool:
+        """A key with 8-byte offsets, selected by its version (Record.md 3)."""
+        return self.version > LARGE_KEY_VERSION
 
     @property
     def key_len(self) -> int:
-        return (KEY_FIXED + string_len(self.class_name)
-                + string_len(self.name) + string_len(self.title))
+        fixed = KEY_FIXED + (8 if self.large else 0)
+        return (fixed + string_len(self.class_name) + string_len(self.name)
+                + string_len(self.title) + len(self.extra))
 
     def to_bytes(self) -> bytes:
-        if max(self.seek_key, self.seek_pdir) > BIG:
+        if not self.large and max(self.seek_key, self.seek_pdir) > BIG:
             raise WriteError(
                 "an offset past 2000000000 needs the large key form; "
                 "see spec/01-container/LargeFiles.md 3")
+        seeks = (i64(self.seek_key) + i64(self.seek_pdir) if self.large
+                 else i32(self.seek_key) + i32(self.seek_pdir))
         return (i32(self.nbytes) + i16(self.version) + i32(self.obj_len)
                 + u32(self.datime) + i16(self.key_len) + i16(self.cycle)
-                + i32(self.seek_key) + i32(self.seek_pdir)
-                + counted_string(self.class_name)
-                + counted_string(self.name) + counted_string(self.title))
+                + seeks + counted_string(self.class_name)
+                + counted_string(self.name) + counted_string(self.title)
+                + self.extra)
 
 
 @dataclass
@@ -243,12 +257,26 @@ class Obj:
     name: str
     title: str
     payload: bytes
+    #: A TBasket overrides both of these (WritingTrees.md 5).
+    key_version: int = 4
+    key_extra: bytes = b""
+    cycle: int = CYCLE
+    #: Set when the record must not be compressed whatever the file says.
+    raw: bool = False
+    #: A payload that cannot be built until earlier records are placed -- the
+    #: TTree record, which needs its baskets' offsets. Called as
+    #: builder(key_len, placed) once the position is known.
+    builder: object = None
+    #: A basket is a key that is deliberately absent from the directory's key
+    #: list, because TKey(TDirectory*) never appends it (WritingTrees.md 6).
+    in_key_list: bool = True
 
 
 @dataclass
 class _Placed:
     key: Key
     payload: bytes
+    listed: bool = True
 
     def to_bytes(self) -> bytes:
         return self.key.to_bytes() + self.payload
@@ -374,6 +402,16 @@ class FileWriter:
         key.nbytes = key.key_len + len(stored)
         return _Placed(key=key, payload=stored)
 
+    def _record_of(self, obj: Obj, pos: int) -> _Placed:
+        """One record from an Obj, honouring its key version and tail."""
+        stored = obj.payload if obj.raw else self._stored(obj.payload)
+        key = Key(class_name=obj.class_name, name=obj.name, title=obj.title,
+                  obj_len=len(obj.payload), nbytes=0, seek_key=pos,
+                  seek_pdir=BEGIN, datime=self.datime, cycle=obj.cycle,
+                  version=obj.key_version, extra=obj.key_extra)
+        key.nbytes = key.key_len + len(stored)
+        return _Placed(key=key, payload=stored, listed=obj.in_key_list)
+
     def to_bytes(self) -> bytes:
         dir_obj_len = (string_len(self.file_name) + string_len(self.title)
                        + DIR_RECORD_LEN)
@@ -382,8 +420,16 @@ class FileWriter:
         pos = BEGIN + dir_key.nbytes
         placed: list[_Placed] = []
         for obj in self.objects:
-            rec = self._record(obj.class_name, obj.name, obj.title,
-                               obj.payload, pos)
+            if obj.builder is not None:
+                # A record whose payload depends on where earlier records
+                # landed. The TTree record is the only one: a branch stores its
+                # baskets' offsets (WritingTrees.md 4).
+                probe = Key(class_name=obj.class_name, name=obj.name,
+                            title=obj.title, obj_len=0, nbytes=0, seek_key=pos,
+                            seek_pdir=BEGIN, version=obj.key_version,
+                            extra=obj.key_extra)
+                obj.payload = obj.builder(probe.key_len, placed)
+            rec = self._record_of(obj, pos)
             placed.append(rec)
             pos += rec.key.nbytes
 
@@ -406,8 +452,9 @@ class FileWriter:
 
         # The key list: a count, then each data record's key image verbatim
         # (Directory.md 6). The root directory's own key is not in it.
-        images = b"".join(p.key.to_bytes() for p in placed)
-        keys_payload = i32(len(placed)) + images
+        listed = [p for p in placed if p.listed]
+        images = b"".join(p.key.to_bytes() for p in listed)
+        keys_payload = i32(len(listed)) + images
         seek_keys = pos
         keys_key = self._self_key(seek_keys, len(keys_payload), seek_pdir=BEGIN)
         pos += keys_key.nbytes
@@ -492,7 +539,7 @@ class Payload:
     def raw(self, data: bytes) -> None:
         self.buf += data
 
-    def framed(self, version: int, build) -> None:
+    def framed(self, version: int, build=None) -> None:
         """A byte count, a version word, and whatever `build` appends."""
         start = len(self.buf)
         self.buf += b"\x00\x00\x00\x00"
@@ -565,21 +612,33 @@ class Payload:
         self.framed(5, body)
 
     def tobjarray(self, name: str, entries, lower_bound: int = 0,
-                  bits: int = 0, key=None) -> None:
+                  bits: int = 0, key=None, embedded: bool = False,
+                  count: int | None = None) -> None:
         """A `TObjArray` at version 3 (`StreamerInfo.md` 5): no options.
 
-        Emitted as a **pointer slot**, which is how it occurs: every use of it
-        in the format is a `TObjArray *` member, so the record is preceded by a
-        class record naming it. A writer that emits the bare framed object --
-        the shape an embedded member object has -- is 18 bytes short and
-        desynchronises the reader at the first element.
+        `embedded` picks the framing, and getting it wrong is an 18-byte error:
+
+        * a **pointer** member -- `TStreamerInfo::fElements`, `fType` 63/64 --
+          is a slot, so the record is preceded by a class record naming the
+          class;
+        * a **member object** -- `TTree::fBranches`, `fType` 61 -- is the bare
+          framed object, with no class record at all.
+
+        `count` overrides the entry count, which is the index of the last
+        occupied slot plus one and so may exceed the number of entries written:
+        `TBranch::fBaskets` is `fWriteBasket + 1` slots of null.
         """
         def body(p: Payload) -> None:
             p.tobject(bits)
-            p.raw(counted_string(name) + i32(len(entries)) + i32(lower_bound))
+            p.raw(counted_string(name)
+                  + i32(count if count is not None else len(entries))
+                  + i32(lower_bound))
             for entry in entries:
                 entry(p)
-        self.slot("TObjArray", 3, body, key=key)
+        if embedded:
+            self.framed(3, build=body)
+        else:
+            self.slot("TObjArray", 3, body, key=key)
 
 
 # ---------------------------------------------------------------------------
@@ -1025,43 +1084,129 @@ KNOWN_CHECKSUMS = {
 }
 
 
-def histogram_infos(kinds=("F",)) -> list:
-    """Every `TStreamerInfo` a `TH1F`/`TH1D` file needs, in ROOT's own order."""
-    by_name: dict = {}
 
-    def add(info: Info) -> Info:
+
+class InfoSet:
+    """A set of `TStreamerInfo`s under construction, in dependency order.
+
+    Each `TStreamerBase` element needs the base class's checksum
+    (`StreamerInfo.md` 9), so the classes are built bases-first and every base
+    entry takes its value from the info built earlier. An error in one checksum
+    then shows up twice, which is what makes the arrangement worth its
+    awkwardness.
+    """
+
+    def __init__(self):
+        self.by_name: dict = {}
+
+    def add(self, info: Info) -> Info:
         if info.checksum is None:
             info.checksum = KNOWN_CHECKSUMS.get(info.name) or checksum(info)
-        by_name[info.name] = info
+        self.by_name[info.name] = info
         return info
 
-    def cs(name: str) -> int:
-        return by_name[name].checksum
+    def cs(self, name: str) -> int:
+        return self.by_name[name].checksum
 
-    add(Info("TObject", 1, [
-        _basic("fUniqueID", "object unique identifier", 13, 4, "unsigned int"),
-        _basic("fBits", "bit field status word", 15, 4, "unsigned int"),
-    ]))
-    add(Info("TNamed", 1, [
-        _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
-        Element("TStreamerString", "fName", "object identifier", 65, 24,
-                "TString"),
-        Element("TStreamerString", "fTitle", "object title", 65, 24, "TString"),
-    ]))
-    add(Info("TAttLine", 2, [
-        _basic("fLineColor", "Line color", 2, 2, "short"),
-        _basic("fLineStyle", "Line style", 2, 2, "short"),
-        _basic("fLineWidth", "Line width", 2, 2, "short"),
-    ]))
-    add(Info("TAttFill", 2, [
-        _basic("fFillColor", "Fill area color", 2, 2, "short"),
-        _basic("fFillStyle", "Fill area style", 2, 2, "short"),
-    ]))
-    add(Info("TAttMarker", 3, [
-        _basic("fMarkerColor", "Marker color", 2, 2, "short"),
-        _basic("fMarkerStyle", "Marker style", 2, 2, "short"),
-        _basic("fMarkerSize", "Marker size", 5, 4, "float"),
-    ]))
+    def ordered(self, order) -> list:
+        """The infos ROOT would write, in ROOT's own order.
+
+        The order is class registration order, which is neither alphabetical nor
+        dependency order. A reader does not care; matching it is what lets a
+        record be compared with a ROOT-written one byte for byte.
+        """
+        return [self.by_name[n] for n in order if n in self.by_name]
+
+    # -- the classes every file needs -----------------------------------
+
+    def common(self) -> None:
+        add, cs = self.add, self.cs
+        add(Info("TObject", 1, [
+            _basic("fUniqueID", "object unique identifier", 13, 4,
+                   "unsigned int"),
+            _basic("fBits", "bit field status word", 15, 4, "unsigned int"),
+        ]))
+        add(Info("TNamed", 1, [
+            _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
+            Element("TStreamerString", "fName", "object identifier", 65, 24,
+                    "TString"),
+            Element("TStreamerString", "fTitle", "object title", 65, 24,
+                    "TString"),
+        ]))
+        add(Info("TAttLine", 2, [
+            _basic("fLineColor", "Line color", 2, 2, "short"),
+            _basic("fLineStyle", "Line style", 2, 2, "short"),
+            _basic("fLineWidth", "Line width", 2, 2, "short"),
+        ]))
+        add(Info("TAttFill", 2, [
+            _basic("fFillColor", "Fill area color", 2, 2, "short"),
+            _basic("fFillStyle", "Fill area style", 2, 2, "short"),
+        ]))
+        add(Info("TAttMarker", 3, [
+            _basic("fMarkerColor", "Marker color", 2, 2, "short"),
+            _basic("fMarkerStyle", "Marker style", 2, 2, "short"),
+            _basic("fMarkerSize", "Marker size", 5, 4, "float"),
+        ]))
+        # TString's info carries no elements at all, so its checksum -- which
+        # the class does have -- cannot come from them.
+        add(Info("TString", 2, [], checksum=0x00017419))
+        add(Info("TCollection", 3, [
+            _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
+            Element("TStreamerString", "fName", "name of the collection", 65,
+                    24, "TString"),
+            _basic("fSize", "number of elements in collection", 3, 4, "int"),
+        ]))
+        add(Info("TSeqCollection", 0, [
+            _base("TCollection", "Collection abstract base class", 0, 3,
+                  cs("TCollection")),
+        ]))
+        add(Info("TList", 5, [
+            _base("TSeqCollection", "Sequenceable collection ABC", 0, 0,
+                  cs("TSeqCollection")),
+        ]))
+        add(Info("TObjArray", 3, [
+            _base("TSeqCollection", "Sequenceable collection ABC", 0, 0,
+                  cs("TSeqCollection")),
+            _basic("fLowerBound", "Lower bound of the array", 3, 4, "int"),
+            _basic("fLast", "Last element in array containing an object", 3, 4,
+                   "int"),
+        ]))
+        add(Info("THashList", 0, [
+            _base("TList", "Doubly linked list", 0, 5, cs("TList")),
+        ]))
+
+    # -- TArray, which never gets an info of its own ---------------------
+
+    def arrays(self) -> None:
+        """`TArray`, `TArrayF` and `TArrayD`, for their checksums only.
+
+        No ROOT-written file contains an info for any of them: their streamers
+        are hand-written, so nothing marks them
+        (`WritingObjects.md` 7.2). The checksums are needed all the same, as the
+        base of `TH1F` and `TH1D`.
+        """
+        add, cs = self.add, self.cs
+        add(Info("TArray", 1, [
+            _basic("fN", "Number of array elements", 3, 4, "int"),
+        ]))
+        for kind, word in (("F", "float"), ("D", "double")):
+            add(Info(f"TArray{kind}", 1, [
+                _base("TArray", "Abstract array base class", 0, 1,
+                      cs("TArray")),
+                Element("TStreamerBasicPointer", "fArray",
+                        f"[fN] Array of fN {word}s",
+                        40 + (5 if kind == "F" else 8), 8, f"{word}*",
+                        count_version=1, count_name="fN",
+                        count_class=f"TArray{kind}"),
+            ]))
+
+
+def histogram_infos(kinds=("F",)) -> list:
+    """Every `TStreamerInfo` a `TH1F`/`TH1D` file needs, in ROOT's own order."""
+    s = InfoSet()
+    add, cs = s.add, s.cs
+    s.common()
+    s.arrays()
     add(Info("TAttAxis", 4, [
         _basic("fNdivisions", "Number of divisions(10000*n3 + 100*n2 + n1)",
                3, 4, "int"),
@@ -1075,26 +1220,6 @@ def histogram_infos(kinds=("F",)) -> list:
         _basic("fTitleSize", "Size of axis title", 5, 4, "float"),
         _basic("fTitleColor", "Color of axis title", 2, 2, "short"),
         _basic("fTitleFont", "Font for axis title", 2, 2, "short"),
-    ]))
-    # TString's info carries no elements at all, so its checksum -- which the
-    # class does have -- cannot come from them.
-    add(Info("TString", 2, [], checksum=0x00017419))
-    add(Info("TCollection", 3, [
-        _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
-        Element("TStreamerString", "fName", "name of the collection", 65, 24,
-                "TString"),
-        _basic("fSize", "number of elements in collection", 3, 4, "int"),
-    ]))
-    add(Info("TSeqCollection", 0, [
-        _base("TCollection", "Collection abstract base class", 0, 3,
-              cs("TCollection")),
-    ]))
-    add(Info("TList", 5, [
-        _base("TSeqCollection", "Sequenceable collection ABC", 0, 0,
-              cs("TSeqCollection")),
-    ]))
-    add(Info("THashList", 0, [
-        _base("TList", "Doubly linked list", 0, 5, cs("TList")),
     ]))
     add(Info("TAxis", 10, [
         _base("TNamed", "The basis for a named object (name, title)", 67, 1,
@@ -1154,42 +1279,594 @@ def histogram_infos(kinds=("F",)) -> list:
                 "->Pointer to list of functions (fits and user)", 63, 8,
                 "TList*"),
         _basic("fBufferSize", "fBuffer size", 6, 4, "int"),
-        Element("TStreamerBasicPointer", "fBuffer", "[fBufferSize] entry buffer",
-                48, 8, "double*", count_version=8, count_name="fBufferSize",
-                count_class="TH1"),
+        Element("TStreamerBasicPointer", "fBuffer",
+                "[fBufferSize] entry buffer", 48, 8, "double*",
+                count_version=8, count_name="fBufferSize", count_class="TH1"),
         _basic("fBinStatErrOpt", "Option for bin statistical errors", 3, 4,
                "TH1::EBinErrorOpt", is_enum=True),
         _basic("fStatOverflows",
                "Per object flag to use under/overflows in statistics", 3, 4,
                "TH1::EStatOverflows", is_enum=True),
     ]))
-    # TArray, TArrayF and TArrayD get no info of their own in a ROOT-written
-    # file: their Streamer is hand-written, so nothing ever marks them
-    # (WritingObjects.md 7.2) and a reader has to know their layout out of band
-    # (TArray.md). Their checksums are needed all the same, as the base of
-    # TH1F/TH1D -- so they are built here and then left out of the record, which
-    # is exactly what ROOT does.
-    add(Info("TArray", 1, [
-        _basic("fN", "Number of array elements", 3, 4, "int"),
-    ]))
-    for kind, word in (("F", "float"), ("D", "double")):
-        add(Info(f"TArray{kind}", 1, [
-            _base("TArray", "Abstract array base class", 0, 1, cs("TArray")),
-            Element("TStreamerBasicPointer", "fArray",
-                    f"[fN] Array of fN {word}s", 40 + (5 if kind == "F" else 8),
-                    8, f"{word}*", count_version=1, count_name="fN",
-                    count_class=f"TArray{kind}"),
-        ]))
     for kind in kinds:
-        cls = f"TH1{kind}"
-        array = f"TArray{kind}"
-        add(Info(cls, 3, [
+        add(Info(f"TH1{kind}", 3, [
             _base("TH1", "1-Dim histogram base class", 0, 8, cs("TH1")),
-            _base(array, f"Array of {'floats' if kind == 'F' else 'doubles'}",
-                  0, 1, cs(array)),
+            _base(f"TArray{kind}",
+                  f"Array of {'floats' if kind == 'F' else 'doubles'}", 0, 1,
+                  cs(f"TArray{kind}")),
         ]))
+    return s.ordered([
+        "TH1F", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
+        "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
+        "TSeqCollection", "TCollection", "TString", "TH1D",
+    ])
 
-    order = ["TH1F", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
-             "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
-             "TSeqCollection", "TCollection", "TString", "TH1D"]
-    return [by_name[n] for n in order if n in by_name]
+
+def tree_infos(leaf_kinds=("I", "F")) -> list:
+    """Every `TStreamerInfo` a flat `TTree` file needs, in ROOT's own order.
+
+    `leaf_kinds` names the concrete leaf classes used: `I` for `TLeafI`, `F` for
+    `TLeafF`, `D` for `TLeafD`, `C` for `TLeafC`.
+
+    Eighteen infos for a two-branch tree, and three of them are there for
+    reasons a writer would not guess: `TBranchRef` and `TRefTable` because
+    `TTree::fBranchRef` is a **null** pointer and a null still forces its
+    class's info to be written, and `ROOT::TIOFeatures` because it is a member
+    -- a class with no `ClassDef` at all, whose version word on disk is
+    therefore 0 followed by a checksum (`WritingObjects.md` 2).
+    """
+    s = InfoSet()
+    add, cs = s.add, s.cs
+    s.common()
+
+    add(Info("ROOT::TIOFeatures", 1, [
+        _basic("fIOBits", "", 11, 1, "unsigned char"),
+    ]))
+    add(Info("TLeaf", 2, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _basic("fLen", "Number of fixed length elements in the leaf's data.",
+               3, 4, "int"),
+        _basic("fLenType", "Number of bytes for this data type", 3, 4, "int"),
+        _basic("fOffset", "Offset in ClonesArray object (if one)", 3, 4, "int"),
+        _basic("fIsRange",
+               "(=true if leaf has a range, false otherwise).  This is "
+               "equivalent to being a 'leafcount'.  For a TLeafElement the "
+               "range information is actually store in the TBranchElement.",
+               18, 1, "bool"),
+        _basic("fIsUnsigned", "(=true if unsigned, false otherwise)", 18, 1,
+               "bool"),
+        Element("TStreamerObjectPointer", "fLeafCount",
+                "Pointer to Leaf count if variable length (we do not own the "
+                "counter)", 64, 8, "TLeaf*"),
+    ]))
+    for kind in leaf_kinds:
+        ftype, size, type_name = LEAF_SCALARS[kind]
+        add(Info(f"TLeaf{kind}", 1, [
+            _base("TLeaf", "Leaf: description of a Branch data type", 0, 2,
+                  cs("TLeaf")),
+            _basic("fMinimum", "Minimum value if leaf range is specified",
+                   ftype, size, type_name),
+            _basic("fMaximum", "Maximum value if leaf range is specified",
+                   ftype, size, type_name),
+        ]))
+    add(Info("TBranch", 13, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _base("TAttFill", "Fill area attributes", 0, 2, cs("TAttFill")),
+        _basic("fCompress", "Compression level and algorithm", 3, 4, "int"),
+        _basic("fBasketSize", "Initial Size of  Basket Buffer", 3, 4, "int"),
+        _basic("fEntryOffsetLen",
+               "Initial Length of fEntryOffset table in the basket buffers",
+               3, 4, "int"),
+        _basic("fWriteBasket", "Last basket number written", 3, 4, "int"),
+        _basic("fEntryNumber",
+               "Current entry number (last one filled in this branch)", 16, 8,
+               "Long64_t"),
+        Element("TStreamerObjectAny", "fIOFeatures",
+                "IO features for newly-created baskets.", 62, 1,
+                "ROOT::TIOFeatures"),
+        _basic("fOffset", "Offset of this branch", 3, 4, "int"),
+        _basic("fMaxBaskets", "Maximum number of Baskets so far", 6, 4, "int"),
+        _basic("fSplitLevel", "Branch split level", 3, 4, "int"),
+        _basic("fEntries", "Number of entries", 16, 8, "Long64_t"),
+        _basic("fFirstEntry", "Number of the first entry in this branch", 16, 8,
+               "Long64_t"),
+        _basic("fTotBytes",
+               "Total number of bytes in all leaves before compression", 16, 8,
+               "Long64_t"),
+        _basic("fZipBytes",
+               "Total number of bytes in all leaves after compression", 16, 8,
+               "Long64_t"),
+        Element("TStreamerObject", "fBranches",
+                "-> List of Branches of this branch", 61, 64, "TObjArray"),
+        Element("TStreamerObject", "fLeaves", "-> List of leaves of this branch",
+                61, 64, "TObjArray"),
+        Element("TStreamerObject", "fBaskets",
+                "-> List of baskets of this branch", 61, 64, "TObjArray"),
+        Element("TStreamerBasicPointer", "fBasketBytes",
+                "[fMaxBaskets] Length of baskets on file", 43, 4, "int*",
+                count_version=13, count_name="fMaxBaskets",
+                count_class="TBranch"),
+        Element("TStreamerBasicPointer", "fBasketEntry",
+                "[fMaxBaskets] Table of first entry in each basket", 56, 8,
+                "Long64_t*", count_version=13, count_name="fMaxBaskets",
+                count_class="TBranch"),
+        Element("TStreamerBasicPointer", "fBasketSeek",
+                "[fMaxBaskets] Addresses of baskets on file", 56, 8,
+                "Long64_t*", count_version=13, count_name="fMaxBaskets",
+                count_class="TBranch"),
+        Element("TStreamerString", "fFileName",
+                'Name of file where buffers are stored ("" if in same file as '
+                'Tree header)', 65, 24, "TString"),
+    ]))
+    add(Info("TRefTable", 3, [
+        _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
+        _basic("fSize", "dummy for backward compatibility", 3, 4, "int"),
+        Element("TStreamerObjectPointer", "fParents",
+                "array of Parent objects  (eg TTree branch) holding the "
+                "referenced objects", 64, 8, "TObjArray*"),
+        Element("TStreamerObjectPointer", "fOwner",
+                "Object owning this TRefTable", 64, 8, "TObject*"),
+        Element("TStreamerSTL", "fProcessGUIDs",
+                "UUIDs of TProcessIDs used in fParentIDs", 500, 24,
+                "vector<string>", stl_type=1, ctype=365),
+    ]))
+    add(Info("TBranchRef", 1, [
+        _base("TBranch", "Branch descriptor", 0, 13, cs("TBranch")),
+        Element("TStreamerObjectPointer", "fRefTable",
+                "pointer to the TRefTable", 64, 8, "TRefTable*"),
+    ]))
+    add(Info("TTree", 20, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _base("TAttLine", "Line attributes", 0, 2, cs("TAttLine")),
+        _base("TAttFill", "Fill area attributes", 0, 2, cs("TAttFill")),
+        _base("TAttMarker", "Marker attributes", 0, 3, cs("TAttMarker")),
+        _basic("fEntries", "Number of entries", 16, 8, "Long64_t"),
+        _basic("fTotBytes",
+               "Total number of bytes in all branches before compression", 16,
+               8, "Long64_t"),
+        _basic("fZipBytes",
+               "Total number of bytes in all branches after compression", 16, 8,
+               "Long64_t"),
+        _basic("fSavedBytes", "Number of autosaved bytes", 16, 8, "Long64_t"),
+        _basic("fFlushedBytes", "Number of auto-flushed bytes", 16, 8,
+               "Long64_t"),
+        _basic("fWeight", "Tree weight (see TTree::SetWeight)", 8, 8, "double"),
+        _basic("fTimerInterval", "Timer interval in milliseconds", 3, 4, "int"),
+        _basic("fScanField", "Number of runs before prompting in Scan", 3, 4,
+               "int"),
+        _basic("fUpdate", "Update frequency for EntryLoop", 3, 4, "int"),
+        _basic("fDefaultEntryOffsetLen",
+               "Initial Length of fEntryOffset table in the basket buffers", 3,
+               4, "int"),
+        _basic("fNClusterRange",
+               "Number of Cluster range in addition to the one defined by "
+               "'AutoFlush'", 6, 4, "int"),
+        _basic("fMaxEntries",
+               "Maximum number of entries in case of circular buffers", 16, 8,
+               "Long64_t"),
+        _basic("fMaxEntryLoop", "Maximum number of entries to process", 16, 8,
+               "Long64_t"),
+        _basic("fMaxVirtualSize",
+               "Maximum total size of buffers kept in memory", 16, 8,
+               "Long64_t"),
+        _basic("fAutoSave",
+               "Autosave tree when fAutoSave entries written or -fAutoSave "
+               "(compressed) bytes produced", 16, 8, "Long64_t"),
+        _basic("fAutoFlush",
+               "Auto-flush tree when fAutoFlush entries written or -fAutoFlush "
+               "(compressed) bytes produced", 16, 8, "Long64_t"),
+        _basic("fEstimate", "Number of entries to estimate histogram limits",
+               16, 8, "Long64_t"),
+        Element("TStreamerBasicPointer", "fClusterRangeEnd",
+                "[fNClusterRange] Last entry of a cluster range.", 56, 8,
+                "Long64_t*", count_version=20, count_name="fNClusterRange",
+                count_class="TTree"),
+        Element("TStreamerBasicPointer", "fClusterSize",
+                "[fNClusterRange] Number of entries in each cluster for a given "
+                "range.", 56, 8, "Long64_t*", count_version=20,
+                count_name="fNClusterRange", count_class="TTree"),
+        Element("TStreamerObjectAny", "fIOFeatures",
+                "IO features to define for newly-written baskets and branches.",
+                62, 1, "ROOT::TIOFeatures"),
+        Element("TStreamerObject", "fBranches", "List of Branches", 61, 64,
+                "TObjArray"),
+        Element("TStreamerObject", "fLeaves",
+                "Direct pointers to individual branch leaves", 61, 64,
+                "TObjArray"),
+        Element("TStreamerObjectPointer", "fAliases",
+                "List of aliases for expressions based on the tree branches.",
+                64, 8, "TList*"),
+        Element("TStreamerObjectAny", "fIndexValues", "Sorted index values", 62,
+                24, "TArrayD"),
+        Element("TStreamerObjectAny", "fIndex", "Index of sorted values", 62, 24,
+                "TArrayI"),
+        Element("TStreamerObjectPointer", "fTreeIndex",
+                "Pointer to the tree Index (if any)", 64, 8, "TVirtualIndex*"),
+        Element("TStreamerObjectPointer", "fFriends",
+                "pointer to list of friend elements", 64, 8, "TList*"),
+        Element("TStreamerObjectPointer", "fUserInfo",
+                "pointer to a list of user objects associated to this Tree", 64,
+                8, "TList*"),
+        Element("TStreamerObjectPointer", "fBranchRef",
+                "Branch supporting the TRefTable (if any)", 64, 8,
+                "TBranchRef*"),
+    ]))
+    order = ["TTree", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
+             "ROOT::TIOFeatures", "TBranch"]
+    for kind in leaf_kinds:
+        order.append(f"TLeaf{kind}")
+        if kind == leaf_kinds[0]:
+            order.append("TLeaf")
+    order += ["TList", "TSeqCollection", "TCollection", "TString", "TBranchRef",
+              "TRefTable", "TObjArray"]
+    return s.ordered(order)
+
+
+# ---------------------------------------------------------------------------
+# Trees, spec/06-writing/WritingTrees.md.
+# ---------------------------------------------------------------------------
+
+#: Per leaf kind: the element type of fMinimum/fMaximum, its width, the type
+#: name a streamer info records, and the struct format of one value.
+LEAF_SCALARS = {
+    "I": (3, 4, "int"),
+    "F": (5, 4, "float"),
+    "D": (8, 8, "double"),
+    "L": (16, 8, "Long64_t"),
+    "S": (2, 2, "short"),
+    "B": (11, 1, "char"),
+    "O": (18, 1, "bool"),
+}
+LEAF_FORMATS = {"I": ">i", "F": ">f", "D": ">d", "L": ">q", "S": ">h",
+                "B": ">b", "O": ">b"}
+#: The letter a leaflist uses for each, which is also what fTitle carries.
+LEAF_LETTERS = {"I": "I", "F": "F", "D": "D", "L": "L", "S": "S", "B": "B",
+                "O": "O"}
+
+TREE_VERSION = 20
+BRANCH_VERSION = 13
+LEAF_VERSION = 2
+BASKET_VERSION = 3
+#: A basket's key version: TKey's 4 plus 1000, added unconditionally by
+#: TBasket's constructor (root/tree/tree/src/TBasket.cxx:71).
+BASKET_KEY_VERSION = 1004
+#: The 19 bytes of TBasket header that sit inside fKeylen.
+BASKET_HEADER_LEN = 19
+
+#: ROOT's defaults for the tree record's bookkeeping fields.
+DEFAULT_BASKET_SIZE = 32000
+DEFAULT_ENTRY_OFFSET_LEN = 1000
+DEFAULT_SCAN_FIELD = 25
+DEFAULT_MAX_ENTRIES = 1000000000000
+DEFAULT_AUTO_SAVE = -300000000
+DEFAULT_AUTO_FLUSH = -30000000
+DEFAULT_ESTIMATE = 1000000
+#: ROOT::TIOFeatures has no ClassDef, so its version word is 0 and a checksum
+#: (WritingObjects.md 2). The value is the class's, and constant.
+IO_FEATURES_CHECKSUM = 0x1AA12F10
+#: TBranch's TObject bits in a ROOT-written file.
+BRANCH_BITS = 0x00400000
+
+
+def io_features(bits: int = 0) -> bytes:
+    """`fIOFeatures`: a foreign class, so version 0 and a checksum."""
+    payload = u16(0) + u32(IO_FEATURES_CHECKSUM) + bytes([bits])
+    return u32(BYTE_COUNT_MASK | len(payload)) + payload
+
+
+@dataclass
+class Leaf:
+    """One `TLeaf` subclass instance: the description of a branch's data."""
+
+    name: str
+    kind: str
+    #: fLen: the fixed multiplicity. 1 for a scalar and for a counted array.
+    length: int = 1
+    #: fLeafCount: the leaf holding this one's per-entry count.
+    counter: "Leaf | None" = None
+    #: fIsRange, which a counter leaf carries and nothing else.
+    is_range: bool = False
+    is_unsigned: bool = False
+    offset: int = 0
+    minimum: float = 0
+    maximum: float = 0
+    title: str | None = None
+
+    def __post_init__(self):
+        if self.kind not in LEAF_SCALARS:
+            raise WriteError(f"unknown leaf kind {self.kind!r}")
+        if self.title is None:
+            # fTitle carries the dimensions and fName does not; Draw and Scan
+            # parse this string (WritingTrees.md 3.1).
+            dims = ""
+            if self.counter is not None:
+                dims = f"[{self.counter.name}]"
+            elif self.length > 1:
+                dims = f"[{self.length}]"
+            self.title = self.name + dims
+
+    @property
+    def class_name(self) -> str:
+        return f"TLeaf{self.kind}"
+
+    @property
+    def len_type(self) -> int:
+        return LEAF_SCALARS[self.kind][1]
+
+    def pack(self, values) -> bytes:
+        fmt = LEAF_FORMATS[self.kind]
+        if not isinstance(values, (list, tuple)):
+            values = [values]
+        return b"".join(struct.pack(fmt, v) for v in values)
+
+    def write(self, p: Payload) -> None:
+        ftype, size, _ = LEAF_SCALARS[self.kind]
+
+        def body(q: Payload) -> None:
+            def base(r: Payload) -> None:
+                r.tnamed(self.name, self.title)
+                r.raw(i32(self.length) + i32(self.len_type) + i32(self.offset))
+                r.raw(bytes([1 if self.is_range else 0,
+                             1 if self.is_unsigned else 0]))
+                if self.counter is None:
+                    r.null()
+                else:
+                    # An object reference, which is why the counter leaf must be
+                    # written earlier in the same record (WritingTrees.md 3.2).
+                    r.reference(id(self.counter))
+            q.framed(LEAF_VERSION, base)
+            fmt = LEAF_FORMATS[self.kind]
+            q.raw(struct.pack(fmt, self.minimum) + struct.pack(fmt, self.maximum))
+        p.slot(self.class_name, 1, body, key=id(self))
+
+
+@dataclass
+class Branch:
+    """One `TBranch` and its single basket."""
+
+    name: str
+    leaf: Leaf
+    tree_name: str = ""
+    title: str | None = None
+    compress: int = 0
+    basket_size: int = DEFAULT_BASKET_SIZE
+    #: Non-zero iff the baskets carry an entry-offset array, which is required
+    #: exactly when the entries are not all the same length.
+    entry_offset_len: int = 0
+    first_entry: int = 0
+    # Filled in as entries arrive.
+    data: bytearray = field(default_factory=bytearray)
+    offsets: list = field(default_factory=list)
+    entries: int = 0
+
+    def __post_init__(self):
+        if self.title is None:
+            self.title = f"{self.leaf.title}/{LEAF_LETTERS[self.leaf.kind]}"
+        if self.leaf.counter is not None and self.entry_offset_len == 0:
+            self.entry_offset_len = DEFAULT_ENTRY_OFFSET_LEN
+
+    @property
+    def variable(self) -> bool:
+        return self.entry_offset_len != 0
+
+    @property
+    def basket_key_len(self) -> int:
+        return Key(class_name="TBasket", name=self.name, title=self.tree_name,
+                   obj_len=0, nbytes=0, seek_key=0, seek_pdir=BEGIN,
+                   version=BASKET_KEY_VERSION,
+                   extra=b"\x00" * BASKET_HEADER_LEN).key_len
+
+    def fill(self, values) -> None:
+        """Append one entry's bytes, and its offset if the branch needs one."""
+        self.offsets.append(self.basket_key_len + len(self.data))
+        self.data += self.leaf.pack(values)
+        self.entries += 1
+
+    # -- the basket record ----------------------------------------------
+
+    def flushed_entry_offset_len(self) -> int:
+        """`fEntryOffsetLen` as the branch records it after its basket is out.
+
+        ROOT shrinks the value at flush so the array does not stay large
+        unnecessarily: above 10, and when `4 x fNevBuf` is smaller, it becomes
+        10 for fewer than three entries and `4 x fNevBuf` otherwise
+        (`root/tree/tree/src/TBranch.cxx:3225-3227`). Nothing on the read side
+        uses the value beyond "is it non-zero", so reproducing this is only
+        about matching ROOT byte for byte.
+        """
+        n = self.entry_offset_len
+        if n > 10 and 4 * self.entries < n:
+            return 10 if self.entries < 3 else 4 * self.entries
+        if n and self.entries > n:
+            return 2 * self.entries
+        return n
+
+    def basket(self) -> Obj:
+        """The branch's basket, as a record of its own.
+
+        Its key is 19 bytes longer than the strings account for, because
+        `TBasket`'s own header lives inside `fKeylen` -- and its version is
+        1004, so the two offsets are 8 bytes wide whatever the file's size.
+        """
+        key_len = self.basket_key_len
+        payload = bytes(self.data)
+        last = key_len + len(payload)
+        if self.variable:
+            # fNevBuf + 1 offsets, the last of which is never read: it is
+            # whatever the array was initialised to, and ROOT's is 0.
+            payload += i32(self.entries + 1)
+            payload += b"".join(i32(o) for o in self.offsets) + i32(0)
+            nev_buf_size = DEFAULT_ENTRY_OFFSET_LEN
+        else:
+            fixed = len(self.data) // self.entries if self.entries else 0
+            nev_buf_size = fixed
+        header = (u16(BASKET_VERSION) + i32(self.basket_size)
+                  + i32(nev_buf_size) + i32(self.entries) + i32(last)
+                  + bytes([0]))
+        return Obj(class_name="TBasket", name=self.name, title=self.tree_name,
+                   payload=payload, key_version=BASKET_KEY_VERSION,
+                   key_extra=header, cycle=0, in_key_list=False)
+
+    # -- the branch's own record, inside the tree ------------------------
+
+    def write(self, p: Payload, seek: int, nbytes: int, obj_len: int,
+              max_baskets: int = 10) -> None:
+        def body(q: Payload) -> None:
+            q.tnamed(self.name, self.title, bits=BRANCH_BITS)
+
+            def att_fill(r: Payload) -> None:
+                r.raw(b"".join(i16(v) for v in FILL_DEFAULTS))
+            q.framed(2, att_fill)
+
+            q.raw(i32(self.compress) + i32(self.basket_size)
+                  + i32(self.flushed_entry_offset_len())
+                  + i32(1))                                   # fWriteBasket
+            q.raw(i64(self.first_entry + self.entries))       # fEntryNumber
+            q.raw(io_features())
+            q.raw(i32(0))                                     # fOffset
+            q.raw(i32(max_baskets))                           # fMaxBaskets
+            q.raw(i32(0))                                     # fSplitLevel
+            q.raw(i64(self.entries) + i64(self.first_entry))
+            q.raw(i64(obj_len + self.basket_key_len))         # fTotBytes
+            q.raw(i64(nbytes))                                # fZipBytes
+            q.tobjarray("", [], embedded=True)                # fBranches
+            q.tobjarray("", [self.leaf.write], embedded=True)  # fLeaves
+            # fBaskets has fWriteBasket + 1 slots and every one of them is
+            # null: TBranch::Streamer removes from the array every basket that
+            # is already on disk (WritingTrees.md 4.1).
+            q.tobjarray("", [lambda r: r.null()] * 2, embedded=True)
+            # The three counted pointers: a flag byte, then fMaxBaskets values
+            # each, with no length of their own.
+            q.raw(b"\x01" + i32(nbytes)
+                  + i32(0) * (max_baskets - 1))               # fBasketBytes
+            q.raw(b"\x01" + i64(self.first_entry)
+                  + i64(self.first_entry + self.entries)
+                  + i64(0) * (max_baskets - 2))               # fBasketEntry
+            q.raw(b"\x01" + i64(seek)
+                  + i64(0) * (max_baskets - 1))               # fBasketSeek
+            q.raw(counted_string(""))                         # fFileName
+        p.slot("TBranch", BRANCH_VERSION, body, key=id(self))
+
+
+@dataclass
+class Tree:
+    """A `TTree` of flat branches, one basket each."""
+
+    name: str
+    title: str = ""
+    branches: list = field(default_factory=list)
+    entries: int = 0
+    weight: float = 1.0
+    scan_field: int = DEFAULT_SCAN_FIELD
+    default_entry_offset_len: int = DEFAULT_ENTRY_OFFSET_LEN
+    max_entries: int = DEFAULT_MAX_ENTRIES
+    auto_save: int = DEFAULT_AUTO_SAVE
+    auto_flush: int = DEFAULT_AUTO_FLUSH
+    estimate: int = DEFAULT_ESTIMATE
+
+    def branch(self, name: str, kind: str, length: int = 1,
+               counter: "Branch | None" = None, title: str | None = None):
+        """Add a branch of one leaf, optionally counted by another branch."""
+        leaf = Leaf(name=name, kind=kind, length=length,
+                    counter=counter.leaf if counter is not None else None)
+        if counter is not None:
+            # fIsRange belongs on the *counter*, and nothing else sets it.
+            counter.leaf.is_range = True
+        br = Branch(name=name, leaf=leaf, tree_name=self.name, title=title)
+        self.branches.append(br)
+        return br
+
+    def fill(self, values: dict) -> None:
+        """One entry. `values` maps each branch's name to its value(s)."""
+        if set(values) != {b.name for b in self.branches}:
+            raise WriteError("every branch needs a value in every entry")
+        for br in self.branches:
+            v = values[br.name]
+            if br.leaf.counter is not None:
+                count = values[br.leaf.counter.name]
+                if len(v) != count:
+                    raise WriteError(
+                        f"branch {br.name} got {len(v)} values where "
+                        f"{br.leaf.counter.name} says {count}")
+            elif isinstance(v, (list, tuple)) and len(v) != br.leaf.length:
+                raise WriteError(
+                    f"branch {br.name} got {len(v)} values where fLen is "
+                    f"{br.leaf.length}")
+            br.fill(v)
+            # A counter leaf's fMaximum must cover every count in the file, or
+            # ROOT clamps the read (WritingTrees.md 3.3).
+            if br.leaf.is_range:
+                br.leaf.maximum = max(br.leaf.maximum, v if not
+                                      isinstance(v, (list, tuple)) else max(v))
+        self.entries += 1
+
+    def records(self) -> list:
+        """The baskets, then the tree record. In that order, necessarily."""
+        out = [br.basket() for br in self.branches]
+        out.append(Obj(class_name="TTree", name=self.name, title=self.title,
+                       payload=b"", builder=self._payload))
+        return out
+
+    def _payload(self, key_len: int, placed) -> bytes:
+        by_name = {p.key.name: p for p in placed
+                   if p.key.class_name == "TBasket"}
+        p = Payload(key_len)
+
+        def body(q: Payload) -> None:
+            q.tnamed(self.name, self.title, bits=K_MUST_CLEANUP)
+
+            def line(r: Payload) -> None:
+                r.raw(b"".join(i16(v) for v in LINE_DEFAULTS))
+            q.framed(2, line)
+
+            def fill_(r: Payload) -> None:
+                r.raw(b"".join(i16(v) for v in FILL_DEFAULTS))
+            q.framed(2, fill_)
+
+            def marker(r: Payload) -> None:
+                r.raw(i16(MARKER_DEFAULTS[0]) + i16(MARKER_DEFAULTS[1])
+                      + f32(MARKER_DEFAULTS[2]))
+            q.framed(3, marker)
+
+            tot = sum(by_name[b.name].key.key_len + by_name[b.name].key.obj_len
+                      for b in self.branches)
+            zip_ = sum(by_name[b.name].key.nbytes for b in self.branches)
+            q.raw(i64(self.entries) + i64(tot) + i64(zip_) + i64(0) + i64(0))
+            q.raw(f64(self.weight))
+            q.raw(i32(0) + i32(self.scan_field) + i32(0)
+                  + i32(self.default_entry_offset_len) + i32(0))
+            q.raw(i64(self.max_entries) + i64(self.max_entries) + i64(0))
+            q.raw(i64(self.auto_save) + i64(self.auto_flush)
+                  + i64(self.estimate))
+            # fClusterRangeEnd and fClusterSize: counted pointers with
+            # fNClusterRange of 0, so a single absent-flag byte each.
+            q.raw(b"\x00" + b"\x00")
+            q.raw(io_features())
+            # TTree::fBranches is the one TObjArray in the record that ROOT
+            # marks kIsOwner.
+            q.tobjarray("", [
+                (lambda b: (lambda r: b.write(
+                    r, by_name[b.name].key.seek_key,
+                    by_name[b.name].key.nbytes,
+                    by_name[b.name].key.obj_len)))(br)
+                for br in self.branches
+            ], bits=0x4000, embedded=True)
+            # fLeaves holds references to the leaves already written inside
+            # fBranches -- the same objects, not copies.
+            q.tobjarray("", [
+                (lambda leaf: (lambda r: r.reference(id(leaf))))(br.leaf)
+                for br in self.branches
+            ], embedded=True)
+            q.null()                          # fAliases, a TList*
+            # fIndexValues and fIndex are TArray members rather than pointers,
+            # so each is an fN of 0 and nothing else.
+            q.raw(tarray_d([]) + i32(0))
+            q.null()                          # fTreeIndex
+            q.null()                          # fFriends
+            q.null()                          # fUserInfo
+            q.null()                          # fBranchRef
+        p.framed(TREE_VERSION, body)
+        return bytes(p.buf)

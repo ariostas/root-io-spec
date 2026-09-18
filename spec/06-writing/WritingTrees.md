@@ -1,0 +1,403 @@
+# Writing trees
+
+A `TTree` of flat branches: the basket records, the branch and leaf descriptions
+inside the tree record, and the fields that have to agree with one another. At the
+current class versions — `TTree` 20, `TBranch` 13, `TLeaf` 2, `TBasket` 3.
+
+Prerequisites: [Writing a file](WritingFiles.md),
+[Writing an object](WritingObjects.md). The reading side is
+[The tree record](../04-ttree/TTree.md), [Branches](../04-ttree/TBranch.md),
+[Leaves](../04-ttree/TLeaf.md), [TBasket](../04-ttree/TBasket.md) and
+[Reading entries](../04-ttree/ReadingEntries.md).
+
+Scope: **flat branches** — a scalar, a fixed-size array, or an array counted by
+another branch — one basket each. Producing a split `TBranchElement` is out of
+scope ([the layer's index](index.md#4-what-is-not-specified)).
+
+## 1. The shape, and how far it is checked
+
+A tree is not one record. It is:
+
+- **one record per basket**, each a key in its own right, written *before* the
+  tree record because the tree stores their offsets;
+- **one record for the tree**, holding the branches, and inside them the leaves,
+  as nested objects.
+
+`data/written/tree.root` is the worked example, and it reproduces
+`data/ttree/basket.root` — ROOT's own — **byte for byte in every record**: both
+baskets and the tree, keys included, once the wall-clock timestamp is masked.
+`tools/test_write.py` asserts it. The only part of the two files that differs is
+the `StreamerInfo` record, by one entry (§7.1).
+
+That comparison is strict in a way the histogram one is not: a branch stores its
+baskets' **offsets**, so a single byte's difference anywhere earlier in the file
+changes the tree record. The two files' names are the same length for that reason.
+
+## 2. Order of operations
+
+1. Accumulate each branch's entries into its basket buffer, recording an entry
+   offset per entry if the branch needs one (§5.2).
+2. Place each basket as a record (§5) and note its `fSeekKey`, `fNbytes` and
+   `fObjlen`.
+3. Build the tree record (§3, §4) with those three numbers per branch.
+4. Write the `StreamerInfo` record, the key list — which contains the tree's key
+   and **not** the baskets' (§6) — the free list and the header
+   ([Writing a file §3](WritingFiles.md#3-the-procedure)).
+
+ROOT's own order is the same and for the same reason: `TTree::Write` flushes every
+basket and then writes the tree (`root/tree/tree/src/TTree.cxx:10012`). A basket
+that is *not* flushed is streamed inside the tree record instead, which is the
+embedded-basket case [TBranch §5](../04-ttree/TBranch.md#5-fbaskets-is-written-and-is-usually-empty) describes;
+a writer has no reason to produce one.
+
+## 3. The tree record
+
+`TTree` at class version 20, framed like any object. In streamed order, with the
+values a three-entry tree needs:
+
+| Member | Type | Value | Kind |
+|---|---|---|---|
+| `TNamed` | framed | the tree's name and title; `fBits` carries `kMustCleanup` | free |
+| `TAttLine`, `TAttFill`, `TAttMarker` | framed | 602/1/1, 0/1001, 1/1/1.0f | free |
+| `fEntries` | `i64` | the entry count. **The only upper bound `TTree::GetEntry` checks** (`root/tree/tree/src/TTree.cxx:5725`) | **fixed** |
+| `fTotBytes` | `i64` | Σ over branches of `fKeylen + fObjlen` | derived |
+| `fZipBytes` | `i64` | Σ of `fNbytes` | derived |
+| `fSavedBytes`, `fFlushedBytes` | `i64` | 0 | free |
+| `fWeight` | `f64` | **1.0**, unless a weight is meant: `Draw` multiplies every entry by it (`root/tree/treeplayer/src/TSelectorDraw.cxx:929`) | **fixed in practice** |
+| `fTimerInterval`, `fUpdate` | `i32` | 0 | free |
+| `fScanField` | `i32` | 25 — rows before `Scan` prompts | free |
+| `fDefaultEntryOffsetLen` | `i32` | 1000; only affects branches created later | free |
+| `fNClusterRange` | `i32` | 0 | derived |
+| `fMaxEntries`, `fMaxEntryLoop` | `i64` | 1000000000000 | free |
+| `fMaxVirtualSize` | `i64` | **0 or above.** Negative diverts basket reading onto a whole-cluster path that walks `fBasketEntry` unbounded (`root/tree/tree/src/TBranch.cxx:1246-1247`) | **fixed** |
+| `fAutoSave` | `i64` | -300000000 | free |
+| `fAutoFlush` | `i64` | -30000000 | free |
+| `fEstimate` | `i64` | 1000000. `TTree::Streamer` raises anything at or below 10000 to 1000000 on read (`root/tree/tree/src/TTree.cxx:9845-9847`), so the field is free in effect | free |
+| `fClusterRangeEnd`, `fClusterSize` | counted pointers | one `0x00` flag byte each, since `fNClusterRange` is 0 | derived |
+| `fIOFeatures` | framed | §3.2 | **fixed** |
+| `fBranches` | `TObjArray` **member object** | the branches, §4 | — |
+| `fLeaves` | `TObjArray` member object | **references** to the leaves inside `fBranches`, §3.1 | **fixed** |
+| `fAliases` | pointer slot | null | free |
+| `fIndexValues` | `TArrayD` | empty: `fN` of 0 | free |
+| `fIndex` | `TArrayI` | empty | free |
+| `fTreeIndex`, `fFriends`, `fUserInfo`, `fBranchRef` | pointer slots | null | free |
+
+**`fBranches` and `fLeaves` are member objects, not pointers** — `fType` 61 — so
+each is a bare framed `TObjArray` with **no class record**. Emitting the pointer
+form adds 18 bytes and desynchronises the reader
+([Writing an object §1](WritingObjects.md#1-the-two-framings)). `fBranches` is
+also the one `TObjArray` in the record whose `fBits` carries `kIsOwner`
+(`0x4000`); nothing reads it.
+
+### 3.1 `fLeaves` holds references, not copies
+
+Each entry of `fLeaves` is a four-byte **object reference** to a leaf already
+written inside `fBranches`
+([Buffer framing §6.1](../02-serialization/Buffer.md#61-object-references)) — the
+map position of that object's byte-count word, plus 2. So the order is a
+constraint on the writer: every leaf must be written, inside its branch, before
+`fLeaves` names it. `TTree::GetLeaf` iterates this array
+(`root/tree/tree/src/TTree.cxx:7502`), which is how `Draw` and `Scan` find a leaf
+by name.
+
+### 3.2 `fIOFeatures` is the one foreign class a tree contains
+
+`ROOT::TIOFeatures` has no `ClassDef` (`root/tree/tree/inc/ROOT/TIOFeatures.hxx:100`),
+so its version word is **0** and a checksum follows
+([Writing an object §2](WritingObjects.md#2-a-version-word-of-0-and-when-a-writer-must-emit-one)).
+Eleven bytes, exactly:
+
+```
+40 00 00 07   00 00   1a a1 2f 10   00
+byte count 7  ver 0   checksum      fIOBits
+```
+
+The checksum is the class's and is constant. `TBranch` carries one too.
+
+## 4. A branch
+
+`TBranch` at class version 13, as a pointer slot inside `fBranches`. In streamed
+order:
+
+| Member | Type | Value | Kind |
+|---|---|---|---|
+| `TNamed` | framed | `fName` the branch name; **`fTitle` the leaflist**, e.g. `n/I` or `a[n]/F`. `fBits` is `0x00400000` in a ROOT-written file | free, but see §4.2 |
+| `TAttFill` | framed | 0, 1001 | free |
+| `fCompress` | `i32` | the file's compression settings, or 0 | free |
+| `fBasketSize` | `i32` | 32000 | free |
+| `fEntryOffsetLen` | `i32` | **non-zero iff the baskets carry an offset array** (`root/tree/tree/src/TBasket.cxx:691`); the value itself is not used | **fixed** (zero or not) |
+| `fWriteBasket` | `i32` | the number of baskets on disk — one past the last real index | **fixed** |
+| `fEntryNumber` | `i64` | `fFirstEntry + fEntries`; the per-branch upper bound on reading (`root/tree/tree/src/TBranch.cxx:1364-1366`) | **fixed** |
+| `fIOFeatures` | framed | as §3.2 | **fixed** |
+| `fOffset` | `i32` | 0 | free |
+| `fMaxBaskets` | `i32` | the length of the three counted arrays; ROOT writes `max(fWriteBasket + 1, 10)` | derived |
+| `fSplitLevel` | `i32` | 0 | free |
+| `fEntries` | `i64` | the branch's entry count | **fixed** |
+| `fFirstEntry` | `i64` | 0 for a tree written in one pass | **fixed** |
+| `fTotBytes` | `i64` | the basket's `fKeylen + fObjlen` | derived |
+| `fZipBytes` | `i64` | the basket's `fNbytes` | derived |
+| `fBranches` | `TObjArray` member | empty for a flat branch | **fixed** |
+| `fLeaves` | `TObjArray` member | one leaf, §4.3 | **fixed** |
+| `fBaskets` | `TObjArray` member | `fWriteBasket + 1` slots, **all null**, §4.1 | derived |
+| `fBasketBytes` | counted pointer, `i32` | `[fNbytes, 0, …]`, `fMaxBaskets` values | **fixed** |
+| `fBasketEntry` | counted pointer, `i64` | `[fFirstEntry, fEntryNumber, 0, …]` | **fixed** |
+| `fBasketSeek` | counted pointer, `i64` | `[the basket record's offset, 0, …]` | **fixed** |
+| `fFileName` | counted string | empty — non-empty means the baskets are in another file | **fixed** |
+
+**The three counted pointers have no length of their own**: each is one flag byte
+and then exactly `fMaxBaskets` values
+([Element types §4](../02-serialization/ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)).
+`fMaxBaskets` is therefore load-bearing for parsing the record, not just
+bookkeeping.
+
+### 4.1 `fBaskets` is a `TObjArray` of nulls
+
+Not empty: `fWriteBasket + 1` entries, every one of them a null pointer.
+`TBranch::Streamer` removes from the array every basket that is already on disk
+before streaming (`root/tree/tree/src/TBranch.cxx:3195-3205`), but the array's
+`fLast` still remembers how many slots it had, and `TObjArray::Streamer` writes
+`fLast + 1` entries. So a one-basket branch writes a count of 2 and eight zero
+bytes.
+
+### 4.2 `fBasketSeek[0]` and the last `fBasketEntry` are the two that matter
+
+Reading an entry is a binary search in `fBasketEntry` over `fWriteBasket + 1`
+elements (`root/tree/tree/src/TBranch.cxx:1371`), then a read at
+`fBasketSeek[fReadBasket]`, and **the one consistency check ROOT makes** is that
+the basket found there reports the same `fSeekKey`
+(`root/tree/tree/src/TBranch.cxx:1268`):
+
+```
+Error("GetBasket","File: %s at byte:%lld, branch:%s, entry:%lld, badread=%d, …")
+```
+
+Everything else fails silently:
+
+- **`fBasketEntry[0]` must equal `fFirstEntry`.** It is the only value whose being
+  wrong produces a message — `In the branch %s, no basket contains the entry %lld`
+  (`root/tree/tree/src/TBranch.cxx:1374`) — because the binary search returns
+  negative only when the entry is below the first element.
+- **A terminator that is too small** makes high entries search to
+  `fReadBasket == fWriteBasket`, where `GetBasketImpl` returns null with no
+  message at all (`root/tree/tree/src/TBranch.cxx:1237`) and `GetEntry` returns
+  -1.
+- **A terminator that is too large** is not detected: the read runs past the
+  basket's real extent and `ReadFastArray` returns without touching the
+  destination, leaving stale values (`root/io/io/inc/TBufferFile.h:273-281`).
+- **`fWriteBasket >= fMaxBaskets`** is silently repaired on read, by synthesising
+  a terminator from `fEntries` (`root/tree/tree/src/TBranch.cxx:3010-3016`) —
+  which is wrong for any branch whose `fFirstEntry` is not 0. Do not rely on it.
+
+### 4.3 The leaf
+
+`TLeafI`, `TLeafF`, `TLeafD`, … at class version **1**, each wrapping a `TLeaf`
+base at version **2**:
+
+| Member | Type | Value |
+|---|---|---|
+| `TNamed` | framed | `fName` the leaf name **without** dimensions; `fTitle` **with** them — `n`, `a[n]`, `v[3]` |
+| `fLen` | `i32` | the fixed multiplicity: 1 for a scalar **and for a counted array**, `N` for `x[N]` |
+| `fLenType` | `i32` | the width of one value: 4 for `TLeafI`/`TLeafF`, 8 for `TLeafD`, 1 for `TLeafC` |
+| `fOffset` | `i32` | 0 for a single-leaf branch; otherwise the leaf's cumulative byte offset inside the entry (`root/tree/tree/src/TBranch.cxx:503`) |
+| `fIsRange` | `u8` | **1 on a counter leaf**, 0 otherwise |
+| `fIsUnsigned` | `u8` | 1 only for the lowercase type letters |
+| `fLeafCount` | pointer slot | null, or an **object reference** to the counter leaf |
+| `fMinimum`, `fMaximum` | the leaf's own type | 0, except `fMaximum` on a counter leaf — §4.4 |
+
+**`fTitle` is load-bearing for `Draw` and `Scan` and nothing else.**
+`TTreeFormula` parses the dimensions out of it
+(`root/tree/treeplayer/src/TTreeFormula.cxx:600-641`): a fixed array whose title
+lacks `[3]` reads as a scalar there, and a counted array whose title lacks `[n]`
+loses its variable dimension. `GetEntry` never looks at it — it uses `fLen` and
+`fLeafCount`.
+
+**`fLeafCount` is an object reference, not a name.** It is not re-derived from the
+title on read; the title parser runs only in ROOT's constructor
+(`root/tree/tree/src/TLeaf.cxx:249`). So the counter leaf must be written earlier
+in the same record — which for a counted branch means its **counter branch must
+come first in `fBranches`**. That is a write-side ordering constraint with no
+reading-side counterpart.
+
+### 4.4 A counter leaf's `fMaximum` is a hard requirement
+
+It must be at least the largest count anywhere in the file, because ROOT sizes the
+value buffer from it — `(fLeafCount->GetMaximum() + 1) * fLen`
+(`root/tree/tree/src/TLeaf.cxx:444-447`) — and then **clamps** the read:
+
+```
+printf("ERROR leaf:%s, len=%d and max=%d\n", …); len = fLeafCount->GetMaximum();
+```
+
+(`root/tree/tree/src/TLeafI.cxx:174-180`, and the same in every sibling.) That is
+a raw `printf`, not an `Error`, and the clamp desynchronises the buffer for the
+rest of the entry. So a writer has to know the maximum count **before** it writes
+the tree record, which means a full pass over the data.
+
+`fIsRange` is what makes the field meaningful: ROOT sets it on the counter as a
+side effect of building the counted leaf (`root/tree/tree/src/TLeaf.cxx:293`), and
+without it `GetLeafCountValues` returns nothing (`:367`).
+
+## 5. A basket
+
+A record of its own, and the most unusual key in the format.
+
+| Field | Value |
+|---|---|
+| `fClassName` | `TBasket` |
+| `fName` | the **branch's** name (`root/tree/tree/src/TTree.cxx:3772-3778`) |
+| `fTitle` | the **tree's** name |
+| key `fVersion` | **1004**. `TBasket`'s constructor adds 1000 unconditionally (`root/tree/tree/src/TBasket.cxx:71`), so `fSeekKey` and `fSeekPdir` are 8 bytes wide **in a file of any size** |
+| `fCycle` | the basket number (`root/tree/tree/src/TBasket.cxx:1293`). Nothing reads it |
+| `fKeylen` | 34 + the three counted strings + **19**, because the basket's own header sits inside the key |
+| `fObjlen` | the entry data, plus the offset array if there is one |
+| `fNbytes` | `fKeylen` + the payload as stored |
+
+The 19 bytes at the end of the key are the basket header:
+
+| Bytes | Field | Value |
+|---|---|---|
+| `i16` | version | 3 |
+| `i32` | `fBufferSize` | 32000 |
+| `i32` | `fNevBufSize` | §5.1 |
+| `i32` | `fNevBuf` | the entry count in this basket |
+| `i32` | `fLast` | `fKeylen +` the data length, measured from the **start of the record** |
+| `u8` | flag | **0** in a basket written as its own record |
+
+### 5.1 `fNevBufSize` means two different things
+
+It is the fixed per-entry byte size when the branch has no offset array, and the
+offset array's capacity when it has one — the field is overloaded, and ROOT's own
+header says so (`root/tree/tree/inc/TBasket.h:63`). Get the first case wrong and
+every entry after the first is read at the wrong stride, with no message: the read
+position is `fKeylen + (entry - first) * fNevBufSize`
+(`root/tree/tree/src/TBranch.cxx:1747`).
+
+### 5.2 The offset array
+
+Written only when the branch's `fEntryOffsetLen` is non-zero, immediately after
+`fLast`:
+
+```
+count:i32 = fNevBuf + 1   then   fNevBuf + 1 values of i32
+```
+
+The first `fNevBuf` values are each entry's offset **from the start of the
+record**, so the first is `fKeylen`. The extra element is never read: it is
+whatever ROOT's array happened to hold, which is 0
+(`root/tree/tree/src/TBasket.cxx:95`, written at `:1269`).
+
+> An **embedded** basket — one streamed inside the tree record — writes the array
+> differently, with a count of `fNevBuf` and no extra element, and its flag byte
+> is 1 or 2 rather than 0 (`root/tree/tree/src/TBasket.cxx:1140-1155`). ROOT
+> checks that count on read and zombifies the basket if it disagrees (`:1057`).
+> A writer that flushes every basket never meets this.
+
+The branch's `fEntryOffsetLen` is then **shrunk** at flush, to
+`4 × fNevBuf` — or 10 for fewer than three entries
+(`root/tree/tree/src/TBranch.cxx:3225-3227`). Nothing reads the value beyond
+"is it zero", so this matters only for matching ROOT byte for byte.
+
+## 6. A basket is not in the key list
+
+`TKey(TDirectory*)`, the constructor `TBasket` uses, never calls `AppendKey`
+(`root/io/io/src/TKey.cxx:109-117`), and `TBasket`'s destructor says why: *"A
+basket is never in that list"* (`root/tree/tree/src/TBasket.cxx:118-121`). So the
+directory's key list holds the `TTree` key alone, and a basket is reachable only
+through `fBasketSeek`.
+
+Its `fSeekPdir` is still the directory's `fSeekDir`, and nothing checks it.
+
+## 7. The streamer infos
+
+Eighteen, for a two-branch tree:
+
+```
+TTree  TNamed  TObject  TAttLine  TAttFill  TAttMarker  ROOT::TIOFeatures
+TBranch  TLeafI  TLeaf  TLeafF  TList  TSeqCollection  TCollection  TString
+TBranchRef  TRefTable  TObjArray
+```
+
+Three of them are there for reasons a writer would not guess:
+
+- **`TBranchRef` and `TRefTable`**, because `TTree::fBranchRef` is a **null**
+  pointer and a null still forces its class's info to be written — and
+  `TRefTable` then drags in `TObjArray` the same way.
+- **`TBasket` is absent**, although every basket in the file is one. Its streamer
+  is hand-written, so nothing marks it
+  ([Writing an object §7.2](WritingObjects.md#72-which-classes-need-an-info)) —
+  which makes it the cleanest proof in the format that ROOT reads a class the file
+  does not describe.
+
+`tools/rootwrite.py` emits all eighteen, with the element lists and checksums
+ROOT's own record carries; `tools/test_write.py` compares them element by element.
+
+### 7.1 ROOT appends two rules that a new file cannot use
+
+ROOT's record has a nineteenth entry: a `TList` named `listOfRules` holding two
+I/O customization rules
+([Schema evolution](../02-serialization/SchemaEvolution.md)):
+
+```
+type=read sourceClass="TTree" version="[-16]" target="fDefaultEntryOffsetLen" …
+type=read sourceClass="TTree" version="[-18]" target="fNClusterRange" …
+```
+
+Both apply to `TTree` versions at or below 18. A file written at version 20 can
+never trigger them, so this writer omits the entry — and that is the **only**
+difference between `data/written/tree.root` and `data/ttree/basket.root`.
+
+## 8. Invariants
+
+1. `fEntries` on the tree equals `fEntries` on every branch (for a tree written in
+   one pass), and `fEntryNumber == fFirstEntry + fEntries` on each branch.
+2. `fBasketEntry[0] == fFirstEntry`, `fBasketEntry[fWriteBasket] == fEntryNumber`,
+   and the array is strictly increasing in between.
+3. `fBasketSeek[i]` points at a record whose key reports the same `fSeekKey`, and
+   `fBasketBytes[i]` equals that key's `fNbytes`.
+4. `fMaxBaskets >= fWriteBasket + 1`, and the three counted arrays each hold
+   exactly `fMaxBaskets` values.
+5. A branch's `fEntryOffsetLen` is non-zero **iff** its baskets carry an offset
+   array.
+6. In a basket, `fLast == fKeylen +` the data length, and the offset array's first
+   element is `fKeylen`.
+7. A leaf with a non-null `fLeafCount` names a leaf written earlier in the same
+   record, and that leaf's `fIsRange` is set and its `fMaximum` is at least every
+   count in the file.
+8. The directory's key list does not contain a `TBasket` key.
+9. `fMaxVirtualSize >= 0` and `fWeight` is the weight `Draw` should apply.
+
+1 to 6 and 8 are checked for the written files by `tools/check_write.py` through
+`tools/rootfile.py`, and the entry decoding of
+[Reading entries](../04-ttree/ReadingEntries.md) runs over them as well — the
+written tree's two baskets are decoded and their byte spans checked like any
+ROOT-written fixture's.
+
+## 9. Class versions
+
+Every class a flat tree writes, with the version a writer emits. Checked against
+`ClassDef` in the pinned submodule by `tools/check_versions.py`.
+
+| Class | Version | Cite |
+|---|---|---|
+| `TTree` | 20 | `root/tree/tree/inc/TTree.h:757` |
+| `TBranch` | 13 | `root/tree/tree/inc/TBranch.h:304` |
+| `TLeaf` | 2 | `root/tree/tree/inc/TLeaf.h:171` |
+| `TLeafI` | 1 | `root/tree/tree/inc/TLeafI.h:59` |
+| `TLeafF` | 1 | `root/tree/tree/inc/TLeafF.h:54` |
+| `TLeafD` | 1 | `root/tree/tree/inc/TLeafD.h:54` |
+| `TLeafC` | 1 | `root/tree/tree/inc/TLeafC.h:57` |
+| `TBasket` | 3 | `root/tree/tree/inc/TBasket.h:156` |
+| `TObjArray` | 3 | `root/core/cont/inc/TObjArray.h:105` |
+| `TBranchRef` | 1 | `root/tree/tree/inc/TBranchRef.h:59` |
+| `TRefTable` | 3 | `root/core/cont/inc/TRefTable.h:93` |
+
+`ROOT::TIOFeatures` is the exception: it has no `ClassDef` at all, which is why
+its version word is 0 and a checksum (§3.2).
+
+## 10. Reference files
+
+| File | What it is |
+|---|---|
+| `data/written/tree.root` | this project's: `n/I` and `a[n]/F`, three entries. Every record byte-identical to ROOT's |
+| `data/ttree/basket.root` | ROOT's own, the comparison target |
+| `data/ttree/branch.root`, `data/ttree/leaf-forms.root` | the reading side's branch and leaf variety |

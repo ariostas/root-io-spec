@@ -53,18 +53,8 @@ TH1F            class version 3
 
 `TH1D` is the same with `TArrayD`, and **the same class version, 3**. Class
 versions, all verified against `ClassDef` by `tools/check_versions.py`:
-
-| Class | Version | Cite |
-|---|---|---|
-| `TH1F`, `TH1D` | 3 | `root/hist/hist/inc/TH1.h:902`, `:949` |
-| `TH1` | 8 | `root/hist/hist/inc/TH1.h:693` |
-| `TAxis` | 10 | `root/hist/hist/inc/TAxis.h:179` |
-| `TAttAxis` | 4 | `root/core/base/inc/TAttAxis.h:68` |
-| `TNamed` | 1 | `root/core/base/inc/TNamed.h:60` |
-| `TAttLine` | 2 | `root/core/base/inc/TAttLine.h:51` |
-| `TAttFill` | 2 | `root/core/base/inc/TAttFill.h:46` |
-| `TAttMarker` | 3 | `root/core/base/inc/TAttMarker.h:55` |
-| `TList` | 5 | `root/core/cont/inc/TList.h:115` |
+The versions are tabulated in §10, where
+`tools/check_versions.py` can check them against `ClassDef`.
 
 **`TH1F` and `TH1D` have generated streamers; `TH1` does not.**
 `TH1::Streamer` is hand-written and delegates above version 2
@@ -283,13 +273,30 @@ That is ROOT's own order — registration order, not alphabetical — and
 4. `fYaxis` and `fZaxis` are present, with `fNbins` 1 in a 1-D histogram.
 5. `fEntries >= 0`, and `fTsumw <= fEntries` when every weight is 1.
 6. `fBufferSize` is 0 **iff** `fBuffer`'s flag byte is 0.
-7. Every class version word in the chain matches §2's table.
+7. Every class version word in the chain matches §10's table.
 
 1, 2, 3, 4 and 6 are checked for the written files by `tools/check_write.py`
 through `tools/rootfile.py`; 7 is checked against `ClassDef` for every class in
-§2's table by `tools/check_versions.py`.
+§10's table by `tools/check_versions.py`.
 
-## 10. Reference files
+## 10. Class versions
+
+Every class in the chain, with the version a writer emits. Checked against
+`ClassDef` in the pinned submodule by `tools/check_versions.py`.
+
+| Class | Version | Cite |
+|---|---|---|
+| `TH1F`, `TH1D` | 3 | `root/hist/hist/inc/TH1.h:902`, `:949` |
+| `TH1` | 8 | `root/hist/hist/inc/TH1.h:693` |
+| `TAxis` | 10 | `root/hist/hist/inc/TAxis.h:179` |
+| `TAttAxis` | 4 | `root/core/base/inc/TAttAxis.h:68` |
+| `TNamed` | 1 | `root/core/base/inc/TNamed.h:60` |
+| `TAttLine` | 2 | `root/core/base/inc/TAttLine.h:51` |
+| `TAttFill` | 2 | `root/core/base/inc/TAttFill.h:46` |
+| `TAttMarker` | 3 | `root/core/base/inc/TAttMarker.h:55` |
+| `TList` | 5 | `root/core/cont/inc/TList.h:115` |
+
+## 11. Reference files
 
 | File | What it is |
 |---|---|

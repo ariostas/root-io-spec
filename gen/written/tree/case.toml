@@ -1,0 +1,595 @@
+id   = "written/tree"
+file = "data/written/tree.root"
+size = 16213
+
+description = """
+A flat `TTree` written by `tools/rootwrite.py` from
+[Writing trees](../../../spec/06-writing/WritingTrees.md): one `Int_t` branch and
+one counted `Float_t` array, three entries, one basket each.
+
+**Both basket records and the `TTree` record are byte-identical to the ones ROOT
+wrote in `data/ttree/basket.root`**, keys included, once the wall-clock timestamp
+is masked -- and that includes the two `fBasketSeek` values, which is why the
+file's name and title are chosen to match: both paths are 22 characters, so the
+root directory record is the same length in both files and every offset after it
+lines up. `tools/test_write.py` asserts the comparison.
+
+Only the `StreamerInfo` record differs, by one entry. ROOT appends a
+`listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and
+<= 18; a file written at version 20 cannot use them, so this writer does not emit
+them.
+
+What the case pins that no reading fixture does: the basket key's version of
+**1004**, which `TBasket` sets whatever the file's size; `fCycle` as the basket
+number; the 19-byte `TBasket` header living **inside** `fKeylen`; the
+offset array's trailing element, which is never read; `fLeafCount` as an **object
+reference** to the counter leaf; `fLeaves` as references to the same leaf objects
+`fBranches` holds; and `ROOT::TIOFeatures`, whose version word is 0 followed by a
+checksum because the class has no `ClassDef`.
+"""
+
+spec = [
+  "spec/06-writing/WritingTrees.md",
+  "spec/04-ttree/TBasket.md",
+  "spec/04-ttree/TBranch.md",
+]
+
+writer = "tools/rootwrite.py"
+
+[[records]]
+offset = 100
+nbytes = 168
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 268
+nbytes = 77
+class  = "TBasket"
+role   = "branch n's basket: fixed-length entries, no offset array"
+
+[[records]]
+offset = 345
+nbytes = 109
+class  = "TBasket"
+role   = "branch a's basket: variable entries, so an offset array"
+
+[[records]]
+offset = 454
+nbytes = 1307
+class  = "TTree"
+role   = "the tree record, byte-identical to ROOT's"
+
+[[records]]
+offset = 1761
+nbytes = 14257
+class  = "TList"
+role   = "StreamerInfo: eighteen infos"
+
+[[records]]
+offset = 16018
+nbytes = 115
+class  = "TFile"
+role   = "keys list -- one key, because a basket is never in it"
+
+[[records]]
+offset = 16133
+nbytes = 80
+class  = "TFile"
+role   = "free segments"
+
+[[keys]]
+name = "t"
+
+
+# --- The file header ---
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 16213
+
+[[bytes]]
+name = "fNbytesName"
+offset = 28
+type = "i32"
+value = 108
+
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 1761
+
+
+# --- The basket for branch n: a key of its own, and not in the key list ---
+
+[[bytes]]
+name = "fNbytes = fKeylen + fObjlen"
+offset = 268
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "the key's version is 1004: TBasket adds 1000 whatever the file's size"
+offset = 272
+type = "i16"
+value = 1004
+
+[[bytes]]
+name = "fObjlen: the entry data alone, since this basket needs no offsets"
+offset = 274
+type = "i32"
+value = 12
+
+[[bytes]]
+name = "fKeylen, which covers the 19-byte TBasket header as well as the strings"
+offset = 282
+type = "i16"
+value = 65
+
+[[bytes]]
+name = "fCycle is the basket number, and nothing reads it"
+offset = 284
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "fSeekKey, 8 bytes wide because the key version is over 1000"
+offset = 286
+type = "i64"
+value = 268
+
+[[bytes]]
+name = "fSeekPdir, also 8 bytes"
+offset = 294
+type = "i64"
+value = 100
+
+[[bytes]]
+name = "fClassName"
+offset = 302
+type = "string"
+value = "TBasket"
+
+[[bytes]]
+name = "fName is the branch's name"
+offset = 310
+type = "string"
+value = "n"
+
+[[bytes]]
+name = "fTitle is the tree's name"
+offset = 312
+type = "string"
+value = "t"
+
+[[bytes]]
+name = "the TBasket header's version"
+offset = 314
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "fBufferSize"
+offset = 316
+type = "i32"
+value = 32000
+
+[[bytes]]
+name = "fNevBufSize: with no offset array this is the fixed entry size"
+offset = 320
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fNevBuf"
+offset = 324
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fLast, measured from the start of the record"
+offset = 328
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "the flag byte, 0 in a basket written as its own record"
+offset = 332
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "the first entry"
+offset = 333
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "the third"
+offset = 341
+type = "i32"
+value = 3
+
+
+# --- The basket for branch a: variable entries, so an offset array ---
+
+[[bytes]]
+name = "fObjlen = 24 bytes of data plus the 20-byte offset array"
+offset = 351
+type = "i32"
+value = 44
+
+[[bytes]]
+name = "fNevBufSize is the offset array's capacity here, not an entry size"
+offset = 397
+type = "i32"
+value = 1000
+
+[[bytes]]
+name = "fLast: where the data ends and the offset array begins"
+offset = 405
+type = "i32"
+value = 89
+
+[[bytes]]
+name = "entry 2's three floats begin here"
+offset = 422
+type = "f32"
+value = 2.0
+
+[[bytes]]
+name = "the offset array's count is fNevBuf + 1"
+offset = 434
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "offset 0 == fKeylen"
+offset = 438
+type = "i32"
+value = 65
+
+[[bytes]]
+name = "offset 1"
+offset = 442
+type = "i32"
+value = 69
+
+[[bytes]]
+name = "offset 2"
+offset = 446
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "the extra element, which is never read: ROOT's array was zeroed"
+offset = 450
+type = "i32"
+value = 0
+
+
+# --- The TTree record ---
+
+[[bytes]]
+name = "fNbytes"
+offset = 454
+type = "i32"
+value = 1307
+
+[[bytes]]
+name = "fKeylen"
+offset = 468
+type = "i16"
+value = 41
+
+[[bytes]]
+name = "fClassName"
+offset = 480
+type = "string"
+value = "TTree"
+
+[[bytes]]
+name = "the TTree byte count"
+offset = 495
+type = "u32"
+value = 1073743086
+
+[[bytes]]
+name = "TTree class version"
+offset = 499
+type = "u16"
+value = 20
+
+[[bytes]]
+name = "fEntries"
+offset = 562
+type = "i64"
+value = 3
+
+[[bytes]]
+name = "fTotBytes = both baskets' fKeylen + fObjlen"
+offset = 570
+type = "i64"
+value = 186
+
+[[bytes]]
+name = "fZipBytes = both baskets' fNbytes"
+offset = 578
+type = "i64"
+value = 186
+
+[[bytes]]
+name = "fWeight, which Draw multiplies every entry by"
+offset = 602
+type = "f64"
+value = 1.0
+
+[[bytes]]
+name = "fScanField"
+offset = 614
+type = "i32"
+value = 25
+
+[[bytes]]
+name = "fDefaultEntryOffsetLen"
+offset = 622
+type = "i32"
+value = 1000
+
+[[bytes]]
+name = "fNClusterRange"
+offset = 626
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fEstimate"
+offset = 670
+type = "i64"
+value = 1000000
+
+[[bytes]]
+name = "fClusterRangeEnd: a counted pointer with a count of 0, so one flag byte"
+offset = 678
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fIOFeatures' byte count"
+offset = 680
+type = "u32"
+value = 1073741831
+
+[[bytes]]
+name = "its version word is 0 -- ROOT::TIOFeatures has no ClassDef"
+offset = 684
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "so a checksum follows instead"
+offset = 686
+type = "u32"
+value = 446770960
+
+[[bytes]]
+name = "fIOBits"
+offset = 690
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "fBranches is a member object: a framed TObjArray with no class record"
+offset = 691
+type = "u32"
+value = 1073742829
+
+[[bytes]]
+name = "its class version"
+offset = 695
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "kIsOwner in fBits, which only this array carries"
+offset = 703
+type = "u32"
+value = 16384
+
+[[bytes]]
+name = "the branch count"
+offset = 708
+type = "i32"
+value = 2
+
+
+# --- Branch n, inside fBranches ---
+
+[[bytes]]
+name = "TBranch class version"
+offset = 736
+type = "u16"
+value = 13
+
+[[bytes]]
+name = "fName"
+offset = 754
+type = "string"
+value = "n"
+
+[[bytes]]
+name = "fTitle is the leaflist"
+offset = 756
+type = "string"
+value = "n/I"
+
+[[bytes]]
+name = "fEntryOffsetLen is 0: every entry of this branch is four bytes"
+offset = 778
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fWriteBasket = the number of baskets on disk"
+offset = 782
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fEntryNumber = fFirstEntry + fEntries"
+offset = 786
+type = "i64"
+value = 3
+
+[[bytes]]
+name = "fMaxBaskets, the length of the three counted arrays"
+offset = 809
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "fTotBytes"
+offset = 833
+type = "i64"
+value = 77
+
+
+# --- Its leaf ---
+
+[[bytes]]
+name = "TLeafI class version"
+offset = 918
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "fLen: the fixed multiplicity"
+offset = 946
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fLenType: the width of one value"
+offset = 950
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fIsRange, which marks this leaf as a counter"
+offset = 958
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "fLeafCount is null on a counter leaf"
+offset = 960
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fMaximum must cover every count in the file, or ROOT clamps the read"
+offset = 968
+type = "i32"
+value = 3
+
+
+# --- Branch n's basket bookkeeping ---
+
+[[bytes]]
+name = "fBasketBytes' present flag, then fMaxBaskets values with no count"
+offset = 1005
+type = "u8"
+value = 1
+
+[[bytes]]
+name = "fBasketBytes[0] == the basket's fNbytes"
+offset = 1006
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "fBasketEntry[0] == fFirstEntry"
+offset = 1047
+type = "i64"
+value = 0
+
+[[bytes]]
+name = "fBasketEntry[1] == fEntryNumber: the terminator"
+offset = 1055
+type = "i64"
+value = 3
+
+[[bytes]]
+name = "fBasketSeek[0] == the basket record's own offset"
+offset = 1128
+type = "i64"
+value = 268
+
+[[bytes]]
+name = "fFileName, empty: the baskets are in this file"
+offset = 1208
+type = "u8"
+value = 0
+
+
+# --- Branch a ---
+
+[[bytes]]
+name = "fTitle"
+offset = 1241
+type = "string"
+value = "a[n]/F"
+
+[[bytes]]
+name = "fEntryOffsetLen, shrunk to 4 x fNevBuf at flush"
+offset = 1266
+type = "i32"
+value = 12
+
+[[bytes]]
+name = "fLeafCount: a reference to leaf n, at map position 447"
+offset = 1451
+type = "u32"
+value = 447
+
+[[bytes]]
+name = "fBasketSeek[0]"
+offset = 1619
+type = "i64"
+value = 345
+
+
+# --- fLeaves: references to the two leaves already written ---
+
+[[bytes]]
+name = "the count"
+offset = 1717
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "leaf n, the same object fBranches holds"
+offset = 1725
+type = "u32"
+value = 447
+
+[[bytes]]
+name = "leaf a"
+offset = 1729
+type = "u32"
+value = 935
+
+[[bytes]]
+name = "fAliases, a null pointer"
+offset = 1733
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fBranchRef, also null -- and its class's info is written all the same"
+offset = 1757
+type = "i32"
+value = 0
