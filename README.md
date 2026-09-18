@@ -27,7 +27,7 @@ leaves, baskets, splitting, and reading an entry out of a split or an unsplit tr
 A **writing** layer now covers the other direction:
 [spec/06-writing/](spec/06-writing/index.md) says which bytes to emit and in what
 order — the container, an object and its streamer info, `TH1F`/`TH1D`, and a flat
-`TTree` — at the current version of each class. `tools/rootwrite.py` is its
+`TTree` of one basket per branch — at the current version of each class. `tools/rootwrite.py` is its
 executable form, and the conformance test is that ROOT opens what it wrote, finds
 the values that went in, and says nothing.
 
@@ -70,9 +70,17 @@ Scope in brief: reading is specified normatively, and writing two ways — per-l
 invariants that a conforming file satisfies whatever wrote it, collected for a
 writer in [spec/99-appendix/WriterInvariants.md](spec/99-appendix/WriterInvariants.md),
 plus procedures in `spec/06-writing/` for producing one at the current version of
-each class. Free
-space reuse, basket sizing and key ordering stay unspecified: they are ROOT's
-choices, not the format's. The document is descriptive of ROOT 6.40.04 — where it
+each class. Free space reuse, basket sizing and key ordering stay unspecified: they
+are ROOT's choices, not the format's.
+
+**The writing side is narrower than the reading side, deliberately and not yet
+sufficiently.** What it covers is a file, an object, `TH1F`/`TH1D` and a flat
+`TTree` of one basket per branch.
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
+not, and `PLAN.md` §8.5 ranks the same list by how much each item blocks a third
+party — the streamer-info element lists, which live in `tools/rootwrite.py` rather
+than in the prose, and trees of more than one basket per branch are the two that
+matter. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation

@@ -1233,6 +1233,41 @@ user-defined class with a streamer info of its own are out of scope by decision 
 The four documents cover what a writer of histograms and flat trees needs, which is
 what the extension was asked for.
 
+### 8.5 Distance to "writes the latest versions of the most common types"
+
+The stated scope is a specification a third party can use to implement a library
+that **reads any ROOT file and writes the latest versions of the most common
+types**. The reading half is met, as far as the corpora can show. The writing half
+is not yet, and the review of 2026-09-18 made every shortfall explicit in
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) rather than leaving
+it implied. Ordered by how much it blocks a third party:
+
+1. **The streamer-info element lists are not in `spec/`.** Each class document says
+   *which* infos a file needs — fifteen for a histogram, eighteen for a flat tree —
+   and `WritingObjects.md` §7 specifies the record and the checksum exactly, but the
+   per-class element lists live only in `tools/rootwrite.py`. This is the one item
+   that stops a reader of the prose alone from producing a conforming file. Three
+   workarounds are documented; publishing the tables is the fix.
+2. **More than one basket per branch.** §3 writes one basket per branch and states
+   the general rule for the three counted arrays, but exercises it only at length 1.
+   Any tree big enough to flush is past what is written.
+3. **Cluster ranges.** A non-zero `fNClusterRange` populates `fClusterRangeEnd` and
+   `fClusterSize`, and no writing procedure covers them. Not a policy choice: the
+   arrays are a format consequence.
+4. **`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7. The most
+   commonly written classes after `TH1`.
+5. **Subdirectories.** `WritingFiles.md` §4.2 names the three differences and gives
+   no procedure.
+6. **A `TLeafC` branch**, whose per-entry layout is specified only on the reading
+   side.
+7. **`TGraph`**, which no writing document mentions and which is as common in real
+   files as `TH1`.
+
+Items 1 and 2 are the ones worth doing next: without them the writing layer
+describes a demonstration rather than a usable writer. Nothing in the list is a
+correction — the documents are accurate about what they cover — and each is now
+stated as a limit rather than left for a reader to discover.
+
 ## 9. Known gaps
 
 Every gap the written documents record. **None is a hole in the prose**: in every
@@ -1457,7 +1492,7 @@ dispatch table is now `TBranchElement.md` §8 and its structural findings are in
 the four documents themselves; the git log has the sections that were consumed.
 What had no other home is here.
 
-**The census it was written against** — 178 corpus files, every record whose
+**The census it was written against** — the 178 corpus files recorded at the time (180 now), every record whose
 class derives from `TTree`, every `TBranch*` member at every depth. Measured, not
 estimated:
 

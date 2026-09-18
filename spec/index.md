@@ -192,7 +192,10 @@ drift:
   somebody else's standards.
 - **On the write side**, everything [Writing §4](06-writing/index.md#4-what-is-not-specified)
   lists: earlier class versions, updating an existing file, producing a split
-  `TBranchElement`, and ROOT's policy choices.
+  `TBranchElement`, subdirectories, trees of more than one basket per branch, the
+  streamer-info element lists themselves, and ROOT's policy choices. The first three
+  are out of scope by decision; the rest are limits of what has been written so far,
+  and `PLAN.md` §8.5 ranks them.
 
 ## Reference files
 
