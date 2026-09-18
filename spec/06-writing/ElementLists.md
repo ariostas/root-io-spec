@@ -9,11 +9,11 @@ every field of every `TStreamerElement`. Without that a writer can build a
 correctly framed record with nothing in it, so this document publishes the lists
 themselves.
 
-Twenty-seven classes, which is every class a writer of histograms and flat trees
-has to describe:
+Thirty-one classes, which is every class a writer of histograms, profiles and
+flat trees has to describe:
 
 <!-- BEGIN GENERATED: counts -->
-**27 classes, 157 elements**, every one read out of a file ROOT wrote.
+**31 classes, 174 elements**, every one read out of a file ROOT wrote.
 <!-- END GENERATED -->
 
 Nothing here was transcribed from this project's writer. Every table is read out
@@ -42,7 +42,7 @@ folds them in
 | `fTitle` | the member's declaration comment, verbatim |
 
 The `Extra` column carries the subclass tail in one of three forms, and nothing
-else in these twenty-seven classes needs a fourth:
+else in these thirty-one classes needs a fourth:
 
 - `TStreamerBase` — `fBaseVersion`, and the base's own checksum, which travels in
   `fMaxIndex[1]`
@@ -84,7 +84,7 @@ there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all twenty-seven — and in all **743** streamer
+The info's own `fTitle` is empty in all thirty-one — and in all **743** streamer
 infos in this repository's reference files, which is worth knowing because
 [Writing an object §7.1](WritingObjects.md#71-the-nesting) describes it as the
 class's comment and a writer will wonder what to put there. An empty string.
@@ -97,7 +97,7 @@ member of a version-0 class (`root/io/io/src/TStreamerInfo.cxx:552-554`) while
 the checksum still folds them. Their infos list only their bases, so a writer has
 to carry `0xcc7e49c1` and `0xfc6c3bc6` as constants
 ([StreamerInfo §11.2](../02-serialization/StreamerInfo.md#112-what-cannot-be-recomputed)).
-Every other checksum in §4 to §7 is reproduced exactly by §11's algorithm applied
+Every other checksum in §4 to §8 is reproduced exactly by §11's algorithm applied
 to the table printed beside it, and `tools/element_lists.py` fails if that stops
 being true in either direction.
 
@@ -108,9 +108,9 @@ schema evolution reaches; producing an *older* layout is not something the forma
 offers a writer
 ([Overview §3.1](index.md#31-what-the-current-version-means)).
 
-**And they are the classes these two procedures need, not a general set.** A
-`TH2F`, a `TProfile`, a split branch, a `TGraph` or a user-defined class needs
-infos this document does not carry — the element list for any of them is
+**And they are the classes these procedures need, not a general set.** A split
+branch, a `TGraph`, a `TH3` or a user-defined class needs infos this document
+does not carry — the element list for any of them is
 obtainable from the file side with
 [StreamerInfo §12](../02-serialization/StreamerInfo.md#12-reading), and
 [Overview §4](index.md#4-what-is-not-specified) is the standing list of what the
@@ -147,13 +147,13 @@ The practical consequence for a writer is that this is the one column it can get
 wrong without consequence — but also that `fSize` is why a fixture's normalized
 digest is masked at all (`tools/normalize.py`), since `sizeof(std::string)` and
 `sizeof(std::map<int,int>)` differ between standard libraries. No member of these
-twenty-seven classes is affected: the only STL member among them is
+thirty-one classes is affected: the only STL member among them is
 `TRefTable::fProcessGUIDs`, a `vector<string>`, and `sizeof(std::vector<T>)` is
 24 with both.
 
-## 4. The nine classes both sets need
+## 4. The nine classes every set needs
 
-Every file needs these, whichever of the two procedures produced it. They are in
+Every file needs these, whichever of the procedures produced it. They are in
 bases-first order, which is the order a writer has to compute the checksums in.
 
 <!-- BEGIN GENERATED: shared -->
@@ -239,7 +239,7 @@ Class version **5**, `fCheckSum` **`0x69c5c3bb`**. 1 element.
 ## 5. A histogram file: the other six
 
 With §4 these are the fifteen of
-[Writing histograms §8](WritingHistograms.md#8-the-streamer-infos). `THashList`
+[Writing histograms §9](WritingHistograms.md#9-the-streamer-infos). `THashList`
 is here rather than in §4 because only a histogram reaches it — `TAxis::fLabels`
 is a `THashList *`, and a null pointer still forces its class's info to be
 written.
@@ -343,7 +343,69 @@ Class version **3**, `fCheckSum` **`0xf9b1569f`**. 2 elements.
 | 2 | `TStreamerBase` | `TArrayD` | 0 `kBase` | 0 | `BASE` | base version 1; base checksum `0x7139ef34` | `Array of doubles` |
 <!-- END GENERATED -->
 
-## 6. A flat tree file: the other nine
+## 6. A `TH2` or `TProfile` file: the other four
+
+With §4 and §5 these are the eighteen of
+[Writing histograms §9](WritingHistograms.md#9-the-streamer-infos). `TH2` sits
+between `TH1` and the concrete classes; `TProfile` sits **below** `TH1D`, so it
+is the one class here whose base is itself a concrete histogram.
+
+`TProfile` is also the only class in this document with an **enum** member
+outside `TH1` — `fErrorMode`, whose `fTypeName` is the unqualified `EErrorType`
+because the enum is declared at file scope
+(`root/hist/hist/inc/TProfile.h:28`). An enum folds an extra 1 into the
+checksum, so a writer that misses it cannot produce `0x4bedee54`
+([StreamerInfo §11.1](../02-serialization/StreamerInfo.md#111-an-enum-member-is-recognisable-and-it-changes-the-value)).
+`TH2`, by contrast, adds four plain doubles and nothing else.
+
+<!-- BEGIN GENERATED: derived -->
+### `TH2`
+
+Class version **5**, `fCheckSum` **`0x0182347f`**. 5 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TH1` | 0 `kBase` | 0 | `BASE` | base version 8; base checksum `0x1c3740c4` | `1-Dim histogram base class` |
+| 2 | `TStreamerBasicType` | `fScalefactor` | 8 `kDouble` | 8 | `double` |  | `Scale factor` |
+| 3 | `TStreamerBasicType` | `fTsumwy` | 8 `kDouble` | 8 | `double` |  | `Total Sum of weight*Y` |
+| 4 | `TStreamerBasicType` | `fTsumwy2` | 8 `kDouble` | 8 | `double` |  | `Total Sum of weight*Y*Y` |
+| 5 | `TStreamerBasicType` | `fTsumwxy` | 8 `kDouble` | 8 | `double` |  | `Total Sum of weight*X*Y` |
+
+### `TH2F`
+
+Class version **4**, `fCheckSum` **`0x689cc295`**. 2 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TH2` | 0 `kBase` | 0 | `BASE` | base version 5; base checksum `0x0182347f` | `2-Dim histogram base class` |
+| 2 | `TStreamerBase` | `TArrayF` | 0 `kBase` | 0 | `BASE` | base version 1; base checksum `0x5a0bf6f1` | `Array of floats` |
+
+### `TH2D`
+
+Class version **4**, `fCheckSum` **`0x7fba82f0`**. 2 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TH2` | 0 `kBase` | 0 | `BASE` | base version 5; base checksum `0x0182347f` | `2-Dim histogram base class` |
+| 2 | `TStreamerBase` | `TArrayD` | 0 `kBase` | 0 | `BASE` | base version 1; base checksum `0x7139ef34` | `Array of doubles` |
+
+### `TProfile`
+
+Class version **7**, `fCheckSum` **`0x4bedee54`**. 8 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TH1D` | 0 `kBase` | 0 | `BASE` | base version 3; base checksum `0xf9b1569f` | `1-Dim histograms (one double per channel)` |
+| 2 | `TStreamerObjectAny` | `fBinEntries` | 62 `kAny` | 24 | `TArrayD` |  | `number of entries per bin` |
+| 3 | `TStreamerBasicType` | `fErrorMode` | 3 `kInt` | 4 | `EErrorType` |  | `Option to compute errors` |
+| 4 | `TStreamerBasicType` | `fYmin` | 8 `kDouble` | 8 | `double` |  | `Lower limit in Y (if set)` |
+| 5 | `TStreamerBasicType` | `fYmax` | 8 `kDouble` | 8 | `double` |  | `Upper limit in Y (if set)` |
+| 6 | `TStreamerBasicType` | `fTsumwy` | 8 `kDouble` | 8 | `double` |  | `Total Sum of weight*Y` |
+| 7 | `TStreamerBasicType` | `fTsumwy2` | 8 `kDouble` | 8 | `double` |  | `Total Sum of weight*Y*Y` |
+| 8 | `TStreamerObjectAny` | `fBinSumw2` | 62 `kAny` | 24 | `TArrayD` |  | `Array of sum of squares of weights per bin` |
+<!-- END GENERATED -->
+
+## 7. A flat tree file: the other nine
 
 With §4 these are the eighteen of
 [Writing trees §8](WritingTrees.md#8-the-streamer-infos). `TBranchRef`,
@@ -497,14 +559,14 @@ Class version **20**, `fCheckSum` **`0x7264e07f`**. 33 elements.
 | 33 | `TStreamerObjectPointer` | `fBranchRef` | 64 `kObjectP` | 8 | `TBranchRef*` |  | `Branch supporting the TRefTable (if any)` |
 <!-- END GENERATED -->
 
-## 7. Three classes no file describes
+## 8. Three classes no file describes
 
 `TArray`, `TArrayF` and `TArrayD` have hand-written streamers, so nothing marks
-them and a histogram file contains **no info for any of them**
+them and a histogram or profile file contains **no info for any of them**
 ([Writing an object §7.2](WritingObjects.md#72-which-classes-need-an-info)).
-Their checksums are needed all the same, as the `fBaseCheckSum` of `TH1F` and
-`TH1D`, so a writer has to build the element lists below without ever emitting
-them. The tables are read from `data/classes/tarray-histogram.root`, where a
+Their checksums are needed all the same, as the `fBaseCheckSum` of `TH1F`,
+`TH1D`, `TH2F` and `TH2D`, so a writer has to build the element lists below
+without ever emitting them. The tables are read from `data/classes/tarray-histogram.root`, where a
 `TH2F` inside a `TTree` branch is streamed through a path that does mark them.
 
 <!-- BEGIN GENERATED: arrays -->
@@ -535,7 +597,7 @@ Class version **1**, `fCheckSum` **`0x7139ef34`**. 2 elements.
 | 2 | `TStreamerBasicPointer` | `fArray` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fN` in `TArray` at version 1 | `[fN] Array of fN doubles` |
 <!-- END GENERATED -->
 
-## 8. The order ROOT writes them in
+## 9. The order ROOT writes them in
 
 Registration order, which is neither alphabetical nor dependency order. **A
 reader does not care**, and a writer is free to choose its own — the order is
@@ -549,6 +611,14 @@ TH1F  TH1  TNamed  TObject  TAttLine  TAttFill  TAttMarker  TAxis  TAttAxis
 THashList  TList  TSeqCollection  TCollection  TString  TH1D
 ```
 
+**A TH2 and TProfile file** — 18 infos, as `data/classes/th2-profile.root` carries them:
+
+```
+TH2F  TH2  TH1  TNamed  TObject  TAttLine  TAttFill  TAttMarker  TAxis  TAttAxis
+THashList  TList  TSeqCollection  TCollection  TString  TH2D  TProfile
+TH1D
+```
+
 **A flat tree file** — 18 infos, as `data/ttree/basket.root` carries them:
 
 ```
@@ -558,11 +628,11 @@ TBranchRef  TRefTable  TObjArray
 ```
 <!-- END GENERATED -->
 
-## 9. Class versions
+## 10. Class versions
 
 The version each info records, which is also the version an object of that class
 must carry in its version word. Checked against `ClassDef` in the pinned
-submodule by `tools/check_versions.py`, so this table and §4 to §7 together say
+submodule by `tools/check_versions.py`, so this table and §4 to §8 together say
 that the fixtures' values *are* the current ones.
 
 <!-- BEGIN GENERATED: versions -->
@@ -571,28 +641,32 @@ that the fixtures' values *are* the current ones.
 | `TArray` | 1 | neither: no info is written |
 | `TArrayD` | 1 | neither: no info is written |
 | `TArrayF` | 1 | neither: no info is written |
-| `TAttAxis` | 4 | histogram |
-| `TAttFill` | 2 | histogram, tree |
-| `TAttLine` | 2 | histogram, tree |
-| `TAttMarker` | 3 | histogram, tree |
-| `TAxis` | 10 | histogram |
+| `TAttAxis` | 4 | histogram, th2-profile |
+| `TAttFill` | 2 | histogram, th2-profile, tree |
+| `TAttLine` | 2 | histogram, th2-profile, tree |
+| `TAttMarker` | 3 | histogram, th2-profile, tree |
+| `TAxis` | 10 | histogram, th2-profile |
 | `TBranch` | 13 | tree |
 | `TBranchRef` | 1 | tree |
-| `TCollection` | 3 | histogram, tree |
-| `TH1` | 8 | histogram |
-| `TH1D` | 3 | histogram |
+| `TCollection` | 3 | histogram, th2-profile, tree |
+| `TH1` | 8 | histogram, th2-profile |
+| `TH1D` | 3 | histogram, th2-profile |
 | `TH1F` | 3 | histogram |
-| `THashList` | 0 | histogram |
+| `TH2` | 5 | th2-profile |
+| `TH2D` | 4 | th2-profile |
+| `TH2F` | 4 | th2-profile |
+| `THashList` | 0 | histogram, th2-profile |
 | `TLeaf` | 2 | tree |
 | `TLeafF` | 1 | tree |
 | `TLeafI` | 1 | tree |
-| `TList` | 5 | histogram, tree |
-| `TNamed` | 1 | histogram, tree |
+| `TList` | 5 | histogram, th2-profile, tree |
+| `TNamed` | 1 | histogram, th2-profile, tree |
 | `TObjArray` | 3 | tree |
-| `TObject` | 1 | histogram, tree |
+| `TObject` | 1 | histogram, th2-profile, tree |
+| `TProfile` | 7 | th2-profile |
 | `TRefTable` | 3 | tree |
-| `TSeqCollection` | 0 | histogram, tree |
-| `TString` | 2 | histogram, tree |
+| `TSeqCollection` | 0 | histogram, th2-profile, tree |
+| `TString` | 2 | histogram, th2-profile, tree |
 | `TTree` | 20 | tree |
 <!-- END GENERATED -->
 
@@ -600,7 +674,7 @@ that the fixtures' values *are* the current ones.
 foreign class, and 1 is what its info records
 ([Writing trees §3.2](WritingTrees.md#32-fiofeatures-is-the-one-foreign-class-a-tree-contains)).
 
-## 10. Invariants
+## 11. Invariants
 
 1. Every element's `fTypeName` is the resolved spelling of its type, and for a
    `TStreamerBase` it is exactly `BASE`.
@@ -614,11 +688,11 @@ foreign class, and 1 is what its info records
 5. Each class version in §9 is the one `ClassDef` declares in the pinned
    submodule.
 
-1 to 4 are checked by `tools/element_lists.py` over the three reference files; 4
+1 to 4 are checked by `tools/element_lists.py` over the four reference files; 4
 is checked for every info in every reference file by `tools/test_write.py`, and 5
 by `tools/check_versions.py`.
 
-## 11. Errata
+## 12. Errata
 
 Not against ROOT's shipped documentation, which says nothing about element lists,
 but against two claims a writer will otherwise make from the class definitions.
@@ -631,11 +705,12 @@ byte for byte — the fields below are in no checksum and in no byte count.
 | 1 | A counter member is declared with `fType` 6 `kCounter` | `kCounter` is not a property of the declaration: `TStreamerInfo::Build` gives the member `kInt`, and it is **promoted** to `kCounter` when some other element names it as a counter (`root/core/meta/src/TStreamerElement.cxx:99`). `TArray::fN` is 6 only because `TArrayF::fArray` points at it, and a member that nothing counts stays 3 — `TCollection::fSize` is the contrast in §4. ROOT's own comment records that the switch "might be triggered by a derived class" (`root/io/io/src/TStreamerInfo.cxx:2969-2970`) |
 | 2 | A `vector<string>` member has `fCtype` 365 `kSTLstring` | 365 is what `TStreamerSTLstring` sets for itself (`root/core/meta/src/TStreamerElement.cxx:2194`). A `TStreamerSTL` for `vector<string>` records 61 `kObject`, because the value type has a dictionary (`:1810-1812`) — and `std::string` has one. This is the only one of the two that reaches a file: it is `TRefTable::fProcessGUIDs`, in every tree file |
 
-## 12. Reference files
+## 13. Reference files
 
 | File | What it supplies |
 |---|---|
-| `data/classes/histogram.root` | §4 and §5, and the histogram order in §8 — ROOT's own fifteen infos |
-| `data/ttree/basket.root` | §4 and §6, and the tree order in §8 — ROOT's own eighteen |
-| `data/classes/tarray-histogram.root` | §7, plus a second independent copy of thirteen of the classes in §4 to §6 |
-| `data/written/histogram.root`, `data/written/tree.root` | the same infos written from these tables; the histogram file's whole `StreamerInfo` record is byte-identical to ROOT's, all 9628 bytes |
+| `data/classes/histogram.root` | §4 and §5, and the histogram order in §9 — ROOT's own fifteen infos |
+| `data/ttree/basket.root` | §4 and §7, and the tree order in §9 — ROOT's own eighteen |
+| `data/classes/th2-profile.root` | §6, and a second copy of §4, §5's `TAxis` chain and `TH1D` — ROOT's own eighteen |
+| `data/classes/tarray-histogram.root` | §8, plus a second independent copy of thirteen of the classes in §4 to §7 |
+| `data/written/histogram.root`, `data/written/th2-profile.root`, `data/written/tree.root` | the same infos written from these tables; the histogram file's whole `StreamerInfo` record is byte-identical to ROOT's, all 9628 bytes |

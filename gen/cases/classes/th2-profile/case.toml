@@ -1,0 +1,534 @@
+id   = "classes/th2-profile"
+file = "data/classes/th2-profile.root"
+size = 15838
+
+description = """
+The two histogram classes past `TH1` that a writer of ordinary physics output
+needs: **`TH2`** and **`TProfile`**. `classes/histogram` covers `TH1F` and
+`TH1D`, whose records stop at the `TArray` base; these two insert their own
+members *after* the `TH1` base and so need their own procedure
+([Writing histograms](../../../spec/06-writing/WritingHistograms.md) 7 and 8).
+
+Four records, each carrying something the other three do not:
+
+* `h2f` is a `TH2F` with fixed-width bins, an explicit `Sumw2()`, and fills that
+  land outside the range in **x** and in **y** separately. Either way a cell is
+  incremented and no statistic is, so `fEntries` is 6 while `fTsumw` is 4 -- the
+  in-range region of a `TH2` is a rectangle, not "every cell but the ends".
+* `h2d` is a `TH2D` with **variable edges on both axes**, which is the only
+  non-empty `fXbins` on a Y axis anywhere in `data/`, and it is filled with
+  weights so the four y sums are not the x sums.
+* `p1` is a `TProfile` with unit weights, so `fBinSumw2` is **empty** while
+  `fSumw2` is not -- a profile's `fSumw2` is allocated by its constructor and
+  holds sum(w*y*y), which is nothing like a `TH1`'s sum of squared weights.
+* `p2` is a `TProfile` with a **Y range**, `fErrorMode` `kERRORSPREAD`, and
+  weighted fills, so `fBinSumw2` is populated. One of its fills is outside
+  `fYmin`..`fYmax` and increments nothing at all, `fEntries` included.
+
+Nothing a reader must compute is stored: a profile's bin content is
+`fArray[i] / fBinEntries[i]` and its error needs `fSumw2` and `fBinSumw2` too, so
+all four of its parallel arrays are load-bearing.
+
+The `StreamerInfo` record holds **eighteen** infos and a nineteenth entry that
+is not one: a `listOfRules` with a single read rule resetting `fBinSumw2` for
+`TProfile` versions 1 to 5. A file written at version 7 cannot use it, which is
+why `data/written/th2-profile.root` matches this record only up to it.
+"""
+
+spec = [
+  "spec/06-writing/WritingHistograms.md",
+  "spec/02-serialization/StreamerDriven.md",
+  "spec/02-serialization/SchemaEvolution.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 186
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 286
+nbytes = 865
+class  = "TH2F"
+role   = "a TH2F: fixed bins, Sumw2, and a fill out of range in each axis"
+
+[[records]]
+offset = 1151
+nbytes = 941
+class  = "TH2D"
+role   = "a TH2D with variable edges on both axes and weighted fills"
+
+[[records]]
+offset = 2092
+nbytes = 759
+class  = "TProfile"
+role   = "a TProfile with unit weights, so fBinSumw2 is empty"
+
+[[records]]
+offset = 2851
+nbytes = 761
+class  = "TProfile"
+role   = "a TProfile with a Y range, kERRORSPREAD, and a populated fBinSumw2"
+
+[[records]]
+offset = 3612
+nbytes = 11853
+class  = "TList"
+role   = "StreamerInfo: eighteen infos plus a listOfRules"
+
+[[records]]
+offset = 15465
+nbytes = 284
+class  = "TFile"
+role   = "keys list"
+
+[[records]]
+offset = 15749
+nbytes = 89
+class  = "TFile"
+role   = "free segments"
+
+
+# --- The TH2F record: three nested frames, one per class in the chain ---
+
+[[bytes]]
+name = "fClassName"
+offset = 312
+type = "string"
+value = "TH2F"
+
+[[bytes]]
+name = "TH2F byte count: 0x40000000 | 813"
+offset = 334
+type = "u32"
+value = 1073742637
+
+[[bytes]]
+name = "TH2F class version"
+offset = 338
+type = "u16"
+value = 4
+
+[[bytes]]
+name = "the TH2 base's byte count, 0x40000000 | 723"
+offset = 340
+type = "u32"
+value = 1073742547
+
+[[bytes]]
+name = "TH2 class version"
+offset = 344
+type = "u16"
+value = 5
+
+[[bytes]]
+name = "the TH1 base's byte count, 0x40000000 | 685"
+offset = 346
+type = "u32"
+value = 1073742509
+
+[[bytes]]
+name = "TH1 class version: the same block a TH1F writes"
+offset = 350
+type = "u16"
+value = 8
+
+[[bytes]]
+name = "fNcells = (3 + 2) * (2 + 2)"
+offset = 421
+type = "i32"
+value = 20
+
+[[bytes]]
+name = "the X axis's fNbins"
+offset = 494
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "the Y axis's fNbins: a TH2's second axis is real, not a placeholder"
+offset = 607
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "the Y axis's fXmax"
+offset = 619
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "the Z axis still carries one bin and the range 0..1"
+offset = 720
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fEntries: six fills, two of them outside the range"
+offset = 768
+type = "f64"
+value = 6.0
+
+[[bytes]]
+name = "fTsumw: only the four inside it in both axes at once"
+offset = 776
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "fTsumwx"
+offset = 792
+type = "f64"
+value = 5.0
+
+[[bytes]]
+name = "fTsumwx2"
+offset = 800
+type = "f64"
+value = 9.0
+
+[[bytes]]
+name = "fMaximum = -1111, the sentinel for 'not set'"
+offset = 808
+type = "f64"
+value = -1111.0
+
+[[bytes]]
+name = "fSumw2 has one entry per cell"
+offset = 836
+type = "i32"
+value = 20
+
+[[bytes]]
+name = "fScalefactor: 1.0, and TH2's four doubles begin where TH1's frame ends"
+offset = 1035
+type = "f64"
+value = 1.0
+
+[[bytes]]
+name = "fTsumwy"
+offset = 1043
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fTsumwy2"
+offset = 1051
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fTsumwxy: the one sum no other histogram class has"
+offset = 1059
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "the TArrayF base's fN, which must equal fNcells"
+offset = 1067
+type = "i32"
+value = 20
+
+[[bytes]]
+name = "cell 6 = biny * (nx + 2) + binx for (1, 1), filled twice"
+offset = 1095
+type = "f32"
+value = 2.0
+
+[[bytes]]
+name = "cell 5 = (0, 1), the x underflow of the first y bin"
+offset = 1091
+type = "f32"
+value = 1.0
+
+[[bytes]]
+name = "cell 16 = (1, 3), the y overflow"
+offset = 1135
+type = "f32"
+value = 1.0
+
+
+# --- The TH2D record: variable edges on both axes ---
+
+[[bytes]]
+name = "fClassName"
+offset = 1177
+type = "string"
+value = "TH2D"
+
+[[bytes]]
+name = "TH2D class version, the same as TH2F's"
+offset = 1209
+type = "u16"
+value = 4
+
+[[bytes]]
+name = "fNcells = (2 + 2) * (2 + 2)"
+offset = 1298
+type = "i32"
+value = 16
+
+[[bytes]]
+name = "the X axis's fXbins holds nbins + 1 edges"
+offset = 1391
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "the X axis's last edge, which must equal fXmax"
+offset = 1411
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "the Y axis's fXbins: the only non-empty one on a Y axis in data/"
+offset = 1528
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "the Y axis's last edge"
+offset = 1548
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "fEntries: two fills, though their weights sum to 2.5"
+offset = 1693
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "fTsumw"
+offset = 1701
+type = "f64"
+value = 2.5
+
+[[bytes]]
+name = "fTsumw2: the squared weights, 4 + 0.25"
+offset = 1709
+type = "f64"
+value = 4.25
+
+[[bytes]]
+name = "fTsumwy2, from the y bin centres 1 and 6"
+offset = 1944
+type = "f64"
+value = 20.0
+
+[[bytes]]
+name = "fTsumwxy"
+offset = 1952
+type = "f64"
+value = 8.5
+
+[[bytes]]
+name = "the TArrayD base's fN"
+offset = 1960
+type = "i32"
+value = 16
+
+
+# --- The first TProfile: four parallel arrays, one of them empty ---
+
+[[bytes]]
+name = "fClassName"
+offset = 2118
+type = "string"
+value = "TProfile"
+
+[[bytes]]
+name = "TProfile class version"
+offset = 2147
+type = "u16"
+value = 7
+
+[[bytes]]
+name = "TH1D class version: a TProfile is a TH1D, not a TH1"
+offset = 2153
+type = "u16"
+value = 3
+
+[[bytes]]
+name = "fNcells = nbins + 2"
+offset = 2229
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fEntries: four fills, one of them in the underflow cell"
+offset = 2576
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "fTsumw: the three in range"
+offset = 2584
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fSumw2's fN: never absent in a TProfile, and it holds sum(w*y*y)"
+offset = 2644
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fSumw2[1] = 1*1 + 3*3, the two y values that landed in bin 1"
+offset = 2656
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "the TH1D's TArrayD base, which holds sum(w*y) rather than a content"
+offset = 2723
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fArray[1] = 1 + 3; the content ROOT reports is this over fBinEntries[1]"
+offset = 2735
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "fBinEntries' fN, one per cell"
+offset = 2767
+type = "i32"
+value = 5
+
+[[bytes]]
+name = "fBinEntries[1] = 2, so the bin content is 4 / 2"
+offset = 2779
+type = "f64"
+value = 2.0
+
+[[bytes]]
+name = "fErrorMode = kERRORMEAN, an enum stored as an Int_t"
+offset = 2811
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fYmin equals fYmax, which is how 'no Y range' is expressed"
+offset = 2815
+type = "f64"
+value = 0.0
+
+[[bytes]]
+name = "fYmax"
+offset = 2823
+type = "f64"
+value = 0.0
+
+[[bytes]]
+name = "fTsumwy = 1 + 3 + 2, the in-range y values"
+offset = 2831
+type = "f64"
+value = 6.0
+
+[[bytes]]
+name = "fTsumwy2"
+offset = 2839
+type = "f64"
+value = 14.0
+
+[[bytes]]
+name = "fBinSumw2 is empty: no weight other than 1 ever arrived"
+offset = 2847
+type = "i32"
+value = 0
+
+
+# --- The second TProfile: a Y range, kERRORSPREAD, and fBinSumw2 ---
+
+[[bytes]]
+name = "fNcells"
+offset = 2982
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fEntries: three fills, not the 4 that fBinEntries sums to"
+offset = 3329
+type = "f64"
+value = 3.0
+
+[[bytes]]
+name = "fTsumw: the weights, 3 + 0.5 + 0.5"
+offset = 3337
+type = "f64"
+value = 4.0
+
+[[bytes]]
+name = "fTsumw2 = sum(w*w), which is fBinSumw2's in-range sum exactly"
+offset = 3345
+type = "f64"
+value = 9.5
+
+[[bytes]]
+name = "fArray[1] = 3*2 + 0.5*6"
+offset = 3480
+type = "f64"
+value = 9.0
+
+[[bytes]]
+name = "fBinEntries[1] = 3 + 0.5, a weight sum rather than a count"
+offset = 3516
+type = "f64"
+value = 3.5
+
+[[bytes]]
+name = "fErrorMode = kERRORSPREAD, from the 's' option"
+offset = 3540
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fYmax = 10; the fill at y = 99 was rejected before fEntries moved"
+offset = 3552
+type = "f64"
+value = 10.0
+
+[[bytes]]
+name = "fTsumwy = 3*2 + 0.5*4 + 0.5*6"
+offset = 3560
+type = "f64"
+value = 11.0
+
+[[bytes]]
+name = "fBinSumw2's fN: populated, because a weight other than 1 arrived"
+offset = 3576
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "fBinSumw2[1] = 3*3 + 0.5*0.5"
+offset = 3588
+type = "f64"
+value = 9.25
+
+
+# --- The StreamerInfo record ---
+
+[[bytes]]
+name = "fName"
+offset = 3644
+type = "string"
+value = "StreamerInfo"
+
+[[bytes]]
+name = "TList class version"
+offset = 3680
+type = "u16"
+value = 5
+
+[[bytes]]
+name = "the entry count: eighteen infos and one listOfRules"
+offset = 3693
+type = "i32"
+value = 19

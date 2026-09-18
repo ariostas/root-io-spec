@@ -9,6 +9,45 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New: `TH2` and `TProfile`, so a writer covers the five histogram classes that
+  matter** ([Writing histograms §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d)).
+  `TH2F` and `TH2D` are three nested frames rather than two, with `TH2`'s four own
+  doubles between the `TH1` frame closing and the `TArray` base opening; `fNcells`
+  is `(nx + 2) * (ny + 2)` and the cell index is `binx + (nx + 2) * biny`, so the
+  in-range region the statistics cover is a rectangle. `TProfile` is a `TH1D` with
+  **four parallel arrays**, none of which is a bin content: `fArray` is sum(w*y),
+  `fSumw2` is sum(w*y*y) and unlike a `TH1`'s is never empty, `fBinEntries` is
+  sum(w) — a weight sum, not the count its own comment claims — and `fBinSumw2` is
+  sum(w²). What ROOT reports for a bin is `fArray[i] / fBinEntries[i]`, stored
+  nowhere. An empty `fSumw2` is the one thing here ROOT punishes by **crashing**:
+  it opens the file, returns the right entries and the right bin content, and then
+  segfaults in `GetBinError`, which indexes the array with no length test.
+  `data/classes/th2-profile.root` is the new reference file (71 assertions) and
+  `data/written/th2-profile.root` reproduces all four of its data records byte for
+  byte, plus its `StreamerInfo` record up to the `listOfRules` ROOT appends for
+  `TProfile` and a file written at version 7 cannot use.
+- **New, for a writer of any histogram: a zero `fTsumw` silently discards the
+  statistics.** `TH2::GetStats` and `TProfile::GetStats` recompute all their sums
+  from the bin contents and the bin centres when `fTsumw` is 0, with no diagnostic
+  ([§7.3](spec/06-writing/WritingHistograms.md#73-a-zero-ftsumw-throws-all-seven-sums-away),
+  [§8.5](spec/06-writing/WritingHistograms.md#85-only-fentries-is-unrecoverable)) —
+  and a `TProfile` also repairs a zero `fTsumwy`/`fTsumwy2` pair in place. So the
+  sums are not optional the way `fSumw2` is.
+- **Checked: the histogram invariants, which had been stated but not verified.**
+  `tools/check_invariants.py` now has a `check_histogram` pass covering
+  `WritingHistograms.md` 10.1 to 10.9 over the `TH1x`, `TH2x`, `TH3x` and
+  `TProfile` families — `fNcells` against the axes, every counted array against
+  `fNcells`, `fXbins` against `fNbins` on each axis, `fErrorMode`'s range and the Y
+  range. 0 failures over the fixtures and both corpora. Its skips are counted as
+  **records** rather than branch-baskets, so they no longer enter the `ENTRIES`
+  coverage ratio, which measures something else.
+- **Six errata against ROOT's own comments**
+  ([§12](spec/06-writing/WritingHistograms.md#12-errata)), each one a member
+  definition that would mislead a writer: `fBinEntries` is not a count,
+  `fScaling` is never true, `fScalefactor` scales nothing, `fgApproximate` is not
+  streamed, `GetStats` is not a copy, and `GetBinError`'s history is dated by ROOT
+  release inside a class whose versions run 1 to 7.
+
 - **New: flushing, so a writer is no longer limited to one basket per branch**
   ([Writing trees §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch)).
   What a flush produces — `fWriteBasket`, the three counted arrays at any length,
@@ -22,8 +61,8 @@ was established, which is the other half of the story.
   `data/ttree/clusters.root` — five baskets, two ranges, nineteen entries — with
   every basket record and the whole `TTree` record byte-identical.
 - **New: the streamer-info element lists a writer has to emit**
-  ([Element lists](spec/06-writing/ElementLists.md)). 27 classes and 157 elements —
-  everything a writer of `TH1F`/`TH1D` histograms or a flat `TTree` must describe —
+  ([Element lists](spec/06-writing/ElementLists.md)). 31 classes and 174 elements —
+  everything a writer of the five histogram classes or a flat `TTree` must describe —
   with every field of every element, the two write orders, the class versions, and
   the two checksums that cannot be recomputed from a list. This was the one part of
   the writing layer that could not be implemented from the prose: the lists existed

@@ -26,16 +26,17 @@ leaves, baskets, splitting, and reading an entry out of a split or an unsplit tr
 
 A **writing** layer now covers the other direction:
 [spec/06-writing/](spec/06-writing/index.md) says which bytes to emit and in what
-order — the container, an object and its streamer info, `TH1F`/`TH1D`, and a flat
-`TTree` of as many baskets per branch as the writer flushes — at the current
-version of each class. `tools/rootwrite.py` is its
+order — the container, an object and its streamer info, `TH1F`/`TH1D`,
+`TH2F`/`TH2D`/`TProfile`, and a flat `TTree` of as many baskets per branch as the
+writer flushes — at the current version of each class. `tools/rootwrite.py` is its
 executable form, and the conformance test is that ROOT opens what it wrote, finds
 the values that went in, and says nothing.
 
 The result is stronger than that test needed to be: **every object-bearing record
 in `data/written/` is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`,
-two `TTree`s, seven `TBasket`s, and a `StreamerInfo` record of fifteen class
-descriptions with their checksums computed from scratch.
+a `TH2F`, a `TH2D`, two `TProfile`s, two `TTree`s, seven `TBasket`s, and a
+`StreamerInfo` record of fifteen class descriptions with their checksums computed
+from scratch.
 
 | Layer | State |
 |---|---|
@@ -45,13 +46,13 @@ descriptions with their checksums computed from scratch.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
-| Writing — the container, an object, histograms, a flat `TTree` | written |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, a flat `TTree` | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**72 reference files, 1838 byte-level assertions, and 1414 source citations
-checked against the pinned submodule across 47 documents**, plus 4 files this
-project wrote with 251 assertions of their own. The invariants also
+**73 reference files, 1909 byte-level assertions, and 1459 source citations
+checked against the pinned submodule across 47 documents**, plus 6 files this
+project wrote with 320 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
@@ -75,17 +76,20 @@ each class. Free space reuse, basket sizing and key ordering stay unspecified: t
 are ROOT's choices, not the format's.
 
 **The writing side is narrower than the reading side, deliberately.** What it
-covers is a file, an object, `TH1F`/`TH1D` and a flat `TTree` of any number of
-baskets per branch, with its cluster ranges.
+covers is a file, an object, the five histogram classes `TH1F`, `TH1D`, `TH2F`,
+`TH2D` and `TProfile`, and a flat `TTree` of any number of baskets per branch with
+its cluster ranges.
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
 not, and `PLAN.md` §8.5 ranks the same list by how much each item blocks a third
-party — `TH2F` and `TProfile`, subdirectories, a `TLeafC` branch and `TGraph` are
-what is left. The two largest items are now done: the streamer-info element lists
-of all twenty-seven classes a writer has to describe are published as
+party — subdirectories, a `TLeafC` branch and `TGraph` are what is left. The three
+largest items are done: the streamer-info element lists of all thirty-one classes a
+writer has to describe are published as
 [Element lists](spec/06-writing/ElementLists.md), read out of the ROOT-written
-fixtures rather than transcribed from this project's writer, and
+fixtures rather than transcribed from this project's writer,
 [Writing trees §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch)
-specifies flushing. The document is descriptive of ROOT 6.40.04 — where it
+specifies flushing, and
+[Writing histograms §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d)
+specify `TH2` and `TProfile`. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation

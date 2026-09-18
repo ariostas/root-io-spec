@@ -120,7 +120,7 @@ class Checker:
         # (StreamerDriven.md 7), so the list has to come from outside it.
         self.custom = set(custom or ())
         self.sampled = 0
-        self.skipped: dict[tuple[str, str], int] = {}
+        self.skipped: dict[tuple[str, str, str], int] = {}
         #: branch-baskets on which an entry check ran to completion. The
         #: denominator for the SKIPPED counts, so that "0 failures" can be read
         #: against how much was actually reached.
@@ -176,13 +176,20 @@ class Checker:
             self._data[rec.offset] = out
         return out
 
-    def skip(self, check: str, reason: str) -> None:
+    def skip(self, check: str, reason: str,
+             unit: str = "branch-basket") -> None:
         """Record that `check` could not run here, and why.
 
         Not a pass: a check that cannot run must not sit inside a "0 failures"
         line unexamined. The counts are printed per reason at the end.
+
+        `unit` says what was skipped, and only `branch-basket` feeds the ENTRIES
+        ratio -- that figure is about decoding a tree's entries, so a histogram
+        or a matrix record counted into it would understate the coverage of
+        something it does not measure. A shared unit hides a category the same
+        way a shared reason does.
         """
-        key = (check, reason)
+        key = (check, reason, unit)
         self.skipped[key] = self.skipped.get(key, 0) + 1
 
     def basket(self, rec, payload):
@@ -1058,6 +1065,213 @@ class Checker:
     FORMULA_CURRENT = {"TF1": 12, "TFormula": 14}
     FORMULA_NEW_FROM = {"TF1": 8, "TFormula": 9}
 
+    #: WritingHistograms.md 10. The number of axes each histogram class counts
+    #: cells in; every axis past that carries exactly one bin. The TH1x, TH2x
+    #: and TH3x families follow from the name; TH2Poly, TH1K and TProfile's
+    #: relatives outside this map are not described here and are left alone.
+    HIST_DIMENSION = {"TProfile": 1, "TProfile2D": 2, "TProfile3D": 3}
+
+    #: The concrete element letters a THnx class name can end in.
+    HIST_LETTERS = "CSILFD"
+
+    def hist_dimension(self, name: str) -> int | None:
+        if name in self.HIST_DIMENSION:
+            return self.HIST_DIMENSION[name]
+        if (len(name) == 4 and name.startswith("TH") and name[2] in "123"
+                and name[3] in self.HIST_LETTERS):
+            return int(name[2])
+        return None
+
+    def check_histogram(self) -> None:
+        """WritingHistograms.md invariants 1, 2, 3, 4, 6, 8 and 9.
+
+        The shape checks a histogram record must satisfy whatever wrote it, and
+        they are the same at every TH1 version because they are all about
+        *lengths* -- fNcells against the axes, the TArray base and fSumw2
+        against fNcells, fXbins against fNbins. A member a legacy version does
+        not carry is simply absent from the decoded tree and skipped.
+
+        Invariant 5 is not here: whether every weight was 1 is not recoverable
+        from a record, so a check of `fTsumw <= fEntries` would be wrong for
+        every weighted histogram ROOT has ever written. 7 is
+        `tools/check_versions.py`.
+
+        Confirmed by corrupting data/written/th2-profile.root, twelve fields one
+        at a time. Five land here: fNcells 20 -> 19 gives "TH2F at 286 has
+        fNcells 19, but its axes (3, 2 bins) need 20", the Y axis's fNbins gives
+        the same check from the other side, fZaxis.fNbins 1 -> 2 gives 10.4,
+        fBufferSize 0 -> 4 gives 10.6, a moved fXbins edge gives 10.3, and
+        fErrorMode 4 and an inverted Y range give 10.9. The other array lengths
+        desynchronise the decode before reaching here -- shortening the TArrayF
+        base reports "TH2F v4 consumed 807 bytes, byte count says 811" -- so the
+        length checks only bite on a file whose byte count agrees with its wrong
+        length, which is exactly what a faulty *writer* produces.
+        """
+        for rec in self.records:
+            if rec.free:
+                continue
+            dim = self.hist_dimension(rec.class_name)
+            if dim is None:
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            _, _, infos = self.streamer_infos()
+            if infos is None:
+                self.skip("WritingHistograms 10.1", "no StreamerInfo record",
+                          unit="record")
+                continue
+            try:
+                hist = rootfile.decode_record(data, rec, infos)
+            except rootfile.UnsupportedClass as exc:
+                self.skip("WritingHistograms 10.1", str(exc), unit="record")
+                continue
+            except (rootfile.FormatError, struct.error, IndexError) as exc:
+                self.bad("WritingHistograms 10.1",
+                         f"{rec.class_name} at {rec.offset}: {exc}")
+                continue
+            self.check_hist_shape(data, rec, hist, dim)
+
+    def _i32(self, data: bytes, value) -> int:
+        return struct.unpack_from(">i", data, value.start)[0]
+
+    def _f64(self, data: bytes, value) -> float:
+        return struct.unpack_from(">d", data, value.start)[0]
+
+    def _array_len(self, data: bytes, value) -> int:
+        """`fN` of a `TArrayD`/`TArrayF`, member or base: its first four bytes."""
+        return self._i32(data, value)
+
+    def check_hist_shape(self, data, rec, hist, dim: int) -> None:
+        where = f"{rec.class_name} at {rec.offset}"
+        th1 = next((v for v in rootfile.walk(hist) if v.name == "TH1"), None)
+        if th1 is None or not th1.members:
+            self.skip("WritingHistograms 10.1",
+                      f"{rec.class_name}: no TH1 base in the decoded record",
+                      unit="record")
+            return
+        by_name = {m.name: m for m in th1.members}
+        if "fNcells" not in by_name:
+            self.skip("WritingHistograms 10.1",
+                      f"{rec.class_name}: TH1 records no fNcells",
+                      unit="record")
+            return
+        ncells = self._i32(data, by_name["fNcells"])
+
+        # Invariants 1, 3 and 4, over the three axes.
+        want, nbins = 1, []
+        for i, name in enumerate(("fXaxis", "fYaxis", "fZaxis")):
+            axis = by_name.get(name)
+            if axis is None or not axis.members:
+                self.bad("WritingHistograms 10.4",
+                         f"{where} has no {name}")
+                return
+            fields = {m.name: m for m in axis.members}
+            n = self._i32(data, fields["fNbins"])
+            nbins.append(n)
+            if i < dim:
+                want *= n + 2
+            elif n != 1:
+                self.bad("WritingHistograms 10.4",
+                         f"{where} is {dim}-dimensional but {name} has "
+                         f"fNbins {n}, not 1")
+            edges = fields.get("fXbins")
+            if edges is not None:
+                count = self._array_len(data, edges)
+                if count not in (0, n + 1):
+                    self.bad("WritingHistograms 10.3",
+                             f"{where}: {name}.fXbins has {count} edges, "
+                             f"expected 0 or {n + 1}")
+                elif count:
+                    first = struct.unpack_from(">d", data, edges.start + 4)[0]
+                    last = struct.unpack_from(">d", data,
+                                              edges.start + 4 + 8 * (count - 1))[0]
+                    lo = self._f64(data, fields["fXmin"])
+                    hi = self._f64(data, fields["fXmax"])
+                    if (first, last) != (lo, hi):
+                        self.bad("WritingHistograms 10.3",
+                                 f"{where}: {name}.fXbins runs {first} to "
+                                 f"{last}, but fXmin/fXmax are {lo}/{hi}")
+        if ncells != want:
+            self.bad("WritingHistograms 10.1",
+                     f"{where} has fNcells {ncells}, but its axes "
+                     f"({', '.join(str(n) for n in nbins[:dim])} bins) "
+                     f"need {want}")
+
+        # Invariant 1's second half: the TArray base holds one value per cell.
+        base = next((v for v in rootfile.walk(hist)
+                     if v.name in rootfile.TARRAY_WIDTH), None)
+        if base is not None:
+            count = self._array_len(data, base)
+            if count != ncells:
+                self.bad("WritingHistograms 10.1",
+                         f"{where}: the {base.name} base has fN {count}, "
+                         f"not fNcells {ncells}")
+
+        # Invariant 2.
+        sumw2 = by_name.get("fSumw2")
+        if sumw2 is not None:
+            count = self._array_len(data, sumw2)
+            if count not in (0, ncells):
+                self.bad("WritingHistograms 10.2",
+                         f"{where}: fSumw2 has {count} entries, expected 0 "
+                         f"or fNcells {ncells}")
+
+        # Invariant 6.
+        size, buffer = by_name.get("fBufferSize"), by_name.get("fBuffer")
+        if size is not None and buffer is not None:
+            declared = self._i32(data, size)
+            flag = data[buffer.start]
+            if (declared == 0) != (flag == 0):
+                self.bad("WritingHistograms 10.6",
+                         f"{where}: fBufferSize {declared} with fBuffer flag "
+                         f"byte {flag}")
+
+        if rec.class_name in self.HIST_DIMENSION:
+            self.check_profile(data, rec, hist, ncells, where)
+
+    #: WritingHistograms.md 8.4 -- kERRORMEAN, kERRORSPREAD, kERRORSPREADI and
+    #: kERRORSPREADG (`root/hist/hist/inc/TProfile.h:28`).
+    ERROR_MODES = (0, 1, 2, 3)
+
+    def check_profile(self, data, rec, hist, ncells: int, where: str) -> None:
+        """WritingHistograms.md invariants 8 and 9, for the TProfile family."""
+        by_name = {m.name: m for m in hist.members or ()}
+        th1 = next((v for v in rootfile.walk(hist) if v.name == "TH1"), None)
+        th1_by_name = {m.name: m for m in (th1.members or ())} if th1 else {}
+        entries = by_name.get("fBinEntries")
+        if entries is not None and self._array_len(data, entries) != ncells:
+            self.bad("WritingHistograms 10.8",
+                     f"{where}: fBinEntries has "
+                     f"{self._array_len(data, entries)} entries, not fNcells "
+                     f"{ncells}")
+        sumw2 = th1_by_name.get("fSumw2")
+        if sumw2 is not None and self._array_len(data, sumw2) != ncells:
+            self.bad("WritingHistograms 10.8",
+                     f"{where}: a profile's fSumw2 holds sum(w*y*y) and is "
+                     f"never empty, but it has "
+                     f"{self._array_len(data, sumw2)} entries, not {ncells}")
+        binsumw2 = by_name.get("fBinSumw2")
+        if binsumw2 is not None:
+            count = self._array_len(data, binsumw2)
+            if count not in (0, ncells):
+                self.bad("WritingHistograms 10.2",
+                         f"{where}: fBinSumw2 has {count} entries, expected 0 "
+                         f"or fNcells {ncells}")
+        mode = by_name.get("fErrorMode")
+        if mode is not None:
+            value = self._i32(data, mode)
+            if value not in self.ERROR_MODES:
+                self.bad("WritingHistograms 10.9",
+                         f"{where}: fErrorMode {value} is not one of "
+                         f"{self.ERROR_MODES}")
+        lo, hi = by_name.get("fYmin"), by_name.get("fYmax")
+        if lo is not None and hi is not None:
+            ymin, ymax = self._f64(data, lo), self._f64(data, hi)
+            if not ymin <= ymax:
+                self.bad("WritingHistograms 10.9",
+                         f"{where}: fYmin {ymin} is above fYmax {ymax}")
+
     def check_canvas(self) -> None:
         """Canvas.md invariants 1 to 3.
 
@@ -1076,7 +1290,7 @@ class Checker:
                 continue
             _, _, infos = self.streamer_infos()
             if infos is None:
-                self.skip("Canvas 5.1", "no StreamerInfo record")
+                self.skip("Canvas 5.1", "no StreamerInfo record", unit="record")
                 continue
             start, _ = rootfile.payload_range(rec)
             version = rootfile.read_frame(data, start).version
@@ -1088,7 +1302,7 @@ class Checker:
             try:
                 canvas = rootfile.decode_record(data, rec, infos)
             except rootfile.UnsupportedClass as exc:
-                self.skip("Canvas 5.1", str(exc))
+                self.skip("Canvas 5.1", str(exc), unit="record")
                 continue
             except (rootfile.FormatError, struct.error, IndexError) as exc:
                 self.bad("Canvas 5.1", f"TCanvas at {rec.offset}: {exc}")
@@ -1145,7 +1359,7 @@ class Checker:
             if not (symmetric or ordinary):
                 continue
             if infos is None:
-                self.skip("Matrix 5.1", "no StreamerInfo record")
+                self.skip("Matrix 5.1", "no StreamerInfo record", unit="record")
                 continue
             names = {i.name for i in infos}
             if cls in names and symmetric:
@@ -1162,7 +1376,7 @@ class Checker:
                 frame = rootfile.read_frame(data, start)
                 value = rootfile.decode_record(data, rec, infos)
             except rootfile.UnsupportedClass as exc:
-                self.skip("Matrix 5.1", str(exc))
+                self.skip("Matrix 5.1", str(exc), unit="record")
                 continue
             except (rootfile.FormatError, struct.error, IndexError) as exc:
                 # For a symmetric matrix the frame itself is ordinary, so a
@@ -1186,7 +1400,7 @@ class Checker:
             base = f"TMatrixTBase<{element}>"
             versions = {i.class_version for i in infos if i.name == base}
             if not versions:
-                self.skip("Matrix 5.1", f"no streamer info for {base}")
+                self.skip("Matrix 5.1", f"no streamer info for {base}", unit="record")
                 continue
             if frame.version != max(versions):
                 # Invariant 1. A version word that is not the base's current one
@@ -2642,6 +2856,7 @@ class Checker:
         self.check_containers()
         self.check_formula()
         self.check_canvas()
+        self.check_histogram()
         self.check_matrix()
         self.check_basket()
         self.check_branches()
@@ -2680,7 +2895,7 @@ def main(argv: list[str]) -> int:
     no_codec: set[str] = set()
     sampled = 0
     verified = 0
-    skipped: dict[str, int] = {}
+    skipped: dict[tuple[str, str, str], int] = {}
     for path in paths:
         checker = Checker(path, all_entries=all_entries,
                           custom=set(customs.get(path.name, [])))
@@ -2714,9 +2929,10 @@ def main(argv: list[str]) -> int:
     for reason in sorted(no_codec):
         print(f"NOT CHECKED {reason}", file=sys.stderr)
     for reason, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])):
-        print(f"SKIPPED {n:5} branch-basket(s): {reason[0]} could not run -- "
+        print(f"SKIPPED {n:5} {reason[2]}(s): {reason[0]} could not run -- "
               f"{reason[1]}", file=sys.stderr)
-    total = verified + sum(skipped.values())
+    total = verified + sum(n for reason, n in skipped.items()
+                           if reason[2] == "branch-basket")
     if total:
         print(f"ENTRIES  {verified} of {total} branch-basket(s) had their "
               f"entries decoded and checked "

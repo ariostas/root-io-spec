@@ -16,6 +16,8 @@ carry all twenty-seven classes:
 
     data/classes/histogram.root        the fifteen infos of a TH1F/TH1D file
     data/ttree/basket.root             the eighteen of a flat TTree file
+    data/classes/th2-profile.root      TH2, TH2F, TH2D and TProfile, and TH1D
+                                       for a second time
     data/classes/tarray-histogram.root TArray, TArrayF and TArrayD, which a
                                        histogram file does not describe at all
 
@@ -72,10 +74,11 @@ END = "<!-- END GENERATED -->"
 SOURCES = (
     "data/classes/histogram.root",
     "data/ttree/basket.root",
+    "data/classes/th2-profile.root",
     "data/classes/tarray-histogram.root",
 )
 
-#: The four groups, each in bases-first order: a base's checksum is folded into
+#: The five groups, each in bases-first order: a base's checksum is folded into
 #: the checksum of every class that inherits it (`StreamerInfo.md` §11 step 2),
 #: so this is the order a writer has to compute them in, and reading the tables
 #: in it means never meeting a checksum before the table that produces it.
@@ -83,6 +86,7 @@ GROUPS = {
     "shared": ("TObject", "TNamed", "TString", "TAttLine", "TAttFill",
                "TAttMarker", "TCollection", "TSeqCollection", "TList"),
     "histogram": ("THashList", "TAttAxis", "TAxis", "TH1", "TH1F", "TH1D"),
+    "derived": ("TH2", "TH2F", "TH2D", "TProfile"),
     "tree": ("TObjArray", "ROOT::TIOFeatures", "TLeaf", "TLeafI", "TLeafF",
              "TBranch", "TRefTable", "TBranchRef", "TTree"),
     "arrays": ("TArray", "TArrayF", "TArrayD"),
@@ -97,6 +101,12 @@ WRITE_ORDER = {
         ("TH1F", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
          "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
          "TSeqCollection", "TCollection", "TString", "TH1D")),
+    "th2-profile": (
+        "A TH2 and TProfile file", "data/classes/th2-profile.root",
+        ("TH2F", "TH2", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
+         "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
+         "TSeqCollection", "TCollection", "TString", "TH2D", "TProfile",
+         "TH1D")),
     "tree": (
         "A flat tree file", "data/ttree/basket.root",
         ("TTree", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
@@ -222,7 +232,8 @@ def writer_infos() -> dict[str, rw.Info]:
     arrays.common()
     arrays.arrays()
     out: dict[str, rw.Info] = {}
-    for info in (list(rw.histogram_infos(("F", "D")))
+    for info in (list(rw.histogram_infos(("TH1F", "TH1D")))
+                 + list(rw.histogram_infos(("TH2F", "TH2D", "TProfile")))
                  + list(rw.tree_infos(("I", "F")))
                  + [arrays.by_name[n] for n in GROUPS["arrays"]]):
         out[info.name] = info
@@ -441,6 +452,7 @@ def rebuild(published: dict) -> str:
         "counts": render_counts(published),
         "shared": render_group(published, "shared"),
         "histogram": render_group(published, "histogram"),
+        "derived": render_group(published, "derived"),
         "tree": render_group(published, "tree"),
         "arrays": render_group(published, "arrays"),
         "order": render_order(published),

@@ -45,6 +45,6 @@ def build() -> bytes:
     f.add_hist(rw.Hist1D("h2", "variable bins", axis2, cells2, stats2,
                          sumw2=sumw2_2, kind="D"))
 
-    for info in rw.histogram_infos(("F", "D")):
+    for info in rw.histogram_infos(("TH1F", "TH1D")):
         f.add_info(info)
     return f.to_bytes()

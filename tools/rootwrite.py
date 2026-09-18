@@ -888,10 +888,17 @@ class Axis:
     label_offset: float = 0.005
     label_size: float = 0.035
     tick_length: float = 0.03
-    title_offset: float = 1.0
+    #: None takes gStyle's per-axis default, which is 0 for the Y axis and 1
+    #: for X and Z -- the reason the three attribute blocks of a ROOT-written
+    #: histogram are not identical (`WritingHistograms.md` 4.1).
+    title_offset: float | None = None
     title_size: float = 0.035
     title_color: int = 1
     title_font: int = 42
+
+    def __post_init__(self):
+        if self.title_offset is None:
+            self.title_offset = 0.0 if self.name == "yaxis" else 1.0
 
     def write(self, p: Payload) -> None:
         def body(q: Payload) -> None:
@@ -927,12 +934,16 @@ def tarray_f(values) -> bytes:
 
 @dataclass
 class Stats:
-    """`TH1`'s statistics, which are not derivable from the bin contents.
+    """A histogram's statistics, which are not derivable from the bin contents.
 
-    `entries` counts every fill, in range or not; the four sums cover only the
-    fills inside the range. `GetMean` is `tsumwx / tsumw`, so a writer that
-    leaves them zero produces a histogram whose bins are right and whose mean
-    is not.
+    `entries` counts every fill, in range or not; the sums cover only the fills
+    inside the range. `GetMean` is `tsumwx / tsumw`, so a writer that leaves
+    them zero produces a histogram whose bins are right and whose mean is not.
+
+    The first five are `TH1`'s and every histogram writes them. The last three
+    are written by the classes that have a second dimension: a `TH2` adds all
+    three, in `fScalefactor`'s company, and a `TProfile` adds `tsumwy` and
+    `tsumwy2` only -- it has no `fTsumwxy` (`WritingHistograms.md` 7 and 8).
     """
 
     entries: float = 0.0
@@ -940,6 +951,48 @@ class Stats:
     tsumw2: float = 0.0
     tsumwx: float = 0.0
     tsumwx2: float = 0.0
+    tsumwy: float = 0.0
+    tsumwy2: float = 0.0
+    tsumwxy: float = 0.0
+
+
+def tarray(values, kind: str) -> bytes:
+    """The `TArray` base of a `TH1F`/`TH2F` (`F`) or a `TH1D`/`TH2D` (`D`)."""
+    return tarray_f(values) if kind == "F" else tarray_d(values)
+
+
+def check_kind(kind: str, base: str) -> None:
+    if kind not in ("F", "D"):
+        raise WriteError(f"only {base}F and {base}D are implemented")
+
+
+def check_cells(cells, want: int, why: str) -> None:
+    if len(cells) != want:
+        raise WriteError(f"{len(cells)} cells, expected {want}: {why} "
+                         "(WritingHistograms.md 3)")
+
+
+def check_parallel(values, cells, name: str, optional: bool = False) -> None:
+    if values is None or (optional and not values):
+        return
+    if len(values) != len(cells):
+        raise WriteError(f"{name} must be empty or one entry per cell, "
+                         f"{len(cells)} of them, not {len(values)}")
+
+
+def check_axis(axis: Axis) -> None:
+    if axis.edges and len(axis.edges) != axis.nbins + 1:
+        raise WriteError("fXbins holds nbins + 1 edges")
+
+
+def _centres(axis: Axis) -> list:
+    """The centre of each of `axis.nbins` bins, indexed from 1."""
+    edges = axis.edges or [
+        axis.xmin + (axis.xmax - axis.xmin) * i / axis.nbins
+        for i in range(axis.nbins + 1)
+    ]
+    return [0.0] + [0.5 * (edges[i - 1] + edges[i])
+                    for i in range(1, axis.nbins + 1)]
 
 
 def stats_from_cells(cells, axis: Axis, sumw2=None) -> Stats:
@@ -957,14 +1010,11 @@ def stats_from_cells(cells, axis: Axis, sumw2=None) -> Stats:
       bin contents. When `sumw2` is known it is exactly its in-range sum;
       without it, unit weights are assumed and it equals `tsumw`.
     """
-    edges = axis.edges or [
-        axis.xmin + (axis.xmax - axis.xmin) * i / axis.nbins
-        for i in range(axis.nbins + 1)
-    ]
+    centre = _centres(axis)
     st = Stats(entries=float(sum(cells)))
     for i in range(1, len(cells) - 1):
         w = cells[i]
-        x = 0.5 * (edges[i - 1] + edges[i])
+        x = centre[i]
         st.tsumw += w
         st.tsumw2 += sumw2[i] if sumw2 is not None else w
         st.tsumwx += w * x
@@ -972,21 +1022,83 @@ def stats_from_cells(cells, axis: Axis, sumw2=None) -> Stats:
     return st
 
 
-@dataclass
-class Hist1D:
-    """A `TH1F` or `TH1D`: the `TH1` base at version 8, then the `TArray` base.
+def cell_index(binx: int, biny: int, nx: int) -> int:
+    """The cell a 2-D bin occupies: `biny * (nx + 2) + binx`.
 
-    `cells` holds `nbins + 2` values -- underflow, the bins, overflow -- and its
-    length is `TH1::fNcells`. `sumw2` is either None or the same length.
+    `binx` and `biny` run from 0 (underflow) to `nx + 1` / `ny + 1` (overflow),
+    so the first `nx + 2` cells are the whole underflow row in y
+    (`WritingHistograms.md` 7.1).
+    """
+    if not 0 <= binx <= nx + 1:
+        raise WriteError(f"binx {binx} is outside 0..{nx + 1}")
+    return biny * (nx + 2) + binx
+
+
+def stats_from_cells_2d(cells, xaxis: Axis, yaxis: Axis, sumw2=None) -> Stats:
+    """The same for a `TH2`, over the in-range cells of both axes.
+
+    A fill that is outside the range in **either** axis increments its cell and
+    none of the seven sums, so the in-range region is the rectangle
+    `1 <= binx <= nx`, `1 <= biny <= ny` -- not "every cell but the first and
+    last" (`WritingHistograms.md` 7.1).
+    """
+    nx, ny = xaxis.nbins, yaxis.nbins
+    xc, yc = _centres(xaxis), _centres(yaxis)
+    st = Stats(entries=float(sum(cells)))
+    for biny in range(1, ny + 1):
+        for binx in range(1, nx + 1):
+            i = biny * (nx + 2) + binx
+            w, x, y = cells[i], xc[binx], yc[biny]
+            st.tsumw += w
+            st.tsumw2 += sumw2[i] if sumw2 is not None else w
+            st.tsumwx += w * x
+            st.tsumwx2 += w * x * x
+            st.tsumwy += w * y
+            st.tsumwy2 += w * y * y
+            st.tsumwxy += w * x * y
+    return st
+
+
+def stats_from_profile(cells, sumw2, bin_entries, axis: Axis,
+                       bin_sumw2=None) -> Stats:
+    """A `TProfile`'s statistics, of which only the x moments are approximate.
+
+    A profile already stores per cell what a `TH1` throws away: `cells` is
+    sum(w*y) and `sumw2` is sum(w*y*y), so `fTsumwy` and `fTsumwy2` are their
+    in-range sums **exactly**, and `fTsumw`/`fTsumw2` come the same way from
+    `bin_entries` and `bin_sumw2`. Only `fTsumwx` and `fTsumwx2` need bin
+    centres, and only `fEntries` is unrecoverable -- it counts fills, and a
+    weighted fill moves `bin_entries` by its weight instead (§8.3).
+    """
+    centre = _centres(axis)
+    st = Stats(entries=float(sum(bin_entries)))
+    for i in range(1, len(cells) - 1):
+        e, x = bin_entries[i], centre[i]
+        st.tsumw += e
+        st.tsumw2 += bin_sumw2[i] if bin_sumw2 else e
+        st.tsumwx += e * x
+        st.tsumwx2 += e * x * x
+        st.tsumwy += cells[i]
+        st.tsumwy2 += sumw2[i]
+    return st
+
+
+@dataclass
+class _Histogram:
+    """The `TH1` base at version 8, which every histogram class shares.
+
+    `TH1F`, `TH2F` and `TProfile` differ only in what they wrap around this
+    block and what they append after it. The block itself is one procedure
+    (`WritingHistograms.md` 3), so it is written once here; `cells` is always
+    `fNcells` values long and always the `TArray` base's content, whatever the
+    concrete class decides that content means.
     """
 
     name: str
     title: str
-    axis: Axis
+    axis: Axis                       # fXaxis
     cells: list
     stats: Stats
-    sumw2: list | None = None
-    kind: str = "F"                  # "F" for TH1F, "D" for TH1D
     maximum: float = NO_LIMIT
     minimum: float = NO_LIMIT
     norm_factor: float = 0.0
@@ -997,79 +1109,216 @@ class Hist1D:
     stat_overflows: int = 2          # kNeutral
     contour: list | None = None
 
+    #: The Y and Z axes as the concrete class needs them. A 1-D histogram and a
+    #: profile carry a one-bin placeholder for each; a TH2 has a real Y axis.
+    def axes(self) -> tuple:
+        return (self.axis, Axis(name="yaxis"), Axis(name="zaxis"))
+
+    #: What the TH1 base's fSumw2 holds. For a TH1 it is the sum of squared
+    #: weights per cell and may be absent; for a TProfile it is sum(w*y*y) and
+    #: never is (`WritingHistograms.md` 8.2).
+    def th1_sumw2(self) -> list:
+        return []
+
+    def th1(self, q: Payload) -> None:
+        q.tnamed(self.name, self.title, bits=HIST_BITS)
+
+        def line(r: Payload) -> None:
+            r.raw(b"".join(i16(v) for v in LINE_DEFAULTS))
+        q.framed(2, line)
+
+        def fill(r: Payload) -> None:
+            r.raw(b"".join(i16(v) for v in FILL_DEFAULTS))
+        q.framed(2, fill)
+
+        def marker(r: Payload) -> None:
+            r.raw(i16(MARKER_DEFAULTS[0]) + i16(MARKER_DEFAULTS[1])
+                  + f32(MARKER_DEFAULTS[2]))
+        q.framed(3, marker)
+
+        q.raw(i32(len(self.cells)))            # fNcells
+        # All three axes are always present. The Y axis's fTitleOffset is 0
+        # rather than 1 in ROOT's default style, which is why the three
+        # attribute blocks are not identical in a ROOT-written file; Axis
+        # applies that per name. Free, like the rest of TAttAxis.
+        for ax in self.axes():
+            ax.write(q)
+        q.raw(i16(self.bar_offset) + i16(self.bar_width))
+        q.raw(f64(self.stats.entries) + f64(self.stats.tsumw)
+              + f64(self.stats.tsumw2) + f64(self.stats.tsumwx)
+              + f64(self.stats.tsumwx2))
+        q.raw(f64(self.maximum) + f64(self.minimum) + f64(self.norm_factor))
+        q.raw(tarray_d(self.contour or []))    # fContour
+        q.raw(tarray_d(self.th1_sumw2()))      # fSumw2
+        q.raw(counted_string(self.option))
+
+        # fFunctions is declared `//->`, so it is streamed in place: a framed
+        # TList with no class record and no pointer form.
+        def functions(r: Payload) -> None:
+            r.tobject(bits=FUNCTIONS_BITS)
+            r.raw(counted_string("") + i32(0))
+        q.framed(5, functions)
+
+        q.raw(i32(0))                          # fBufferSize
+        q.raw(b"\x00")                         # fBuffer: absent
+        q.raw(i32(self.bin_stat_err_opt) + i32(self.stat_overflows))
+
+    def obj(self, key_len: int) -> Obj:
+        return Obj(class_name=self.class_name, name=self.name,
+                   title=self.title, payload=self.payload(key_len))
+
+
+@dataclass
+class Hist1D(_Histogram):
+    """A `TH1F` or `TH1D`: the `TH1` base at version 8, then the `TArray` base.
+
+    `cells` holds `nbins + 2` values -- underflow, the bins, overflow -- and its
+    length is `TH1::fNcells`. `sumw2` is either None or the same length.
+    """
+
+    sumw2: list | None = None
+    kind: str = "F"                  # "F" for TH1F, "D" for TH1D
+
     @property
     def class_name(self) -> str:
         return f"TH1{self.kind}"
 
     def __post_init__(self):
-        if self.kind not in ("F", "D"):
-            raise WriteError("only TH1F and TH1D are implemented")
-        if len(self.cells) != self.axis.nbins + 2:
-            raise WriteError(
-                f"{len(self.cells)} cells for {self.axis.nbins} bins; "
-                "fNcells is nbins + 2 (WritingHistograms.md 3)")
-        if self.sumw2 is not None and len(self.sumw2) != len(self.cells):
-            raise WriteError("fSumw2 must be empty or one entry per cell")
-        if self.axis.edges and len(self.axis.edges) != self.axis.nbins + 1:
-            raise WriteError("fXbins holds nbins + 1 edges")
+        check_kind(self.kind, "TH1")
+        check_cells(self.cells, self.axis.nbins + 2,
+                    f"fNcells is nbins + 2 for a {self.class_name}")
+        check_parallel(self.sumw2, self.cells, "fSumw2", optional=True)
+        check_axis(self.axis)
+
+    def th1_sumw2(self) -> list:
+        return self.sumw2 or []
 
     def payload(self, key_len: int) -> bytes:
         p = Payload(key_len)
 
-        def th1(q: Payload) -> None:
-            q.tnamed(self.name, self.title, bits=HIST_BITS)
-
-            def line(r: Payload) -> None:
-                r.raw(b"".join(i16(v) for v in LINE_DEFAULTS))
-            q.framed(2, line)
-
-            def fill(r: Payload) -> None:
-                r.raw(b"".join(i16(v) for v in FILL_DEFAULTS))
-            q.framed(2, fill)
-
-            def marker(r: Payload) -> None:
-                r.raw(i16(MARKER_DEFAULTS[0]) + i16(MARKER_DEFAULTS[1])
-                      + f32(MARKER_DEFAULTS[2]))
-            q.framed(3, marker)
-
-            q.raw(i32(len(self.cells)))            # fNcells
-            self.axis.write(q)                     # fXaxis
-            # A 1-D histogram still carries a Y and a Z axis, each with one bin.
-            # The Y axis's fTitleOffset is 0 rather than 1 in ROOT's default
-            # style, which is why the three attribute blocks are not identical
-            # in a ROOT-written file. Free, like the rest of TAttAxis.
-            Axis(name="yaxis", title_offset=0.0).write(q)
-            Axis(name="zaxis").write(q)
-            q.raw(i16(self.bar_offset) + i16(self.bar_width))
-            q.raw(f64(self.stats.entries) + f64(self.stats.tsumw)
-                  + f64(self.stats.tsumw2) + f64(self.stats.tsumwx)
-                  + f64(self.stats.tsumwx2))
-            q.raw(f64(self.maximum) + f64(self.minimum) + f64(self.norm_factor))
-            q.raw(tarray_d(self.contour or []))    # fContour
-            q.raw(tarray_d(self.sumw2 or []))      # fSumw2
-            q.raw(counted_string(self.option))
-
-            # fFunctions is declared `//->`, so it is streamed in place: a
-            # framed TList with no class record and no pointer form.
-            def functions(r: Payload) -> None:
-                r.tobject(bits=FUNCTIONS_BITS)
-                r.raw(counted_string("") + i32(0))
-            q.framed(5, functions)
-
-            q.raw(i32(0))                          # fBufferSize
-            q.raw(b"\x00")                         # fBuffer: absent
-            q.raw(i32(self.bin_stat_err_opt) + i32(self.stat_overflows))
-
         def body(q: Payload) -> None:
-            q.framed(8, th1)
-            q.raw(tarray_f(self.cells) if self.kind == "F"
-                  else tarray_d(self.cells))
+            q.framed(8, self.th1)
+            q.raw(tarray(self.cells, self.kind))
         p.framed(3, body)
         return bytes(p.buf)
 
-    def obj(self, key_len: int) -> Obj:
-        return Obj(class_name=self.class_name, name=self.name,
-                   title=self.title, payload=self.payload(key_len))
+
+@dataclass
+class Hist2D(_Histogram):
+    """A `TH2F` or `TH2D`, which is a `TH2` (version 5) around a `TH1`.
+
+    `cells` is `(nx + 2) * (ny + 2)` values in **x-major** order: cell
+    `biny * (nx + 2) + binx`, so the first `nx + 2` of them are the whole
+    underflow row of y (`WritingHistograms.md` 7.1).
+
+    `yaxis` is a real `TAxis` rather than the one-bin placeholder a `TH1F`
+    carries, and it is the only axis a writer has to fill in twice: `fNbins`
+    there and the `y` half of every cell index have to agree.
+    """
+
+    yaxis: Axis | None = None
+    sumw2: list | None = None
+    kind: str = "F"
+    scalefactor: float = 1.0
+
+    @property
+    def class_name(self) -> str:
+        return f"TH2{self.kind}"
+
+    def __post_init__(self):
+        check_kind(self.kind, "TH2")
+        if self.yaxis is None:
+            raise WriteError("a TH2 needs a yaxis")
+        check_cells(self.cells,
+                    (self.axis.nbins + 2) * (self.yaxis.nbins + 2),
+                    "fNcells is (nx + 2) * (ny + 2) for a "
+                    f"{self.class_name}")
+        check_parallel(self.sumw2, self.cells, "fSumw2", optional=True)
+        check_axis(self.axis)
+        check_axis(self.yaxis)
+
+    def axes(self) -> tuple:
+        return (self.axis, self.yaxis, Axis(name="zaxis"))
+
+    def th1_sumw2(self) -> list:
+        return self.sumw2 or []
+
+    def payload(self, key_len: int) -> bytes:
+        p = Payload(key_len)
+
+        def th2(q: Payload) -> None:
+            q.framed(8, self.th1)
+            q.raw(f64(self.scalefactor) + f64(self.stats.tsumwy)
+                  + f64(self.stats.tsumwy2) + f64(self.stats.tsumwxy))
+
+        def body(q: Payload) -> None:
+            q.framed(5, th2)
+            q.raw(tarray(self.cells, self.kind))
+        p.framed(4, body)
+        return bytes(p.buf)
+
+
+@dataclass
+class Profile(_Histogram):
+    """A `TProfile` (version 7), which is a `TH1D` plus four parallel arrays.
+
+    Its three per-cell arrays are not bin contents and not errors:
+
+    * `cells` is the `TH1D`'s `TArrayD` base and holds **sum(w * y)**;
+    * `sumw2` is `TH1::fSumw2` and holds **sum(w * y * y)**, and unlike a
+      `TH1`'s it is never absent -- the constructor allocates it;
+    * `bin_entries` is `TProfile::fBinEntries` and holds **sum(w)**;
+    * `bin_sumw2` is `TProfile::fBinSumw2` and holds **sum(w * w)**. It is
+      empty until a weight other than 1 arrives.
+
+    What a reader calls the bin content is `cells[i] / bin_entries[i]`, computed
+    on demand and stored nowhere (`WritingHistograms.md` 8.2).
+
+    `ymin` and `ymax` are the accepted range in y; equal values -- 0 and 0 from
+    the ordinary constructor -- mean "no range", and that is the only thing
+    that distinguishes "unset" from a range of zero width.
+    """
+
+    sumw2: list | None = None
+    bin_entries: list | None = None
+    bin_sumw2: list | None = None
+    error_mode: int = 0              # kERRORMEAN
+    ymin: float = 0.0
+    ymax: float = 0.0
+
+    class_name = "TProfile"
+
+    def __post_init__(self):
+        check_cells(self.cells, self.axis.nbins + 2,
+                    "fNcells is nbins + 2 for a TProfile")
+        if self.sumw2 is None or self.bin_entries is None:
+            raise WriteError(
+                "a TProfile's fSumw2 and fBinEntries are never absent "
+                "(WritingHistograms.md 8.2)")
+        check_parallel(self.sumw2, self.cells, "fSumw2")
+        check_parallel(self.bin_entries, self.cells, "fBinEntries")
+        check_parallel(self.bin_sumw2, self.cells, "fBinSumw2", optional=True)
+        check_axis(self.axis)
+
+    def th1_sumw2(self) -> list:
+        return self.sumw2
+
+    def payload(self, key_len: int) -> bytes:
+        p = Payload(key_len)
+
+        def th1d(q: Payload) -> None:
+            q.framed(8, self.th1)
+            q.raw(tarray_d(self.cells))
+
+        def body(q: Payload) -> None:
+            q.framed(3, th1d)
+            q.raw(tarray_d(self.bin_entries))
+            q.raw(i32(self.error_mode))
+            q.raw(f64(self.ymin) + f64(self.ymax))
+            q.raw(f64(self.stats.tsumwy) + f64(self.stats.tsumwy2))
+            q.raw(tarray_d(self.bin_sumw2 or []))
+        p.framed(7, body)
+        return bytes(p.buf)
 
 
 # ---------------------------------------------------------------------------
@@ -1225,8 +1474,39 @@ class InfoSet:
             ]))
 
 
-def histogram_infos(kinds=("F",)) -> list:
-    """Every `TStreamerInfo` a `TH1F`/`TH1D` file needs, in ROOT's own order."""
+#: The title a TStreamerBase element carries for each concrete TArray.
+ARRAY_TITLES = {"F": "Array of floats", "D": "Array of doubles"}
+
+#: The order ROOT records the histogram classes in, which is registration
+#: order -- neither alphabetical nor dependency order. It is a property of the
+#: *file*: the first object's class comes first, then its bases as they were
+#: built, then whatever each later object adds. Filtering this one list
+#: reproduces both reference files, `data/classes/histogram.root` (a TH1F then
+#: a TH1D) and `data/classes/th2-profile.root` (a TH2F, a TH2D, then two
+#: TProfiles), because neither contains a class the other's first object needs.
+#: A reader does not care; matching it is what lets a StreamerInfo record be
+#: compared with a ROOT-written one byte for byte.
+HISTOGRAM_INFO_ORDER = (
+    "TH1F", "TH2F", "TH2", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
+    "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList", "TSeqCollection",
+    "TCollection", "TString", "TH2D", "TProfile", "TH1D",
+)
+
+
+def histogram_infos(classes=("TH1F",)) -> list:
+    """Every `TStreamerInfo` a histogram file needs, in ROOT's own order.
+
+    `classes` names the concrete histogram classes the file holds, from
+    `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`. The bases each one needs are
+    added for it -- a `TProfile` pulls in `TH1D`, a `TH2F` pulls in `TH2` -- and
+    the `TArray` infos are built for their checksums without being emitted.
+    """
+    wanted = set(classes)
+    unknown = wanted - set(HISTOGRAM_INFO_ORDER)
+    if unknown:
+        raise WriteError(f"not a histogram class: {sorted(unknown)}")
+    if "TProfile" in wanted:
+        wanted.add("TH1D")        # its base, and it is written in the file
     s = InfoSet()
     add, cs = s.add, s.cs
     s.common()
@@ -1312,18 +1592,48 @@ def histogram_infos(kinds=("F",)) -> list:
                "Per object flag to use under/overflows in statistics", 3, 4,
                "TH1::EStatOverflows", is_enum=True),
     ]))
-    for kind in kinds:
-        add(Info(f"TH1{kind}", 3, [
+    for kind in ("F", "D"):
+        if f"TH1{kind}" in wanted:
+            add(Info(f"TH1{kind}", 3, [
+                _base("TH1", "1-Dim histogram base class", 0, 8, cs("TH1")),
+                _base(f"TArray{kind}", ARRAY_TITLES[kind], 0, 1,
+                      cs(f"TArray{kind}")),
+            ]))
+    if any(c.startswith("TH2") for c in wanted):
+        add(Info("TH2", 5, [
             _base("TH1", "1-Dim histogram base class", 0, 8, cs("TH1")),
-            _base(f"TArray{kind}",
-                  f"Array of {'floats' if kind == 'F' else 'doubles'}", 0, 1,
-                  cs(f"TArray{kind}")),
+            _basic("fScalefactor", "Scale factor", 8, 8, "double"),
+            _basic("fTsumwy", "Total Sum of weight*Y", 8, 8, "double"),
+            _basic("fTsumwy2", "Total Sum of weight*Y*Y", 8, 8, "double"),
+            _basic("fTsumwxy", "Total Sum of weight*X*Y", 8, 8, "double"),
         ]))
-    return s.ordered([
-        "TH1F", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
-        "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList",
-        "TSeqCollection", "TCollection", "TString", "TH1D",
-    ])
+    for kind in ("F", "D"):
+        if f"TH2{kind}" in wanted:
+            add(Info(f"TH2{kind}", 4, [
+                _base("TH2", "2-Dim histogram base class", 0, 5, cs("TH2")),
+                _base(f"TArray{kind}", ARRAY_TITLES[kind], 0, 1,
+                      cs(f"TArray{kind}")),
+            ]))
+    if "TProfile" in wanted:
+        add(Info("TProfile", 7, [
+            _base("TH1D", "1-Dim histograms (one double per channel)", 0, 3,
+                  cs("TH1D")),
+            Element("TStreamerObjectAny", "fBinEntries",
+                    "number of entries per bin", 62, 24, "TArrayD"),
+            # An unscoped enum, so fTypeName is the bare EErrorType -- and an
+            # enum folds an extra 1 into TProfile's checksum
+            # (`StreamerInfo.md` 11.1).
+            _basic("fErrorMode", "Option to compute errors", 3, 4,
+                   "EErrorType", is_enum=True),
+            _basic("fYmin", "Lower limit in Y (if set)", 8, 8, "double"),
+            _basic("fYmax", "Upper limit in Y (if set)", 8, 8, "double"),
+            _basic("fTsumwy", "Total Sum of weight*Y", 8, 8, "double"),
+            _basic("fTsumwy2", "Total Sum of weight*Y*Y", 8, 8, "double"),
+            Element("TStreamerObjectAny", "fBinSumw2",
+                    "Array of sum of squares of weights per bin", 62, 24,
+                    "TArrayD"),
+        ]))
+    return s.ordered(HISTOGRAM_INFO_ORDER)
 
 
 def tree_infos(leaf_kinds=("I", "F")) -> list:

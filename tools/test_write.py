@@ -300,7 +300,7 @@ class Histograms(unittest.TestCase):
         _, _, records = rootfile.load(REPO / "data/classes/histogram.root")
         rec = [r for r in records if r.offset == header.seek_info][0]
         payload = rw.Payload(rec.key_len)
-        payload.tlist("", [i.write for i in rw.histogram_infos(("F", "D"))])
+        payload.tlist("", [i.write for i in rw.histogram_infos(("TH1F", "TH1D"))])
         self.assertEqual(bytes(payload.buf), self.payload(root_buf, rec))
 
     def test_infos_match_roots_element_by_element(self):
@@ -315,7 +315,7 @@ class Histograms(unittest.TestCase):
         """
         _, _, infos = streamer_infos(REPO / "data/classes/histogram.root")
         theirs = {i.name: i for i in infos}
-        ours = {i.name: i for i in rw.histogram_infos(("F", "D"))}
+        ours = {i.name: i for i in rw.histogram_infos(("TH1F", "TH1D"))}
         self.assertEqual(list(ours), [i.name for i in infos])
         for name, mine in ours.items():
             self.assertEqual(mine.checksum, theirs[name].checksum,
@@ -334,6 +334,148 @@ class Histograms(unittest.TestCase):
             rw.Hist1D("h", "", axis, [0.0] * 4, rw.Stats())
         with self.assertRaises(rw.WriteError):
             rw.Hist1D("h", "", axis, [0.0] * 5, rw.Stats(), sumw2=[0.0] * 3)
+
+
+class Derived(unittest.TestCase):
+    """`TH2F`, `TH2D` and `TProfile` against the ones ROOT wrote.
+
+    `data/classes/th2-profile.root` and `data/written/th2-profile.root` hold the
+    same four objects. All four data records are byte-identical; the
+    `StreamerInfo` record is identical up to the `listOfRules` ROOT appends for
+    `TProfile` (`WritingHistograms.md` 8.6), which is the one entry a file
+    written at version 7 cannot use.
+    """
+
+    #: The axes and arrays of each object, built the way the case builds them.
+    def objects(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "th2_profile_build", REPO / "gen/written/th2-profile/build.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def payload(self, buf, rec):
+        return bytes(buf[rec.offset + rec.key_len: rec.offset + rec.nbytes])
+
+    def records(self, path):
+        buf, _, records = rootfile.load(REPO / path)
+        return buf, {r.name: r for r in records}
+
+    def test_records_are_identical_to_roots(self):
+        """All four, in one pass, so a name that vanishes fails rather than passes."""
+        root_buf, root_recs = self.records("data/classes/th2-profile.root")
+        mine_buf, mine_recs = self.records("data/written/th2-profile.root")
+        # The two directory records differ in name, which is the whole
+        # difference between the files.
+        self.assertEqual(sorted(k for k in root_recs if not k.endswith(".root")),
+                         sorted(k for k in mine_recs if not k.endswith(".root")))
+        for name in ("h2f", "h2d", "p1", "p2"):
+            with self.subTest(name):
+                self.assertEqual(self.payload(mine_buf, mine_recs[name]),
+                                 self.payload(root_buf, root_recs[name]))
+
+    def test_streamer_info_record_matches_up_to_the_rules(self):
+        root_data, root_rec, theirs = streamer_infos(
+            REPO / "data/classes/th2-profile.root")
+        mine_data, mine_rec, ours = streamer_infos(
+            REPO / "data/written/th2-profile.root")
+        # Eighteen infos against eighteen; ROOT's record holds a nineteenth
+        # entry that is not an info.
+        self.assertEqual([i.name for i in ours], [i.name for i in theirs])
+        self.assertEqual(len(ours), 18)
+        mine = self.payload(mine_data, mine_rec)
+        theirs_bytes = self.payload(root_data, root_rec)
+        self.assertLess(len(mine), len(theirs_bytes))
+        # The first 21 bytes carry the entry count, which differs by one.
+        self.assertEqual(mine[21:], theirs_bytes[21:len(mine)])
+
+    def test_infos_match_roots_element_by_element(self):
+        _, _, infos = streamer_infos(REPO / "data/classes/th2-profile.root")
+        theirs = {i.name: i for i in infos}
+        ours = {i.name: i
+                for i in rw.histogram_infos(("TH2F", "TH2D", "TProfile"))}
+        self.assertEqual(list(ours), [i.name for i in infos])
+        for name, mine in ours.items():
+            self.assertEqual(mine.checksum, theirs[name].checksum,
+                             f"{name} checksum")
+            self.assertEqual(len(mine.elements), len(theirs[name].elements),
+                             f"{name} element count")
+            for a, b in zip(mine.elements, theirs[name].elements):
+                self.assertEqual(
+                    (a.cls, a.name, a.title, a.ftype, a.type_name, a.size),
+                    (b.cls, b.name, b.title, b.ftype, b.type_name, b.fsize),
+                    f"{name}.{a.name}")
+
+    def test_error_mode_is_an_enum_in_the_checksum(self):
+        """Drop the enum rule and TProfile's checksum stops being ROOT's."""
+        profile = {i.name: i
+                   for i in rw.histogram_infos(("TProfile",))}["TProfile"]
+        self.assertEqual(profile.checksum, 0x4BEDEE54)
+        mode = [e for e in profile.elements if e.name == "fErrorMode"][0]
+        self.assertTrue(rw.looks_like_enum(mode.ftype, mode.type_name))
+        plain = rw.Info(profile.name, profile.class_version, profile.elements)
+        mode.type_name = "int"
+        self.assertNotEqual(rw.checksum(plain), 0x4BEDEE54)
+        mode.type_name = "EErrorType"
+
+    def test_two_dimensional_statistics_are_derived_from_the_cells(self):
+        """The in-range region is a rectangle, not "all but the ends"."""
+        module = self.objects()
+        xaxis = rw.Axis(nbins=3, xmin=0.0, xmax=3.0)
+        yaxis = rw.Axis(name="yaxis", nbins=2, xmin=0.0, xmax=2.0)
+        cells = module.cells(3, 2, {(1, 1): 2.0, (3, 1): 1.0, (2, 2): 1.0,
+                                   (0, 1): 1.0, (1, 3): 1.0})
+        st = rw.stats_from_cells_2d(cells, xaxis, yaxis, cells)
+        # ROOT's own values for the same six fills.
+        self.assertEqual(
+            (st.entries, st.tsumw, st.tsumw2, st.tsumwx, st.tsumwx2,
+             st.tsumwy, st.tsumwy2, st.tsumwxy),
+            (6.0, 4.0, 4.0, 5.0, 9.0, 3.0, 3.0, 4.0))
+
+    def test_a_profiles_statistics_are_derivable_but_its_entries_are_not(self):
+        axis = rw.Axis(nbins=2, xmin=0.0, xmax=2.0)
+        sumwy = [0.0, 9.0, 2.0, 0.0]
+        sumwy2 = [0.0, 30.0, 8.0, 0.0]
+        entries = [0.0, 3.5, 0.5, 0.0]
+        bin_sumw2 = [0.0, 9.25, 0.25, 0.0]
+        st = rw.stats_from_profile(sumwy, sumwy2, entries, axis,
+                                   bin_sumw2=bin_sumw2)
+        # Five of the six are exact, because a profile stores sum(w*y) and
+        # sum(w*y*y) per cell rather than throwing them away.
+        self.assertEqual((st.tsumw, st.tsumw2, st.tsumwx, st.tsumwx2,
+                          st.tsumwy, st.tsumwy2),
+                         (4.0, 9.5, 2.5, 2.0, 11.0, 38.0))
+        # fEntries counts fills, and three weighted fills sum to 4.
+        self.assertEqual(st.entries, 4.0)
+
+    def test_the_cell_index_is_x_major(self):
+        self.assertEqual(rw.cell_index(0, 0, 3), 0)
+        self.assertEqual(rw.cell_index(4, 0, 3), 4)   # the x overflow of row 0
+        self.assertEqual(rw.cell_index(1, 1, 3), 6)
+        self.assertEqual(rw.cell_index(1, 3, 3), 16)  # the y overflow row
+        with self.assertRaises(rw.WriteError):
+            rw.cell_index(5, 0, 3)
+
+    def test_shapes_are_checked(self):
+        xaxis = rw.Axis(nbins=3, xmin=0.0, xmax=3.0)
+        yaxis = rw.Axis(name="yaxis", nbins=2, xmin=0.0, xmax=2.0)
+        with self.assertRaises(rw.WriteError):
+            # 5 + 2 rather than (3 + 2) * (2 + 2).
+            rw.Hist2D("h", "", xaxis, [0.0] * 7, rw.Stats(), yaxis=yaxis)
+        with self.assertRaises(rw.WriteError):
+            rw.Hist2D("h", "", xaxis, [0.0] * 20, rw.Stats())
+        with self.assertRaises(rw.WriteError):
+            # A profile's fSumw2 and fBinEntries are never absent.
+            rw.Profile("p", "", xaxis, [0.0] * 5, rw.Stats())
+
+    def test_the_y_axis_title_offset_is_zero_by_name(self):
+        """gStyle's per-axis default, and the one asymmetry in the three blocks."""
+        self.assertEqual(rw.Axis(name="xaxis").title_offset, 1.0)
+        self.assertEqual(rw.Axis(name="yaxis").title_offset, 0.0)
+        self.assertEqual(rw.Axis(name="zaxis").title_offset, 1.0)
+        self.assertEqual(rw.Axis(name="yaxis", title_offset=1.0).title_offset,
+                         1.0)
 
 
 class Trees(unittest.TestCase):

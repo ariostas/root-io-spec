@@ -258,7 +258,7 @@ what a writer actually needs rather than by symmetry with the reading side:
 | ✅ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
 | ✅ `WritingFiles.md` | The container in write order, and §13's ten mistakes ROOT reads without complaint |
 | ✅ `WritingObjects.md` | Framing, the version word, the object map, compression, and the `StreamerInfo` record down to each element subclass |
-| ✅ `WritingHistograms.md` | `TH1F` and `TH1D` member by member; `TH2F` and `TProfile` are §7 in outline only |
+| ✅ `WritingHistograms.md` | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile` member by member (§8.8) |
 | ✅ `WritingTrees.md` | A flat `TTree`: the tree record, branches, leaves, baskets, and the fields that must agree with one another |
 
 **Only the current version of each class.** A writer chooses what it emits, so
@@ -1246,8 +1246,8 @@ it implied. Ordered by how much it blocks a third party:
    — §8.6.
 2. ~~**More than one basket per branch.**~~ **Done, 2026-09-18** — §8.7.
 3. ~~**Cluster ranges.**~~ **Done, 2026-09-18** — the same work, §8.7.
-4. **`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7. The most
-   commonly written classes after `TH1`.
+4. ~~**`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7.~~ **Done,
+   2026-09-18** — §8.8.
 5. **Subdirectories.** `WritingFiles.md` §4.2 names the three differences and gives
    no procedure.
 6. **A `TLeafC` branch**, whose per-entry layout is specified only on the reading
@@ -1255,7 +1255,7 @@ it implied. Ordered by how much it blocks a third party:
 7. **`TGraph`**, which no writing document mentions and which is as common in real
    files as `TH1`.
 
-Items 4 to 7 are what is left, and none of them blocks a writer of the two things
+Items 5 to 7 are what is left, and none of them blocks a writer of the two things
 the layer names: a file of histograms, and a flat tree of any size. Nothing in the
 list is a correction — the documents are accurate about what they cover — and each
 is stated as a limit rather than left for a reader to discover.
@@ -1356,6 +1356,56 @@ Policy stayed out of the writer: `rootwrite.Tree` gained `flush()`,
 ROOT's watermark happened to produce. `fBasketSize` and `fAutoSave` are inputs for
 the same reason — reproducing ROOT's arithmetic is not a requirement on a writer,
 and matching its bytes is what the case is for.
+
+### 8.8 `TH2` and `TProfile` (2026-09-18)
+
+[`WritingHistograms.md` §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d),
+item 4 of §8.5. The writing layer now covers five histogram classes rather than
+two, which is the set ROOT users actually write.
+
+**The worked example is a fourth byte-identical pair.** `data/classes/th2-profile.root`
+is new — a `TH2F`, a `TH2D` and two `TProfile`s, 71 assertions — and
+`data/written/th2-profile.root` reproduces **all four of its data records byte for
+byte**, 817, 887, 708 and 713 bytes, plus its `StreamerInfo` record up to the
+nineteenth entry. Like the cluster case it matched on the first run.
+
+What the work had to establish, none of it in the class definitions:
+
+| Fact | Why a writer cannot guess it |
+|---|---|
+| A `TH2F` is **three** nested frames, and `TH2`'s four doubles sit between the `TH1` frame closing and the `TArray` base opening | `TH2` has a hand-written `Streamer` that delegates above version 2 (`root/hist/hist/src/TH2.cxx:2823`), so it contributes its own byte count and version word as a base |
+| The in-range region of a `TH2` is a **rectangle** | `Fill` skips all seven sums when either index is a flow bin (`root/hist/hist/src/TH2.cxx:398-403`) but increments `fEntries` first (`:391`) — so cells outside it hold data that no statistic saw |
+| `fScalefactor` is 1.0 and nothing reads it | six constructors assign it, `Copy` copies it, the legacy streamer branches read it, and there is no getter and no arithmetic anywhere in ROOT |
+| `fTsumwxy` has exactly one reader | `TH2::GetCovariance` (`root/hist/hist/src/TH2.cxx:1156`); `Integral`, `GetBinContent` and `GetBinError` read none of the four |
+| **A zero `fTsumw` throws all the sums away** | `GetStats` recomputes from the bins when `fTsumw` is 0 (`root/hist/hist/src/TH2.cxx:1230`, and `root/hist/hist/src/TProfile.cxx:958` where the `&& fEntries > 0` half is commented out) — silently, so a writer that fills `fEntries` and not `fTsumw` gets the bin-centre approximation with no warning |
+| A `TProfile` has **four** parallel arrays and no bin contents | `fArray` is sum(w*y), `fSumw2` sum(w*y*y), `fBinEntries` sum(w), `fBinSumw2` sum(w²); the content is a division done on demand (`root/hist/hist/src/TProfile.cxx:858`) |
+| A `TProfile`'s `fSumw2` is **never** empty | its constructor allocates it unconditionally (`root/hist/hist/src/TProfileHelper.h:139`), unlike a `TH1`'s, and `GetBinError` indexes it with no length test (`:715`) — so a file with an empty one opens, returns the right entries and the right bin content, and then **segfaults**. Measured with a file written deliberately for it |
+| A wrong `fBinSumw2` **length** is worse than a wrong value | `GetBinEffectiveEntries` truncates the array to zero in memory and carries on (`root/hist/hist/src/TProfileHelper.h:159-162`) |
+| `fYmin == fYmax` means "no Y range" | the filter is guarded by `if (fYmin != fYmax)` (`root/hist/hist/src/TProfile.cxx:682`), and a rejected fill returns **before** `fEntries++` — the opposite of `TH2` |
+| `fErrorMode` is an enum and folds an extra 1 into the checksum | it is a file-scope `EErrorType` (`root/hist/hist/inc/TProfile.h:28`), so its `fTypeName` is unqualified and `looks_like_enum` fires; without it `0x4bedee54` is unreachable |
+
+**A profile is the one histogram whose statistics are almost fully derivable**,
+because the per-cell arrays already hold what a `TH1` throws away: five of the six
+sums come out of them exactly, and only `fEntries` — the count of fills — does not.
+That is the opposite of the 1-D case, where only bin centres are available.
+
+**Six errata against ROOT's own comments** are recorded in §12 of the document. The
+largest is `fBinEntries`, documented as "number of entries per bin" and holding a
+sum of weights; the header and `TProfileHelper`'s comment on the same array
+contradict each other, and a writer that believes the header produces wrong
+contents for every weighted profile.
+
+**And the histogram invariants are now checked rather than only stated.**
+`WritingHistograms.md` §10 had claimed seven entries were verified by
+`check_write.py`; nothing in `check_invariants.py` looked at a histogram. There is
+now a `check_histogram` pass covering 10.1 to 10.9 over the `TH1x`, `TH2x`, `TH3x`
+and `TProfile` families, confirmed by corrupting twelve fields of
+`data/written/th2-profile.root` one at a time — five land on a named invariant and
+the rest desynchronise the decode first, which is the honest division. It also
+fixed a measurement error it would otherwise have introduced: skips from
+record-level checks used to feed the `ENTRIES` branch-basket ratio, and 468
+histogram records in `pippa.root` would have dropped the published figure from
+100% to 78% while measuring nothing about entries. `skip()` now carries a unit.
 
 ## 9. Known gaps
 

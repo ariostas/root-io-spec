@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **232
+Every layer of this specification ends with an `Invariants` section — **234
 entries across 31 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -56,7 +56,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 [Element types](../02-serialization/ElementTypes.md),
 [Compression](../01-container/Compression.md),
 [Writing an object §9](../06-writing/WritingObjects.md#9-invariants) and
-[Element lists §10](../06-writing/ElementLists.md#10-invariants).
+[Element lists §11](../06-writing/ElementLists.md#11-invariants).
 
 | Invariant | Where | Who notices |
 |---|---|---|
@@ -72,21 +72,25 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | Every class whose version word is above 0 has an info in the file, or is one a reader knows out of band | WritingObjects 9.5 | nothing for ROOT; everything for every other reader |
 | A `TStreamerBase` element's `fMaxIndex[1]` is the base class's own checksum, at the version its `fBaseVersion` gives | ElementLists 10.2 | nothing — it is folded into the derived class's checksum, which ROOT checks instead |
 | A `TStreamerBasicPointer`'s counter exists in the class `fCountClass` names, and that member's `fType` is 6 `kCounter` | ElementLists 10.3 | nothing |
-| Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 10.1 | ROOT — `CompareContent` compares type names when a checksum mismatches |
+| Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 11.1 | ROOT — `CompareContent` compares type names when a checksum mismatches |
 
-## 4. A histogram
+## 4. A histogram or a profile
 
-From [Writing histograms §9](../06-writing/WritingHistograms.md#9-invariants).
+From [Writing histograms §10](../06-writing/WritingHistograms.md#10-invariants).
 
 | Invariant | Who notices |
 |---|---|
-| `fNcells == fXaxis.fNbins + 2`, and the `TArray` base's `fN` equals `fNcells` | checked |
+| `fNcells` is `fXaxis.fNbins + 2`, or `(nx + 2) * (ny + 2)` for a `TH2`, and the `TArray` base's `fN` equals it | checked |
 | `fSumw2` is empty or has exactly `fNcells` entries | checked |
-| `fXbins` is empty or has `fNbins + 1` entries, whose first and last are `fXmin` and `fXmax` | checked |
-| `fYaxis` and `fZaxis` are present, with `fNbins` 1 in a 1-D histogram | checked |
+| `fXbins` is empty or has `fNbins + 1` entries, whose first and last are `fXmin` and `fXmax` — on every axis | checked |
+| `fYaxis` and `fZaxis` are present, and an axis past the histogram's dimension has `fNbins` 1 | checked |
 | `fBufferSize` is 0 **iff** `fBuffer`'s flag byte is 0 | checked |
 | `fMaximum` and `fMinimum` are `-1111` unless a range was set | nothing — the histogram simply draws wrong |
 | The statistics are consistent with each other: `fTsumw <= fEntries` for unit weights | nothing |
+| `fTsumw` is non-zero whenever `fEntries` is, or ROOT recomputes every sum from the bins | nothing — and the values it reports are then the bin-centre approximation |
+| In a `TProfile`, `fBinEntries` holds exactly `fNcells` values and `fSumw2` is never empty | checked — and **ROOT segfaults** in `GetBinError` on an empty `fSumw2`, after reading the entries and the contents correctly |
+| In a `TProfile`, `fBinSumw2` is empty or holds exactly `fNcells` values — a length between the two is dropped on the first call that reads it | checked |
+| In a `TProfile`, `fYmin <= fYmax`, and `fErrorMode` is 0 to 3 | checked |
 
 ## 5. A tree
 

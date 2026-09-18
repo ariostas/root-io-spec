@@ -184,14 +184,16 @@ tools/check_write.py --accept         # re-record data/written/ after a delibera
 no reason to consult a clock, so `rootwrite.py` takes the timestamp and UUID as
 inputs and the manifest is a plain sha256.
 
-**Four kinds of record are byte-identical to ROOT's**, which is the check that
+**Five kinds of record are byte-identical to ROOT's**, which is the check that
 found every error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
 `data/classes/histogram.root`, a `StreamerInfo` record of fifteen infos (9628),
-both baskets plus the whole `TTree` record against `data/ttree/basket.root`, and
+both baskets plus the whole `TTree` record against `data/ttree/basket.root`,
 **five baskets plus the 860-byte `TTree` record** against
-`data/ttree/clusters.root`, which is the multi-basket and cluster-range case. One
-more is identical bar a single entry: a tree file's `StreamerInfo` record, where
-ROOT appends a `listOfRules` a file written at `TTree` version 20 cannot use.
+`data/ttree/clusters.root`, which is the multi-basket and cluster-range case, and
+a `TH2F`, a `TH2D` and two `TProfile`s against `data/classes/th2-profile.root`.
+Two more are identical bar a single entry: the `StreamerInfo` record of a tree
+file and of a profile file, where ROOT appends a `listOfRules` that a file written
+at `TTree` 20 or `TProfile` 7 cannot use.
 The tree comparison is the strictest, because a branch stores its baskets'
 *offsets*, so the two file names are deliberately the same length. When a
 comparison fails, the difference is the finding — that is how the `TObjArray`
@@ -204,10 +206,10 @@ from an element list and are carried as constants in `rootwrite.KNOWN_CHECKSUMS`
 `THashList` and `TSeqCollection`, both class version 0, whose infos list no members
 while their checksums fold them. §11.2 has the other two exception classes.
 
-`element_lists.py` publishes the element list of each of the twenty-seven classes
+`element_lists.py` publishes the element list of each of the thirty-one classes
 those procedures need, into `spec/06-writing/ElementLists.md`, **read out of the
 ROOT-written fixtures** rather than out of `rootwrite.py` — and it compares the
-three sources against each other, compares every field with `rootwrite.py`, and
+four sources against each other, compares every field with `rootwrite.py`, and
 recomputes each checksum from the list it publishes.
 
 ```sh

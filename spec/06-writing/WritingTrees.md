@@ -536,7 +536,7 @@ That equality is recent: until `tools/element_lists.py` compared an element's
 **subclass tail** against ROOT's, `TRefTable::fProcessGUIDs` carried the wrong
 `fCtype` here, and the record differed from ROOT's in that one field. The tail is in
 no checksum and in no byte count, which is why nothing had noticed
-([Element lists §11](ElementLists.md#11-errata)).
+([Element lists §11](ElementLists.md#12-errata)).
 
 ## 9. Invariants
 
