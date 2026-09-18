@@ -49,7 +49,7 @@ nodes: `fWriteBasket` is 0, `fTotBytes` is 0, and `fLeaves` is an empty
 [TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference)
 — and asserted byte for byte in `ttree/split-object` and `ttree/split-nested`.
 
-An empty `fLeaves` does **not** by itself mean a branch holds nothing; see §6.
+An empty `fLeaves` does **not** by itself mean a branch holds nothing; see §5.
 
 ## 2. Which classes are split
 
@@ -64,7 +64,7 @@ these holds:
 | It has a reference proxy (`TRef` and friends) | `root/core/meta/src/TClass.cxx:2341` |
 | Its name begins `TVectorT<` or `TMatrixT<` | `root/core/meta/src/TClass.cxx:2342-2343` |
 | It is `string` or `std::string` | `root/core/meta/src/TClass.cxx:2345` |
-| It is a collection **of pointers** — unless §6 | `root/core/meta/src/TClass.cxx:2354` |
+| It is a collection **of pointers** — unless §5 | `root/core/meta/src/TClass.cxx:2354` |
 | It is a collection with no value class | `root/core/meta/src/TClass.cxx:2357` |
 | It is a collection of `TString` or `std::string` | `root/core/meta/src/TClass.cxx:2359` |
 | It is a collection whose value class cannot be split | `root/core/meta/src/TClass.cxx:2361` |
@@ -162,7 +162,7 @@ reconstructs the hierarchy by splitting names on `.` will get the plain half of
 
 `fSplitLevel % 100` is the writer's remaining split budget at that node.
 `fSplitLevel - (fSplitLevel % 100)` — the hundreds component — is the
-`TTree::kSplitCollectionOfPointers` flag of §6
+`TTree::kSplitCollectionOfPointers` flag of §5
 (`root/tree/tree/src/TBranchElement.cxx:6279-6280`;
 `root/tree/tree/inc/TTree.h:310`).
 
@@ -189,7 +189,7 @@ structure, or whether a branch has children from this field.
 ### 4.3 What it is needed for
 
 One thing: the `>= 100` test that selects the pointer-collection read procedures
-(`root/tree/tree/src/TBranchElement.cxx:5779`). That is §6.
+(`root/tree/tree/src/TBranchElement.cxx:5779`). That is §5.
 
 ## 5. Collections of pointers, and `TBranchSTL`
 
@@ -222,10 +222,20 @@ Three things in it are new.
 
 **`TBranchSTL` is reachable, and this is how.** It is the only branch class in
 ROOT that appears in no file of either corpus, and this is the arrangement that
-produces one. It is a `TBranch` with three added members — `fClassName`,
-`fClassVersion` and `fID` — and no `fType`, so nothing in
-[TBranchElement](TBranchElement.md) applies to it. Its `fClassVersion` is a
-four-byte `Int_t`, not the `Version_t` of `TBranchElement` class version 10.
+produces one. It is a `TBranch` with **five** added persistent members
+(`root/tree/tree/inc/TBranchSTL.h:71-77`) and no `fType`, so nothing in
+[TBranchElement](TBranchElement.md) applies to it:
+
+| Member | Type | Value in `ttree/split-ptr-collection` |
+|---|---|---|
+| `fContName` | counted string | `vector<PHit*>` — the **collection's** class name, at offset 3455 |
+| `fClassName` | counted string | `PEv`, the parent class, at 3469 |
+| `fClassVersion` | `i32` | 1, at 3473 — a four-byte `Int_t`, not the `Version_t` of `TBranchElement` class version 10 |
+| `fClCheckSum` | `u32` | `0x9838e2f7`, the collection class's checksum, at 3477 |
+| `fID` | `i32` | 0, at 3481 |
+
+`fContName` is the one that matters most to a reader: it names the collection type,
+which is otherwise only inferable from the child branches.
 
 **It has baskets full of data and no leaf at all.** `fLeaves` has `nobjects` 0
 while `fWriteBasket` is 1. This is the one shape in a tree where an empty leaf
@@ -238,6 +248,37 @@ that have leaves.
 [TBranchElement §5](TBranchElement.md#5-fclassname-names-the-class-fid-indexes)
 its `fClassName` is its own type — `vector<PHit*>` — and its `fClassVersion` 6
 is the collection's version, not `PHit`'s.
+
+### 5.1 What a `TBranchSTL`'s own basket holds
+
+A `TBranchSTL` has no leaf, so nothing in [TLeaf](TLeaf.md) describes its entries.
+Each entry is **one framed `TIndArray`**, written by `WriteClassBuffer` and read by
+`ReadClassBuffer` (`root/tree/tree/src/TBranchSTL.cxx:645-648`), and `TIndArray` has
+no `ClassDef` — so it is a **foreign** class and its version word is 0 followed by a
+checksum ([Buffer §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)):
+
+```
+byteCount:u32   version:i16 = 0   checksum:u32   fElems:u32   flag:u8   fElems × u8
+```
+
+`fElems` is the number of indices and `fArr` is a counted pointer `[fElems]` of
+`UChar_t`, so it carries the one-byte presence flag of
+[Element types §4](../02-serialization/ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)
+and is absent when `fElems` is 0.
+
+> Demonstrated by `ttree/split-ptr-collection`, whose `fHits` basket at offset 328
+> has a 68-byte payload holding three entries and then the offset array: at 397 a
+> byte count of 13, version `00 00`, checksum `0xbe3836fa`, `fElems` 2, flag `01`
+> and two index bytes; at 414 the same with `fElems` 0 and flag `00`, 11 bytes; at
+> 429 `fElems` 1, 12 bytes. The offset array at 445 is `4, 69, 86, 101, 0` — the
+> first element is `fKeylen` and the fourth is the never-written extra slot of
+> [TBasket §5.1](TBasket.md#51-three-things-to-get-right).
+
+**`tools/check_invariants.py` reports these baskets as `SKIPPED` rather than
+decoding them**, so they are in the denominator of its `ENTRIES` line and named.
+They are decodable from the file — the layout above is all that is needed — so this
+is a gap in the checker, not in the specification. No file in either corpus contains
+a `TBranchSTL`, so the corpus figure is unaffected.
 
 ## 6. The unsplit fallback
 

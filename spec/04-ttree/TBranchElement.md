@@ -492,7 +492,7 @@ Seven of the eight `fType` values now have a fixture, and `TBranchClones` and
 **`fType` −1**, which needs a class with a hand-written `Streamer`; and a non-null
 `fBranchCount2`, which no file in 178 has.
 
-Eight of the nine invariants of §10 were confirmed by corrupting a copy of
+Eight of the ten invariants of §10 were confirmed by corrupting a copy of
 `ttree/split-object` and checking that the intended invariant is what rejects
 it. Two exceptions, stated so the coverage is not overclaimed:
 
@@ -502,6 +502,8 @@ it. Two exceptions, stated so the coverage is not overclaimed:
   [Buffer §6](../02-serialization/Buffer.md#6-object-slots) rejects the file
   first. The invariant is still worth stating — a writer can produce an empty
   `fClassName` without breaking the framing — but no fixture can demonstrate it.
-- **The `fType` 3 and 4 half of invariant 5** has no fixture to corrupt, because
-  no fixture yet has a count branch. `split-clones` and `split-stl` are the two
-  cases that will fix that.
+- **The `fType` 3 and 4 half of invariant 5** has not been confirmed by
+  corruption. The fixtures for it now exist — `ttree/split-clones` carries
+  `fType` 3 and `ttree/split-stl-toplevel` and `ttree/split-nested` carry
+  `fType` 4, as §14's table records — so what is missing is the corruption pass,
+  not the case.

@@ -23,9 +23,12 @@ ReadLeavesCollectionSplitVectorPtrMember and ReadLeavesCollectionSplitPtrMember
 What this case pins down:
 
 - **TBranchSTL exists and is reachable.** The branch `fHits` is one. It is a
-  TBranch with only three added members -- fClassName, fClassVersion and fID --
+  TBranch with five added persistent members -- fContName, fClassName,
+  fClassVersion, fClCheckSum and fID (root/tree/tree/inc/TBranchSTL.h:71-77) --
   and, unlike TBranchElement, its fClassVersion is a four-byte Int_t. It carries
   no fType, so none of the TBranchElement fields or invariants apply to it.
+  fContName holds the collection's own class name, which nothing else in the
+  branch records.
 - fSplitLevel runs 199, 198, 197 and then **100** on the two fType 41 members.
   That last value is what SetReadLeavesPtr tests with `>= 100`
   (root/tree/tree/src/TBranchElement.cxx:5779).
@@ -228,3 +231,63 @@ name = "fHits.PHit.fId: the bracket title convention"
 offset = 1679
 type = "string"
 value = "fId[fHits.PHit_]"
+
+# The two TBranchSTL members the case did not name, which left an unexplained
+# four-byte hole between fClassVersion and fID. Splitting.md 5.
+
+[[bytes]]
+name = "TBranchSTL: fContName, the collection's class name"
+offset = 3455
+type = "string"
+value = "vector<PHit*>"
+
+[[bytes]]
+name = "TBranchSTL: fClCheckSum of vector<PHit*>"
+offset = 3477
+type = "u32"
+value = 2553864951
+
+# The TBranchSTL's own basket: one framed TIndArray per entry. TIndArray has no
+# ClassDef, so the version word is 0 and a checksum follows. Splitting.md 5.1.
+
+[[bytes]]
+name = "fHits basket entry 1: byte count 13"
+offset = 397
+type = "u32"
+value = 1073741837
+
+[[bytes]]
+name = "fHits basket entry 1: version word 0, TIndArray being foreign"
+offset = 401
+type = "i16"
+value = 0
+
+[[bytes]]
+name = "fHits basket entry 1: TIndArray's checksum"
+offset = 403
+type = "u32"
+value = 3191355130
+
+[[bytes]]
+name = "fHits basket entry 1: fElems 2"
+offset = 407
+type = "u32"
+value = 2
+
+[[bytes]]
+name = "fHits basket entry 2: fElems 0, so no fArr flag payload follows"
+offset = 424
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "fHits offset array: first element is fKeylen"
+offset = 449
+type = "i32"
+value = 69
+
+[[bytes]]
+name = "fHits offset array: the extra slot is never written"
+offset = 461
+type = "i32"
+value = 0

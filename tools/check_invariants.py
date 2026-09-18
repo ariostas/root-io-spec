@@ -2287,8 +2287,25 @@ class Checker:
             # A branch with no leaf at all. Two shapes reach here: the interior
             # nodes of TBranchElement.md 4, which have no basket either and so
             # cost nothing, and a TBranchSTL, which has baskets full of data and
-            # still no leaf -- see Splitting.md. TLeaf 10.5 to 10.7 are about
+            # still no leaf -- see Splitting.md 5. TLeaf 10.5 to 10.7 are about
             # what a branch's leaves say, so they have nothing to check.
+            #
+            # A leafless branch that *does* have baskets must still be counted.
+            # Returning silently once put a TBranchSTL's baskets in neither the
+            # numerator nor the denominator of the ENTRIES line, which is the
+            # same mistake the embedded baskets taught (CLAUDE.md): a ratio that
+            # cannot see what it skipped is worth less than a lower one that can.
+            for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+                if not br.basket_seek[i]:
+                    emb = br.embedded.get(i)
+                    # Mirror the guard the leaf-driven path uses: an embedded
+                    # slot with no entries is not data and must not inflate the
+                    # denominator either.
+                    if emb is None or emb.block < 0 or not emb.basket.nev_buf:
+                        continue
+                self.skip("ReadingEntries 8.5",
+                          "leafless branch: a TBranchSTL entry is one framed "
+                          "TIndArray, Splitting.md 5.1")
             return
 
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
@@ -2378,8 +2395,25 @@ class Checker:
             # A branch with no leaf at all. Two shapes reach here: the interior
             # nodes of TBranchElement.md 4, which have no basket either and so
             # cost nothing, and a TBranchSTL, which has baskets full of data and
-            # still no leaf -- see Splitting.md. TLeaf 10.5 to 10.7 are about
+            # still no leaf -- see Splitting.md 5. TLeaf 10.5 to 10.7 are about
             # what a branch's leaves say, so they have nothing to check.
+            #
+            # A leafless branch that *does* have baskets must still be counted.
+            # Returning silently once put a TBranchSTL's baskets in neither the
+            # numerator nor the denominator of the ENTRIES line, which is the
+            # same mistake the embedded baskets taught (CLAUDE.md): a ratio that
+            # cannot see what it skipped is worth less than a lower one that can.
+            for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+                if not br.basket_seek[i]:
+                    emb = br.embedded.get(i)
+                    # Mirror the guard the leaf-driven path uses: an embedded
+                    # slot with no entries is not data and must not inflate the
+                    # denominator either.
+                    if emb is None or emb.block < 0 or not emb.basket.nev_buf:
+                        continue
+                self.skip("ReadingEntries 8.5",
+                          "leafless branch: a TBranchSTL entry is one framed "
+                          "TIndArray, Splitting.md 5.1")
             return
 
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"

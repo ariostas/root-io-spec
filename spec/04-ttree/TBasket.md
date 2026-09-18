@@ -162,13 +162,24 @@ and read back by decomposition (`root/tree/tree/src/TBasket.cxx:1027-1098`):
 
 | Test | Meaning |
 |---|---|
-| `flag >= 80` | generate the offsets; subtract 80 and continue |
+| `flag >= 80` | the offsets must be **generated** (§5.2.1), and **no entry-offset array follows** whatever the remainder is. Subtract 80 before applying the tests below to the *rest* of the flag, but do not reconsider the offset array |
 | `flag == 0` | nothing follows the header |
 | `flag % 10 == 2` | there is no entry-offset array |
-| otherwise | an entry-offset array follows, as `count` then `count` × `i32` |
+| otherwise, and only when `flag < 80` | an entry-offset array follows, as `count` then `count` × `i32` |
 | `20 < flag < 40` | mask each offset with `~0xFF000000` — the top byte is a displacement, not part of the offset (`root/tree/tree/src/TBasket.cxx:32`) |
 | `flag > 40` | a displacement array follows, in the same `count`-prefixed form |
 | `flag == 1 or flag > 10` | the entry data follows, `fLast` bytes of it |
+
+> **`flag >= 80` is terminal for the offset array.** ROOT's reader sets
+> `mustGenerateOffsets` and then guards the array read with
+> `if (!mustGenerateOffsets && flag && (flag % 10 != 2))`
+> (`root/tree/tree/src/TBasket.cxx:1030-1034`); its writer agrees, emitting the
+> array only `if (!mustGenerateOffsets && fEntryOffset && fNevBuf)`
+> (`root/tree/tree/src/TBasket.cxx:1154`). So an embedded basket with flag **91**
+> (`1 + 10 + 80`) has its raw entry data immediately after the header, and a reader
+> that subtracts 80 and then finds `flag % 10 != 2` would read the first four bytes
+> of that data as a count. `tools/rootfile.py` gates on the generate flag for this
+> reason.
 
 > **The consequence for a reader of files:** in a basket *record* the flag is 0 or
 > 80, and it tells you nothing about whether an offset array is present — §3's

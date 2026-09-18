@@ -617,5 +617,7 @@ and a non-zero `fIOBits` by `ttree/basket-iofeatures`.
 
 No fixture covers a non-empty `fFileName`, which needs a second file
 (`PLAN.md` §9.4), or a `TBranch` at class version 9 or below. The foreign corpus
-of `PLAN.md` §9.8 has files for the latter, and `tools/rootfile.py` refuses them
-explicitly rather than guessing at the legacy layout.
+of `PLAN.md` §9.8 has files for the latter, and `tools/rootfile.py` reads them by
+the member order of §13.1 — `read_legacy_branch`, dispatched for every `TBranch`
+below class version 10 — so the legacy layout is implemented and exercised by the
+corpus, just not pinned by a fixture of this project's own.

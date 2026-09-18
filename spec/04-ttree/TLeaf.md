@@ -263,11 +263,19 @@ not: the entry-offset array in the basket gives the true extent independently, a
 ### 5.3 A branch with a variable-size leaf always has an offset array
 
 `TBranch::Init` forces `fEntryOffsetLen` to 1000 as soon as any leaf has a counter
-or is a `TLeafC` (`root/tree/tree/src/TBranch.cxx:420-427`), so every basket of
-such a branch carries an entry-offset array
-([TBasket §5](TBasket.md#5-the-entry-offset-array)). A reader can therefore always
-delimit an entry without consulting the counter branch — but it still needs the
-counter to split that entry into values when the branch has more than one leaf.
+or is a `TLeafC` (`root/tree/tree/src/TBranch.cxx:420-427`), so a basket of such a
+branch normally carries an entry-offset array
+([TBasket §5](TBasket.md#5-the-entry-offset-array)), and a reader can delimit an
+entry without consulting the counter branch — though it still needs the counter to
+split that entry into values when the branch has more than one leaf.
+
+> **One exception, and it is not rare.** With `fIOBits` bit 0 set and a branch whose
+> offsets can be recomputed, the array is deliberately **not written**: the basket's
+> flag is 80 and the offsets must be regenerated from the counter branch
+> ([TBasket §5.2.1](TBasket.md#521-regenerating-the-offsets)). `ttree/basket-iofeatures`
+> is exactly that case, and `uproot-small-dy-nooffsets.root` in the foreign corpus is
+> a real one. So a reader MUST NOT treat "variable-size leaf" as "offset array
+> present"; invariant 5 carries the same caveat.
 
 ## 6. `fIsRange`, `fMinimum` and `fMaximum`
 

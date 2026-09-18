@@ -28,8 +28,18 @@ the rest of this document assumes it. Given a branch and an entry number:
 
 | | start | end |
 |---|---|---|
-| the basket has an entry-offset array | `fEntryOffset[j]` | `fEntryOffset[j+1]` |
+| the basket has an entry-offset array, and *j* is not the last entry | `fEntryOffset[j]` | `fEntryOffset[j+1]` |
+| the basket has an entry-offset array, and *j* = `fNevBuf - 1` | `fEntryOffset[j]` | **`fLast`** |
 | it does not | `fKeylen + j × fNevBufSize` | start + `fNevBufSize` |
+
+**The last entry's end is `fLast`, not an array element.** The array has one slot
+more than there are entries, and that extra slot is never written: `TBasket::Update`
+stores `fEntryOffset[fNevBuf] = offset` and *then* increments `fNevBuf`
+(`root/tree/tree/src/TBasket.cxx:1190-1203`), so after the final entry the slot at
+`fNevBuf` still holds whatever it held before — 0 in a fresh buffer. A reader taking
+`fEntryOffset[j+1]` for the last entry gets an end of 0 and a negative width.
+[TBasket §5.1](TBasket.md#51-three-things-to-get-right) and §8 step 8 already say this;
+the table above did not.
 
 where *j* = `entry − fBasketEntry[i]`
 (`root/tree/tree/src/TBranch.cxx:1738-1748`). The number of bytes the read then
