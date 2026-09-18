@@ -1544,6 +1544,23 @@ class Checker:
                     self.bad("Directory 9.7",
                              f"entry {e.name!r} fSeekPdir {e.seek_pdir} != "
                              f"containing fSeekDir {d.seek_dir}")
+                # 9.11: the image is what frames the read, and ROOT never
+                # cross-checks it against the record's own key. A disagreement
+                # is invisible to ROOT and fatal to everyone else.
+                rec_at = self.at(e.seek_key)
+                if rec_at is not None:
+                    for field, listed, actual in (
+                            ("fNbytes", e.nbytes, rec_at.nbytes),
+                            ("fObjlen", e.obj_len, rec_at.obj_len),
+                            ("fKeylen", e.key_len, rec_at.key_len),
+                            ("fCycle", e.cycle, rec_at.cycle),
+                            ("fClassName", e.class_name, rec_at.class_name),
+                            ("fName", e.name, rec_at.name),
+                            ("fTitle", e.title, rec_at.title)):
+                        if listed != actual:
+                            self.bad("Directory 9.11",
+                                     f"key list entry {e.name!r}: {field} {listed!r} "
+                                     f"!= {actual!r} in the record at {e.seek_key}")
                 if e.class_name in ("TDirectory", "TDirectoryFile"):
                     if e.seek_key in seen_subdirs:
                         self.bad("Directory 9.8",

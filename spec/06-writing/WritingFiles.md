@@ -15,6 +15,14 @@ Scope, per [the layer's index](index.md#4-what-is-not-specified): a file created
 from nothing, in the small-file layout, with one directory. Nothing here updates an
 existing file.
 
+> **Notation: `sizeof(s)` is a counted string's size on disk, not its character
+> count** — `len(s) + 1`, or `len(s) + 5` when `len(s) > 254`
+> ([Conventions §5.1](../00-conventions.md#51-counted-string)). Every length formula
+> below uses it, and ROOT's own arithmetic is `TString::Sizeof()`
+> (`root/core/base/src/TString.cxx:1405-1410`). Getting it wrong by one is the error
+> §4 warns about: a reader then parses the directory record at the wrong offset with
+> no complaint.
+
 ## 1. The shape of the problem
 
 Three facts decide the order of everything else.
@@ -55,8 +63,9 @@ So for a writer that never deletes anything:
 | `nfree` | 1 |
 
 **Gaps are the other case, and this layer avoids it.** ROOT's allocator prefers an
-exact-size free span, then the first span with more than `nbytes + 3` spare, and
-only then extends the last one (`root/io/io/src/TFree.cxx:133-152`). Partially
+exact-size free span, then the first span **whose whole length exceeds
+`nbytes + 3`** — that is, one with more than three bytes to spare — and only then
+extends the last one (`root/io/io/src/TFree.cxx:132-152`). Partially
 filling a span leaves a remainder that must be marked in place with a negative
 `fNbytes` — [Free segments §4](../01-container/FreeSegments.md#4-the-in-place-marker)
 — and getting that wrong corrupts the record chain for every reader. A writer that
@@ -108,7 +117,7 @@ directory's own fields. That repetition is the thing to get right: it is why
 | `fSeekKey` | 100 | fixed |
 | `fSeekPdir` | **0** | fixed — §4.1 |
 | `fCycle` | 1 | fixed |
-| `fObjlen` | `len(name) + len(title) + 60`, the counted-string lengths | derived |
+| `fObjlen` | `sizeof(name) + sizeof(title) + 60` | derived |
 | `fNbytes` | `fKeylen + fObjlen`; this record is never compressed (`root/io/io/src/TKey.cxx:203-209` has no zip path) | derived |
 
 Its payload, in order:
@@ -128,7 +137,7 @@ Its payload, in order:
 | `u16` + 16 bytes | the directory's UUID, which for the root directory is the file's |
 | 12 bytes | zero (`Directory.md` §5) |
 
-`fNbytesName = fKeylen + len(name) + len(title)`
+`fNbytesName = fKeylen + sizeof(name) + sizeof(title)`
 (`root/io/io/src/TFile.cxx:702`), and the payload after the two strings is exactly
 60 bytes (`root/io/io/src/TDirectoryFile.cxx:1725`). Those two numbers are what a
 reader uses to find the directory's fields: it seeks `fSeekDir + fNbytesName`
@@ -166,7 +175,7 @@ ones a writer would get wrong by symmetry. A subdirectory's record payload carri
 | `fVersion` | 4, `TKey`'s class version (`root/io/io/inc/TKey.h:118`); **+1000** if the file's `fEND` exceeded 2000000000 *before* this key was allocated (`root/io/io/src/TKey.cxx:456-457`) | derived |
 | `fObjlen` | the payload's length **before** compression | derived |
 | `fDatime` | any time; ROOT writes the wall clock (`root/io/io/src/TKey.cxx:531`) | free |
-| `fKeylen` | `26 + len(fClassName) + len(fName) + len(fTitle)`, counted-string lengths (`root/io/io/src/TKey.cxx:1370`) | derived |
+| `fKeylen` | `26 + sizeof(fClassName) + sizeof(fName) + sizeof(fTitle)` (`root/io/io/src/TKey.cxx:1370`) | derived |
 | `fCycle` | 1 for the first key of a given name in the directory, then 2, 3 … (`root/io/io/src/TDirectoryFile.cxx:225-255`) | derived |
 | `fSeekKey` | this record's own offset | derived |
 | `fSeekPdir` | the owning directory's `fSeekDir`, so 100 here | derived |
@@ -174,7 +183,7 @@ ones a writer would get wrong by symmetry. A subdirectory's record payload carri
 | `fName`, `fTitle` | the key's name and title; what ROOT passes is the object's `GetName()`/`GetTitle()` unless the caller named it | free |
 
 **There is no compression flag.** A reader decides that the payload is compressed
-from `fObjlen > fNbytes - fKeylen` and nothing else (`root/io/io/src/TKey.cxx:823`).
+from `fObjlen > fNbytes - fKeylen` and nothing else (`root/io/io/src/TKey.cxx:827`).
 So the two fields are not independent bookkeeping: `fObjlen` equal to
 `fNbytes - fKeylen` *means* stored as-is. A writer that compresses and forgets to
 leave `fObjlen` at the uncompressed length hands its zip stream to the streamer as
@@ -285,7 +294,7 @@ One record, located from the header, holding the spans that are not live data
 
 **The last entry is a sentinel, and it is load-bearing.** ROOT ignores `nfree` and
 reads entries until one has `fLast > fEND`, including that one
-(`root/io/io/src/TFile.cxx:801-808`). A last entry whose `fLast` does not exceed
+(`root/io/io/src/TFile.cxx:1990-1995`). A last entry whose `fLast` does not exceed
 `fEND` makes ROOT keep parsing past the end of the payload, into whatever follows.
 With `fFirst = fEND` and `fLast = 2000000000` the condition holds for any file
 smaller than 2 GB.
@@ -317,7 +326,7 @@ Written last. Every field, with where the value comes from:
 | `fSeekFree`, `fNbytesFree` | the free record's offset and total length | derived |
 | `nfree` | the number of entries in it — 1. Written from the live list (`root/io/io/src/TFile.cxx:2676`) and never read back for parsing (§8) | derived, advisory |
 | `fNbytesName` | as in the root directory record, §4 | derived |
-| `fUnits` | 4. Set once at construction (`root/io/io/src/TFile.cxx:424`) and **never read** — `TFile::Init` decides the layout from `fVersion` alone | fixed by convention |
+| `fUnits` | 4 in the small layout, and 8 alongside the large-file flag (`root/io/io/src/TFile.cxx:2679`). ROOT stores what it reads (`root/io/io/src/TFile.cxx:745`) but **never acts on it** — `TFile::Init` decides the layout from `fVersion` alone | fixed by convention |
 | `fCompress` | `algorithm × 100 + level` (`root/io/io/inc/TFile.h:477-485`), 0 for none | free |
 | `fSeekInfo`, `fNbytesInfo` | the `StreamerInfo` record's offset and length, or 0 for none (§6) | derived |
 | UUID | a `u16` 1 followed by 16 bytes (`root/io/io/src/TFile.cxx:2706`) | free |
@@ -415,7 +424,7 @@ without complaint.
 
 | Mistake | Why it is silent |
 |---|---|
-| `fObjlen` inconsistent with `fNbytes - fKeylen` | there is no codec flag; the inequality *is* the flag (`root/io/io/src/TKey.cxx:823`) |
+| `fObjlen` inconsistent with `fNbytes - fKeylen` | there is no codec flag; the inequality *is* the flag (`root/io/io/src/TKey.cxx:827`) |
 | a key image in the key list disagreeing with the record's own key | the image is what frames the read; the record's own header is consulted only for its version word (`root/io/io/src/TKey.cxx:845-847`) |
 | `fSeekKey` in an image pointing at the wrong record | validated only as an offset inside the file (`root/io/io/src/TDirectoryFile.cxx:1453-1465`) |
 | `fSeekPdir` not matching the owning directory | never checked on the read path; only `TFile::Recover` filters on it (`root/io/io/src/TFile.cxx:2171`), so the file reads and is unrecoverable |
@@ -444,7 +453,7 @@ writing. The reading-side errata are in the documents named in each row.
 | 3 | Silent on the top-directory / subdirectory asymmetry | The top record's payload carries a `TNamed` and a subdirectory's does not, so `fNbytesName` means two different things (`root/io/io/src/TFile.cxx:702` against `root/io/io/src/TDirectoryFile.cxx:158`). §4.2 |
 | 4 | Silent on `fSeekPdir = 0` in the file's own key | An artifact of the order of two statements (§4.1), and it affects `TFile::Recover` |
 | 5 | Silent on write ordering | `TFile::Close` and `TFile::Write` put the `StreamerInfo` record on opposite sides of the key list (§3), and both orders occur in ROOT-written files |
-| 6 | `freesegments.md` does not state the rule a writer needs | The last entry's `fLast` must exceed `fEND`, because that is the parse terminator (`root/io/io/src/TFile.cxx:801-808`), not because of any length |
+| 6 | `freesegments.md` does not state the rule a writer needs | The last entry's `fLast` must exceed `fEND`, because that is the parse terminator (`root/io/io/src/TFile.cxx:1990-1995`), not because of any length |
 
 ## 15. Reference files
 

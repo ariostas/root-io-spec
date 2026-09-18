@@ -51,20 +51,19 @@ TH1F            class version 3
 └── TArrayF      fN and the values, no version word
 ```
 
-`TH1D` is the same with `TArrayD`, and **the same class version, 3**. Class
-versions, all verified against `ClassDef` by `tools/check_versions.py`:
-The versions are tabulated in §10, where
-`tools/check_versions.py` can check them against `ClassDef`.
+`TH1D` is the same with `TArrayD`, and **the same class version, 3**. Every class
+version in the chain is tabulated in §10, where `tools/check_versions.py` checks it
+against `ClassDef`.
 
 **`TH1F` and `TH1D` have generated streamers; `TH1` does not.**
 `TH1::Streamer` is hand-written and delegates above version 2
-(`root/hist/hist/src/TH1.cxx:7081`), so at version 8 the bytes are exactly what
+(`root/hist/hist/src/TH1.cxx:7083-7084`), so at version 8 the bytes are exactly what
 the streamer info describes — but on the read side it then does fixups no
 generated streamer would: it clears `kMustCleanup`, sets each axis's transient
 parent pointer, and re-parents every `TF1` in `fFunctions`
 (`root/hist/hist/src/TH1.cxx:7083-7091`). None of that is in the file, and none
 of it concerns a writer: the write path is a plain `WriteClassBuffer`
-(`root/hist/hist/src/TH1.cxx:7137`).
+(`root/hist/hist/src/TH1.cxx:7139`).
 
 `TH2F` and `TProfile` *are* hand-written in both directions
 (`root/hist/hist/src/TH2.cxx:3977`, `root/hist/hist/src/TProfile.cxx:1820`) and
@@ -92,13 +91,13 @@ something else) or free (ROOT's value given for reference).
 | `fTsumw2` | `f64` | Σ w² over in-range fills | derived |
 | `fTsumwx` | `f64` | Σ w·x | derived |
 | `fTsumwx2` | `f64` | Σ w·x² | derived |
-| `fMaximum` | `f64` | **-1111** unless a ceiling was set explicitly | **fixed** — §6 |
-| `fMinimum` | `f64` | **-1111** likewise | **fixed** |
+| `fMaximum` | `f64` | **-1111** unless a ceiling was set explicitly | free, with constraints — the default is mandatory, §6 |
+| `fMinimum` | `f64` | **-1111** likewise | free, with constraints — as `fMaximum` |
 | `fNormFactor` | `f64` | 0 | free |
 | `fContour` | `TArrayD` | empty: an `i32` 0 and nothing else | free |
 | `fSumw2` | `TArrayD` | empty, or one entry per cell — §5.1 | derived |
 | `fOption` | counted string | empty | free |
-| `fFunctions` | `TList` | **streamed in place**, not as a pointer slot — §3.1 | **fixed** |
+| `fFunctions` | `TList` | **streamed in place**, not as a pointer slot — §3.1 | **fixed** framing; an empty list is the ordinary case |
 | `fBufferSize` | `i32` | 0 | free |
 | `fBuffer` | counted pointer | a single `0x00` flag byte when absent | **fixed** |
 | `fBinStatErrOpt` | `i32` | 0, `kNormal` | free |
@@ -203,12 +202,18 @@ needed an explicit call.
 ## 6. `-1111` is a sentinel, not a value
 
 `fMaximum` and `fMinimum` are **-1111** in every histogram whose plotting range
-was not set by hand. It means "compute it from the data"; a writer that leaves
-them at 0 produces a histogram ROOT draws with a ceiling and a floor of zero, and
-`GetMaximumStored()` returns 0 rather than the sentinel.
+was not set by hand — the value `TH1`'s constructors assign
+(`root/hist/hist/src/TH1.cxx:640-641`, `root/hist/hist/src/TH1.cxx:797-798`). It
+means "compute it from the data", and ROOT tests for it by distance rather than
+equality: `TMath::Abs(fMaximum + 1111) > 1e-3`
+(`root/hist/hist/src/TH1.cxx:3230`). A writer that leaves the fields at 0 produces a
+histogram ROOT draws with a ceiling and a floor of zero, and `GetMaximumStored()`
+returns 0 rather than the sentinel.
 
-The same number appears in `TF1`'s `fXmin`/`fXmax`, and it is ROOT's general
-"unset" marker for a `Double_t` whose natural range includes 0.
+The same number is ROOT's general "unset" marker for a `Double_t` whose natural
+range includes 0: `TF1` uses it for `fXmin`, `fXmax`, `fMinimum` and `fMaximum`
+(`root/hist/hist/inc/TF1.h:212-222`), and `TGraph`, `TGraph2D` and `TH2Poly` use it
+too.
 
 ## 7. What `TH2F` and `TProfile` add
 

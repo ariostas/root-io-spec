@@ -82,6 +82,17 @@ optional: **`TTree::fIOFeatures` is such a class.** `ROOT::TIOFeatures` has no
 a byte count of 7, a version of 0, the checksum `0x1aa12f10`, and one `UChar_t`.
 `06-writing/WritingTrees.md` uses it.
 
+> **Its streamer info must record `fClassVersion` 1, not 0**, even though the object
+> is written with a version word of 0. This looks like a contradiction and is
+> load-bearing: a reader that meets a version word of 0 looks the class up in the
+> file's info list and reads a checksum **only if** the recorded `fClassVersion` is
+> not 0 ([Buffer §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)).
+> A writer that records 0 to match the version word tells every conforming reader
+> that no checksum follows, and each such object then desynchronises the buffer by
+> four bytes. ROOT records 1 because that is the version its `TClass` reports for a
+> class with no `ClassDef`; `tools/rootwrite.py` emits
+> `Info("ROOT::TIOFeatures", 1, ...)` for the same reason.
+
 ## 3. Strings and the `TObject` base
 
 **Strings.** A counted string is one length byte, or `0xFF` followed by an `i32`
@@ -141,7 +152,7 @@ Two consequences for a writer:
    occurrence — so the failure appears in the middle of a large record and not at
    all in a small one.
 2. **A writer chooses whether to share objects.** ROOT writes the bare four-byte
-   tag for an object already in the map (`root/io/io/src/TBufferFile.cxx:2680-2685`)
+   tag for an object already in the map (`root/io/io/src/TBufferFile.cxx:2680-2686`)
    and never a byte-counted reference, though its reader accepts one
    ([Buffer framing §6.1](../02-serialization/Buffer.md#61-object-references)).
    Writing the object twice instead is legal and produces two objects where ROOT

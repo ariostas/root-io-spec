@@ -40,11 +40,14 @@ writer built from these documents alone — not from ROOT's writing code, and no
 from `tools/rootfile.py`, which is this project's reader — and
 `tools/check_write.py` puts every file it produces through three gates:
 
-| Gate | What it proves | Needs |
-|---|---|---|
-| **Read back** — `rootfile.py` decodes the file, and every applicable `Invariants` section holds | the two independent implementations agree, with the arrow reversed from the rest of the project | Python only |
-| **Byte-exact** — the file matches its committed copy in `data/written/` bit for bit | a change in the writer is visible as a diff rather than as a silent behaviour change | Python only |
-| **ROOT reads it** — ROOT opens the file, returns the values that went in, and prints **no** warning | the procedure is right about ROOT, not just internally consistent | ROOT on `PATH` |
+| # | Gate | What it proves | Needs |
+|---|---|---|---|
+| 1 | **Byte-exact** — the file matches its committed copy in `data/written/` bit for bit | a change in the writer is visible as a diff rather than as a silent behaviour change | Python only |
+| 2 | **Read back** — `rootfile.py` decodes the file, and every applicable `Invariants` section holds | the two independent implementations agree, with the arrow reversed from the rest of the project | Python only |
+| 3 | **ROOT reads it** — ROOT opens the file, returns the values that went in, and prints **no** warning | the procedure is right about ROOT, not just internally consistent | ROOT on `PATH` |
+
+The numbers are the ones `tools/check_write.py` prints, so "gates 1 and 2" means
+the two that need no ROOT.
 
 The third gate is the one that finds errors, and the "no warning" half of it is not
 decoration: ROOT checks a byte count against what it consumed, and compares a
@@ -73,6 +76,20 @@ correct), **derived** (computed from something else, with the formula), or **fre
 (any value in range; ROOT's own choice is given for reference, because matching it
 makes a diff against a ROOT-written file readable).
 
+A kind may carry a short qualifier, which narrows *who* requires the value rather
+than adding a fourth kind:
+
+| Qualifier | Means |
+|---|---|
+| **fixed by the object** | one value, but it comes from what is being written rather than from the format — a key's `fClassName`, say |
+| **fixed by convention** | ROOT always writes one value and nothing reads it, so a violation is invisible; matching it is for diffs, not correctness |
+| **fixed in practice** | one value unless the writer means something unusual by the field, and the unusual case changes how ROOT *interprets* the file rather than how it parses it |
+| **derived, advisory** | computed, but no reader needs it — ROOT recomputes from the data instead |
+| **free, with constraints** | a range or a rule rather than a single value, given beside it |
+
+Anything marked plainly **fixed**, **derived** or **free** carries no qualifier and
+means exactly what the paragraph above says.
+
 ### 3.1 What "the current version" means
 
 **ROOT writes one version per class and it is not a choice.** Both places a version
@@ -100,7 +117,7 @@ them:
 | A **foreign** class — no `ClassDef` at all — whose version is `<= 1` | `0`, then a four-byte checksum | `root/io/io/src/TBufferFile.cxx:3163-3166` |
 | A class whose `ClassDef` version is `<= 0` | that number; and a *forwarding* streamer writes no version word at all | [Forwarding streamers](../99-appendix/ForwardingStreamers.md) |
 | A **member-wise** collection | the version with `0x4000` (`kStreamedMemberWise`) set | `root/io/io/src/TBufferFile.cxx:3203` |
-| An **emulated** class — one the writing process has no dictionary for | the version **the file it was read from declared**, because the `TClass` is built from the streamer info as `new TClass(name, fClassVersion)` | `root/io/io/src/TStreamerInfo.cxx:927` |
+| An **emulated** class — one the writing process has no dictionary for | the version **the file it was read from declared**, because the `TClass` is built from the streamer info as `new TClass(name, fClassVersion)` | `root/io/io/src/TStreamerInfo.cxx:928` |
 
 `ROOT::TIOFeatures` is the first case and is unavoidable: every `TTree` and every
 `TBranch` contains one
@@ -143,6 +160,38 @@ word.
   compression setting: ROOT's choices, and a writer's to make differently. Where a
   choice has a *format* consequence — a basket over 16 MiB is split into blocks,
   say — the consequence is specified and the choice is not.
+- **More than one basket per branch, and cluster ranges.** §3's tree procedure
+  writes one basket per branch, and gives `fBasketBytes`/`fBasketEntry`/`fBasketSeek`
+  as derived arrays whose general rule is stated but only exercised at length 1. A
+  tree with a non-zero `fNClusterRange` additionally carries two populated counted
+  arrays, `fClusterRangeEnd` and `fClusterSize`, which no procedure here specifies —
+  their meaning is on the reading side
+  ([Auxiliary](../04-ttree/Auxiliary.md)). This is a real limit, not a policy
+  choice: a writer of a tree larger than one basket per branch is past what is
+  written down.
+- **Subdirectories.** [Writing a file §4.2](WritingFiles.md#42-a-subdirectory-record-is-not-the-same-shape)
+  names the three ways a subdirectory's record differs but gives no procedure for
+  creating one — nothing on cycle assignment, its own key list, or how the parent
+  lists it.
+- **A variable-length string branch.** §3 scopes to fixed-width leaves.
+  `TLeafC` appears in the leaf table and in the invariants because a writer must
+  know it forces an offset array, but the per-entry layout of a `TLeafC` value is
+  specified only on the reading side ([TLeaf §5](../04-ttree/TLeaf.md)).
+- **The streamer-info element lists themselves.** This is the largest omission and
+  the one most likely to block a third party. §7 of each class document says *which*
+  classes need an info — fifteen for a histogram, eighteen for a flat tree — and
+  [Writing an object §7](WritingObjects.md#7-the-streamerinfo-record) specifies the
+  record's nesting and the checksum exactly. What is **not** in `spec/` is the
+  element list of each of those classes: every member's name, `fType`, `fSize`,
+  `fTypeName`, array extents and counter. They exist in executable form in
+  `tools/rootwrite.py` (`histogram_infos`, `tree_infos`), which is where a writer
+  should read them from today. Three ways to obtain them without that file, in
+  decreasing convenience: `TFile::ShowStreamerInfo` on any ROOT-written file;
+  reading the `StreamerInfo` record of a reference file in `data/` with
+  [Streamer information §12](../02-serialization/StreamerInfo.md#12-reading); or
+  **copying that record verbatim** into the file being written, which is legitimate
+  — a `StreamerInfo` record is self-contained, and `data/written/` demonstrates that
+  a byte-identical copy is what ROOT itself produces.
 
 ## 5. A writer in one page
 

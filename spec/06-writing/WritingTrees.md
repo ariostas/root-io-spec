@@ -67,9 +67,9 @@ values a three-entry tree needs:
 | `fTimerInterval`, `fUpdate` | `i32` | 0 | free |
 | `fScanField` | `i32` | 25 — rows before `Scan` prompts | free |
 | `fDefaultEntryOffsetLen` | `i32` | 1000; only affects branches created later | free |
-| `fNClusterRange` | `i32` | 0 | derived |
+| `fNClusterRange` | `i32` | 0 for a tree written in one pass, which is all §1 covers. Non-zero means the two counted arrays below it have that many elements, and this procedure does not specify them ([index §4](index.md#4-what-is-not-specified)) | **fixed** at 0 here |
 | `fMaxEntries`, `fMaxEntryLoop` | `i64` | 1000000000000 | free |
-| `fMaxVirtualSize` | `i64` | **0 or above.** Negative diverts basket reading onto a whole-cluster path that walks `fBasketEntry` unbounded (`root/tree/tree/src/TBranch.cxx:1246-1247`) | **fixed** |
+| `fMaxVirtualSize` | `i64` | **0 or above.** Negative diverts basket reading onto a whole-cluster path that walks `fBasketEntry` unbounded (`root/tree/tree/src/TBranch.cxx:1246-1247`) | free, with constraints — any non-negative value |
 | `fAutoSave` | `i64` | -300000000 | free |
 | `fAutoFlush` | `i64` | -30000000 | free |
 | `fEstimate` | `i64` | 1000000. `TTree::Streamer` raises anything at or below 10000 to 1000000 on read (`root/tree/tree/src/TTree.cxx:9845-9847`), so the field is free in effect | free |
@@ -97,7 +97,7 @@ written inside `fBranches`
 map position of that object's byte-count word, plus 2. So the order is a
 constraint on the writer: every leaf must be written, inside its branch, before
 `fLeaves` names it. `TTree::GetLeaf` iterates this array
-(`root/tree/tree/src/TTree.cxx:7502`), which is how `Draw` and `Scan` find a leaf
+(`root/tree/tree/src/TTree.cxx:6222`), which is how `Draw` and `Scan` find a leaf
 by name.
 
 ### 3.2 `fIOFeatures` is the one foreign class a tree contains
@@ -113,6 +113,11 @@ byte count 7  ver 0   checksum      fIOBits
 ```
 
 The checksum is the class's and is constant. `TBranch` carries one too.
+
+**Its streamer info must record `fClassVersion` 1**, not the 0 in the version word;
+§7 lists it that way, and
+[Writing an object §2](WritingObjects.md#2-a-version-word-of-0-and-when-a-writer-must-emit-one)
+says why getting it wrong costs every reader four bytes per tree and per branch.
 
 ## 4. A branch
 
@@ -138,10 +143,10 @@ order:
 | `fZipBytes` | `i64` | the basket's `fNbytes` | derived |
 | `fBranches` | `TObjArray` member | empty for a flat branch | **fixed** |
 | `fLeaves` | `TObjArray` member | one leaf, §4.3 | **fixed** |
-| `fBaskets` | `TObjArray` member | `fWriteBasket + 1` slots, **all null**, §4.1 | derived |
-| `fBasketBytes` | counted pointer, `i32` | `[fNbytes, 0, …]`, `fMaxBaskets` values | **fixed** |
-| `fBasketEntry` | counted pointer, `i64` | `[fFirstEntry, fEntryNumber, 0, …]` | **fixed** |
-| `fBasketSeek` | counted pointer, `i64` | `[the basket record's offset, 0, …]` | **fixed** |
+| `fBaskets` | `TObjArray` member | `fWriteBasket + 1` slots, **all null**, §4.1 | derived — the slot count from `fWriteBasket`, the contents always null |
+| `fBasketBytes` | counted pointer, `i32` | element *i* is basket *i*'s `fNbytes`, then zeros to `fMaxBaskets`; with one basket, `[fNbytes, 0, …]` | derived — from the basket records |
+| `fBasketEntry` | counted pointer, `i64` | element *i* is the first entry number of basket *i*, and element `fWriteBasket` is the total entry count; with one basket, `[fFirstEntry, fEntryNumber, 0, …]` | derived — §8 invariants 2 and 3 |
+| `fBasketSeek` | counted pointer, `i64` | element *i* is basket *i*'s record offset, then zeros; with one basket, `[the offset, 0, …]` | derived — from where each basket was written |
 | `fFileName` | counted string | empty — non-empty means the baskets are in another file | **fixed** |
 
 **The three counted pointers have no length of their own**: each is one flag byte
@@ -198,7 +203,7 @@ base at version **2**:
 | `TNamed` | framed | `fName` the leaf name **without** dimensions; `fTitle` **with** them — `n`, `a[n]`, `v[3]` |
 | `fLen` | `i32` | the fixed multiplicity: 1 for a scalar **and for a counted array**, `N` for `x[N]` |
 | `fLenType` | `i32` | the width of one value: 4 for `TLeafI`/`TLeafF`, 8 for `TLeafD`, 1 for `TLeafC` |
-| `fOffset` | `i32` | 0 for a single-leaf branch; otherwise the leaf's cumulative byte offset inside the entry (`root/tree/tree/src/TBranch.cxx:503`) |
+| `fOffset` | `i32` | 0 for a single-leaf branch; otherwise the leaf's cumulative byte offset inside the entry (`root/tree/tree/src/TBranch.cxx:419`) |
 | `fIsRange` | `u8` | **1 on a counter leaf**, 0 otherwise |
 | `fIsUnsigned` | `u8` | 1 only for the lowercase type letters |
 | `fLeafCount` | pointer slot | null, or an **object reference** to the counter leaf |
@@ -234,7 +239,7 @@ rest of the entry. So a writer has to know the maximum count **before** it write
 the tree record, which means a full pass over the data.
 
 `fIsRange` is what makes the field meaningful: ROOT sets it on the counter as a
-side effect of building the counted leaf (`root/tree/tree/src/TLeaf.cxx:293`), and
+side effect of building the counted leaf (`root/tree/tree/src/TLeaf.cxx:309`), and
 without it `GetLeafCountValues` returns nothing (`:367`).
 
 ## 5. A basket
@@ -248,7 +253,7 @@ A record of its own, and the most unusual key in the format.
 | `fTitle` | the **tree's** name |
 | key `fVersion` | **1004**. `TBasket`'s constructor adds 1000 unconditionally (`root/tree/tree/src/TBasket.cxx:71`), so `fSeekKey` and `fSeekPdir` are 8 bytes wide **in a file of any size** |
 | `fCycle` | the basket number (`root/tree/tree/src/TBasket.cxx:1293`). Nothing reads it |
-| `fKeylen` | 34 + the three counted strings + **19**, because the basket's own header sits inside the key |
+| `fKeylen` | 34 + the three counted strings + **19**, because the basket's own header sits inside the key. 19 assumes `fNevBufSize` is written positive — see §5.1 |
 | `fObjlen` | the entry data, plus the offset array if there is one |
 | `fNbytes` | `fKeylen` + the payload as stored |
 
@@ -262,6 +267,16 @@ The 19 bytes at the end of the key are the basket header:
 | `i32` | `fNevBuf` | the entry count in this basket |
 | `i32` | `fLast` | `fKeylen +` the data length, measured from the **start of the record** |
 | `u8` | flag | **0** in a basket written as its own record |
+
+**A writer MUST write `fNevBufSize` positive**, which keeps the header at 19 bytes.
+A *negative* `fNevBufSize` is a marker: ROOT then writes one extra `u8` of
+`fIOBits` after it (`root/tree/tree/src/TBasket.cxx:997-1000`), making the header 20
+and shifting `fKeylen` — see
+[TBasket §2.2](../04-ttree/TBasket.md#22-the-sign-of-fnevbufsize-carries-fiobits).
+Nothing in this procedure needs `fIOBits` on a basket, so nothing here needs the
+20-byte form; a writer that wants `kGenerateOffsetMap` is outside §4 of
+[the layer's index](index.md#4-what-is-not-specified), because it must also omit
+the offset array and set the flag to 80 rather than 0.
 
 ### 5.1 `fNevBufSize` means two different things
 
@@ -292,10 +307,18 @@ whatever ROOT's array happened to hold, which is 0
 > checks that count on read and zombifies the basket if it disagrees (`:1057`).
 > A writer that flushes every basket never meets this.
 
-The branch's `fEntryOffsetLen` is then **shrunk** at flush, to
-`4 × fNevBuf` — or 10 for fewer than three entries
-(`root/tree/tree/src/TBranch.cxx:3225-3227`). Nothing reads the value beyond
-"is it zero", so this matters only for matching ROOT byte for byte.
+The branch's `fEntryOffsetLen` is then **adjusted** at flush, in two guarded
+branches rather than one (`root/tree/tree/src/TBranch.cxx:3225-3231`):
+
+| Condition | New `fEntryOffsetLen` |
+|---|---|
+| `fEntryOffsetLen > 10` and `4 × fNevBuf < fEntryOffsetLen` | `4 × fNevBuf`, or **10** when `fNevBuf < 3` |
+| `fEntryOffsetLen` non-zero and `fNevBuf > fEntryOffsetLen` | `2 × fNevBuf` — it **grows** |
+| otherwise | unchanged |
+
+Nothing reads the value beyond "is it zero", so this matters only for matching ROOT
+byte for byte. The default 1000 with three entries takes the first branch and
+becomes 12, which is what `data/written/tree.root` carries.
 
 ## 6. A basket is not in the key list
 
@@ -359,7 +382,10 @@ difference between `data/written/tree.root` and `data/ttree/basket.root`.
 5. A branch's `fEntryOffsetLen` is non-zero **iff** its baskets carry an offset
    array.
 6. In a basket, `fLast == fKeylen +` the data length, and the offset array's first
-   element is `fKeylen`.
+   element is `fKeylen` — **when the array is stored as offsets**, which is the
+   only form this procedure writes. Under `kGenerateOffsetMap` ROOT stores deltas
+   with a leading 0 instead (`root/tree/tree/src/TBasket.cxx:1263-1267`), so the
+   claim is conditioned on `fIOBits == 0` (§5).
 7. A leaf with a non-null `fLeafCount` names a leaf written earlier in the same
    record, and that leaf's `fIsRange` is set and its `fMaximum` is at least every
    count in the file.

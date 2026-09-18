@@ -313,6 +313,11 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
    key list.
 9. The record's version, modulo 1000, is between 1 and 5.
 10. `fDatimeC <= fDatimeM`, both decoding to valid dates.
+11. Every key image **agrees with the key of the record it points at** — the same
+    `fNbytes`, `fObjlen`, `fKeylen`, `fCycle`, `fClassName`, `fName` and `fTitle`.
+    The image is what a reader frames the payload with, so a disagreement makes the
+    object unreadable in a file ROOT itself opens without complaint (the key list is
+    the only copy ROOT consults, and it never cross-checks the record's own key).
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the
 12 reserved bytes are present or zero (§5), or that the key-list payload contains

@@ -1,8 +1,8 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **223
-entries across 30 documents** — stating what a conforming file satisfies whatever
-wrote it. Those sections are organised for a reader, by layer. This one is the same
+Every layer of this specification ends with an `Invariants` section — **224
+entries across 30 documents**, counted as the numbered items in every section
+titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
 adds the column that matters most on the write side: **who notices when you get it
 wrong.**
@@ -42,7 +42,7 @@ From [File header](../01-container/FileHeader.md),
 | `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 12.1 | checked |
 | The last free entry's `fLast` is strictly greater than `fEND` | FreeSegments 8 | nothing — and the next writer overwrites data |
 | `10 <= fNbytesName <= 10000`, and it equals the root directory record's `fKeylen` plus the two counted strings | FileHeader 10.4, Directory 9 | ROOT range-checks only |
-| Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no overlap and no unclaimed bytes | Record 9 | checked |
+| Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no overlap and no unclaimed bytes | Record 8.8 | checked |
 | A freed span begins with a negative `fNbytes` | FreeSegments 4 | nothing, until a reader walks the chain |
 | `fSeekFree`, `fSeekInfo` and `fSeekKeys` each name a record whose `fNbytes` matches the header's or the directory's copy | FileHeader 10.6, 10.8, Directory 9 | checked |
 | Every key image in the key list is byte-identical to the first `fKeylen` bytes of the record at its own `fSeekKey` | Directory 9 | nothing |
@@ -97,18 +97,20 @@ reading side's [TBranch](../04-ttree/TBranch.md),
 | `fBasketEntry[fWriteBasket] == fEntryNumber`, and the array increases | nothing: too small loses entries silently, too large reads stale values |
 | `fMaxBaskets >= fWriteBasket + 1`, and the three counted arrays hold exactly `fMaxBaskets` values each | checked |
 | A branch's `fEntryOffsetLen` is non-zero **iff** its baskets carry an offset array | checked |
-| In a basket, `fLast == fKeylen +` the data length, and the offset array's first element is `fKeylen` | checked |
+| In a basket, `fLast == fKeylen +` the data length, and the offset array's first element is `fKeylen` — the latter only when the array holds offsets rather than `kGenerateOffsetMap` deltas | checked |
 | A counter leaf has `fIsRange` set and an `fMaximum` at least every count in the file | nothing — ROOT clamps the read with a `printf` |
 | A leaf's `fLeafCount` names a leaf written earlier in the same record | nothing |
 | `fEntries` on the tree agrees with the branches, and no entry is reachable past it | checked |
 | The key list contains no `TBasket` key | checked |
 | `fMaxVirtualSize >= 0` | nothing |
 
-## 6. The ones nothing checks
+## 6. The ones ROOT does not notice
 
 The shortest useful list in this document: violations that produce a file ROOT
 reads without a word, and that another reader may reject or misread. Each is
-specified where the table above says.
+specified where the table above says. Several of them **are** caught by
+`tools/check_invariants.py` — the column in §1 says which — so "nothing" here means
+nothing in ROOT, not nothing at all.
 
 1. **`fObjlen` inconsistent with the stored length.** There is no codec flag; the
    inequality is the flag. A compressed payload with `fObjlen` left equal to the
@@ -133,7 +135,11 @@ specified where the table above says.
    Every reader that is not ROOT needs the info.
 
 Items 1, 2, 3, 4, 6 and 7 are checked by `tools/check_invariants.py`, which is why
-running it over your own output is worth more than reading this list.
+running it over your own output is worth more than reading this list. Item 2 became
+checkable on 2026-09-18, as
+[Directories §9](../01-container/Directory.md#9-invariants) invariant 11: nothing had
+compared a key image against the key of the record it points at, which is precisely
+the comparison ROOT never makes either.
 
 ## 7. What is deliberately not constrained
 
