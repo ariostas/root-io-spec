@@ -136,8 +136,17 @@ def main(argv: list[str]) -> int:
 
     if not check_only and (accept or not drift):
         # Merge rather than replace: running on a subset of the cases must not
-        # drop the digests of the cases it was not asked about.
-        merged = dict(known)
+        # drop the digests of the cases it was not asked about. But a case that
+        # has since declared `digest = false` must lose its line, whether or not
+        # this run was asked about it: a digest nobody checks is worse than none,
+        # because the header of the manifest says these are the digests of the
+        # reference files and somebody will eventually check one by hand.
+        opted_out = set()
+        for other in sorted((REPO / "gen/cases").glob("*/*/case.toml")):
+            spec = tomllib.loads(other.read_text())
+            if spec.get("digest", True) is False:
+                opted_out.add(spec["file"])
+        merged = {p_: d for p_, d in known.items() if p_ not in opted_out}
         for line in lines:
             d, p_ = line.split(None, 1)
             merged[p_] = d
