@@ -207,7 +207,7 @@ A `TObjString` holding `hello`, as `data/written/objstring.root` writes it:
 
 ## 7. The `StreamerInfo` record
 
-[Writing a file §6](WritingFiles.md#6-the-streamerinfo-record) places the record
+[Writing a file §7](WritingFiles.md#7-the-streamerinfo-record) places the record
 and says why it is worth writing at all. This is what goes in it: a `TList`,
 holding one `TStreamerInfo` per class, each holding a `TObjArray` of elements.
 The element list of each class a histogram or a flat tree needs is

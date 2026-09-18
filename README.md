@@ -50,13 +50,13 @@ from scratch.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**73 reference files, 1909 byte-level assertions, and 1459 source citations
-checked against the pinned submodule across 47 documents**, plus 6 files this
-project wrote with 320 assertions of their own. The invariants also
+**73 reference files, 1909 byte-level assertions, and 1482 source citations
+checked against the pinned submodule across 47 documents**, plus 7 files this
+project wrote with 370 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
-eighteen errors in this specification were found and fixed — plus one compression
+nineteen errors in this specification were found and fixed — plus one compression
 codec it had written off as unreadable, and one coverage figure it had been
 overstating (`PLAN.md` §9.8 and §9.9).
 
@@ -81,15 +81,17 @@ covers is a file, an object, the five histogram classes `TH1F`, `TH1D`, `TH2F`,
 its cluster ranges.
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
 not, and `PLAN.md` §8.5 ranks the same list by how much each item blocks a third
-party — subdirectories, a `TLeafC` branch and `TGraph` are what is left. The three
-largest items are done: the streamer-info element lists of all thirty-one classes a
+party — a `TLeafC` branch and `TGraph` are what is left. The four largest items are
+done: the streamer-info element lists of all thirty-two classes a
 writer has to describe are published as
 [Element lists](spec/06-writing/ElementLists.md), read out of the ROOT-written
 fixtures rather than transcribed from this project's writer,
 [Writing trees §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch)
-specifies flushing, and
+specifies flushing,
 [Writing histograms §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d)
-specify `TH2` and `TProfile`. The document is descriptive of ROOT 6.40.04 — where it
+specify `TH2` and `TProfile`, and
+[Writing a file §5](spec/06-writing/WritingFiles.md#5-a-subdirectory) specifies a
+tree of directories. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation

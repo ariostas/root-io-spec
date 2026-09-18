@@ -29,6 +29,23 @@ BLOCK_MAGICS = {b"ZL": 8, b"XZ": 0, b"L4": None, b"ZS": 1, b"CS": 8}
 KMAXZIPBUF = 0xFFFFFF
 KSTART_BIG_FILE = 2000000000
 
+#: sizeof("TDirectoryFile") - sizeof("TDirectory"). A key list written before
+#: ROOT 5.34 can hold a directory image this much longer than the fKeylen it
+#: reports; spec/01-container/Directory.md 6.5.
+LEGACY_DIR_SLACK = 4
+
+
+def _dir_spelling(class_name: str | None) -> str | None:
+    """`TDirectory` and `TDirectoryFile` are one class name on the wire.
+
+    ROOT writes the first and reads it back as the second
+    (`root/io/io/src/TKey.cxx:1373`, `:1256`), so a comparison of two keys'
+    class names has to fold them together or it reports a difference ROOT
+    cannot see. `spec/01-container/Directory.md` 6.1.
+    """
+    return "TDirectory" if class_name in ("TDirectory", "TDirectoryFile") \
+        else class_name
+
 
 def counted_string_len(buf: bytes, offset: int) -> int:
     n = buf[offset]
@@ -1738,12 +1755,23 @@ class Checker:
                 self.bad("Directory 9.5",
                          f"fNbytesKeys {d.nbytes_keys} != fNbytes at fSeekKeys ({got})")
                 continue
+            # 9.12. The only link from a key-list record back to its directory:
+            # its key names the owning directory, which is what distinguishes it
+            # from the directory record it otherwise looks exactly like.
+            if klist.seek_pdir != d.seek_dir:
+                self.bad("Directory 9.12",
+                         f"the key-list record at {klist.offset} has fSeekPdir "
+                         f"{klist.seek_pdir}, not the owning directory's "
+                         f"fSeekDir {d.seek_dir}")
             try:
                 entries = rootfile.read_key_list(self.buf, d)
             except rootfile.FormatError as exc:
                 self.bad("Directory 9.6", str(exc))
                 continue
-            consumed = 4 + sum(e.key_len for e in entries)
+            # The images, measured by what they actually occupy. fKeylen
+            # describes the *record*, and Directory.md 6.5 says why that is not
+            # always the same number.
+            consumed = 4 + sum(e.image_len for e in entries)
             if consumed > klist.obj_len:
                 self.bad("Directory 9.6",
                          f"key list needs {consumed} bytes, fObjlen is {klist.obj_len}")
@@ -1763,18 +1791,35 @@ class Checker:
                 # is invisible to ROOT and fatal to everyone else.
                 rec_at = self.at(e.seek_key)
                 if rec_at is not None:
+                    # A directory key carries two spellings of one class name and
+                    # ROOT normalises on read (TKey::ReadKeyBuffer), so the
+                    # comparison has to as well -- Directory.md 6.5.
                     for field, listed, actual in (
                             ("fNbytes", e.nbytes, rec_at.nbytes),
                             ("fObjlen", e.obj_len, rec_at.obj_len),
                             ("fKeylen", e.key_len, rec_at.key_len),
                             ("fCycle", e.cycle, rec_at.cycle),
-                            ("fClassName", e.class_name, rec_at.class_name),
+                            ("fClassName", _dir_spelling(e.class_name),
+                             _dir_spelling(rec_at.class_name)),
                             ("fName", e.name, rec_at.name),
                             ("fTitle", e.title, rec_at.title)):
                         if listed != actual:
                             self.bad("Directory 9.11",
                                      f"key list entry {e.name!r}: {field} {listed!r} "
                                      f"!= {actual!r} in the record at {e.seek_key}")
+                    # 9.13. An image is a byte copy of the record's key in every
+                    # file but one shape: a directory key written before ROOT
+                    # 5.34 spells itself TDirectoryFile in the list, four bytes
+                    # longer than the fKeylen it still reports.
+                    if e.image_len != e.key_len:
+                        legacy = (e.class_name == "TDirectoryFile"
+                                  and rec_at.class_name == "TDirectory"
+                                  and e.image_len - e.key_len == LEGACY_DIR_SLACK)
+                        if not legacy:
+                            self.bad("Directory 9.13",
+                                     f"key list entry {e.name!r} occupies "
+                                     f"{e.image_len} bytes but reports fKeylen "
+                                     f"{e.key_len}")
                 if e.class_name in ("TDirectory", "TDirectoryFile"):
                     if e.seek_key in seen_subdirs:
                         self.bad("Directory 9.8",

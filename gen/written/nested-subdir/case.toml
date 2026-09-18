@@ -1,0 +1,360 @@
+id   = "written/nested-subdir"
+file = "data/written/nested-subdir.root"
+size = 1854
+
+description = """
+Two nested subdirectories written by tools/rootwrite.py, holding the same five
+objects as the ROOT-written fixture container/directories -- and laid out
+identically to it, record for record. Every byte of the two files agrees except
+each key's fDatime, the three UUIDs and the file's own name; tools/test_write.py
+asserts that.
+
+Exercises spec/06-writing/WritingFiles.md 5: a subdirectory record carries no
+name and title, so its fNbytesName is its fKeylen alone; its key spells its class
+TDirectory; its fSeekParent is the mother's fSeekDir; and each directory gets a
+key-list record of its own, keyed by its own name.
+"""
+
+spec = ["spec/06-writing/WritingFiles.md", "spec/01-container/Directory.md"]
+
+[[records]]
+offset = 100
+nbytes = 206
+class  = "TFile"
+name   = "data/written/nested-subdir.root"
+
+[[records]]
+offset = 306
+nbytes = 95
+class  = "TObjString"
+name   = "top"
+
+[[records]]
+offset = 401
+nbytes = 109
+class  = "TDirectory"
+name   = "alpha"
+
+[[records]]
+offset = 510
+nbytes = 100
+class  = "TObjString"
+name   = "in_alpha"
+
+[[records]]
+offset = 610
+nbytes = 107
+class  = "TDirectory"
+name   = "beta"
+
+[[records]]
+offset = 717
+nbytes = 104
+class  = "TObjString"
+name   = "in_beta"
+
+[[records]]
+offset = 821
+nbytes = 434
+class  = "TList"
+name   = "StreamerInfo"
+
+[[records]]
+offset = 1255
+nbytes = 208
+class  = "TFile"
+name   = "data/written/nested-subdir.root"
+
+[[records]]
+offset = 1463
+nbytes = 171
+class  = "TDirectory"
+name   = "alpha"
+
+[[records]]
+offset = 1634
+nbytes = 121
+class  = "TDirectory"
+name   = "beta"
+
+[[records]]
+offset = 1755
+nbytes = 99
+class  = "TFile"
+name   = "data/written/nested-subdir.root"
+
+# The root directory's key list names the top-level object and the one
+# subdirectory, and nothing else: alpha's own contents are in alpha's list.
+[[keys]]
+name = "top"
+[[keys]]
+name = "alpha"
+
+# --- The header, spec/01-container/FileHeader.md ---------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1854
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 1755
+[[bytes]]
+name = "nfree -- one entry, because a directory record never moves"
+offset = 24
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fNbytesName, the root directory's and not any subdirectory's"
+offset = 28
+type = "i32"
+value = 146
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 821
+
+# --- The root directory's fields, at fBEGIN + fNbytesName -----------------
+[[bytes]]
+name = "root directory version, TDirectoryFile 5"
+offset = 246
+type = "i16"
+value = 5
+[[bytes]]
+name = "root fNbytesKeys, the whole key-list record"
+offset = 256
+type = "i32"
+value = 208
+[[bytes]]
+name = "root fNbytesName"
+offset = 260
+type = "i32"
+value = 146
+[[bytes]]
+name = "root fSeekDir"
+offset = 264
+type = "i32"
+value = 100
+[[bytes]]
+name = "root fSeekParent, 0 for the top directory"
+offset = 268
+type = "i32"
+value = 0
+[[bytes]]
+name = "root fSeekKeys"
+offset = 272
+type = "i32"
+value = 1255
+
+# --- alpha's key: class TDirectory, parent the root -----------------------
+[[bytes]]
+name = "alpha key fNbytes"
+offset = 401
+type = "i32"
+value = 109
+[[bytes]]
+name = "alpha key fObjlen, 60 bytes of fields and nothing else"
+offset = 407
+type = "i32"
+value = 60
+[[bytes]]
+name = "alpha key fKeylen, which is also its fNbytesName"
+offset = 415
+type = "i16"
+value = 49
+[[bytes]]
+name = "alpha key fSeekKey"
+offset = 419
+type = "i32"
+value = 401
+[[bytes]]
+name = "alpha key fSeekPdir, the root directory"
+offset = 423
+type = "i32"
+value = 100
+[[bytes]]
+name = "alpha key fClassName -- never TDirectoryFile on disk"
+offset = 427
+type = "string"
+value = "TDirectory"
+[[bytes]]
+name = "alpha key fName"
+offset = 438
+type = "string"
+value = "alpha"
+[[bytes]]
+name = "alpha key fTitle, which mkdir defaults to the name"
+offset = 444
+type = "string"
+value = "alpha"
+
+# --- alpha's fields, which start where its key ends ----------------------
+[[bytes]]
+name = "alpha directory version"
+offset = 450
+type = "i16"
+value = 5
+[[bytes]]
+name = "alpha fNbytesKeys"
+offset = 460
+type = "i32"
+value = 171
+[[bytes]]
+name = "alpha fNbytesName == its fKeylen: no name and title in the payload"
+offset = 464
+type = "i32"
+value = 49
+[[bytes]]
+name = "alpha fSeekDir, its own record"
+offset = 468
+type = "i32"
+value = 401
+[[bytes]]
+name = "alpha fSeekParent, the mother's fSeekDir"
+offset = 472
+type = "i32"
+value = 100
+[[bytes]]
+name = "alpha fSeekKeys, filled in long after the record was placed"
+offset = 476
+type = "i32"
+value = 1463
+[[bytes]]
+name = "alpha TUUID version word"
+offset = 480
+type = "u16"
+value = 1
+[[bytes]]
+name = "alpha's 12 reserved bytes, zero in the small layout"
+offset = 498
+type = "bytes"
+value = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# --- in_alpha belongs to alpha, which its key says and the key list repeats
+[[bytes]]
+name = "in_alpha key fSeekPdir, alpha's record"
+offset = 532
+type = "i32"
+value = 401
+
+# --- beta is nested one level deeper -------------------------------------
+[[bytes]]
+name = "beta key fSeekPdir, alpha's record"
+offset = 632
+type = "i32"
+value = 401
+[[bytes]]
+name = "beta key fClassName"
+offset = 636
+type = "string"
+value = "TDirectory"
+[[bytes]]
+name = "beta fNbytesName == its fKeylen"
+offset = 671
+type = "i32"
+value = 47
+[[bytes]]
+name = "beta fSeekDir"
+offset = 675
+type = "i32"
+value = 610
+[[bytes]]
+name = "beta fSeekParent, alpha and not the root"
+offset = 679
+type = "i32"
+value = 401
+[[bytes]]
+name = "beta fSeekKeys"
+offset = 683
+type = "i32"
+value = 1634
+[[bytes]]
+name = "in_beta key fSeekPdir, beta's record"
+offset = 739
+type = "i32"
+value = 610
+
+# --- The three key lists, one per directory ------------------------------
+[[bytes]]
+name = "root key list: its key carries the file's class, not TDirectory"
+offset = 1281
+type = "string"
+value = "TFile"
+[[bytes]]
+name = "root key list count"
+offset = 1344
+type = "i32"
+value = 2
+[[bytes]]
+name = "alpha's image in the root key list: fSeekKey"
+offset = 1432
+type = "i32"
+value = 401
+[[bytes]]
+name = "alpha's image: fClassName, the same spelling as the record's key"
+offset = 1440
+type = "string"
+value = "TDirectory"
+
+[[bytes]]
+name = "alpha's key-list record: keyed by the directory's own name"
+offset = 1489
+type = "string"
+value = "TDirectory"
+[[bytes]]
+name = "alpha's key-list record fName"
+offset = 1500
+type = "string"
+value = "alpha"
+[[bytes]]
+name = "alpha's key-list record fSeekPdir: alpha itself, not its parent"
+offset = 1485
+type = "i32"
+value = 401
+[[bytes]]
+name = "alpha key list count: in_alpha and beta"
+offset = 1512
+type = "i32"
+value = 2
+[[bytes]]
+name = "beta's image in alpha's key list: fSeekKey"
+offset = 1605
+type = "i32"
+value = 610
+[[bytes]]
+name = "beta's image: fSeekPdir"
+offset = 1609
+type = "i32"
+value = 401
+
+[[bytes]]
+name = "beta's key-list record fSeekPdir: beta itself"
+offset = 1656
+type = "i32"
+value = 610
+[[bytes]]
+name = "beta key list count: in_beta alone"
+offset = 1681
+type = "i32"
+value = 1
+
+# --- The free list: one entry, at fEND ------------------------------------
+[[bytes]]
+name = "free entry version"
+offset = 1844
+type = "i16"
+value = 1
+[[bytes]]
+name = "free entry fFirst == fEND"
+offset = 1846
+type = "i32"
+value = 1854
+[[bytes]]
+name = "free entry fLast"
+offset = 1850
+type = "i32"
+value = 2000000000

@@ -1248,14 +1248,13 @@ it implied. Ordered by how much it blocks a third party:
 3. ~~**Cluster ranges.**~~ **Done, 2026-09-18** — the same work, §8.7.
 4. ~~**`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7.~~ **Done,
    2026-09-18** — §8.8.
-5. **Subdirectories.** `WritingFiles.md` §4.2 names the three differences and gives
-   no procedure.
+5. ~~**Subdirectories.**~~ **Done, 2026-09-18** — §8.9.
 6. **A `TLeafC` branch**, whose per-entry layout is specified only on the reading
    side.
 7. **`TGraph`**, which no writing document mentions and which is as common in real
    files as `TH1`.
 
-Items 5 to 7 are what is left, and none of them blocks a writer of the two things
+Items 6 and 7 are what is left, and neither blocks a writer of the two things
 the layer names: a file of histograms, and a flat tree of any size. Nothing in the
 list is a correction — the documents are accurate about what they cover — and each
 is stated as a limit rather than left for a reader to discover.
@@ -1407,6 +1406,55 @@ record-level checks used to feed the `ENTRIES` branch-basket ratio, and 468
 histogram records in `pippa.root` would have dropped the published figure from
 100% to 78% while measuring nothing about entries. `skip()` now carries a unit.
 
+### 8.9 Subdirectories, and a bug the new invariant found (2026-09-18)
+
+[`WritingFiles.md` §5](spec/06-writing/WritingFiles.md#5-a-subdirectory), item 5 of
+§8.5. The layer could write a file with one directory; it can now write a tree of
+them, and the one-paragraph placeholder at §4.2 is a six-part procedure.
+
+**The worked example is the closest byte comparison in the project.**
+`data/written/nested-subdir.root` holds two nested subdirectories and a
+`TObjString` at each of three levels — the same content as the reading-side fixture
+`data/container/directories.root`, with a file name chosen to be the same 31
+characters. The two files are **1854 bytes each with identical record boundaries,
+and every byte agrees except each key's `fDatime`, the three UUIDs and the file's
+own name**. It matched on the first run. So every offset, every `fNbytesName`,
+every `fSeekParent` and every `fSeekKeys` in both subdirectory records is ROOT's
+own value rather than this project's reading of `TDirectoryFile.cxx`.
+
+What the work had to establish:
+
+| Fact | Why a writer cannot guess it |
+|---|---|
+| A subdirectory's record is placed **before everything it contains**, with `fNbytesKeys` and `fSeekKeys` still 0 | ROOT writes it at creation (`root/io/io/src/TDirectoryFile.cxx:147-164`) and fills those two in later; they are the only fields a single-pass writer cannot compute where it places the record |
+| The payload is **60 bytes whether or not the offsets are 64-bit** | `TDirectoryFile::Sizeof` never tests the large-file flag (`root/io/io/src/TDirectoryFile.cxx:1725-1735`): in the large layout the 12 trailing bytes *are* the high halves. That is what makes the second write an overwrite |
+| **A directory record never moves and is never freed** | `WriteDirHeader` seeks `fSeekDir + fNbytesName` and overwrites in place (`:2177-2180`), and `TKey::Delete` refuses a directory key outright with ROOT's own comment about it (`root/io/io/src/TKey.cxx:586-594`). So `nfree` stays 1 however many directories a create-only file has |
+| A key-list record's key names the directory that **owns** the list | `WriteKeys` passes `this` as the mother (`root/io/io/src/TDirectoryFile.cxx:2213`), so `fSeekPdir` is that directory's own `fSeekDir` — the only structural link back from a key list, since the record is otherwise indistinguishable from the directory record |
+| `TDirectoryFile` has **two writers of the same 60 bytes with different large-file predicates** | `FillBuffer` tests the three stored offsets (`:751-760`), `Streamer` tests the file's `fEND` (`:1827`). `FillBuffer` is the one that produces the record |
+| A parent's key list precedes its children's | `Save` does `SaveSelf` then recurses (`:1575-1587`). Nothing reads the order, so it is free — but reproducing it is what keeps the byte comparison possible |
+
+**ROOT writing into a directory this project created is part of gate 3.** The
+case's `verify.C` reopens a copy in `UPDATE` mode and writes an object into
+`alpha`: `alpha` is still at 401 and `beta` at 610 afterwards, while the two old
+key lists and the old free-segment record have become freed spans and `nfree` is 3.
+That is the in-place claim measured rather than cited.
+
+**Four new writer invariants, all four checked**, plus one that is not a property of
+a file and is refused by the writer instead (a directory left unsaved while it owns
+records). One of the four is new to the container layer as well —
+`Directory` 9.12, the key-list record's `fSeekPdir` — and nothing had looked at that
+field before.
+
+**And `TObjString`'s element list is now published**, as
+[`ElementLists.md` §8](spec/06-writing/ElementLists.md#8-a-file-of-one-object-tobjstring):
+32 classes, 176 elements. It was the one class three written cases already used and
+no table described, so those files were not reproducible from `spec/` alone. Its
+checksum recomputes from the published table.
+
+The same work found the **fourteenth format error** in `gen/foreign/`, which §9.8
+records: the invariant added that morning failed on a pre-5.34 file, and it was the
+specification that was wrong.
+
 ## 9. Known gaps
 
 Every gap the written documents record. **None is a hole in the prose**: in every
@@ -1528,13 +1576,31 @@ M6 added a twelfth from here, `TLeaf` 10.6 on `uproot-issue-250.root`:
 - `fIsRange` may be set on a `TLeafElement`;
 - `nfree` in the header is advisory and ROOT never uses it.
 
-A twelfth was found in the same corpus without a new run: five
+A thirteenth was found in the same corpus without a new run: five
 `TMatrixTSym<double>` records in `uproot-issue-359.root` had been reported as
 "consumed 48 of 3528" and filed as a class the specification had not written up,
 when they were the symptom of `HandWrittenStreamers.md`'s `delegating` claim
 being wrong (§8 item M1). The lesson is about reading the output rather than
 about the format: a `NOT CHECKED` line naming a class is a *diagnosis*, and this
 one had been accepted without being made.
+
+**A fourteenth, 2026-09-18, and it is the first one a *new* invariant found.**
+`Directory` 9.11 — added that morning, comparing each key image against the key of
+the record it points at — failed twice on `uproot-issue64.root` (ROOT 5.28/00),
+whose key list spells two of its five subdirectories `TDirectoryFile` where their
+records spell them `TDirectory`. The file is right and two published claims were
+wrong: that an image is a byte copy of the first `fKeylen` bytes of its record, and
+that a reader can size an entry from its `fKeylen`. ROOT before commit
+`713f56ea03f` (2012-01-26, first released in 5.34/00) substituted the short
+spelling at key *creation* rather than at the write, and `TKey::ReadKeyBuffer`
+undoes the substitution on the way in — so any directory key that reached a key
+list after being read back from disk was written four bytes longer than the
+`fKeylen` it still reported. ROOT never notices, because it advances by the strings
+it parses. `Directory.md` §6.5 now specifies it, invariant 9.13 checks it, and 9.6
+is computed from the parsed lengths rather than from `fKeylen` — which is what it
+should always have been, and is why the two failures had slipped past the 8-byte
+slack allowance instead of being caught. The lesson is the encouraging one: the
+invariant was three hours old and the corpus found its error immediately.
 
 Plus two format facts (a split parent counts `fEntries` but never
 `fEntryNumber`; a slot may wrap an object *reference* in a byte count, which ROOT

@@ -9,11 +9,11 @@ every field of every `TStreamerElement`. Without that a writer can build a
 correctly framed record with nothing in it, so this document publishes the lists
 themselves.
 
-Thirty-one classes, which is every class a writer of histograms, profiles and
-flat trees has to describe:
+Thirty-two classes, which is every class a writer of histograms, profiles,
+flat trees and a bare object has to describe:
 
 <!-- BEGIN GENERATED: counts -->
-**31 classes, 174 elements**, every one read out of a file ROOT wrote.
+**32 classes, 176 elements**, every one read out of a file ROOT wrote.
 <!-- END GENERATED -->
 
 Nothing here was transcribed from this project's writer. Every table is read out
@@ -97,12 +97,12 @@ member of a version-0 class (`root/io/io/src/TStreamerInfo.cxx:552-554`) while
 the checksum still folds them. Their infos list only their bases, so a writer has
 to carry `0xcc7e49c1` and `0xfc6c3bc6` as constants
 ([StreamerInfo §11.2](../02-serialization/StreamerInfo.md#112-what-cannot-be-recomputed)).
-Every other checksum in §4 to §8 is reproduced exactly by §11's algorithm applied
+Every other checksum in §4 to §9 is reproduced exactly by §11's algorithm applied
 to the table printed beside it, and `tools/element_lists.py` fails if that stops
 being true in either direction.
 
 **These lists are the current versions and nothing else.** They describe the
-classes at the versions in §9, which are the versions the pinned ROOT compiles.
+classes at the versions in §11, which are the versions the pinned ROOT compiles.
 A file written with them is readable by older ROOT only as far as that ROOT's own
 schema evolution reaches; producing an *older* layout is not something the format
 offers a writer
@@ -559,7 +559,21 @@ Class version **20**, `fCheckSum` **`0x7264e07f`**. 33 elements.
 | 33 | `TStreamerObjectPointer` | `fBranchRef` | 64 `kObjectP` | 8 | `TBranchRef*` |  | `Branch supporting the TRefTable (if any)` |
 <!-- END GENERATED -->
 
-## 8. Three classes no file describes
+## 8. A file of one object: `TObjString`
+
+The smallest file that needs a `StreamerInfo` record at all. `TObjString` is a
+`TObject` and a `TString`, so with §4's first three tables this is a complete set,
+and it is the one this project's `StreamerInfo` record is compared against byte for
+byte ([Writing an object §7.4](WritingObjects.md#74-the-check-that-this-procedure-passes)).
+
+It is also what `data/written/nested-subdir.root` holds at each of its three
+directory levels, which is what makes that file reproducible from this document
+rather than from `tools/rootwrite.py`.
+
+<!-- BEGIN GENERATED: objstring -->
+<!-- END GENERATED -->
+
+## 9. Three classes no file describes
 
 `TArray`, `TArrayF` and `TArrayD` have hand-written streamers, so nothing marks
 them and a histogram or profile file contains **no info for any of them**
@@ -597,7 +611,7 @@ Class version **1**, `fCheckSum` **`0x7139ef34`**. 2 elements.
 | 2 | `TStreamerBasicPointer` | `fArray` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fN` in `TArray` at version 1 | `[fN] Array of fN doubles` |
 <!-- END GENERATED -->
 
-## 9. The order ROOT writes them in
+## 10. The order ROOT writes them in
 
 Registration order, which is neither alphabetical nor dependency order. **A
 reader does not care**, and a writer is free to choose its own — the order is
@@ -626,13 +640,19 @@ TTree  TNamed  TObject  TAttLine  TAttFill  TAttMarker  ROOT::TIOFeatures
 TBranch  TLeafI  TLeaf  TLeafF  TList  TSeqCollection  TCollection  TString
 TBranchRef  TRefTable  TObjArray
 ```
+
+**A file of one object** — 1 infos, as `data/container/file-minimal.root` carries them:
+
+```
+TObjString
+```
 <!-- END GENERATED -->
 
-## 10. Class versions
+## 11. Class versions
 
 The version each info records, which is also the version an object of that class
 must carry in its version word. Checked against `ClassDef` in the pinned
-submodule by `tools/check_versions.py`, so this table and §4 to §8 together say
+submodule by `tools/check_versions.py`, so this table and §4 to §9 together say
 that the fixtures' values *are* the current ones.
 
 <!-- BEGIN GENERATED: versions -->
@@ -663,6 +683,7 @@ that the fixtures' values *are* the current ones.
 | `TNamed` | 1 | histogram, th2-profile, tree |
 | `TObjArray` | 3 | tree |
 | `TObject` | 1 | histogram, th2-profile, tree |
+| `TObjString` | 1 | objstring |
 | `TProfile` | 7 | th2-profile |
 | `TRefTable` | 3 | tree |
 | `TSeqCollection` | 0 | histogram, th2-profile, tree |
@@ -674,7 +695,7 @@ that the fixtures' values *are* the current ones.
 foreign class, and 1 is what its info records
 ([Writing trees §3.2](WritingTrees.md#32-fiofeatures-is-the-one-foreign-class-a-tree-contains)).
 
-## 11. Invariants
+## 12. Invariants
 
 1. Every element's `fTypeName` is the resolved spelling of its type, and for a
    `TStreamerBase` it is exactly `BASE`.
@@ -685,14 +706,14 @@ foreign class, and 1 is what its info records
 4. Each info's checksum is what
    [StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums) produces
    from its own element list, except for a class of version 0.
-5. Each class version in §9 is the one `ClassDef` declares in the pinned
+5. Each class version in §11 is the one `ClassDef` declares in the pinned
    submodule.
 
-1 to 4 are checked by `tools/element_lists.py` over the four reference files; 4
+1 to 4 are checked by `tools/element_lists.py` over the five reference files; 4
 is checked for every info in every reference file by `tools/test_write.py`, and 5
 by `tools/check_versions.py`.
 
-## 12. Errata
+## 13. Errata
 
 Not against ROOT's shipped documentation, which says nothing about element lists,
 but against two claims a writer will otherwise make from the class definitions.
@@ -705,12 +726,13 @@ byte for byte — the fields below are in no checksum and in no byte count.
 | 1 | A counter member is declared with `fType` 6 `kCounter` | `kCounter` is not a property of the declaration: `TStreamerInfo::Build` gives the member `kInt`, and it is **promoted** to `kCounter` when some other element names it as a counter (`root/core/meta/src/TStreamerElement.cxx:99`). `TArray::fN` is 6 only because `TArrayF::fArray` points at it, and a member that nothing counts stays 3 — `TCollection::fSize` is the contrast in §4. ROOT's own comment records that the switch "might be triggered by a derived class" (`root/io/io/src/TStreamerInfo.cxx:2969-2970`) |
 | 2 | A `vector<string>` member has `fCtype` 365 `kSTLstring` | 365 is what `TStreamerSTLstring` sets for itself (`root/core/meta/src/TStreamerElement.cxx:2194`). A `TStreamerSTL` for `vector<string>` records 61 `kObject`, because the value type has a dictionary (`:1810-1812`) — and `std::string` has one. This is the only one of the two that reaches a file: it is `TRefTable::fProcessGUIDs`, in every tree file |
 
-## 13. Reference files
+## 14. Reference files
 
 | File | What it supplies |
 |---|---|
-| `data/classes/histogram.root` | §4 and §5, and the histogram order in §9 — ROOT's own fifteen infos |
-| `data/ttree/basket.root` | §4 and §7, and the tree order in §9 — ROOT's own eighteen |
+| `data/classes/histogram.root` | §4 and §5, and the histogram order in §10 — ROOT's own fifteen infos |
+| `data/ttree/basket.root` | §4 and §7, and the tree order in §10 — ROOT's own eighteen |
 | `data/classes/th2-profile.root` | §6, and a second copy of §4, §5's `TAxis` chain and `TH1D` — ROOT's own eighteen |
-| `data/classes/tarray-histogram.root` | §8, plus a second independent copy of thirteen of the classes in §4 to §7 |
+| `data/classes/tarray-histogram.root` | §9, plus a second independent copy of thirteen of the classes in §4 to §7 |
+| `data/container/file-minimal.root` | §8, and a third copy of `TObject` and `TString`'s checksums |
 | `data/written/histogram.root`, `data/written/th2-profile.root`, `data/written/tree.root` | the same infos written from these tables; the histogram file's whole `StreamerInfo` record is byte-identical to ROOT's, all 9628 bytes |

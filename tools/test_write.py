@@ -754,6 +754,152 @@ class Compression(unittest.TestCase):
         self.assertIsNone(rw.zlib_blocks(os.urandom(4096), 9))
 
 
+class Subdirectories(unittest.TestCase):
+    """`data/written/nested-subdir.root` against `data/container/directories.root`.
+
+    The two files hold the same five objects at the same three levels, and the
+    written one's name was chosen to be the same length, so they have the same
+    length and the same record boundaries. Everything else is the assertion: the
+    whole 1854 bytes agree once the three fields `spec/06-writing/WritingFiles.md`
+    marks free are set aside -- each key's `fDatime`, the three UUIDs, and the
+    file's own name.
+
+    That makes every offset, `fNbytesName`, `fSeekParent` and `fSeekKeys` in both
+    subdirectory records ROOT's own value rather than this project's reading of
+    `TDirectoryFile.cxx`.
+    """
+
+    ROOTS = "data/container/directories.root"
+    MINE = "data/written/nested-subdir.root"
+
+    def load(self, path):
+        buf, header, records = rootfile.load(REPO / path)
+        return bytes(buf), header, records
+
+    def normalised(self, path):
+        """The file with every free field blanked, and the name made ours.
+
+        The name substitution is a straight `replace`: the two names are the same
+        31 bytes long, so nothing moves. Every other span comes from parsing the
+        file, not from a hard-coded offset, so a record that moved would be
+        compared at its new place and fail.
+        """
+        buf, header, records = self.load(path)
+        buf = bytearray(buf.replace(b"data/container/directories.root",
+                                    b"data/written/nested-subdir.root"))
+        blank = [(header.uuid_offset, 16)]
+        for rec in records:
+            blank.append((rec.offset + 10, 4))          # the key's fDatime
+            d = rootfile.read_directory(bytes(buf), rec)
+            if d is not None:
+                blank.append((d.datime_offset, 8))      # fDatimeC and fDatimeM
+                blank.append((d.uuid_offset, 16))
+                if d.seek_keys:
+                    for e in rootfile.read_key_list(bytes(buf), d):
+                        blank.append((e.datime_offset, 4))
+        for off, n in blank:
+            buf[off:off + n] = b"\x00" * n
+        return bytes(buf)
+
+    def test_every_byte_but_the_free_fields_is_roots(self):
+        mine, theirs = self.normalised(self.MINE), self.normalised(self.ROOTS)
+        self.assertEqual(len(mine), 1854)
+        self.assertEqual(mine, theirs)
+
+    def test_the_layout_is_roots(self):
+        """Stated separately, so a failure says *what* moved."""
+        _, _, mine = self.load(self.MINE)
+        _, _, theirs = self.load(self.ROOTS)
+        shape = lambda rs: [(r.offset, r.nbytes, r.key_len, r.obj_len,
+                             r.class_name, r.seek_pdir,
+                             None if r.name.endswith(".root") else r.name)
+                            for r in rs]
+        self.assertEqual(shape(mine), shape(theirs))
+
+    def test_a_subdirectory_records_fnbytesname_is_its_keylen(self):
+        buf, _, records = self.load(self.MINE)
+        subs = [r for r in records if r.class_name == "TDirectory"
+                and r.obj_len == rw.DIR_RECORD_LEN]
+        self.assertEqual([r.name for r in subs], ["alpha", "beta"])
+        for rec in subs:
+            d = rootfile.read_directory(buf, rec)
+            self.assertEqual(d.nbytes_name, rec.key_len, rec.name)
+            # And therefore the fields start where the key ends.
+            self.assertEqual(d.fields_offset, rec.offset + rec.key_len)
+
+    def test_a_subdirectory_key_spells_its_class_tdirectory(self):
+        buf, _, records = self.load(self.MINE)
+        for rec in records:
+            if rec.name in ("alpha", "beta"):
+                self.assertEqual(rec.class_name, "TDirectory")
+        # And the key length accounts for that spelling, not TDirectoryFile's.
+        alpha = next(r for r in records if r.offset == 401)
+        self.assertEqual(alpha.key_len,
+                         26 + rw.string_len("TDirectory")
+                         + rw.string_len("alpha") * 2)
+
+    def test_the_parent_chain_is_in_fseekpdir_and_fseekparent(self):
+        buf, _, records = self.load(self.MINE)
+        by_name = {r.name: r for r in records if r.class_name == "TDirectory"
+                   and r.obj_len == rw.DIR_RECORD_LEN}
+        for name, parent in (("alpha", 100), ("beta", 401)):
+            rec = by_name[name]
+            d = rootfile.read_directory(buf, rec)
+            self.assertEqual(rec.seek_pdir, parent, name)
+            self.assertEqual(d.seek_parent, parent, name)
+
+    def test_each_directory_has_its_own_key_list(self):
+        buf, _, records = self.load(self.MINE)
+        listed = {}
+        for rec in records:
+            d = rootfile.read_directory(buf, rec)
+            if d is None:
+                continue
+            klist = next(r for r in records if r.offset == d.seek_keys)
+            # The key-list record's key names the directory that owns it.
+            self.assertEqual(klist.seek_pdir, d.seek_dir, rec.name)
+            listed[rec.name] = [e.name for e in
+                                rootfile.read_key_list(buf, d)]
+        self.assertEqual(listed["alpha"], ["in_alpha", "beta"])
+        self.assertEqual(listed["beta"], ["in_beta"])
+        self.assertEqual(listed[self.MINE], ["top", "alpha"])
+
+    def test_an_unsaved_directory_gets_no_key_list(self):
+        f = rw.FileWriter("data/written/x.root")
+        f.mkdir("saved")
+        f.mkdir("unsaved", saved=False)
+        data = f.to_bytes()
+        header = rootfile.read_header(data)
+        records = rootfile.read_records(data, header)
+        # A key-list record's key is class TDirectory too, so the directory
+        # records are the ones whose payload is exactly the 60 fields.
+        dirs = {r.name: rootfile.read_directory(data, r)
+                for r in records if r.class_name == "TDirectory"
+                and r.obj_len == rw.DIR_RECORD_LEN}
+        self.assertEqual(dirs["saved"].nbytes_keys,
+                         next(r.nbytes for r in records
+                              if r.offset == dirs["saved"].seek_keys))
+        self.assertEqual(dirs["unsaved"].seek_keys, 0)
+        self.assertEqual(dirs["unsaved"].nbytes_keys, 0)
+
+    def test_an_unsaved_directory_cannot_hold_anything(self):
+        f = rw.FileWriter("data/written/x.root")
+        d = f.mkdir("unsaved", saved=False)
+        d.add(rw.Obj("TObjString", "s", "", rw.tobjstring("x")))
+        with self.assertRaises(rw.WriteError):
+            f.to_bytes()
+
+    def test_the_payload_is_sixty_bytes_whatever_the_offsets(self):
+        """Which is what lets ROOT rewrite a directory record in place."""
+        f = rw.FileWriter("data/written/x.root")
+        f.mkdir("a")
+        data = f.to_bytes()
+        records = rootfile.read_records(data, rootfile.read_header(data))
+        sub = next(r for r in records if r.class_name == "TDirectory")
+        self.assertEqual(sub.obj_len, 60)
+        self.assertEqual(sub.obj_len, rw.DIR_RECORD_LEN)
+
+
 class Determinism(unittest.TestCase):
     def test_two_builds_are_identical(self):
         def build():

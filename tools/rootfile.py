@@ -79,6 +79,12 @@ class Record:
     class_name: str | None = None
     name: str | None = None
     title: str | None = None
+    #: For a key read as an image inside a key list: the bytes the image itself
+    #: occupies there, which is NOT always its fKeylen. A directory key written
+    #: before ROOT 5.34 spells its class name `TDirectoryFile` in the list and
+    #: `TDirectory` in the record, four bytes apart, while fKeylen describes the
+    #: record. Directory.md 6.5: a reader advances by this, never by fKeylen.
+    image_len: int | None = None
 
     @property
     def free(self) -> bool:
@@ -415,6 +421,7 @@ def _read_key_at(buf: bytes, off: int) -> tuple[Record, int]:
     rec.class_name, p = _counted_string(buf, p)
     rec.name, p = _counted_string(buf, p)
     rec.title, p = _counted_string(buf, p)
+    rec.image_len = p - off
     return rec, p
 
 

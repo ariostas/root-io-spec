@@ -33,6 +33,10 @@ each record, and read the key list a directory points at. Recognise directory
 records **structurally** — by `fSeekDir`, `fSeekParent`, `fSeekKeys` — and not by
 class name, because a `TFile` subclass is still a directory
 ([Directories §6.2](../01-container/Directory.md#62-the-key-list-record-cannot-be-identified-from-its-key)).
+Step between key-list entries by the bytes each one parses to and not by its
+`fKeylen`: the two differ in files from ROOT 5.32 and earlier, and a subdirectory
+there may be listed as `TDirectoryFile` rather than `TDirectory`
+([Directories §6.5](../01-container/Directory.md#65-an-images-length-is-what-it-parses-to-never-its-fkeylen)).
 
 Prove it with `container/file-minimal`, `container/directories`,
 `container/cycles`, `container/empty-directory` and `container/gap`, then check

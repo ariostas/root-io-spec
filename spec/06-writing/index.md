@@ -65,11 +65,11 @@ with a plain `sha256`.
 
 | Document | Covers |
 |---|---|
-| [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, keys, the key list, the free list, and where the end of the file is |
+| [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, subdirectories, keys, the key lists, the free list, and where the end of the file is |
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
 | [Writing histograms](WritingHistograms.md) | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`, member by member, at the current class version |
 | [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf, its baskets, and flushing — more than one basket per branch, and the cluster ranges that come with it |
-| [Element lists](ElementLists.md) | The streamer info of each of the thirty-one classes the other three documents need: every element, with every field |
+| [Element lists](ElementLists.md) | The streamer info of each of the thirty-two classes the other three documents need: every element, with every field |
 
 Each is written as a numbered procedure, with a table per record or per class
 giving every field and, for each, whether its value is **fixed** (only one value is
@@ -170,17 +170,13 @@ word.
   ROOT's own rule for when to do it without requiring it. The two values ROOT
   derives at its first flush, `fBasketSize` and `fAutoSave`, are inputs to this
   project's writer for the same reason.
-- **Subdirectories.** [Writing a file §4.2](WritingFiles.md#42-a-subdirectory-record-is-not-the-same-shape)
-  names the three ways a subdirectory's record differs but gives no procedure for
-  creating one — nothing on cycle assignment, its own key list, or how the parent
-  lists it.
 - **A variable-length string branch.** §3 scopes to fixed-width leaves.
   `TLeafC` appears in the leaf table and in the invariants because a writer must
   know it forces an offset array, but the per-entry layout of a `TLeafC` value is
   specified only on the reading side ([TLeaf §5](../04-ttree/TLeaf.md)).
 - **The streamer-info element lists of any other class.**
-  [Element lists](ElementLists.md) publishes the thirty-one a histogram, a profile
-  or a flat tree needs, which was the largest omission here until 2026-09-18 and
+  [Element lists](ElementLists.md) publishes the thirty-two a histogram, a profile,
+  a flat tree or a bare `TObjString` needs, which was the largest omission here until 2026-09-18 and
   the one thing that made the writing layer unimplementable from the prose. It does
   not generalise: a `TH3`, a `TGraph` or a user-defined class needs infos
   that are not published, and there is no procedure for *deriving* an element list
@@ -198,18 +194,23 @@ The order below is the whole of the container procedure, compressed; each step
 links to where it is specified.
 
 1. Reserve the first `fBEGIN` (100) bytes. Do not write the header yet — three of
-   its fields are not known until step 7.
+   its fields are not known until step 8.
 2. Write the **root directory record** at 100: a key whose class, name and title
    are the file's, followed by a `TDirectoryFile` payload whose three offsets are
    still zero.
 3. Write each **data record**: stream the object into a buffer, compress it if the
    file says to, and write a key in front of it.
-4. Write the **`StreamerInfo` record**, a `TList` of `TStreamerInfo` objects for
+4. Write a **subdirectory record** wherever one is created, which is ahead of
+   everything it holds: the same payload with no name and title in front of it, a
+   key whose class is `TDirectory`, and `fSeekKeys` still zero.
+5. Write the **`StreamerInfo` record**, a `TList` of `TStreamerInfo` objects for
    the classes used in step 3 — [their element lists](ElementLists.md).
-5. Write the **key list**: the count, then a copy of each data record's key.
-6. Write the **free list**: one entry for the gap that is the rest of the address
-   space, since a file written once has no gaps in it.
-7. Rewrite the root directory record's payload — now that the key list's position
+6. Write **one key list per directory**, the root's first: the count, then a copy
+   of the key of each record that directory owns.
+7. Write the **free list**: one entry for the gap that is the rest of the address
+   space, since a file written once has no gaps in it — and a directory record
+   never moves, so subdirectories do not add any.
+8. Rewrite every directory record's payload — now that the key lists' positions
    and the file's end are known — and write the **header**.
 
 [Writing a file](WritingFiles.md) is that list with the bytes in it.

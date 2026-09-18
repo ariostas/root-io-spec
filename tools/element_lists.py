@@ -11,8 +11,8 @@ a third party could not work around without reading this project's code.
 
 This extracts them from the **reference files ROOT wrote** and writes them into
 `spec/06-writing/ElementLists.md`, so the published tables are evidence about
-ROOT rather than a transcription of `rootwrite.py`. Three fixtures between them
-carry all twenty-seven classes:
+ROOT rather than a transcription of `rootwrite.py`. Five fixtures between them
+carry every class:
 
     data/classes/histogram.root        the fifteen infos of a TH1F/TH1D file
     data/ttree/basket.root             the eighteen of a flat TTree file
@@ -20,6 +20,8 @@ carry all twenty-seven classes:
                                        for a second time
     data/classes/tarray-histogram.root TArray, TArrayF and TArrayD, which a
                                        histogram file does not describe at all
+    data/container/file-minimal.root   TObjString, the one info a file holding a
+                                       single object carries
 
 and every class the fixtures share is compared across them, so a table can only
 be published when every file that carries the class agrees on it, field for
@@ -76,9 +78,10 @@ SOURCES = (
     "data/ttree/basket.root",
     "data/classes/th2-profile.root",
     "data/classes/tarray-histogram.root",
+    "data/container/file-minimal.root",
 )
 
-#: The five groups, each in bases-first order: a base's checksum is folded into
+#: The six groups, each in bases-first order: a base's checksum is folded into
 #: the checksum of every class that inherits it (`StreamerInfo.md` §11 step 2),
 #: so this is the order a writer has to compute them in, and reading the tables
 #: in it means never meeting a checksum before the table that produces it.
@@ -90,6 +93,7 @@ GROUPS = {
     "tree": ("TObjArray", "ROOT::TIOFeatures", "TLeaf", "TLeafI", "TLeafF",
              "TBranch", "TRefTable", "TBranchRef", "TTree"),
     "arrays": ("TArray", "TArrayF", "TArrayD"),
+    "objstring": ("TObjString",),
 }
 
 #: The infos a file of each kind carries, in the order ROOT writes them --
@@ -113,6 +117,9 @@ WRITE_ORDER = {
          "ROOT::TIOFeatures", "TBranch", "TLeafI", "TLeaf", "TLeafF", "TList",
          "TSeqCollection", "TCollection", "TString", "TBranchRef", "TRefTable",
          "TObjArray")),
+    "objstring": (
+        "A file of one object", "data/container/file-minimal.root",
+        ("TObjString",)),
 }
 
 #: A class version 0 info lists no members while its checksum folds them
@@ -128,7 +135,7 @@ NO_CLASSDEF = {"ROOT::TIOFeatures"}
 
 #: Element type codes below `kOffsetL`, for the `fType` column's mnemonic. The
 #: table in `ElementTypes.md` §1 is the full list; this covers what the
-#: twenty-seven classes use, and an unknown code is printed bare rather than
+#: the published classes use, and an unknown code is printed bare rather than
 #: guessed at.
 TYPE_NAMES = {
     0: "kBase", 1: "kChar", 2: "kShort", 3: "kInt", 4: "kLong", 5: "kFloat",
@@ -235,7 +242,8 @@ def writer_infos() -> dict[str, rw.Info]:
     for info in (list(rw.histogram_infos(("TH1F", "TH1D")))
                  + list(rw.histogram_infos(("TH2F", "TH2D", "TProfile")))
                  + list(rw.tree_infos(("I", "F")))
-                 + [arrays.by_name[n] for n in GROUPS["arrays"]]):
+                 + [arrays.by_name[n] for n in GROUPS["arrays"]]
+                 + [rw.objstring_info()]):
         out[info.name] = info
     return out
 

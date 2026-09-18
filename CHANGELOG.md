@@ -9,6 +9,39 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New: subdirectories, so a writer can produce a tree of directories**
+  ([Writing a file §5](spec/06-writing/WritingFiles.md#5-a-subdirectory)). A
+  subdirectory's record is the same 60 bytes as the root directory's with **no name
+  and title in front of them**, so its `fNbytesName` is its `fKeylen` alone and its
+  fields begin where its key ends; its key spells its class `TDirectory` however
+  long ROOT has called it `TDirectoryFile`; and `fSeekParent` and the key's
+  `fSeekPdir` both name the mother. Each directory gets a key-list record of its
+  own, keyed by the **directory's** name, whose `fSeekPdir` is that directory's own
+  `fSeekDir`; a subdirectory's key image goes in its parent's list and its contents
+  go in its own. The record is written before anything it holds, with `fSeekKeys`
+  still 0, and every later write of it is an **overwrite in place** — ROOT refuses
+  outright to free a directory key — so subdirectories add no free entries to a file
+  written once. `data/written/nested-subdir.root` is the new reference file, and it
+  matches the ROOT-written `data/container/directories.root` for **all 1854 bytes**
+  bar each key's `fDatime`, three UUIDs and the file's own name.
+- **Correction, for every reader: a key-list entry's length is what it parses to,
+  never its `fKeylen`**
+  ([Directories §6.5](spec/01-container/Directory.md#65-an-images-length-is-what-it-parses-to-never-its-fkeylen)).
+  This document said an image is byte-identical to the first `fKeylen` bytes of the
+  record it describes. In files written by **ROOT 5.32 and earlier** a directory
+  entry can be four bytes longer than that: it spells its class `TDirectoryFile`
+  where the record's own key spells it `TDirectory`, while reporting the `fKeylen`
+  the short spelling produced. ROOT is immune because it advances past the strings
+  it has parsed; a reader that adds `fKeylen` frames the *next* entry from the
+  middle of this one. The two spellings are one class name — ROOT normalises to
+  `TDirectoryFile` on read — so a reader must accept either when looking for
+  subdirectories, and must not treat a difference between an image and a record as
+  a disagreement. `uproot-issue64.root` (ROOT 5.28/00) holds both spellings at once.
+- **New `TObjString` element list**
+  ([Element lists §8](spec/06-writing/ElementLists.md#8-a-file-of-one-object-tobjstring)),
+  bringing the published set to **32 classes, 176 elements**. It is the one class
+  the smallest possible file needs and no table described.
+
 - **New: `TH2` and `TProfile`, so a writer covers the five histogram classes that
   matter** ([Writing histograms §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d)).
   `TH2F` and `TH2D` are three nested frames rather than two, with `TH2`'s four own

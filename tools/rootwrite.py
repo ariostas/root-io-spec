@@ -31,6 +31,12 @@ BEGIN = 100
 KEY_FIXED = 26
 #: spec/01-container/Directory.md 2 -- 48 bytes of fields plus 12 reserved (5).
 DIR_RECORD_LEN = 60
+#: TDirectoryFile's ClassDef version (root/io/io/inc/TDirectoryFile.h:131).
+DIR_VERSION = 5
+#: What a directory key spells for its class, whatever the class really is.
+#: ROOT substitutes it on the way out and undoes it on the way in
+#: (spec/01-container/Directory.md 6.5).
+DIR_CLASS_ON_DISK = "TDirectory"
 #: spec/01-container/FileHeader.md 5.7 -- 4 in the small layout.
 UNITS_SMALL = 4
 #: spec/01-container/LargeFiles.md 1 -- every large-file test is on this value.
@@ -282,6 +288,151 @@ class _Placed:
         return self.key.to_bytes() + self.payload
 
 
+class Directory:
+    """One directory in the file: the root directory, or a subdirectory.
+
+    A subdirectory differs from the root one in four places and nowhere else
+    (`spec/06-writing/WritingFiles.md` 5): its record payload carries no name
+    and title, so `fNbytesName` is the key length alone; its key's `fSeekPdir`
+    and its record's `fSeekParent` name the mother; its key's class name on disk
+    is `TDirectory`; and its key-list record is keyed by its own name rather than
+    the file's.
+
+    Nothing here is created lazily: `FileWriter.to_bytes` fills in `seek_dir`,
+    `seek_keys` and `nbytes_keys` as it walks the layout, which is why a
+    directory's record can be placed before its key list exists.
+    """
+
+    def __init__(self, writer: "FileWriter", name: str, title: str,
+                 parent: "Directory | None", uuid: bytes, saved: bool = True):
+        if len(uuid) != 16:
+            raise WriteError("a TUUID is 16 bytes")
+        self.writer = writer
+        self.name = name
+        self.title = title
+        self.parent = parent
+        self.uuid = uuid
+        #: False reproduces a directory ROOT created and never saved: its record
+        #: is written with fSeekKeys 0 and it gets no key-list record at all
+        #: (`spec/01-container/Directory.md` 6.4).
+        self.saved = saved
+        self.seek_dir = 0
+        self.seek_keys = 0
+        self.nbytes_keys = 0
+        #: The records this directory's key list names, in write order.
+        self.listed: list[_Placed] = []
+        #: Set once the record is placed, so its payload can be filled in after
+        #: the key lists are laid out.
+        self.record: _Placed | None = None
+
+    @property
+    def is_root(self) -> bool:
+        return self.parent is None
+
+    # -- building ---------------------------------------------------------
+
+    def mkdir(self, name: str, title: str | None = None, *,
+              uuid: bytes = DEFAULT_UUID, saved: bool = True) -> "Directory":
+        """A subdirectory of this one, in creation order.
+
+        ROOT defaults the title to the name (`TDirectoryFile::mkdir`,
+        `root/io/io/src/TDirectoryFile.cxx:1275`) and gives every directory a
+        fresh random UUID (`root/core/base/inc/TDirectory.h:143`); this writer
+        takes the UUID as an input so the file stays reproducible.
+        """
+        sub = Directory(self.writer, name, name if title is None else title,
+                        self, uuid, saved)
+        self.writer._sequence.append((self, sub))
+        self.writer.subdirs.append(sub)
+        return sub
+
+    def add(self, obj: Obj) -> None:
+        self.writer._sequence.append((self, obj))
+
+    def add_hist(self, hist) -> None:
+        """Add a histogram, whose payload needs its own key's length."""
+        key_len = Key(class_name=hist.class_name, name=hist.name,
+                      title=hist.title, obj_len=0, nbytes=0, seek_key=0,
+                      seek_pdir=BEGIN).key_len
+        self.add(hist.obj(key_len))
+
+    # -- the two keys a directory owns ------------------------------------
+
+    def record_key(self, seek_key: int, obj_len: int) -> Key:
+        """The key at the head of this directory's own record.
+
+        The root directory's carries the file's class and a `fSeekPdir` of 0,
+        which is an artefact of ROOT's construction order
+        (`spec/06-writing/WritingFiles.md` 4.1).
+        """
+        if self.is_root:
+            return self.writer._self_key(seek_key, obj_len, seek_pdir=0)
+        return self._dir_key(seek_key, obj_len, self.parent.seek_dir)
+
+    def keys_key(self, seek_key: int, obj_len: int) -> Key:
+        """The key at the head of this directory's key-list record.
+
+        Its `fSeekPdir` is this directory's own `fSeekDir`, not its parent's:
+        `TDirectoryFile::WriteKeys` passes `this` as the mother
+        (`root/io/io/src/TDirectoryFile.cxx:2213`).
+        """
+        if self.is_root:
+            return self.writer._self_key(seek_key, obj_len, seek_pdir=BEGIN)
+        return self._dir_key(seek_key, obj_len, self.seek_dir)
+
+    def _dir_key(self, seek_key: int, obj_len: int, seek_pdir: int) -> Key:
+        key = Key(class_name=DIR_CLASS_ON_DISK, name=self.name,
+                  title=self.title, obj_len=obj_len, nbytes=0,
+                  seek_key=seek_key, seek_pdir=seek_pdir,
+                  datime=self.writer.datime)
+        key.nbytes = key.key_len + obj_len
+        return key
+
+    # -- the record ------------------------------------------------------
+
+    @property
+    def obj_len(self) -> int:
+        """The record's `fObjlen`: 60 bytes of fields, plus the root's prefix."""
+        if self.is_root:
+            return (string_len(self.name) + string_len(self.title)
+                    + DIR_RECORD_LEN)
+        return DIR_RECORD_LEN
+
+    @property
+    def nbytes_name(self) -> int:
+        """`fNbytesName`: the key alone, plus the repeated strings for the root.
+
+        This is the number a reader adds to `fSeekDir` to find the fields, so
+        for a subdirectory the fields start where the key ends
+        (`spec/01-container/Directory.md` 1).
+        """
+        key_len = self.record_key(BEGIN, 0).key_len
+        if self.is_root:
+            key_len += string_len(self.name) + string_len(self.title)
+        return key_len
+
+    def payload(self) -> bytes:
+        """The directory record's payload (`Directory.md` 2, version 5).
+
+        `fDatimeC` and `fDatimeM` are one value here. ROOT sets both at
+        construction and refreshes `fDatimeM` on every header rewrite
+        (`root/io/io/src/TDirectoryFile.cxx:315-316`, `:2175`), which in a
+        single-pass write lands in the same second.
+        """
+        body = (u16(DIR_VERSION) + u32(self.writer.datime)
+                + u32(self.writer.datime)
+                + i32(self.nbytes_keys) + i32(self.nbytes_name)
+                + i32(self.seek_dir)
+                + i32(0 if self.is_root else self.parent.seek_dir)
+                + i32(self.seek_keys)
+                + u16(1) + self.uuid)
+        body += b"\x00" * (DIR_RECORD_LEN - len(body))
+        if self.is_root:
+            return (counted_string(self.name) + counted_string(self.title)
+                    + body)
+        return body
+
+
 class FileWriter:
     """Builds a complete ROOT file in memory.
 
@@ -311,23 +462,33 @@ class FileWriter:
         self.datime = datime
         self.uuid = uuid
         self.compress = compress
-        self.objects: list[Obj] = []
         self.infos: list[Info] = []
+        #: Every record to place, paired with the directory that owns it, in the
+        #: order ROOT would create them: an object, or a subdirectory whose own
+        #: record goes here (`spec/06-writing/WritingFiles.md` 5.1).
+        self._sequence: list[tuple[Directory, object]] = []
+        #: Every subdirectory, in creation order, which is the order their key
+        #: lists are written in.
+        self.subdirs: list[Directory] = []
+        self.root = Directory(self, file_name, title, None, uuid)
 
     def add(self, obj: Obj) -> None:
-        self.objects.append(obj)
+        """Add an object to the root directory."""
+        self.root.add(obj)
 
     def add_hist(self, hist) -> None:
-        """Add a histogram, whose payload needs its own key's length.
+        """Add a histogram to the root directory, sizing its key first.
 
         Map positions are measured from the start of the record
         (`WritingObjects.md` 4), so a payload cannot be built until the key is
         sized -- and a histogram's key length depends on its name and title.
         """
-        key_len = Key(class_name=hist.class_name, name=hist.name,
-                      title=hist.title, obj_len=0, nbytes=0, seek_key=0,
-                      seek_pdir=BEGIN).key_len
-        self.add(hist.obj(key_len))
+        self.root.add_hist(hist)
+
+    def mkdir(self, name: str, title: str | None = None, *,
+              uuid: bytes = DEFAULT_UUID, saved: bool = True) -> Directory:
+        """A subdirectory of the root directory."""
+        return self.root.mkdir(name, title, uuid=uuid, saved=saved)
 
     def add_info(self, info: Info) -> None:
         """Add a `TStreamerInfo` to the record this writer will emit.
@@ -368,22 +529,13 @@ class FileWriter:
 
     @property
     def nbytes_name(self) -> int:
-        """`fNbytesName`: the key plus the name and title repeated after it."""
-        key_len = self._self_key(BEGIN, 0).key_len
-        return key_len + string_len(self.file_name) + string_len(self.title)
+        """`fNbytesName`: the key plus the name and title repeated after it.
 
-    def _dir_payload(self, nbytes_keys: int, seek_keys: int) -> bytes:
-        """The root directory record's payload (`Directory.md` 2, version 5).
-
-        The name and title are repeated ahead of the directory's own fields,
-        which is what makes `fNbytesName` larger than the key.
+        The header carries the **root** directory's value; a subdirectory's is a
+        different number and lives only in its own record
+        (`spec/01-container/Directory.md` 1).
         """
-        body = (u16(5) + u32(self.datime) + u32(self.datime)
-                + i32(nbytes_keys) + i32(self.nbytes_name)
-                + i32(BEGIN) + i32(0) + i32(seek_keys)
-                + u16(1) + self.uuid)
-        body += b"\x00" * (DIR_RECORD_LEN - len(body))
-        return counted_string(self.file_name) + counted_string(self.title) + body
+        return self.root.nbytes_name
 
     # -- layout -----------------------------------------------------------
 
@@ -402,40 +554,62 @@ class FileWriter:
         key.nbytes = key.key_len + len(stored)
         return _Placed(key=key, payload=stored)
 
-    def _record_of(self, obj: Obj, pos: int) -> _Placed:
-        """One record from an Obj, honouring its key version and tail."""
+    def _record_of(self, obj: Obj, pos: int, seek_pdir: int) -> _Placed:
+        """One record from an Obj, honouring its key version and tail.
+
+        `seek_pdir` is the owning directory's `fSeekDir`, which is what says
+        which directory the record belongs to -- the key list is a copy, not the
+        authority (`spec/01-container/Directory.md` 9.7).
+        """
         stored = obj.payload if obj.raw else self._stored(obj.payload)
         key = Key(class_name=obj.class_name, name=obj.name, title=obj.title,
                   obj_len=len(obj.payload), nbytes=0, seek_key=pos,
-                  seek_pdir=BEGIN, datime=self.datime, cycle=obj.cycle,
+                  seek_pdir=seek_pdir, datime=self.datime, cycle=obj.cycle,
                   version=obj.key_version, extra=obj.key_extra)
         key.nbytes = key.key_len + len(stored)
         return _Placed(key=key, payload=stored, listed=obj.in_key_list)
 
     def to_bytes(self) -> bytes:
-        dir_obj_len = (string_len(self.file_name) + string_len(self.title)
-                       + DIR_RECORD_LEN)
-        dir_key = self._self_key(BEGIN, dir_obj_len)
+        root = self.root
+        root.seek_dir = BEGIN
+        dir_key = root.record_key(BEGIN, root.obj_len)
 
         pos = BEGIN + dir_key.nbytes
         placed: list[_Placed] = []
-        for obj in self.objects:
+        for home, item in self._sequence:
+            if isinstance(item, Directory):
+                # A subdirectory's record is placed where ROOT places it: at
+                # creation, before anything it holds, with fSeekKeys still 0
+                # (WritingFiles.md 5.1). Its payload is filled in at the end,
+                # once the key lists have addresses -- it is 60 bytes either way,
+                # which is what lets ROOT rewrite it in place.
+                item.seek_dir = pos
+                key = item.record_key(pos, DIR_RECORD_LEN)
+                rec = _Placed(key=key, payload=b"")
+                item.record = rec
+                placed.append(rec)
+                home.listed.append(rec)
+                pos += key.nbytes
+                continue
+            obj = item
             if obj.builder is not None:
                 # A record whose payload depends on where earlier records
                 # landed. The TTree record is the only one: a branch stores its
                 # baskets' offsets (WritingTrees.md 4).
                 probe = Key(class_name=obj.class_name, name=obj.name,
                             title=obj.title, obj_len=0, nbytes=0, seek_key=pos,
-                            seek_pdir=BEGIN, version=obj.key_version,
+                            seek_pdir=home.seek_dir, version=obj.key_version,
                             extra=obj.key_extra)
                 obj.payload = obj.builder(probe.key_len, placed)
-            rec = self._record_of(obj, pos)
+            rec = self._record_of(obj, pos, home.seek_dir)
             placed.append(rec)
+            if rec.listed:
+                home.listed.append(rec)
             pos += rec.key.nbytes
 
         # The StreamerInfo record: a TList named "StreamerInfo", written before
-        # the key list because that is TFile::Close's order, and deliberately
-        # *not* in the key list (WritingFiles.md 6).
+        # the key lists because that is TFile::Close's order, and deliberately
+        # *not* in any key list (WritingFiles.md 6).
         seek_info = nbytes_info = 0
         info_record = None
         if self.infos:
@@ -450,18 +624,30 @@ class FileWriter:
             seek_info, nbytes_info = pos, info_record.key.nbytes
             pos += info_record.key.nbytes
 
-        # The key list: a count, then each data record's key image verbatim
-        # (Directory.md 6). The root directory's own key is not in it.
-        listed = [p for p in placed if p.listed]
-        images = b"".join(p.key.to_bytes() for p in listed)
-        keys_payload = i32(len(listed)) + images
-        seek_keys = pos
-        keys_key = self._self_key(seek_keys, len(keys_payload), seek_pdir=BEGIN)
-        pos += keys_key.nbytes
+        # One key list per saved directory: a count, then each record's key image
+        # verbatim (Directory.md 6). The root directory's comes first, because
+        # TDirectoryFile::Save writes itself before recursing
+        # (root/io/io/src/TDirectoryFile.cxx:1575-1587).
+        key_lists: list[tuple[Key, bytes]] = []
+        for d in [root] + self.subdirs:
+            if not d.saved:
+                continue
+            images = b"".join(p.key.to_bytes() for p in d.listed)
+            payload = i32(len(d.listed)) + images
+            key = d.keys_key(pos, len(payload))
+            d.seek_keys, d.nbytes_keys = pos, key.nbytes
+            key_lists.append((key, payload))
+            pos += key.nbytes
+        if any(d.listed and not d.saved for d in self.subdirs):
+            raise WriteError("an unsaved directory cannot hold anything: its "
+                             "keys would be unreachable "
+                             "(spec/01-container/Directory.md 6.4)")
 
         # The free list: one entry, covering everything past the end of the
         # file (FreeSegments.md 2). Its own record has to be placed before the
-        # entry can name the end, so the length is computed first.
+        # entry can name the end, so the length is computed first. A directory
+        # record is never freed and never moves, so one entry is right however
+        # many directories the file has (WritingFiles.md 5.3).
         seek_free = pos
         free_key = self._self_key(seek_free, 10, seek_pdir=BEGIN)
         end = seek_free + free_key.nbytes
@@ -486,13 +672,18 @@ class FileWriter:
         out[45:47] = u16(1)                       # TUUID version
         out[47:63] = self.uuid
 
-        out += dir_key.to_bytes()
-        out += self._dir_payload(keys_key.nbytes, seek_keys)
+        # Every directory record's payload is known only now, because it names
+        # its own key list.
+        for d in self.subdirs:
+            d.record.payload = d.payload()
+
+        out += dir_key.to_bytes() + root.payload()
         for p in placed:
             out += p.to_bytes()
         if info_record is not None:
             out += info_record.to_bytes()
-        out += keys_key.to_bytes() + keys_payload
+        for key, payload in key_lists:
+            out += key.to_bytes() + payload
         out += free_key.to_bytes() + free_payload
 
         if len(out) != end:
@@ -1491,6 +1682,22 @@ HISTOGRAM_INFO_ORDER = (
     "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList", "TSeqCollection",
     "TCollection", "TString", "TH2D", "TProfile", "TH1D",
 )
+
+
+def objstring_info() -> Info:
+    """`TObjString`'s streamer info, as ROOT records it.
+
+    Published as `spec/06-writing/ElementLists.md` §4, and the subject of the
+    byte-identical comparison in `WritingObjects.md` 7.4.
+    """
+    info = Info("TObjString", 1, [
+        Element("TStreamerBase", "TObject", "Basic ROOT object", 66, 0, "BASE",
+                base_version=1, base_checksum=0x901BC02D),
+        Element("TStreamerString", "fString", "wrapped TString", 65, 24,
+                "TString"),
+    ])
+    info.checksum = checksum(info)
+    return info
 
 
 def histogram_infos(classes=("TH1F",)) -> list:

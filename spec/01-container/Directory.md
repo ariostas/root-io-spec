@@ -195,10 +195,11 @@ A key list is a record whose payload is a count followed by that many key images
 | 0 | count | `i32` |
 | 4 … | `count` key images | each a `TKey` header |
 
-Each image is byte-identical to the first `fKeylen` bytes of the record it
-describes, laid out exactly as in [Records §2](Record.md#2-key-layout). **Each
+Each image is normally byte-identical to the first `fKeylen` bytes of the record
+it describes, laid out exactly as in [Records §2](Record.md#2-key-layout). **Each
 image carries its own `fVersion`**, so small and large images may be interleaved
-in one list, and a reader must size each entry individually.
+in one list, and a reader must size each entry individually — by parsing it, not
+from its `fKeylen`, which §6.5 shows is a separate number that can disagree.
 
 ### 6.1 The count is authoritative
 
@@ -251,6 +252,70 @@ A directory reaches the second state when it was created but never written —
 > `saved` has `fSeekKeys = 421` pointing at a record with `fObjlen = 4` and a
 > count of zero; `unsaved` has `fSeekKeys = 0` and `fNbytesKeys = 0`.
 
+### 6.5 An image's length is what it parses to, never its `fKeylen`
+
+> A reader MUST advance from one image to the next by the bytes the image
+> occupies — 18 or 26 fixed bytes, then three counted strings — and MUST NOT add
+> `fKeylen` to the current offset. They are two different numbers: `fKeylen`
+> describes the **record**, and one shape of file has them four bytes apart.
+
+Both the key at the head of a record and the image of that key inside a key list
+are produced by `TKey::FillBuffer` (`root/io/io/src/TKey.cxx:647-684`) — the key
+list's caller is `TDirectoryFile::WriteKeys`, which loops over the directory's
+live keys (`root/io/io/src/TDirectoryFile.cxx:2221-2223`) and sizes its record
+with `TKey::Sizeof` (`:2211`). So the image is a byte copy of what the key *would*
+be written as **now**, not of what was written when the record was created. For a
+directory those are not always the same bytes.
+
+Three places decide how a directory key spells its class, and until 2012 they did
+not agree:
+
+| Where | Current ROOT | Before 5.34 |
+|---|---|---|
+| `TKey::Build`, at creation | sets the `kIsDirectoryFile` bit (`root/io/io/src/TKey.cxx:452`) | overwrote `fClassName` with `"TDirectory"` |
+| `TKey::ReadKeyBuffer`, on the way in | sets `fClassName` to `"TDirectoryFile"` and the bit (`root/io/io/src/TKey.cxx:1290-1293`) | set `fClassName` only |
+| `TKey::FillBuffer`, on the way out | writes `"TDirectory"` when the bit is set (`root/io/io/src/TKey.cxx:676-679`) | wrote `fClassName` verbatim |
+| `TKey::Sizeof` | counts 11 for it, hard-coded (`root/io/io/src/TKey.cxx:1374-1375`) | counted `fClassName.Sizeof()` |
+
+Commit `713f56ea03f` (2012-01-26, first released in **5.34/00**) moved the
+substitution from creation to the write, which is what made the four agree.
+Before it, the spelling a key carried depended on where the key came from:
+
+- **created** in this process by `TFile::mkdir` — `fClassName` was `"TDirectory"`,
+  so every copy of it said `TDirectory` in 11 bytes;
+- **read back** from disk — `ReadKeyBuffer` turned it into `"TDirectoryFile"`
+  while `fKeylen` stayed the value on disk, sized for the short spelling. `Sizeof`
+  then reserved 15 bytes for the name and `FillBuffer` wrote them, but `fKeylen`
+  is written as the member it holds (`root/io/io/src/TKey.cxx:658`) and nothing
+  recomputed it.
+
+So a key list written by ROOT 5.32 or earlier can hold a directory entry that
+
+- spells its class `TDirectoryFile`, where the record's own key — written once, at
+  creation — spells it `TDirectory`;
+- reports an `fKeylen` **four bytes smaller than the image itself**, because
+  `sizeof("TDirectoryFile") - sizeof("TDirectory")` is 4.
+
+The enclosing record is not short: `Sizeof` reserved the 15 bytes it wrote, so
+`fObjlen` covers the images exactly. Only `fKeylen` is stale. ROOT never notices,
+because `ReadKeyBuffer` advances the buffer pointer past the strings it has
+parsed. A reader that trusts `fKeylen` desynchronises on the *next* entry and
+frames a key from the middle of one.
+
+> `uproot-issue64.root` (ROOT 5.28/00) is the measured case, and it holds both
+> spellings at once: of the root directory's five subdirectories, `macros` and
+> `events` are listed as `TDirectoryFile` in 55 bytes with `fKeylen` 51, while
+> `detector`, `physics` and `generator` are listed as `TDirectory` in the 55, 53
+> and 57 bytes their `fKeylen` reports. Parsing the images consumes exactly the
+> record's 544-byte `fObjlen`; adding up their `fKeylen` gives 536. The first two
+> keys had therefore been read back from disk by the time the list was written and
+> the last three had not — which is a fact about the program that wrote the file,
+> not about the format.
+
+**The two spellings are one class name.** ROOT normalises to `TDirectoryFile` in
+memory whichever it reads, so a reader comparing two keys' class names must fold
+them together, and a reader looking for subdirectories must accept both (§8).
+
 ## 7. Version history
 
 | On-disk version | ROOT | Payload | Change |
@@ -284,10 +349,11 @@ Reading the UUID therefore depends on `version mod 1000`
    `fBEGIN + fNbytesName`.
 2. If `fSeekKeys` is 0, the directory has no keys. Otherwise read the record at
    `fSeekKeys`, take the count, and parse that many key images.
-3. For each entry whose class name is `"TDirectory"` — that is, a
-   `TDirectoryFile`; see [Records §3.9](Record.md#39-fclassname) — seek to its
-   `fSeekKey`, skip its `fKeylen` bytes, and parse the directory fields there.
-   Recurse from step 2.
+3. For each entry whose class name is `"TDirectory"` **or**
+   `"TDirectoryFile"` — one class either way; see
+   [Records §3.9](Record.md#39-fclassname) and §6.5 — seek to its `fSeekKey`,
+   skip its `fKeylen` bytes, and parse the directory fields there. Recurse from
+   step 2.
 4. Resolve duplicate names by cycle; see [Records §4](Record.md#4-cycles).
 
 Step 3 works because a subdirectory's `fNbytesName` equals its `fKeylen`, so
@@ -314,14 +380,26 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
 9. The record's version, modulo 1000, is between 1 and 5.
 10. `fDatimeC <= fDatimeM`, both decoding to valid dates.
 11. Every key image **agrees with the key of the record it points at** — the same
-    `fNbytes`, `fObjlen`, `fKeylen`, `fCycle`, `fClassName`, `fName` and `fTitle`.
+    `fNbytes`, `fObjlen`, `fKeylen`, `fCycle`, `fClassName`, `fName` and `fTitle`,
+    with `TDirectory` and `TDirectoryFile` counting as one class name (§6.5).
     The image is what a reader frames the payload with, so a disagreement makes the
     object unreadable in a file ROOT itself opens without complaint (the key list is
     the only copy ROOT consults, and it never cross-checks the record's own key).
+12. The key-list record's own key carries the `fSeekDir` of the directory that
+    **owns** the list, in `fSeekPdir` — not that directory's parent
+    (`root/io/io/src/TDirectoryFile.cxx:2213`). It is the only structural link
+    back from a key list to its directory, since the record is otherwise
+    indistinguishable from the directory record (§6.2).
+13. Each image occupies exactly its own `fKeylen` bytes in the list — except a
+    directory entry written before ROOT 5.34, which spells its class
+    `TDirectoryFile` and occupies exactly 4 bytes more (§6.5). No other
+    difference is legitimate, and a reader that adds `fKeylen` rather than
+    parsing gets no warning about either.
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the
-12 reserved bytes are present or zero (§5), or that the key-list payload contains
-nothing after the last counted entry (§6.1).
+12 reserved bytes are present or zero (§5), that the key-list payload contains
+nothing after the last counted entry (§6.1), or that an image is exactly
+`fKeylen` bytes long (§6.5).
 
 ## 10. Errata
 
@@ -342,6 +420,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | 11 | `keyslist.md` shows only the 3.02.06 layout | Missing the large variant, that each entry carries its own version so widths vary within one list, and that a large entry's `fSeekPdir` packs `fPidOffset` (§6) |
 | 12 | — | Up to 8 bytes of uninitialized slack inside `fObjlen` when `fEND > 2 GB` (§6.1) |
 | 13 | — | `fNbytesKeys` counts the whole record, key included (§4.1) |
+| 14 | `keyslist.md` presents each entry as a copy of the record's key, so its length is `fKeylen` | A directory entry written before ROOT 5.34 is 4 bytes longer than the `fKeylen` it reports, and spells its class `TDirectoryFile` where the record spells it `TDirectory` (§6.5). Both spellings occur in one file |
 
 ## 11. Reference files
 
@@ -353,4 +432,8 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/cycles` | Several entries in one key list sharing a name |
 
 No fixture yet covers a version 1, 2 or 3 directory record; those need files from
-ROOT 3, and belong with the legacy corpus.
+ROOT 3, and belong with the legacy corpus. Nor does one cover §6.5's mismatched
+image: no ROOT this project can run still writes one. It is demonstrated instead
+by `uproot-issue64.root` in the third-party corpus
+(`gen/foreign/MANIFEST.sha256`), which `tools/check_invariants.py` reads and
+accepts for exactly the reason §6.5 gives.

@@ -44,6 +44,14 @@ mother's, and files written before that are everywhere. Reconstruct the tree fro
 the keys instead.
 [Directories §4.3](../01-container/Directory.md#43-fseekparent-do-not-use-it-for-parentage)
 
+**A key-list entry is not always `fKeylen` bytes long.** Step to the next one by
+the bytes you parsed — 18 or 26 fixed, then three counted strings — never by adding
+`fKeylen`. A directory entry written by ROOT 5.32 or earlier is four bytes longer
+than the `fKeylen` it reports, because it spells its class `TDirectoryFile` where
+the record's own key spells it `TDirectory`. A reader that adds `fKeylen` frames the
+*next* entry from the middle of this one, and both spellings occur in one file.
+[Directories §6.5](../01-container/Directory.md#65-an-images-length-is-what-it-parses-to-never-its-fkeylen)
+
 **A basket key always uses the large-file layout**, whatever the file's size,
 because `TBasket` adds 1000 to `fVersion` unconditionally.
 [TBasket §1](../04-ttree/TBasket.md#1-a-basket-is-a-key-with-extra-fields)

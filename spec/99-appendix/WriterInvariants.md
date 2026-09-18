@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **234
+Every layer of this specification ends with an `Invariants` section — **240
 entries across 31 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -34,12 +34,12 @@ From [File header](../01-container/FileHeader.md),
 [Records and keys](../01-container/Record.md),
 [Directories](../01-container/Directory.md),
 [Free segments](../01-container/FreeSegments.md) and
-[Writing a file §12](../06-writing/WritingFiles.md#12-invariants-a-writer-should-check-on-its-own-output).
+[Writing a file §13](../06-writing/WritingFiles.md#13-invariants-a-writer-should-check-on-its-own-output).
 
 | Invariant | Where | Who notices |
 |---|---|---|
 | Bytes 0-3 are `root`, and `0 <= fBEGIN <= fEND <= filesize` | FileHeader 1, 2, 5 | ROOT — it refuses to open |
-| `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 12.1 | checked |
+| `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 13.1 | checked |
 | The last free entry's `fLast` is strictly greater than `fEND` | FreeSegments 8 | nothing — and the next writer overwrites data |
 | `10 <= fNbytesName <= 10000`, and it equals the root directory record's `fKeylen` plus the two counted strings | FileHeader 10.4, Directory 9 | ROOT range-checks only |
 | Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no overlap and no unclaimed bytes | Record 8.8 | checked |
@@ -47,6 +47,12 @@ From [File header](../01-container/FileHeader.md),
 | `fSeekFree`, `fSeekInfo` and `fSeekKeys` each name a record whose `fNbytes` matches the header's or the directory's copy | FileHeader 10.6, 10.8, Directory 9 | checked |
 | Every key image in the key list is byte-identical to the first `fKeylen` bytes of the record at its own `fSeekKey` | Directory 9 | nothing |
 | `fSeekPdir` is 0 in the root directory record's key and `fBEGIN` in every other key of that directory | WritingFiles 4.1 | nothing — but `TFile::Recover` filters on it |
+| A subdirectory's `fNbytesName` is its own record's `fKeylen` alone, so its fields begin where its key ends | Directory 9.3, WritingFiles 5.2 | checked |
+| A subdirectory's key spells its class `TDirectory`, and its `fKeylen` is sized for that spelling and not for `TDirectoryFile` | WritingFiles 5.2, Directory 6.5 | nothing — the four-byte difference is invisible to ROOT, which parses the strings rather than trusting `fKeylen` |
+| Every key image occupies exactly its own `fKeylen` bytes in the list | Directory 9.13 | checked — with the one pre-5.34 exception the invariant names |
+| A key-list record's key carries the `fSeekDir` of the directory that **owns** the list, not its parent's | Directory 9.12, WritingFiles 5.4 | checked |
+| Each subdirectory appears in exactly one parent's key list, and its own list holds only what it contains | Directory 9.8, WritingFiles 5.4 | checked |
+| A directory record is never freed and never relocated, so subdirectories add no free entries to a create-only file | WritingFiles 5.3 | nothing — but ROOT refuses to free one itself (`TKey::Delete`) |
 | `fVersion >= 1000000` **iff** `fEND` exceeded 2000000000 at the last header write, and every key, directory offset and free entry uses the width its own flag selects | LargeFiles 8 | checked |
 
 ## 3. Each object
@@ -56,7 +62,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 [Element types](../02-serialization/ElementTypes.md),
 [Compression](../01-container/Compression.md),
 [Writing an object §9](../06-writing/WritingObjects.md#9-invariants) and
-[Element lists §11](../06-writing/ElementLists.md#11-invariants).
+[Element lists §12](../06-writing/ElementLists.md#12-invariants).
 
 | Invariant | Where | Who notices |
 |---|---|---|
