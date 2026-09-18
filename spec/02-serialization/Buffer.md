@@ -228,10 +228,14 @@ halves of that.
 
 ### 4.1 ROOT's byte-count heuristic is not a substitute
 
-When ROOT has no compiled class at all it falls back on the byte count: read a
-checksum only if it is at least 6 (`root/io/io/src/TBufferFile.cxx:3001-3006`).
-The reasoning is that a version-0 class has nothing to write, so its whole block
-is 6 bytes and the count is 2.
+When the version word is 0, ROOT gates the checksum read on the byte count: read a
+checksum only if it is at least 6. The reasoning is that a version-0 class has
+nothing to write, so its whole block is 6 bytes and the count is 2.
+
+The guard is in **both** branches, not only the fallback: with a compiled class at
+`root/io/io/src/TBufferFile.cxx:2970-2972`, and with no class at all at
+`root/io/io/src/TBufferFile.cxx:3001-3006`. So it is not a last resort ROOT uses
+only when it knows nothing — it is part of the normal path.
 
 **That reasoning does not hold, and a reader MUST NOT adopt the heuristic.** The
 version-0 skip in `TStreamerInfo::Build` is in the loop over *data members*
@@ -311,7 +315,7 @@ The position is the map position recorded in §5.1, so it is
 
 ## 6. Object slots
 
-A slot holding an object or a pointer to one takes one of four forms. They are
+A slot holding an object or a pointer to one takes one of **five** forms. They are
 distinguished by the first `u32`:
 
 | First word | Form |
@@ -366,12 +370,13 @@ A reader MAY treat an unresolvable reference as a null.
 
 **A reference may carry a byte count of its own.** ROOT never writes one —
 `WriteObjectClass` emits the bare four-byte tag for an object already in the map
-(`root/io/io/src/TBufferFile.cxx:2680-2685`) — but its **reader accepts it**:
+(`root/io/io/src/TBufferFile.cxx:2680-2686`) — but its **reader accepts it**:
 `ReadClass` treats a leading word with `kByteCountMask` as a byte count, reads the
 tag after it, and returns that tag as an object reference if `kClassMask` is clear
 (`root/io/io/src/TBufferFile.cxx:2751-2764`). So a slot of `40 00 00 04` followed
-by a four-byte tag is an eight-byte reference, and a reader that requires §6's
-three shapes rejects a file ROOT reads without complaint.
+by a four-byte tag is an eight-byte reference, and a reader that accepts only
+the three object-bearing shapes of §6 — byte count, `kNewClassTag`, class
+back-reference — rejects a file ROOT reads without complaint.
 
 > Found in `uproot-issue413.root` from the foreign corpus of `PLAN.md` §9.8: a
 > `TTree`'s `fLeaves` of six entries, each `40 00 00 04` and a tag, 48 bytes where

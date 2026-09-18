@@ -293,7 +293,10 @@ Four things to get right:
 
 An annotation is `[xmin,xmax]` or `[xmin,xmax,nbits]`, parsed by
 `root/core/meta/src/TStreamerElement.cxx:118-185`. `xmin` and `xmax` accept the
-literals `pi`, `2pi`, `twopi`, `pi/2` and `pi/4`. Then:
+literals `pi`, `2pi`, `2*pi`, `twopi`, `pi/2` and `pi/4`, case-insensitively and
+with spaces stripped; a `-` anywhere in the token negates the result
+(`root/core/meta/src/TStreamerElement.cxx:155-162` and `:169-176`). Anything else
+goes through `sscanf("%lg")`. Then:
 
 ```
 if nbits is absent or outside [2, 32]:   nbits = 32
@@ -337,15 +340,24 @@ if (theMan & (1 << (nbits + 1)))  value = -value      // sign is bit nbits+1
 
 ### 5.3 Two traps
 
-> **An annotation of `[0,0,15]` or higher silently produces a plain 4-byte
-> float**, because `xmin` is only set to the bit count when `nbits < 15`
-> (`root/core/meta/src/TStreamerElement.cxx:184`). So a 15-bit request is *wider*
-> on disk than a 14-bit one, and the element does not even carry `kHasRange`.
+> **For a `Double32_t`, an annotation of `[0,0,15]` or higher silently produces a
+> plain 4-byte float**, because `xmin` is only set to the bit count when
+> `nbits < 15` (`root/core/meta/src/TStreamerElement.cxx:184`), and the writer
+> falls back to a `float` when the recovered bit count is 0
+> (`root/io/io/src/TBufferFile.cxx:703-706`). So a 15-bit request is *wider* on
+> disk than a 14-bit one, and the element does not even carry `kHasRange`.
+>
+> **A `Float16_t` behaves differently and the difference is easy to miss**: the
+> same `[0,0,15]` still gives a bit count of 0, but its writer substitutes **12**
+> (`root/io/io/src/TBufferFile.cxx:631-634`) and emits the `u8` exponent plus `u16`
+> mantissa regardless — **3 bytes**, exactly as for `[0,0,12]`, never 4. §5.2's
+> table says the same thing in its "plain `kFloat16`" row. Only `kDouble32` has the
+> widening trap.
 >
 > **The range path always costs 4 bytes**, whatever `nbits` says: `[-1,1,2]` is a
 > `u32`, not two bits.
 
-> Both are demonstrated by `serialization/double32`, where the six members occupy
+> Both `Double32_t` traps are demonstrated by `serialization/double32`, where the six members occupy
 > 4, 4, 3, 3, 4 and 3 bytes: `fBits15` is wider than `fBits14`, and `fRange` with
 > a 32-bit factor is the same width as the unannotated `fPlain`. A trailing `i32`
 > sentinel pins the last width.
@@ -656,7 +668,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 7 | `fSize` is "size of built in type or of pointer to built in type, 0 otherwise" | It is non-zero for every element class and is the writer's `sizeof` (§2) |
 | 8 | "4: long" and "14: unsigned long" with no width given | Always 8 bytes on disk (§2) |
 | 9 | "6: an array dimension (counter)" | Correct, but nothing says the counter's value is the *only* source of length for the members naming it, and that no length is ever written for them (§2.1, §4) |
-| 10 | — | Nothing describes `kDouble32`/`kFloat16` at all: that their width is 3 or 4 bytes, that it depends on parsing the comment string, or that `[0,0,15]` silently degrades to a plain float (§5) |
+| 10 | — | Nothing describes `kDouble32`/`kFloat16` at all: that their width is 3 or 4 bytes, that it depends on parsing the comment string, or that a `Double32_t` annotated `[0,0,15]` silently degrades to a plain float while a `Float16_t` does not (§5.3) |
 | 11 | — | Nothing distinguishes `->` from an ordinary pointer, though the byte layouts differ completely (§7) |
 
 ## 13. Reference files

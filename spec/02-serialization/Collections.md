@@ -52,7 +52,7 @@ written deliberately for forward compatibility
 Every collection member, both modes:
 
 ```
-byteCount:u32   version:u16
+byteCount:u32   version:i16
 ```
 
 The version is **`TStreamerInfo`'s own class version, currently 10**
@@ -98,6 +98,7 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 | Element | On disk | Cited |
 |---|---|---|
 | fundamental or enum | its natural width, back to back | `root/io/io/src/TGenCollectionStreamer.cxx:891` |
+| `Double32_t` or `Float16_t` | **not** its natural width: 4 bytes and 3 bytes respectively — see the note below | `root/io/io/src/TGenCollectionStreamer.cxx:931-933`, `:952-953` |
 | a class | a **full framed object**: byte count, version, and a checksum if foreign | `root/io/io/src/TGenCollectionStreamer.cxx:976` |
 | `std::string` | a bare counted string | `root/io/io/src/TGenCollectionStreamer.cxx:979` |
 | pointer to a class | a full object slot, class record and all | `root/io/io/src/TGenCollectionStreamer.cxx:982` |
@@ -106,6 +107,23 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 
 > Demonstrated by `serialization/collections`: `fInts` is `count 3` then three
 > bare `i32`; `fWords` is `count 2` then `02 "pq" 02 "rs"`.
+
+> **A collection of `Double32_t` or `Float16_t` cannot use the rules of
+> [§5](ElementTypes.md#5-kdouble32-and-kfloat16), because there is no element to
+> parse a comment from.** The collection streamer dispatches to
+> `WriteFastArrayDouble32` / `WriteFastArrayFloat16` with the `TStreamerElement`
+> argument left null (`root/io/io/src/TGenCollectionStreamer.cxx:931-933` and
+> `:952-953`; read at `:275-276` and `:296-297`). With no element the bit count is
+> 0, so a `Double32_t` element degrades to a plain **4-byte float**
+> (`root/io/io/src/TBufferFile.cxx:703-706`) and a `Float16_t` element takes the
+> default 12 bits and occupies **3 bytes**
+> (`root/io/io/src/TBufferFile.cxx:631-634`). Neither is the declared type's width,
+> and no annotation on the member can change it: the comment belongs to the
+> collection, not to its elements.
+>
+> **No reference file exercises this**, and nothing in either corpus contains such
+> a collection, so the claim rests on the source alone — recorded as a gap in
+> `PLAN.md` §9.
 
 ## 4. Member-wise
 
@@ -162,6 +180,20 @@ once inside that single call.
 > element class says which it is. `serialization/pairs` has both, twelve bytes
 > apart.
 
+### 4.2 A base class loses its version word
+
+Inside a member-wise column a base class contributes its members with **no byte
+count and no version word**, so the base's version must be taken from
+`TStreamerBase::fBaseVersion` in the element record. ROOT records this as a defect
+in a comment at the point where it happens:
+
+> "Rather than relying on the StreamerElement to contain the base class version
+> information we should embed it in the bytestream even in the member-wise case."
+> — `root/io/io/src/TStreamerInfoReadBuffer.cxx:1405-1409`
+
+A `TObject` base is therefore exactly 10 or 12 bytes per element with nothing
+around it ([References §1](References.md#1-the-extra-word-on-a-referenced-tobject)).
+
 ### 4.3 An empty member-wise collection writes no columns at all
 
 Not empty columns — **no columns**. After the count of 0 the collection ends, and
@@ -186,20 +218,6 @@ collection has anything in it
 ([Reading entries §3.2](../04-ttree/ReadingEntries.md#32-a-member-of-a-split-container-a-bare-packed-column)).
 A reader that always reads a column header desynchronises on `fEmpty`; one that
 never does desynchronises on the split branch.
-
-### 4.2 A base class loses its version word
-
-Inside a member-wise column a base class contributes its members with **no byte
-count and no version word**, so the base's version must be taken from
-`TStreamerBase::fBaseVersion` in the element record. ROOT records this as a defect
-in a comment at the point where it happens:
-
-> "Rather than relying on the StreamerElement to contain the base class version
-> information we should embed it in the bytestream even in the member-wise case."
-> — `root/io/io/src/TStreamerInfoReadBuffer.cxx:1405-1409`
-
-A `TObject` base is therefore exactly 10 or 12 bytes per element with nothing
-around it ([References §1](References.md#1-the-extra-word-on-a-referenced-tobject)).
 
 ## 5. Which mode is used
 
@@ -245,6 +263,7 @@ backward-compatibility branches:
 |---|---|
 | `version < 8` (`kSTL`), `< 9` (`kSTLp`) | **no second version word at all**; the value-class version is taken as 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1166-1169`) |
 | `version < 7` | the body was written even when `count` was 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197`) |
+| `version < 9` (`kSTLp`), `< 8` (`kSTL`) | **schema evolution of the value class is refused**: ROOT reports that the old `TStreamerInfo` "did not record enough information to convert" and skips the member entirely (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1160-1164` and `:1264-1268`). A reader with the file's own info does not need the conversion and can read the member as written |
 
 > **ROOT's two readers disagree here.** The action-based reader uses `>= 8` for
 > both `kSTL` and `kSTLp` (`root/io/io/src/TStreamerInfoActions.cxx:845`), while
@@ -554,16 +573,20 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
 1. Read a byte count and a `u16` version word.
 2. If `fSTLtype` is 365, read a counted string. Done; seek to the byte count's
    end.
-3. Otherwise, if bit 14 of the version word is clear:
+3. **Repeat steps 4 and 5 `max(fArrayLength, 1)` times.** One frame holds
+   `fArrayLength` complete collections when the member is declared
+   `std::vector<T> m[N]`, and nothing but `fArrayLength` says so (§11.1). A reader
+   that does this once stops short of the byte count.
+4. If bit 14 of the version word is clear:
     1. Read `count:i32`.
     2. Read `count` elements as §3, dispatching on `fTypeName`, not on `fCtype`.
-4. If bit 14 is set:
+5. If bit 14 is set:
     1. Read a bare `Version_t` for the value class; if it is 0 or less, read a
        `u32` checksum and use it to select the value class's streamer info.
     2. Read `count:i32`.
     3. For each member of the value class, in order, read `count` values as a
        column, framed per §4.1.
-5. Seek to the end the byte count implies, whatever was consumed.
+6. Seek to the end the byte count implies, whatever was consumed.
 
 The value class is `fTypeName`'s first template argument for a sequence, and
 `pair<K,V>` for an associative container. If it is a `pair` and the file has no
@@ -587,8 +610,11 @@ and the file has no info for it, the collection is not readable (§9).
 
 7. A `TClonesArray`'s `"<class>;<version>"` string names a class that has a
    streamer info in the same file, at that class version.
-8. Parsing a `TClonesArray` body according to `fBits` bit 12 — bit 14 below class
-   version 4 — consumes exactly the bytes its byte count delimits. Like
+8. Parsing a `TClonesArray` body according to `fBits` bit 12 — bit 14 at class
+   version **3** exactly, since at version 2 and below no `TObject` base is
+   streamed and there is no `fBits` in the record at all
+   (`root/core/cont/src/TClonesArray.cxx:756-760`) — consumes exactly the bytes its
+   byte count delimits. Like
    [References §8](References.md#8-invariants) invariant 1, this is checked
    through consumption rather than directly: reading the wrong encoding
    desynchronises and the byte count catches it.
@@ -615,9 +641,10 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 8 | `tclonesarray.md`: "`kBypassStreamer` (0x1000)" | True for class version 4 only; in version 3 it was `0x4000` (§12) |
 | 9 | `tclonesarray.md`: version, `TObject` and `fName` are shown unconditionally | `TObject` is present only above version 2 and `fName` only above version 1 (§12) |
 | 10 | — | Nothing states that a map is written two different ways, or that its value class is `pair<K,V>` — whose streamer info the file may or may not carry, unpredictably (§8) |
+| 11 | — | Nothing states that a `std::string` member's version word is `TStreamerInfo`'s 10 and not `std::string`'s 2 (§10) |
 | 12 | — | Nothing states that a pair's checksum need not identify it. Three distinct pairs share one in `serialization/pairs`, so a reader that looks a pair up by checksum rather than by name decodes two of them as the wrong type (§8.2) |
 | 13 | — | Nothing states that an empty member-wise collection writes no columns at all, nor that this changed at `TStreamerInfo` version 6 (§4.3) |
-| 11 | — | Nothing states that a `std::string` member's version word is `TStreamerInfo`'s 10 and not `std::string`'s 2 (§10) |
+| 14 | — | Nothing states that at `TClonesArray` version 3 ROOT tests the bypass bit **before** `TObject::Streamer` overwrites `fBits`, so it tests its own in-memory bit rather than the file's (`root/core/cont/src/TClonesArray.cxx:756-761`). A reader MUST use the value in the record; ROOT's own behaviour at that version cannot be used as the reference (§12) |
 
 ## 16. Reference files
 
@@ -626,7 +653,6 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/collections` | Object-wise and member-wise side by side; `vector<int>`, `vector<bool>`, `set<int>`, `vector<Hit>`, `vector<vector<int>>`, `vector<string>`, `map<int,int>`, `std::string`, and the missing `pair<int,int>` info |
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 | `serialization/pairs` | The six shapes a `pair<K,V>` member takes (§8.1), the empty member-wise collection (§4.3), and three distinct pairs sharing one checksum (§8.2) |
-
 | `serialization/collection-forms` | `std::array` of a scalar and of a class (§11), a fixed array of collections (§11.1), and a member-wise collection whose value class has a `ClassDef` (§4) |
 
 Two more are covered from the `TTree` side: `ttree/split-bitset` has a

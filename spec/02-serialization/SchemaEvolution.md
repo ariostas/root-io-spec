@@ -90,7 +90,7 @@ interpreter is foreign, which is why most fixtures in this repository are.
 ## 3. Checksums
 
 A checksum is a hash over the class's name, its base classes and its members.
-There are **eight** of them (`root/core/meta/inc/TClass.h:111-121`), differing in
+There are **eight** of them (`root/core/meta/inc/TClass.h:111-122`), differing in
 what they include:
 
 | Value | Name | Era |
@@ -177,9 +177,17 @@ carry `kRepeat`, or carry `kCache` without `kWrite`, are not written
 declared `ClassDefOverride(TStreamerArtificial, 0)` so that it cannot be
 persisted by accident (`root/core/meta/inc/TStreamerElement.h:476`).
 
-> **`kAnyPnoVT` (70) is the exception in this family.** It looks like an oddity
-> and is often lumped in with the in-memory codes, but it is a legitimate
-> on-disk `fType` (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:456-457`).
+> **`kAnyPnoVT` (70) is not an exception, despite appearances.** There is a case
+> for it in the write switch (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:456-457`),
+> which makes it look like a legitimate on-disk code, but nothing can reach it:
+> `TStreamerObjectAnyPointer`'s constructor sets `kAnyP` (69), or `kAnyp` (68) when
+> the title begins `->`, and never 70
+> (`root/core/meta/src/TStreamerElement.cxx:1626-1632`), and that is the class
+> `TStreamerInfo::Build` creates for every non-`TObject` pointer member
+> (`root/io/io/src/TStreamerInfo.cxx:744`). It occurs in **no** streamer info in any
+> of this project's reference files or either corpus, which is why
+> [Element types §11](ElementTypes.md#11-invariants) excludes it from the on-disk
+> set. Treat the write case as dead code.
 
 [Element types §11](ElementTypes.md#11-invariants) states the on-disk set as a
 checkable invariant.

@@ -114,9 +114,11 @@ the key list and counting keys whose class name is `TProcessID`
 (`root/io/io/src/TFile.cxx:946-953`).
 
 > A null `TRef` is enough to create a `ProcessID0` record:
-> `TRef::Streamer` calls `WriteProcessID` unconditionally
-> (`root/core/base/src/TRef.cxx:524`) and `TFile::WriteProcessID` substitutes the
-> session's process id for a null argument (`root/io/io/src/TFile.cxx:3464-3465`).
+> `TRef::Streamer` calls `WriteProcessID` for every `TRef` that does not carry
+> `kHasUUID` (`root/core/base/src/TRef.cxx:517`, `root/core/base/src/TRef.cxx:524`),
+> and `TFile::WriteProcessID` substitutes the session's process id for a null
+> argument (`root/io/io/src/TFile.cxx:3464-3465`). A `kHasUUID` `TRef` writes a UUID
+> string instead and never reaches that call.
 
 ## 3. `TRef`
 
@@ -172,9 +174,15 @@ are both plain `u32` and **nothing but the bit distinguishes them**.
 
 Bits 16–23 of a `TRef`'s `fBits` hold **`1 +` the index** of a `TExec` in
 `TRef`'s list of execs, stored by `TRef::SetAction`
-(`root/core/base/src/TRef.cxx:428-437`) and read back into the same bits
-(`root/core/base/src/TRef.cxx:505-509`). Zero means no action, so the numbering
+(`root/core/base/src/TRef.cxx:428-437`). Zero means no action, so the numbering
 is one-based.
+
+On reading, those bits come off the wire with the rest of `fBits` in
+`TObject::Streamer` (`root/core/base/src/TObject.cxx:1003`). `TRef::Streamer` then
+sets the same bit range again from a different source — the *streamer element's*
+unique id, carried in as `GetTRefExecId()`
+(`root/core/base/src/TRef.cxx:508-509`) — which matters to ROOT's in-memory state
+and not at all to a reader: the on-disk meaning is entirely in `fBits`.
 
 It is a number, not a flag, and **it does not change the layout**: such a `TRef`
 is still 12 bytes and still ends in a `pidf`. A reader that ignores the field

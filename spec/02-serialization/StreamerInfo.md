@@ -504,8 +504,10 @@ Then, for the current variant:
    `acc_num(id, fBaseCheckSum)` — that is, `fMaxIndex[1]` (§9)
    (`root/io/io/src/TStreamerInfo.cxx:3596-3602`).
 3. **Members.** Walk the elements again from the start, skipping bases. For each:
-   - if the member is an enum, `acc_num(id, 1)`
-     (`root/io/io/src/TStreamerInfo.cxx:3615-3620`);
+   - if the member is an enum, `acc_num(id, 1)` — precisely, if `fType` is **3**
+     and `fTypeName` is not a primitive spelling, which is the test ROOT itself
+     uses (§11.1) (`root/io/io/src/TStreamerInfo.cxx:3615-3620`). An **array** of
+     enums has `fType` 23 (`kOffsetL + 3`) and therefore folds **no** extra 1;
    - `acc_str(id, member name)`;
    - `acc_str(id, resolved type name)` — typedefs resolved, `Long64_t` spellings
      normalised, STL default arguments dropped
