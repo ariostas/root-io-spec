@@ -22,7 +22,8 @@ tools/generate.py --check      # byte assertions in every case.toml (no ROOT nee
 tools/check_invariants.py      # the Invariants sections of spec/01-container/
 tools/check_write.py           # gates 1 and 2 of spec/06-writing/ (--root adds gate 3)
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
-tools/check_citations.py       # every cited file and line exists (needs submodule)
+tools/check_citations.py       # every cited file and line exists, and the front
+                              #   pages quote the right total (needs submodule)
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
 tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream (needs submodule)
 tools/inventory.py --check     # the hand-written Streamer list matches the submodule

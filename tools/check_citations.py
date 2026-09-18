@@ -68,6 +68,31 @@ def check(paths: list[Path]) -> list[str]:
     return failures
 
 
+#: The front pages quote the citation total, and it drifted three times in one
+#: session of editing before this check existed. The number is cheap to verify and
+#: a stale one undermines every other measurement beside it.
+PUBLISHED = (
+    ("README.md", r"(\d+) source citations"),
+    ("spec/index.md", r"(\d+) source\ncitations"),
+)
+
+
+def check_published_count(paths: list[Path]) -> list[str]:
+    """Whether the front pages quote the citation total they actually have."""
+    total = sum(len(CITATION.findall(p.read_text())) for p in paths)
+    failures = []
+    for name, pattern in PUBLISHED:
+        text = (REPO / name).read_text()
+        m = re.search(pattern, text)
+        if m is None:
+            failures.append(f"{name}: no citation total to check against "
+                            f"(expected a phrase matching {pattern!r})")
+        elif int(m.group(1)) != total:
+            failures.append(f"{name}: says {m.group(1)} source citations, "
+                            f"actual {total}")
+    return failures
+
+
 def main(argv: list[str]) -> int:
     if not (SUBMODULE / "io/io/src/TFile.cxx").exists():
         print("root/ submodule is not checked out; run "
@@ -76,6 +101,8 @@ def main(argv: list[str]) -> int:
     paths = [Path(a).resolve() for a in argv] or [
         p for p in sorted((REPO / "spec").rglob("*.md")) if p not in NOT_OURS]
     failures = check(paths)
+    if not argv:
+        failures += check_published_count(paths)
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
     return 1 if failures else 0

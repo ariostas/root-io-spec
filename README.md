@@ -48,7 +48,7 @@ descriptions with their checksums computed from scratch.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**72 reference files, 1838 byte-level assertions, and 1393 source citations
+**72 reference files, 1838 byte-level assertions, and 1394 source citations
 checked against the pinned submodule across 46 documents**, plus 4 files this
 project wrote with 198 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
