@@ -20,7 +20,7 @@ and this is it.
 | Selection in `LinkDef.h` | Generator | What the class writes |
 |---|---|---|
 | `#pragma link C++ class X+;` | `WriteAutoStreamer` | `ReadClassBuffer`/`WriteClassBuffer` — a byte count, a version word, and the streamer info's elements |
-| `#pragma link C++ class X;` | `WriteStreamer` | an old-style streamer: a version word and the members in declaration order — **unless the class version is `<= 0`** |
+| `#pragma link C++ class X;` | `WriteStreamer` | an old-style streamer: a **byte count**, a version word, the bases that have a `Streamer`, and the members in declaration order — **unless the class version is `<= 0`** |
 | `#pragma link C++ class X-;` | neither | nothing is generated; the class supplies its own `Streamer`, and belongs on the [other page](HandWrittenStreamers.md) |
 
 For `WriteStreamer` with a `ClassDef` version of `0` or less, the generated body
@@ -96,14 +96,14 @@ containers** are here — `THashList`, `TSortedList`, `TOrdCollection`,
 because they add no persistent state to the class they derive from. "Writes only
 its bases" is the intended behaviour, not a side effect.
 
-Measured across the 226 files of both corpora, ROOT 2.24/00 to 6.36/02: **no
-record** has one of these as its class, and exactly three are named by a streamer
-info anywhere.
+Measured across the 226 files of both corpora, ROOT 2.24/00 to 6.36/02, of which
+222 carry a `StreamerInfo` record at all: **no record** has one of these as its
+class, and exactly three are named by a streamer info anywhere.
 
-| Class | Where it turns up | Files |
+| Class | Where it turns up | Files, of 222 |
 |---|---|---|
-| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 240 |
-| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 38 |
+| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 214 |
+| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 37 |
 | `TVirtualPerfStats` | a `kBase` of `TTreePerfStats`, in `aod_flushed.root` | 1 |
 
 A reader can carry those three and treat the rest as a lookup table for the day a
@@ -387,9 +387,12 @@ member, or as a record of its own — and `X` is on the list above:
   not on this list even if a `LinkDef.h` elsewhere selects it plainly. ROOT's own
   libraries are built with `rootcling`.
 - **Class versions above 0 with a plain selection** are *not* here. They get an
-  old-style member-by-member streamer, which writes a version word and the
-  persistent members in declaration order — the same content the streamer info
-  describes. `TCollection` is one: version 3, and it is on the
+  old-style member-by-member streamer, which writes a byte count and a version
+  word (`R__b.WriteVersion(X::IsA(), kTRUE)`,
+  `root/core/dictgen/src/rootcling_impl.cxx:1388`), then the bases that have a
+  `Streamer`, then the persistent members in declaration order — the same content
+  the streamer info describes, in the ordinary framing of
+  [Buffer §2](../02-serialization/Buffer.md#2-byte-counts). `TCollection` is one: version 3, and it is on the
   [other page](HandWrittenStreamers.md) only because it also carries a `-`.
 - **Template specializations** are skipped: a `ClassDef` names the template and a
   pragma names the specialization, so the two cannot be compared by name.

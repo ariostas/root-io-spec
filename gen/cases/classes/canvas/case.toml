@@ -28,6 +28,8 @@ unrecoverably: `tools/rootfile.py` then reports
 **The last seven bytes are not members.** `kMoveOpaque`, `kResizeOpaque`,
 `kShowEventStatus`, `kAutoExec` and `kMenuBar` are bits of `fBits` written as
 individual `Bool_t`s, and `fBatch` at 49671 is written and then discarded on read.
+The trailing region is seven fields but eight bytes: fHighLightColor is an i16,
+and it is the only one of the seven that is a persistent data member.
 `TCanvas`'s streamer info ends at `fCatt` and mentions none of them.
 
 **And the member names in the source reach the file in no form.** The streamer is

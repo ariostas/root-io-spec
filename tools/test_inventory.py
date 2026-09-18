@@ -245,6 +245,74 @@ class Overloads(unittest.TestCase):
         self.assertEqual(inventory.classify(joined, {"b"}), "guarded")
 
 
+class GuardPlacement(unittest.TestCase):
+    """A version test only makes a class `guarded` if it gates the delegation.
+
+    Three classes in the pinned submodule -- TEntryList, TLeafF16, TLeafD32 --
+    call ReadClassBuffer unconditionally and then consult the version only to
+    repair a title or a filename. Calling those `guarded` told a reader there
+    was a legacy layout below some threshold when there is none.
+    """
+
+    def test_version_test_after_the_call_is_still_delegating(self):
+        _, kind = only("""
+            void X::Streamer(TBuffer &R__b) {
+               if (R__b.IsReading()) {
+                  UInt_t R__s, R__c;
+                  Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
+                  R__b.ReadClassBuffer(X::Class(), this, R__v, R__s, R__c);
+                  if (R__v <= 1) { fixUpTheTitle(); }
+               } else {
+                  R__b.WriteClassBuffer(X::Class(), this);
+               }
+            }
+        """)
+        self.assertEqual(kind, "delegating")
+
+    def test_call_inside_the_guard_is_guarded(self):
+        _, kind = only("""
+            void X::Streamer(TBuffer &R__b) {
+               if (R__b.IsReading()) {
+                  UInt_t R__s, R__c;
+                  Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
+                  if (R__v > 2) {
+                     R__b.ReadClassBuffer(X::Class(), this, R__v, R__s, R__c);
+                  } else {
+                     R__b >> fOld;
+                  }
+               } else {
+                  R__b.WriteClassBuffer(X::Class(), this);
+               }
+            }
+        """)
+        self.assertEqual(kind, "guarded")
+
+    def test_call_in_the_trailing_else_is_guarded(self):
+        """RooCategory's shape: hand-decode 1 and 2, delegate for the rest.
+
+        Stopping the guarded region at the first closing brace called this
+        `delegating`, which is the understating direction.
+        """
+        _, kind = only("""
+            void X::Streamer(TBuffer &R__b) {
+               if (R__b.IsReading()) {
+                  UInt_t R__s, R__c;
+                  Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
+                  if (R__v == 1) {
+                     Base::Streamer(R__b);
+                  } else if (R__v == 2) {
+                     Base::Streamer(R__b);
+                  } else {
+                     R__b.ReadClassBuffer(X::Class(), this, R__v, R__s, R__c);
+                  }
+               } else {
+                  R__b.WriteClassBuffer(X::Class(), this);
+               }
+            }
+        """)
+        self.assertEqual(kind, "guarded")
+
+
 class Naming(unittest.TestCase):
 
     def test_a_namespace_qualifies_the_class(self):

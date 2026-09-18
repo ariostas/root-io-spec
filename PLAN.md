@@ -657,9 +657,10 @@ What the measurement changed about the plan's own expectations:
   `TSeqCollection` — version 0 precisely because they add no persistent state to
   their base. "Writes only its bases" is the design, not an accident.
 - **Three of the 534 occur in the corpora**, not the two this plan predicted:
-  `TSeqCollection` (a `kBase` of `TList` and `TObjArray`, 240 files),
+  `TSeqCollection` (a `kBase` of `TList` and `TObjArray`, 214 of the 222
+  corpus files that carry a StreamerInfo record),
   `THashList` (the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any
-  labelled axis writes one, 38 files) and `TVirtualPerfStats` (1). No record in
+  labelled axis writes one, 37) and `TVirtualPerfStats` (1). No record in
   either corpus has one as its class.
 - **The streamer info is not fiction here, only unframed.**
   `TStreamerInfo::Build` skips every data member of a version-0 class

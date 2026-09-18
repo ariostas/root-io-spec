@@ -315,7 +315,68 @@ def classify(source: str, buffers: set[str]) -> str:
     #: nothing", for a class with a legacy layout on disk.
     guard = re.compile(r"\b(?:%s)\b\s*(?:[<>]=?|[!=]=)"
                        r"|\bswitch\s*\(\s*(?:%s)\s*\)" % (names, names))
-    return "guarded" if guard.search(source) else "delegating"
+    if not guard.search(source):
+        return "delegating"
+    # A version test somewhere in the body is not enough: the call has to be
+    # *inside* it. TEntryList, TLeafF16 and TLeafD32 call ReadClassBuffer
+    # unconditionally and then consult the version only to repair a title or a
+    # filename -- they delegate at every version, and calling them `guarded`
+    # told a reader there was a legacy layout to implement when there is none.
+    if any(not _inside_guard(source, m.start(), guard)
+           for m in re.finditer(r"\bReadClassBuffer\b", source)):
+        return "delegating"
+    return "guarded"
+
+
+def _inside_guard(source: str, at: int, guard: re.Pattern) -> bool:
+    """Whether `at` lies inside the body of a version test.
+
+    Brace-matched from the `{` that the test opens, so an `if (v > 2) { ... }`
+    and a `switch (v) { case 1: ... }` both count. A braceless
+    `if (v > 2) b.ReadClassBuffer(...);` is covered by the statement window: the
+    call follows the test with nothing but the condition's own `)` between them.
+
+    The region runs through the **whole** `if / else if / else` chain, not just
+    the first block. RooCategory is why: it hand-decodes versions 1 and 2 and
+    calls ReadClassBuffer in the trailing `else`, so stopping at the first
+    closing brace called it `delegating` -- "a reader needs nothing" for a class
+    with two legacy layouts on disk, which is the direction that matters.
+    """
+    for m in guard.finditer(source):
+        rest = source[m.end():]
+        brace = rest.find("{")
+        semi = rest.find(";")
+        if brace == -1 or (semi != -1 and semi < brace):
+            # Braceless body: the guarded statement runs to the first `;`.
+            if m.end() <= at <= m.end() + (semi if semi != -1 else 0):
+                return True
+            continue
+        start = m.end() + brace
+        i = _match_brace(source, start)
+        # Follow `} else ... {` chains so the whole dispatch counts as guarded.
+        while True:
+            tail = source[i + 1:]
+            nxt = re.match(r"\s*else\b\s*(?:if\s*\([^{;]*\)\s*)?\{", tail)
+            if not nxt:
+                break
+            i = _match_brace(source, i + 1 + nxt.end() - 1)
+        if start < at < i:
+            return True
+    return False
+
+
+def _match_brace(source: str, start: int) -> int:
+    """Index of the `}` matching the `{` at `start`, or the end of `source`."""
+    depth, i = 0, start
+    while i < len(source):
+        if source[i] == "{":
+            depth += 1
+        elif source[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return len(source) - 1
 
 
 def qualifier(prefix: str) -> list[str]:

@@ -37,11 +37,15 @@ each, and `Color_t` is `Short_t`.
 
 ### 1.1 Version history
 
-| Version | Difference |
+Each row gives only what that version **adds** to the differences below it, so the
+differences accumulate downwards: a version-1 record lacks everything rows 1, 2 and
+3 name.
+
+| Version | Difference from §1, cumulative downwards |
 |---|---|
-| 1 | stops after `fBatch`: no `kShowEventStatus`, `kAutoExec` or `kMenuBar` |
-| 2 | `fWindowWidth` and `fWindowHeight` are absent; a reader takes them from `fCw` and `fCh` |
-| 3 | `kAutoExec` is absent |
+| 1 | stops after `fBatch` — `if (v < 2) return;` (`root/graf2d/gpad/src/TCanvas.cxx:2328`) — so no `kShowEventStatus`, `kAutoExec` or `kMenuBar`, **and** no `fWindowWidth`/`fWindowHeight` by row 2's rule |
+| 2 | `fWindowWidth` and `fWindowHeight` are absent, gated by `if (v > 2)` (`root/graf2d/gpad/src/TCanvas.cxx:2303`); a reader takes them from `fCw` and `fCh`. `kAutoExec` is also absent by row 3's rule |
+| 3 | `kAutoExec` is absent, gated by `if (v > 3)` (`root/graf2d/gpad/src/TCanvas.cxx:2332`) |
 | 4 – 7 | as §1 |
 | 8 | as §1; current. The only change is that `ClassBegin`/`ClassMember` annotations appear — see §2 — which alter no bytes |
 
@@ -67,7 +71,7 @@ same layout as 4 through 7.
 A reader must not look for the names. They are documentation that happens to
 compile.
 
-### 2.1 Seven bytes that are not members
+### 2.1 Seven fields, eight bytes, six of them not members
 
 `kMoveOpaque`, `kResizeOpaque`, `kShowEventStatus`, `kAutoExec` and `kMenuBar` are
 **bits of `fBits`**, not data members, and each is written as its own `Bool_t`.
@@ -78,9 +82,32 @@ thrown away — `b >> dummy; //was fBatch` — with `fBatch` then set from
 `gROOT->IsBatch()` (`root/graf2d/gpad/src/TCanvas.cxx:2327-2338`). So one byte of
 every canvas record is write-only.
 
-None of these seven appear in `TCanvas`'s streamer info, because the info is built
-from data members. The info lists `fDISPLAY`, `fDoubleBuffer`, … and stops at
-`fCatt`.
+The seven fields occupy **eight** bytes, because `fHighLightColor` is two:
+
+| Order | Field | Bytes | What it is |
+|---|---|---|---|
+| 1 | `kMoveOpaque` | 1 | an `fBits` flag |
+| 2 | `kResizeOpaque` | 1 | an `fBits` flag |
+| 3 | `fHighLightColor` | **2** | a persistent data member (`Color_t`) |
+| 4 | `fBatch` | 1 | a **transient** member (`///<!`), written and discarded |
+| 5 | `kShowEventStatus` | 1 | an `fBits` flag |
+| 6 | `kAutoExec` | 1 | an `fBits` flag |
+| 7 | `kMenuBar` | 1 | an `fBits` flag |
+
+So **six** of the eight bytes correspond to nothing a streamer info could describe —
+the five flags and the transient `fBatch` — while `fHighLightColor`'s two bytes are
+an ordinary persistent member (`root/graf2d/gpad/inc/TCanvas.h:38`) that any info
+would list.
+
+> **In practice the question does not arise, because no file carries a `TCanvas`
+> streamer info at all.** `TCanvas::Streamer` never calls `WriteClassBuffer`
+> (`root/graf2d/gpad/src/TCanvas.cxx:2221`), which is the only path that forces an
+> info to be recorded, and scanning every `StreamerInfo` record in this project's
+> reference files and both corpora — 305 files — finds zero. A reader must dispatch
+> on the class name, exactly as for the containers of
+> [TList and friends §4](Containers.md). And were an info present it would be in
+> **declaration** order, where `fCatt` is the *first* member
+> (`root/graf2d/gpad/inc/TCanvas.h:32`), not the last.
 
 ## 3. Three empty base classes, three different byte counts
 
@@ -128,7 +155,7 @@ among a dozen members under one byte count, so nothing localises it.
 3. Read `fDISPLAY` as a counted string, then the twelve fixed-width fields of §1
    in order.
 4. Read `fCatt` as a framed `TAttCanvas`.
-5. Read the seven bytes of §2.1.
+5. Read the eight bytes of §2.1.
 6. Check the byte count.
 
 ## 5. Invariants
@@ -147,7 +174,7 @@ raised by the reader.
 
 | # | Claim | Correction |
 |---|---|---|
-| 1 | `TCanvas`'s streamer info describes its bytes | It omits the seven bytes of §2.1 — five `fBits` flags, `fHighLightColor`'s neighbours and the discarded `fBatch` — and lists `fCatt` as the last member where the file has seven more bytes after it |
+| 1 | `TCanvas`'s streamer info describes its bytes | No file carries one: `TCanvas::Streamer` never calls `WriteClassBuffer`, so nothing forces the info to be recorded, and zero of 305 files scanned contain it (§2.1). A reader must dispatch on the class name. Even if one were present, six of the eight trailing bytes of §2.1 are `fBits` flags or the transient `fBatch` and correspond to no element |
 | 2 | A base class with no persistent members occupies nothing | Depends entirely on *why* it has none. §3: 0, 6 and 0 bytes for three such classes, decided by a `ClassDef` version and a `LinkDef` suffix, neither of which is in the file |
 
 ## 7. Reference files

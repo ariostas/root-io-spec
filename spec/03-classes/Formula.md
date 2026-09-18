@@ -17,7 +17,8 @@ written down here.
 | Class | Version | ROOT releases | Notes |
 |---|---|---|---|
 | `TFormula` | 1 – 3 | ≤ 3.10 | hand-decoded by `ROOT::v5::TFormula::Streamer`; §4 |
-| `TFormula` | 4 – 8 | 3.10 – 6.02 | streamer-info driven, read into `ROOT::v5::TFormula` |
+| `TFormula` | 4, 5, 7, 8 | 3.10 – 6.02 | streamer-info driven, read into `ROOT::v5::TFormula` |
+| `TFormula` | **6** | — | **ROOT 6 refuses it**: the dispatch is `v <= 8 && v > 3 && v != 6`, and 6 falls through to `Error("Streamer","Reading version %d is not supported")` (`root/hist/hist/src/TFormula.cxx:3806`, `root/hist/hist/src/TFormula.cxx:3922-3924`) |
 | `TFormula` | 9 | **6.03/04 only** | the new class's first shipped version |
 | `TFormula` | 10 – 14 | 6.04/00 – current | the new class; 14 is current |
 | `TF1` | 1 – 4 | ≤ 3.10 | hand-decoded by `ROOT::v5::TF1Data::Streamer`; §4 |
@@ -132,9 +133,13 @@ bytes**: they need a ROOT 3-era file, which is `PLAN.md` §9.1's standing gap.
 Recorded here rather than transcribed, so the gap is not mistaken for coverage:
 
 - `TFormula` v ≤ 3: `TNamed`, `fNdim`, `fNumber`, then `fNval` (v > 1) and
-  `fNstring` (v > 2), then four counted arrays — `fParams`, `fOper`, `fConst` —
+  `fNstring` (v > 2), then three counted arrays — `fParams`, `fOper`, `fConst` —
   read with `TBuffer::ReadArray`, which writes its own count, then `fNoper`
   `TString`s and `fNpar` `TString`s (`root/hist/hist/src/TFormula_v5.cxx:3541-3556`).
+  **This layout is not reachable from a `TFormula` key**: ROOT 6's
+  `TFormula::Streamer` has no branch for v ≤ 3 at all (it errors out), and the v5
+  path that does hand-decode it is entered only from `TF1Data::Streamer` at `TF1`
+  v ≤ 4.
 - `TF1` v ≤ 4: the formula, `TAttLine`, `TAttFill`, `TAttMarker`, then `fXmin`
   and `fXmax` as **`Float_t` below v4 and `Double_t` at v4**, `fNpx`, `fType`,
   `fChisquare`, counted arrays, and at v1 a `TH1*` that is read and immediately
@@ -148,9 +153,10 @@ away. A reader must consume it.
 1. Read the frame and the version word.
 2. If the class is `TFormula`: version ≥ 9 is the ROOT 6 class, ≤ 8 the ROOT 5
    one. If the class is `TF1`: ≥ 8 is the ROOT 6 class, ≤ 7 the ROOT 5 one.
-3. Above the thresholds of §3 — `TFormula` > 3, `TF1` > 4 — read with the streamer
-   info **recorded in the file for that class at that version**, which is the
-   ordinary path and needs nothing from this document.
+3. Above the thresholds of §3 — `TFormula` > 3 **except 6**, `TF1` > 4 — read with
+   the streamer info **recorded in the file for that class at that version**, which
+   is the ordinary path and needs nothing from this document. A `TFormula` at
+   version 6 is readable by this rule even though ROOT itself refuses it (§1).
 4. Below them, use §4 and a ROOT 3-era reference file that this project does not
    have.
 

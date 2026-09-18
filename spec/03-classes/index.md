@@ -31,7 +31,7 @@ keeps a legacy layout below it:
 | `TTree` | 5 | 5 and above |
 | `TBranch` | 10 | 10 and above |
 | `TLeaf` | 2 | 2 and above |
-| `TLeafObject` | 4, with two shapes below it | 4 and above |
+| `TLeafObject` | 1 and 3, two different shapes | **2**, and 4 and above |
 | `TLeafF16`, `TLeafD32` | — | every version, plus a title fixup below 2 |
 | `TBranchElement`, `TRefTable` | — | every version |
 
@@ -78,7 +78,7 @@ than collected here — see `PLAN.md` decision 6:
 | `TCanvas`, `TQObject` | [TCanvas](Canvas.md) |
 | `TMatrixTSym` | [Matrices and vectors](Matrix.md) — and `TMatrixT`, `TMatrixTSparse` and `TVectorT` beside it, which need nothing |
 | `TDatime` | [Records and keys §3.7](../01-container/Record.md#37-fdatime) — four bare bytes as a member, exactly as in a key |
-| `TCollection` | not specified; reachable only through `TList`'s fictional streamer info, which no reader should follow ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)) |
+| `TCollection` | [TList and friends §3.2](Containers.md#32-the-elements-come-from-tcollection-through-a-class-that-adds-nothing) — a byte count, version 3, a bare `TObject`, `fName`, and a count. Reached inside any collection whose streamer ends in `TSeqCollection::Streamer`, `TBtree` among them |
 
 `TFile` and `TDirectoryFile` are also hand-written, but they are the container
 rather than objects in it, and belong to
@@ -100,7 +100,7 @@ packing annotation out of the leaf title, which no streamer info records.
 persistable classes, produced by `tools/gen_tables.py` from the pinned submodule.
 That is not what this layer needs, and the reason is now measured rather than
 argued: a generated table restates what the streamer info in the file already
-says, and `tools/rootfile.py` reads that directly for 99.7% of branch-baskets
+says, and `tools/rootfile.py` reads that directly for 99.8% of branch-baskets
 across both corpora. A generated table that nobody checks is worse than a pointer
 to the algorithm that produces the same answer from the file itself.
 

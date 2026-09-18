@@ -21,8 +21,8 @@ calls its bases and returns. Those classes are the same tool's second output,
 <!-- BEGIN GENERATED: summary -->
 | Classification | Count | What a reader has to do |
 |---|---|---|
-| `delegating` | 32 | nothing — the bytes are streamer-info driven |
-| `guarded` | 89 | nothing for a current file; the custom layout is below a version threshold |
+| `delegating` | 35 | nothing — the bytes are streamer-info driven |
+| `guarded` | 86 | nothing for a current file; the custom layout is below a version threshold |
 | `extending` | 3 | know the bytes that follow the streamer-info-driven ones, at every version |
 | `custom` | 63 | know the layout; the streamer info does not describe the bytes at any version |
 
@@ -57,7 +57,12 @@ definitions by what the reading branch actually does splits them four ways:
 
 `guarded`
 :   The reading branch calls `ReadClassBuffer` above a version threshold and
-    hand-decodes below it. `TH2F` takes the generated path at class version 3
+    hand-decodes below it. **The call has to be inside the version test**: a
+    streamer that delegates unconditionally and then consults the version only
+    to repair a title or a filename is `delegating`, not `guarded`, because
+    there is no legacy layout for a reader to implement. `TEntryList`,
+    `TLeafF16` and `TLeafD32` are that shape and `tools/inventory.py`
+    classified them as `guarded` until 2026-09-18. `TH2F` takes the generated path at class version 3
     and above and has two legacy shapes beneath it
     (`root/hist/hist/src/TH2.cxx:3977`). Every version a ROOT 6 file contains is
     on the generated side, so these cost a reader nothing *for current files*;
@@ -199,7 +204,6 @@ consistency check on the way (`PLAN.md` §9.8).
 | `TCandle` | `root/graf2d/graf/src/TCandle.cxx:917` |
 | `TChain` | `root/tree/tree/src/TChain.cxx:3023` |
 | `TEllipse` | `root/graf2d/graf/src/TEllipse.cxx:661` |
-| `TEntryList` | `root/tree/tree/src/TEntryList.cxx:1645` |
 | `TEventList` | `root/tree/tree/src/TEventList.cxx:399` |
 | `TF1` | `root/hist/hist/src/TF1.cxx:3626` |
 | `TF2` | `root/hist/hist/src/TF2.cxx:1056` |
@@ -225,8 +229,6 @@ consistency check on the way (`PLAN.md` §9.8).
 | `THelix` | `root/graf3d/g3d/src/THelix.cxx:596` |
 | `TInetAddress` | `root/core/base/src/TInetAddress.cxx:165` |
 | `TLeaf` | `root/tree/tree/src/TLeaf.cxx:481` |
-| `TLeafD32` | `root/tree/tree/src/TLeafD32.cxx:205` |
-| `TLeafF16` | `root/tree/tree/src/TLeafF16.cxx:218` |
 | `TLeafObject` | `root/tree/tree/src/TLeafObject.cxx:191` |
 | `TLine` | `root/graf2d/graf/src/TLine.cxx:496` |
 | `TLorentzVector` | `root/math/physics/src/TLorentzVector.cxx:298` |
@@ -292,6 +294,7 @@ consistency check on the way (`PLAN.md` §9.8).
 | `TBranchObject` | `root/tree/tree/src/TBranchObject.cxx:544` |
 | `TCutG` | `root/graf2d/graf/src/TCutG.cxx:429` |
 | `TDataMember` | `root/core/meta/src/TDataMember.cxx:967` |
+| `TEntryList` | `root/tree/tree/src/TEntryList.cxx:1645` |
 | `TGeoArb8` | `root/geom/geom/src/TGeoArb8.cxx:1323` |
 | `TGeoManager` | `root/geom/geom/src/TGeoManager.cxx:4060` |
 | `TGeoPatternCylPhi` | `root/geom/geom/src/TGeoPatternFinder.cxx:1836` |
@@ -303,6 +306,8 @@ consistency check on the way (`PLAN.md` §9.8).
 | `TGraph2DAsymmErrors` | `root/hist/hist/src/TGraph2DAsymmErrors.cxx:661` |
 | `TGraph2DErrors` | `root/hist/hist/src/TGraph2DErrors.cxx:505` |
 | `TKDTreeBinning` | `root/math/mathcore/src/TKDTreeBinning.cxx:674` |
+| `TLeafD32` | `root/tree/tree/src/TLeafD32.cxx:205` |
+| `TLeafF16` | `root/tree/tree/src/TLeafF16.cxx:218` |
 | `TLinearFitter` | `root/math/minuit/src/TLinearFitter.cxx:1939` |
 | `TListOfDataMembers` | `root/core/meta/src/TListOfDataMembers.cxx:529` |
 | `TMatrixTSparse` | `root/math/matrix/src/TMatrixTSparse.cxx:2991` |
@@ -334,8 +339,11 @@ in that file has a `TVirtualPad` v2 base listing five `kBase` elements ending in
 right. The question the note left open — "what does a `kBase` element whose class
 has no persistent members occupy on disk?" — was the wrong question: it is not
 about having no members. `TQObject` contributes nothing because its `Streamer`
-was written to contribute nothing, and a class with no members but a *generated*
-`Streamer` still writes a version word.
+was written to contribute nothing, and a class with no members whose `Streamer`
+is generated from a `ClassDef` above 0 still writes a byte count and a version
+word. That is not true of every generated streamer: the 534 classes of
+[Forwarding streamers](ForwardingStreamers.md) write **neither**, which is the
+case that document exists for.
 
 **A reader cannot derive this from the file.** The file even carries a
 `TQObject` streamer info, with zero elements, which is precisely the fiction

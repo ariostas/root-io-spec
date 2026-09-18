@@ -35,7 +35,7 @@ bc:u32  ver:i16=3  <TObject>  fName:string  n:i32  n x ( key:object  value:objec
 
 The version guards on the read side (`v > 2` for `TObject`, `v > 1` for `fName`)
 describe versions 1 and 2, which need a pre-ROOT-4 file to test against and are
-recorded as a gap in §8.
+recorded as a gap in §9.
 
 ### 1.1 The pairs are object references, not objects
 
@@ -122,7 +122,7 @@ bytes did not move.
 
 So versions 2 and 3 have the same layout and differ only in the value range.
 Version 1 is a different layout — no slot index, and the table is rebuilt by
-`Add` — and needs an old file to test (§8).
+`Add` — and needs an old file to test (§9).
 
 ## 3. `TBtree`
 
@@ -158,7 +158,7 @@ reader reconstructs nothing and needs nothing: the elements arrive in order.
 | `fInnerLowWaterMark` | `(fOrder - 1) / 2` | 1 |
 
 They are redundant on disk and are checkable against each other, which is
-invariant 3 in §7.
+invariant 4 in §7.
 
 ### 3.2 The elements come from `TCollection`, through a class that adds nothing
 
@@ -267,8 +267,10 @@ corpora; the third is `THashList`, which any labelled `TAxis` writes.
 
 ## 7. Invariants
 
-1. A `TMap`'s pair count `n` satisfies `4 + 2 + 10 + len(fName) + 1 + 4 + (bytes
-   consumed by 2n references) = byte count + 4`. The references are
+1. A `TMap`'s pair count `n` satisfies `4 + 2 + 10 + sizeof(fName) + 4 + (bytes
+   consumed by 2n references) = byte count + 4`, where `sizeof(fName)` is the
+   counted string's own length — `len + 1`, or `len + 5` above 254 characters
+   ([Conventions §5.1](../00-conventions.md#51-counted-string)). The references are
    variable-length, so this is a consumption check, not an arithmetic one.
 2. A `TExMap`'s `fTally` records exactly exhaust its frame:
    `byte count + 4 = 4 + 2 + 10 + 4 + 4 + 28 * fTally`.
