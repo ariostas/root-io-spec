@@ -17,12 +17,18 @@ This repository aims to be the shared, testable artifact those projects can rely
 
 ## Status
 
-All four layers of the classic format are written and checked: the **container**
-(header, records, directories, compression, the free list), **object
-serialization** (framing, streamer info, element types, collections, schema
-evolution, references), the **standard classes** whose recorded streamer info does
-not describe their bytes, and **`TTree`** — the tree record, branches, leaves,
-baskets, splitting, and reading an entry out of a split or an unsplit tree.
+All four layers of the classic format are written and checked on the **reading**
+side: the **container** (header, records, directories, compression, the free list),
+**object serialization** (framing, streamer info, element types, collections,
+schema evolution, references), the **standard classes** whose recorded streamer
+info does not describe their bytes, and **`TTree`** — the tree record, branches,
+leaves, baskets, splitting, and reading an entry out of a split or an unsplit tree.
+
+A **writing** layer is now under way: [spec/06-writing/](spec/06-writing/index.md)
+says which bytes to emit and in what order, for the current version of each class
+a writer needs. `tools/rootwrite.py` is its executable form, and the conformance
+test is that ROOT opens what it wrote, finds the values that went in, and says
+nothing.
 
 | Layer | State |
 |---|---|
@@ -32,11 +38,12 @@ baskets, splitting, and reading an entry out of a split or an unsplit tree.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
+| Writing — the container end to end; histograms and trees next | partly |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — ROOT's own specification tracked verbatim, plus six errata from auditing it | partly |
+| RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**65 reference files, 1563 byte-level assertions, and 1130 source citations
-checked against the pinned submodule across 40 documents.** The invariants also
+**71 reference files, 1753 byte-level assertions, and 1223 source citations
+checked against the pinned submodule across 42 documents.** The invariants also
 run over 226 files this project did not write — 154 from uproot's regression
 corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 94% of the records in them decode. Those files are where
@@ -52,10 +59,12 @@ reading, what is deliberately out of scope, and the two gaps a file in either
 corpus still hits. See [PLAN.md](PLAN.md) for the structure, phasing and
 decisions; §8 is the route to a first release and §9 lists every known gap.
 
-Scope in brief: reading is specified normatively; writing is covered by per-layer
-invariants a conforming file must satisfy, rather than by prescribing ROOT's
-allocation strategy. The document is descriptive of ROOT 6.40.04 — where it and
-the pinned submodule disagree, the submodule wins.
+Scope in brief: reading is specified normatively, and writing two ways — per-layer
+invariants that a conforming file satisfies whatever wrote it, plus procedures in
+`spec/06-writing/` for producing one at the current version of each class. Free
+space reuse, basket sizing and key ordering stay unspecified: they are ROOT's
+choices, not the format's. The document is descriptive of ROOT 6.40.04 — where it
+and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation
 
@@ -71,9 +80,9 @@ git clone --recurse-submodules <this repo>
 | Path | Contents |
 |---|---|
 | `spec/` | The specification itself, organized by layer |
-| `gen/` | One small ROOT macro per reference file, and the two corpus manifests |
-| `data/` | Generated reference files |
-| `tools/` | Consistency checkers, the reference reader, and the generators |
+| `gen/` | One small ROOT macro per reference file, the write-side cases, and the two corpus manifests |
+| `data/` | Generated reference files; `data/written/` is the ones this project wrote |
+| `tools/` | Consistency checkers, the reference reader and writer, and the generators |
 | `root/` | ROOT source, pinned submodule |
 
 ## Licence, citation, contributing

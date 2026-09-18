@@ -1,23 +1,23 @@
 # PLAN — ROOT I/O Specification
 
-**Status: the format is specified end to end for files written by ROOT 4 and
-later.** The container, the object layer, the divergent classes and the whole
-`TTree` reading path are written, cited against the pinned submodule and checked
-against bytes; RNTuple tracks ROOT's own specification plus six errata. What
-remains before this is a book a third party can pick up is in §8, which is the
-part of this document to read first.
+**Status: the reading side is specified end to end for files written by ROOT 4
+and later, and 0.1.0 is released.** The container, the object layer, the divergent
+classes and the whole `TTree` reading path are written, cited against the pinned
+submodule and checked against bytes; RNTuple tracks ROOT's own specification plus
+ten errata. The live work is **write support** — §2.9 and §8.4 — which extends the
+project past the reading side it was scoped to.
 
-Measured, 2026-09-17, by the checks in `tools/`:
+Measured, 2026-09-18, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 39, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 65 / 1563, 0 failures |
-| Source citations checked | 1111, 0 failures |
+| Specification documents | 41, plus the tracked RNTuple copy |
+| Reference files / byte assertions | 71 / 1753, 0 failures |
+| Source citations checked | 1149, 0 failures |
 | Class versions checked against `ClassDef` | 25 |
-| Invariants over the fixtures | 65 files, 0 failures |
+| Invariants over the fixtures | 71 files, 0 failures |
 | Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
-| Entries decoded and checked | 25938 of 26011 branch-baskets, 99.7% |
+| Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register — every gap the written documents record, so they can be picked up
@@ -31,10 +31,13 @@ Produce a complete, versioned, machine-checkable specification of the ROOT
 on-disk formats, sufficient for a third party to implement a reader **without
 reading ROOT's C++ source**.
 
-Reading is specified normatively. Writing is covered by **invariants** rather
-than algorithms: each layer states what a conforming file must satisfy, so a
-writer can validate its own output without this document prescribing ROOT's
-particular free-space allocation or key-placement strategy. See §2.8.
+Reading is specified normatively for every layer. **Writing is specified two
+ways** (decision 3, revised 2026-09-18): every layer states the invariants a
+conforming file satisfies whatever wrote it, and `spec/06-writing/` gives
+end-to-end *procedures* for producing one — the container, an object and its
+streamer info, a histogram, and a flat `TTree` — at the current version of each
+class only. Free-space reuse, basket sizing and key ordering stay unspecified:
+they are ROOT's policy, not a requirement of the format. See §2.8 and §2.9.
 
 Non-goals: ROOT's C++ API, its in-memory data structures, its build system. We
 document *bytes on disk* and the *algorithms* required to turn those bytes into
@@ -80,6 +83,7 @@ root-io-spec/
 │   ├── 00-conventions.md
 │   ├── 01-container/  02-serialization/  03-classes/  04-ttree/
 │   ├── 05-rntuple/               ← tracked copy of upstream + errata
+│   ├── 06-writing/               ← the write side: procedures, current versions
 │   └── 99-appendix/
 ├── gen/                          ← one generator macro per reference file
 ├── data/                         ← generated reference files (committed)
@@ -93,8 +97,8 @@ hand-written text, and structuring the repo this way makes the *size of the
 hand-written surface* explicit — the thing third-party implementers currently
 have to discover the hard way.
 
-Still missing from the layout, and required for release (§8):
-`LICENSE`, `CONTRIBUTING.md`, `CITATION.cff`, `CHANGELOG.md`.
+`LICENSE`, `LICENSES/`, `CONTRIBUTING.md`, `CITATION.cff` and `CHANGELOG.md` are
+in place as of 0.1.0 (§8 item M7).
 
 ### 2.1 `spec/00-conventions.md` ✅
 
@@ -219,9 +223,9 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-five things that are true, unobvious and have cost somebody time, each linked to the section that specifies it |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ☐ `WriterInvariants.md` | The collected index of §2.8. A collation job; `tools/check_invariants.py` is already its executable form. Not MVP |
+| ☐ `WriterInvariants.md` | The collected index of §2.8, now with a second audience: §2.9's procedures state what a writer must *do*, and this is the list of what its output must *satisfy*. `tools/check_invariants.py` is already the executable form. §8.4 item M15 |
 
-### 2.8 Write support: invariants, not algorithms ✅
+### 2.8 Write support, part one: invariants ✅
 
 Each layer document ends with an `## Invariants` section stating what a
 conforming file must satisfy, so a writer can validate its own output and a
@@ -234,6 +238,46 @@ Where a write-side rule genuinely has no freedom — the compression block heade
 the `Double32_t` factor encoding, the `fNevBufSize` sign trick — it is specified
 exactly. Deliberately **not** specified: free-space allocation policy, basket
 sizing, key ordering, when ROOT chooses to rewrite a directory.
+
+Invariants alone turned out to be **necessary and not sufficient**. They let a
+writer check a file it has already produced; they do not tell it which bytes to
+emit, and a reader-shaped document leaves a writer to infer the order of
+operations — which is where ROOT's own writing code has rules that no file
+records. §2.9 is the other half.
+
+### 2.9 `spec/06-writing/` — write support, part two: procedures ◐
+
+Added 2026-09-18, extending decision 3. The reading documents answer "what do
+these bytes mean"; these answer "which bytes do I emit, in what order". Scoped by
+what a writer actually needs rather than by symmetry with the reading side:
+
+| File | State |
+|---|---|
+| ☐ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
+| ☐ `WritingFiles.md` | The container in write order: the header, the root directory record, a key, the key list, the free list, and the end-of-file rewrite |
+| ☐ `WritingObjects.md` | Framing an object, the version word, and the `StreamerInfo` record — including when a writer may omit it and what that costs |
+| ☐ `WritingHistograms.md` | `TH1F`/`TH1D`/`TH2F`/`TProfile` at the current class version, member by member |
+| ☐ `WritingTrees.md` | A `TTree` of flat branches at the current class version: the tree record, branches, leaves, baskets, and the fields that must agree with one another |
+
+**Only the current version of each class.** A writer chooses what it emits, so
+there is never a reason to write an old layout; the legacy layouts stay on the
+reading side, where files force them.
+
+**The conformance test is executable, and it is what makes these documents
+checkable the way the reading side is.** `tools/rootwrite.py` is a pure-Python
+writer built from these documents alone, and `tools/check_write.py` puts every
+file it produces through three gates:
+
+1. `rootfile.py` reads it and every applicable `Invariants` section holds — the
+   two independent implementations meeting in the middle, which is the same
+   discipline as §3.1 with the arrow reversed;
+2. the bytes are reproduced **exactly**. A writer that fixes its own clock and
+   UUID has no reason not to be deterministic, so `data/written/` carries a plain
+   `sha256` and §3.3's normalization does not apply to it;
+3. where ROOT is on `PATH`, ROOT opens the file, returns the values that went in,
+   and prints **no warning**. This is the gate that finds errors, and the reason
+   the layer is worth writing at all: a wrong streamer info or a wrong class
+   version makes ROOT complain rather than fail silently.
 
 ## 3. Reference files
 
@@ -366,6 +410,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
+| Writing (`spec/06-writing/`) | ◐ scoped 2026-09-18, decision 3 revised; the work is §8.4 |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
@@ -379,12 +424,12 @@ phase.
 |---|---|---|
 | 1 | Scope of "every standard class" | **Revised 2026-09-17.** Not generated tables for ~440 classes: specify the classes whose streamer info does not describe their bytes, and let the generic algorithm cover the rest. The set comes from `inventory.py`, not from an estimate (§2.4) |
 | 2 | Normative status | Descriptive of 6.40.04; the pinned submodule is the tiebreaker; errata for suspected ROOT bugs |
-| 3 | Write support | Reading normative; writing specified as per-layer invariants, not algorithms (§2.8) |
+| 3 | Write support | **Revised 2026-09-18.** Reading normative. Writing gets both halves: per-layer invariants, which validate a file whatever wrote it (§2.8), and end-to-end **procedures** in `spec/06-writing/` for producing one — container, object, histogram, flat `TTree` — at the **current class version only**, with `tools/rootwrite.py` as the executable form and "ROOT reads it back and says nothing" as the conformance test (§2.9). Still unspecified: free-space reuse, updating an existing file, basket sizing, key ordering |
 | 4 | Upstream relationship | Standalone repo, not blocking on review. RNTuple errata go upstream as PRs; open a conversation with the ROOT I/O team about eventually replacing `io/doc/TFile/` |
 | 5 | Fixture distribution | Core corpus committed (<10 MB). Legacy-ROOT and >2 GB cases as release artifacts with a committed manifest — superseded in practice by the two corpora (§3.4, §3.5) |
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims **reading** for files written by ROOT 4.00 and later, and M4 measured that it works back to **3.04/02**. The floor is not a release number but a property of the file: object decoding needs streamer infos, and a file old enough carries none. Exactly one corpus file is in that state — `pippa.root`, ROOT 2.24/00 — and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
-| 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope) | Four groups: the frameworks inside ROOT that define their own persistent classes (RooFit, the SQL backend, PROOF, both event displays, SOFIE — 15 classes in `streamers.toml`, each with its reason); what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and writing algorithms, per decision 3. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
+| 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope) | Four groups: the frameworks inside ROOT that define their own persistent classes (RooFit, the SQL backend, PROOF, both event displays, SOFIE — 15 classes in `streamers.toml`, each with its reason); what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and, on the write side, what decision 3 leaves out after its 2026-09-18 revision — earlier class versions, updating an existing file, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
 
 ## 7. Open items
 
@@ -934,15 +979,97 @@ which is a compiled template instantiation rather than the runtime attribute tha
 made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the only
 unaudited form.
 
-**M10 — report upstream.** Six RNTuple errata (lead with erratum 6: a column type
-the document specifies, ROOT does not implement, and JSROOT does — two readers in
-one repository disagreeing about the type set) plus §7.1's eight bug candidates.
-Deferred to the end by standing decision, and the natural opening for open item 1.
+**M10 — report upstream.** Ten RNTuple errata against a document the ROOT team
+owns, plus §7.1's eleven bug candidates. Lead with §7.1 item 9 — `fBranchCount`
+naming another object's counter branch, byte-witnessed in a file the ROOT team
+published, and data loss — and with erratum 6, a column type the document
+specifies, ROOT does not implement and JSROOT does, so two readers in one
+repository disagree about the type set. Deferred to the end by standing decision,
+and the natural opening for open item 1.
 
 **Not in the MVP, deliberately**: the ten narrow `custom`/`extending` classes (§2.4);
 `TGeo*` hand-review; `gen/legacy/`; the pre-ROOT-4 object layouts (decision 7);
-semantic `case.toml` assertions; `WriterInvariants.md`; `TBranchSTL` entry
-decoding and `kStreamLoop` values (§9.11).
+semantic `case.toml` assertions; `TBranchSTL` entry decoding and `kStreamLoop`
+values (§9.11). `WriterInvariants.md` is no longer on this list — it has become
+§8.4 item M15, because there is now a writer to point it at.
+
+### 8.4 Write support, added 2026-09-18
+
+The MVP was a reading specification and it is out. This is the extension, and the
+reason is not symmetry: every third-party project that *writes* ROOT files has had
+to derive the write side from the same source the read side came from, and a
+write-side mistake is silent for the writer and permanent in the file. A reader
+that gets a field wrong shows a wrong number today; a writer that gets one wrong
+produces files that some readers accept and others do not, for years.
+
+Ordered so that every item ends with a file ROOT opens.
+
+**M11 — ✅ done 2026-09-18. The container, and the harness the rest of this
+depends on.**
+*A 656-byte file this project wrote, which ROOT opens, reads, appends to and
+rewrites.*
+
+`06-writing/index.md` and `WritingFiles.md` (453 lines), `tools/rootwrite.py`,
+`tools/check_write.py` and `gen/written/objstring/` — 59 byte assertions, all three
+gates green, wired into both CI jobs. What the write side needed that the reading
+documents did not have:
+
+- **The order of operations**, which is a property of no byte in the file. It also
+  turns out ROOT has **two** orders and neither is canonical: `TFile::Close` writes
+  the streamer infos, then the key lists, then the free list
+  (`root/io/io/src/TFile.cxx:1000`, `:1019`, `:1024`), while `TFile::Write` puts the
+  key lists first (`:2507-2510`). Both occur in ROOT-written files, and a reader
+  cannot tell, because both records are found by absolute offset.
+- **`fEND` is not the file's length**; it is the first byte of the last free
+  segment, recomputed as `lastfree->GetFirst()` on every header write
+  (`root/io/io/src/TFile.cxx:2671-2672`). Keeping the free list as the authority is
+  what makes the two agree.
+- **The free list's last entry is a sentinel.** ROOT ignores `nfree` and reads until
+  an entry has `fLast > fEND` (`:801-808`), so a last entry that does not exceed
+  `fEND` makes it parse past the record. It is read **only on a writable open**
+  (`:769-775`), so a read-only test never exercises it — which is why `verify.C`
+  copies the file, opens it `UPDATE`, and appends an object. ROOT's allocator then
+  takes our free entry's `fFirst`, and if it were wrong the append would overwrite
+  live data.
+- **§13, what ROOT does not check**: ten container mistakes it reads silently,
+  including a key image in the key list that disagrees with the record it points at,
+  and `fObjlen` inconsistent with `fNbytes - fKeylen`, which *is* the compression
+  flag since there is no other.
+
+And one measured answer to the question the milestone was scoped around:
+**ROOT needs no streamer info for a class it has compiled in.** A `TObjString` file
+with `fSeekInfo = 0` reads correctly and silently, as does a ROOT-written `TH1F`
+file with the two header fields zeroed. `tools/coverage_probe.py` cannot read
+either — this project's reader is streamer-info driven, like every third-party
+reader. The warning that would say so
+(`root/io/io/src/TFile.cxx:928-941`) fires only when the file's `fVersion` differs
+from the running ROOT's: the same file at 64004 is silent and at 63000 warns, both
+verified. So the record is optional for ROOT, mandatory in practice, and M12 writes
+it.
+
+**M12 — the object layer.** `WritingObjects.md`: the byte count and version word,
+the string encodings from the writing side, the object map and class tags,
+compression, and the `StreamerInfo` record. One question this item has to settle
+rather than dodge — **how far must a writer go with streamer infos?** ROOT needs
+none for a class it has compiled in; that is measured, not assumed (a `TH1F` file
+with `fSeekInfo` and `fNbytesInfo` zeroed reads back correctly and silently,
+2026-09-18). Every other reader does need them. So the document states what each
+choice costs, and the writer emits them.
+
+**M13 — histograms.** `WritingHistograms.md` and `TH1F`/`TH1D` in the writer, then
+`TH2F` and `TProfile` if the layout holds. Done when ROOT reports the right
+`GetEntries`, `GetMean`, bin contents and bin errors, with `TH1::Streamer`'s
+hand-written parts accounted for rather than guessed at.
+
+**M14 — trees.** `WritingTrees.md` and a flat `TTree`: fundamental leaves, a
+fixed-size array, and one counted variable-size array. Done when `tree->Scan()`
+and `GetEntry(i)` return what went in for every branch and every entry — the
+strongest check available, since it drives ROOT's own basket and leaf code over
+bytes this project produced.
+
+**M15 — `WriterInvariants.md`** and the front pages: the collected index of every
+`Invariants` entry, organised for a writer rather than by layer, and the status
+tables re-measured.
 
 ## 9. Known gaps
 

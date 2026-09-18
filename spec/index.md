@@ -22,8 +22,9 @@ The container and object serialization layers are written and checked — enough
 locate any object in a ROOT file and decode any user-defined class from the file's
 own streamer info. On top of them, `TArray` and the whole `TTree` reading path — the tree record,
 branches, leaves, baskets, splitting and decoding one entry — are written and
-checked. See the repository's `PLAN.md` for the phasing, and its §9 for every
-known gap.
+checked. A **writing** layer is now under way, starting with the container: see
+[Writing ROOT files](06-writing/index.md). The repository's `PLAN.md` has the
+phasing, and its §9 every known gap.
 
 | Layer | State |
 |---|---|
@@ -33,13 +34,15 @@ known gap.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
+| Writing — the container, and a file produced end to end | [partly](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
 
-Behind it: **65 reference files with 1563 byte-level assertions, 1130 source
-citations checked against the pinned ROOT tree across 40 documents**, and the
+Behind it: **71 reference files with 1753 byte-level assertions, 1223 source
+citations checked against the pinned ROOT tree across 42 documents**, and the
 invariants of every layer run over 226 files this project did not write — ROOT
-2.24/00 to 6.36/02 — with **0 failures**.
+2.24/00 to 6.36/02 — with **0 failures**. The writing layer adds one file this
+project *did* write, which ROOT opens, reads and updates.
 
 ## How to read it
 
@@ -67,7 +70,10 @@ Then the layers, in order. They build on each other:
    determine, because their streamers are hand-written and diverge from their
    recorded streamer info.
 4. **`TTree`** — branches, leaves, baskets, splitting, and reading an entry.
-5. **[RNTuple](05-rntuple/index.md)** — a **verbatim tracked copy** of ROOT's own
+5. **[Writing](06-writing/index.md)** — the same format from the other side: which
+   bytes to emit, in what order, for the current version of each class. Smaller
+   than the reading side on purpose, and checked by having ROOT read the result.
+6. **[RNTuple](05-rntuple/index.md)** — a **verbatim tracked copy** of ROOT's own
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes its audit has produced so far. Read the copy for the
    format and [ERRATA](05-rntuple/ERRATA.md) for where it and ROOT's code
@@ -93,11 +99,12 @@ submodule, and its own version is 0.1.0 — the changelog in the repository says
 what each release changed for a reader. Where this specification and that submodule disagree, the submodule is
 right and this has a bug. Source citations link to that exact commit.
 
-**Reading is specified; writing is constrained.** Each layer ends with an
-`Invariants` section stating what a conforming file satisfies, so a writer can
-validate its own output. Free-space allocation, basket sizing and key ordering are
-deliberately left unspecified — they are ROOT's choices, not requirements of the
-format.
+**Reading is specified; writing is specified where a writer has no freedom.** Each
+layer ends with an `Invariants` section stating what a conforming file satisfies,
+so a writer can validate its own output, and [Writing](06-writing/index.md) gives
+the procedures — which bytes, in what order — for the current version of each class
+a writer needs. Free-space reuse, basket sizing and key ordering stay unspecified:
+they are ROOT's choices, not requirements of the format.
 
 ### How far back it reads
 
@@ -171,7 +178,9 @@ drift:
   payload over 16 MiB is split, which two-byte tag selects which algorithm, and
   the two places that trip a reader up — but DEFLATE, LZMA, LZ4 and Zstandard are
   somebody else's standards.
-- **Writing algorithms**, as above: constrained by invariants, not specified.
+- **On the write side**, everything [Writing §4](06-writing/index.md#4-what-is-not-specified)
+  lists: earlier class versions, updating an existing file, producing a split
+  `TBranchElement`, and ROOT's policy choices.
 
 ## Reference files
 

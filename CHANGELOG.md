@@ -9,6 +9,25 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **A writing layer**, `spec/06-writing/`, which extends the project past the
+  reading side it was scoped to: [an overview](spec/06-writing/index.md) of what a
+  writing procedure is here and what is deliberately left out, and
+  [Writing a file](spec/06-writing/WritingFiles.md) — the container in write order,
+  with every field marked fixed, derived or free. What it adds that the reading
+  documents could not: the **order** of operations, which is a property of no byte
+  in the file; the ten container mistakes ROOT reads without complaint; and what
+  omitting the `StreamerInfo` record costs. ROOT needs none for a class it has
+  compiled in — measured, not assumed — and the warning that says so fires only
+  when the file's `fVersion` differs from the running ROOT's, so a writer stamping
+  the current release silences it.
+- `tools/rootwrite.py`, a pure-Python writer built from those documents, and
+  `tools/check_write.py`, which puts what it produces through three gates: this
+  project's reader and every applicable invariant accept it; the bytes are
+  reproduced exactly, since a writer has no reason to consult a clock; and ROOT
+  opens it, returns the values that went in, and prints nothing. The third gate
+  runs in CI. `data/written/objstring.root` is the first file in this repository
+  that ROOT did not write — and ROOT reads it, appends to it and rewrites its free
+  list without complaint.
 - **The RNTuple type mapping is audited**, every form but one, with six fixtures
   and a test per subsection that parses each claim out of the tracked document
   rather than transcribing it: the stdlib types, user-defined classes and enums,

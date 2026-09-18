@@ -20,6 +20,11 @@ jobs:
         run: tools/generate.py --check
       - name: Verify the spec's Invariants sections hold for every fixture
         run: tools/check_invariants.py
+      # Gates 1 and 2 of spec/06-writing/index.md 2: tools/rootwrite.py still
+      # reproduces data/written/ byte for byte, and tools/rootfile.py plus the
+      # invariants accept what it wrote. Gate 3 needs ROOT and runs below.
+      - name: Verify the files tools/rootwrite.py produces
+        run: tools/check_write.py
 
   # Checks that compare spec/ against the pinned ROOT source.
   spec:
@@ -66,3 +71,8 @@ jobs:
       # fresh TUUID -- which is the reason the digests are normalized at all.
       - name: Regenerate and compare normalized digests
         run: tools/generate.py
+      # Gate 3: ROOT opens each file this project wrote, finds the values that
+      # went in, and prints no diagnostic. This is the check that makes
+      # spec/06-writing/ more than internally consistent.
+      - name: ROOT reads the files tools/rootwrite.py produces
+        run: tools/check_write.py --root

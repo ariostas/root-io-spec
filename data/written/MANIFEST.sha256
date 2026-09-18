@@ -1,0 +1,4 @@
+# SHA-256 digests of the files tools/rootwrite.py produces.
+# Not normalized: a writer fixes its own timestamp and UUID, so
+# these files are byte-reproducible. See tools/check_write.py.
+3e2a6e1f161df3e6d135637307ab30ef96d7452bdcd21044aa87a5a2134f9140  data/written/objstring.root

@@ -53,6 +53,10 @@ nav = [
       { "Reading entries" = "04-ttree/ReadingEntries.md" },
       { "Auxiliary classes" = "04-ttree/Auxiliary.md" },
   ] },
+  { "Writing" = [
+      { "Overview" = "06-writing/index.md" },
+      { "Writing a file" = "06-writing/WritingFiles.md" },
+  ] },
   { "RNTuple" = [
       { "Overview" = "05-rntuple/index.md" },
       { "Binary format specification" = "05-rntuple/BinaryFormatSpecification.md" },

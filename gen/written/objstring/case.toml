@@ -1,0 +1,421 @@
+id   = "written/objstring"
+file = "data/written/objstring.root"
+size = 656
+
+description = """
+The smallest complete file **this project wrote**, rather than one ROOT wrote:
+a header, the root directory record, one `TObjString` record, the key list and
+the free list, produced by `tools/rootwrite.py` from
+`spec/06-writing/WritingFiles.md`.
+
+Compare it with `container/file-minimal`, which is the same shape written by
+ROOT. Two differences are deliberate and both are specified:
+
+* there is **no `StreamerInfo` record**, so `fSeekInfo` and `fNbytesInfo` are 0.
+  ROOT reads the `TObjString` anyway, from the class it has compiled in
+  (`WritingFiles.md` 8); a streamer-info-driven reader cannot, which is the
+  asymmetry that decides what a writer should emit;
+* the timestamp and the UUID are **fixed inputs**, so the file is
+  byte-reproducible and `data/written/MANIFEST.sha256` is a plain sha256.
+
+Every assertion below is also a row in a table in `WritingFiles.md`, which is
+what makes the two check each other.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/FileHeader.md",
+  "spec/01-container/Record.md",
+  "spec/01-container/Directory.md",
+  "spec/01-container/FreeSegments.md",
+]
+
+writer  = "tools/rootwrite.py"
+datime  = "2000-01-01 00:00:00, fixed; see tools/rootwrite.py DEFAULT_DATIME"
+
+[[records]]
+offset = 100
+nbytes = 208
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 308
+nbytes = 88
+class  = "TObjString"
+role   = "application data record"
+
+[[records]]
+offset = 396
+nbytes = 160
+class  = "TFile"
+role   = "keys list; located via the root directory's fSeekKeys"
+
+[[records]]
+offset = 556
+nbytes = 100
+class  = "TFile"
+role   = "free segments; located via fSeekFree"
+
+[[keys]]
+name = "str"
+
+# --- File header, spec/01-container/FileHeader.md 2.2 ----------------------
+[[bytes]]
+name = "magic"
+offset = 0
+type = "bytes"
+value = "root"
+
+[[bytes]]
+name = "fVersion"
+offset = 4
+type = "i32"
+value = 64004
+
+[[bytes]]
+name = "fBEGIN"
+offset = 8
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 656
+
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 556
+
+[[bytes]]
+name = "fNbytesFree"
+offset = 20
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "nfree"
+offset = 24
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fNbytesName = the key's 90 bytes plus the name and title repeated"
+offset = 28
+type = "i32"
+value = 148
+
+[[bytes]]
+name = "fUnits"
+offset = 32
+type = "u8"
+value = 4
+
+[[bytes]]
+name = "fCompress"
+offset = 33
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fSeekInfo -- no StreamerInfo record; FileHeader.md invariant 8"
+offset = 37
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fNbytesInfo"
+offset = 41
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TUUID version"
+offset = 45
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "the fixed UUID"
+offset = 47
+type = "bytes"
+value = [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]
+
+# --- The root directory record's key, spec/01-container/Record.md 2 --------
+[[bytes]]
+name = "fNbytes = fKeylen + fObjlen, uncompressed"
+offset = 100
+type = "i32"
+value = 208
+
+[[bytes]]
+name = "key fVersion"
+offset = 104
+type = "i16"
+value = 4
+
+[[bytes]]
+name = "fObjlen = name + title + the 60-byte directory record"
+offset = 106
+type = "i32"
+value = 118
+
+[[bytes]]
+name = "fDatime, packed by TDatime's six bit fields"
+offset = 110
+type = "u32"
+value = 339869696
+
+[[bytes]]
+name = "fKeylen"
+offset = 114
+type = "i16"
+value = 90
+
+[[bytes]]
+name = "fCycle"
+offset = 116
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fSeekKey -- a key records its own position"
+offset = 118
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "fSeekPdir is 0 for the root directory record alone"
+offset = 122
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fClassName"
+offset = 126
+type = "string"
+value = "TFile"
+
+[[bytes]]
+name = "fName -- the file's own name"
+offset = 132
+type = "string"
+value = "data/written/objstring.root"
+
+[[bytes]]
+name = "fTitle"
+offset = 160
+type = "string"
+value = "written by tools/rootwrite.py"
+
+# --- and its payload: the name and title again, then the directory --------
+[[bytes]]
+name = "the name, repeated ahead of the directory's fields"
+offset = 190
+type = "string"
+value = "data/written/objstring.root"
+
+[[bytes]]
+name = "the title, repeated"
+offset = 218
+type = "string"
+value = "written by tools/rootwrite.py"
+
+[[bytes]]
+name = "directory record version"
+offset = 248
+type = "i16"
+value = 5
+
+[[bytes]]
+name = "fDatimeC"
+offset = 250
+type = "u32"
+value = 339869696
+
+[[bytes]]
+name = "fDatimeM"
+offset = 254
+type = "u32"
+value = 339869696
+
+[[bytes]]
+name = "fNbytesKeys = the whole key-list record"
+offset = 258
+type = "i32"
+value = 160
+
+[[bytes]]
+name = "fNbytesName, the same value as in the header"
+offset = 262
+type = "i32"
+value = 148
+
+[[bytes]]
+name = "fSeekDir"
+offset = 266
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "fSeekParent"
+offset = 270
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fSeekKeys"
+offset = 274
+type = "i32"
+value = 396
+
+[[bytes]]
+name = "the directory's own TUUID version"
+offset = 278
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "first of the 12 reserved bytes, Directory.md 5"
+offset = 296
+type = "i32"
+value = 0
+
+# --- The data record, spec/01-container/Record.md --------------------------
+[[bytes]]
+name = "fNbytes"
+offset = 308
+type = "i32"
+value = 88
+
+[[bytes]]
+name = "fObjlen"
+offset = 314
+type = "i32"
+value = 22
+
+[[bytes]]
+name = "fKeylen"
+offset = 322
+type = "i16"
+value = 66
+
+[[bytes]]
+name = "fSeekKey"
+offset = 326
+type = "i32"
+value = 308
+
+[[bytes]]
+name = "fSeekPdir points at the root directory record"
+offset = 330
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "fClassName"
+offset = 334
+type = "string"
+value = "TObjString"
+
+[[bytes]]
+name = "fName"
+offset = 345
+type = "string"
+value = "str"
+
+[[bytes]]
+name = "fTitle"
+offset = 349
+type = "string"
+value = "Collectable string class"
+
+[[bytes]]
+name = "byte count: 0x40000000 | 18, covering everything after itself"
+offset = 374
+type = "u32"
+value = 1073741842
+
+[[bytes]]
+name = "TObjString's class version"
+offset = 378
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "the TObject base's version"
+offset = 380
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "fUniqueID"
+offset = 382
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "fBits -- kIsOnHeap and kNotDeleted are masked out on the way to file"
+offset = 386
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "the string itself, counted"
+offset = 390
+type = "string"
+value = "hello"
+
+# --- The key list, spec/01-container/Directory.md 6 ------------------------
+[[bytes]]
+name = "fObjlen = 4 + one 66-byte key image"
+offset = 402
+type = "i32"
+value = 70
+
+[[bytes]]
+name = "the count, and it is authoritative"
+offset = 486
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "the image's fNbytes: byte-identical to the record's own key"
+offset = 490
+type = "i32"
+value = 88
+
+[[bytes]]
+name = "the image's fSeekKey, which is how the record is found"
+offset = 508
+type = "i32"
+value = 308
+
+# --- The free list, spec/01-container/FreeSegments.md 2 --------------------
+[[bytes]]
+name = "fObjlen = one 10-byte entry"
+offset = 562
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "entry version 1: the small form, since fLast is not above 2000000000"
+offset = 646
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "fFirst = fEND: the free span begins where the file ends"
+offset = 648
+type = "i32"
+value = 656
+
+[[bytes]]
+name = "fLast = 2000000000, the sentinel that terminates the list"
+offset = 652
+type = "i32"
+value = 2000000000
