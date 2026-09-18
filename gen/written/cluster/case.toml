@@ -1,0 +1,385 @@
+id   = "written/cluster"
+file = "data/written/cluster.root"
+size = 15526
+
+description = """
+A `TTree` of **five baskets in one branch** and **two closed cluster ranges**,
+written by `tools/rootwrite.py` from
+[Writing trees §7](../../../spec/06-writing/WritingTrees.md): nineteen entries of
+one `Int_t` branch, flushed at entries 4, 8, 11, 14 and 19.
+
+**All five basket records and the `TTree` record are byte-identical to the ones
+ROOT wrote in `data/ttree/clusters.root`**, keys included, once the wall-clock
+timestamp is masked -- five `fBasketSeek` values, five `fBasketBytes`, six
+`fBasketEntry` and both cluster arrays among them. The file's name and title are
+chosen so that the root directory record is the same length in both files, which
+is what makes the offsets line up; `tools/test_write.py` asserts the comparison.
+
+This is the case for everything the single-basket `written/tree` cannot show:
+
+- `fWriteBasket` of 5, and `fMaxBaskets` of **10** rather than 6 --
+  `TBranch::Streamer` floors it at 10 while writing, and the three counted arrays
+  are that long, zero-padded past the last basket.
+- `fBasketEntry` with **one element more than there are baskets**: the first entry
+  of each, then the total, then zeros.
+- `fNClusterRange` of 2, with both counted pointers' is-present flag set and
+  exactly two values behind each. `fClusterRangeEnd` is the **last** entry of each
+  range, inclusive, so the third range starts at 14 and is described by
+  `fAutoFlush` alone.
+- `fFlushedBytes` non-zero, which is the only thing that distinguishes a tree
+  whose cluster boundaries were recorded from one flushed only at `Write`.
+- Two values that are **ROOT's policy reproduced as inputs**: the first basket
+  records `fBufferSize` 100 and every later one 512, because ROOT rewrites
+  `fBasketSize` at the first automatic flush through `OptimizeBaskets` (whose
+  floor is 512); and `fAutoSave` is 3703700, which ROOT derived at that same
+  moment from the bytes written so far. Neither is required of a writer, and both
+  are needed to compare records byte for byte.
+
+Only the `StreamerInfo` record differs from ROOT's, by the one `listOfRules` entry
+a file written at `TTree` version 20 cannot use (`WritingTrees.md` 8.1).
+"""
+
+spec = [
+  "spec/06-writing/WritingTrees.md",
+  "spec/04-ttree/TTree.md",
+  "spec/04-ttree/TBranch.md",
+]
+
+writer = "tools/rootwrite.py"
+
+[[records]]
+offset = 100
+nbytes = 172
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 272
+nbytes = 81
+class  = "TBasket"
+role   = "basket 0: entries 0 to 3, and the only one whose fBufferSize is 100"
+
+[[records]]
+offset = 353
+nbytes = 81
+class  = "TBasket"
+role   = "basket 1: entries 4 to 7, the end of cluster range 0"
+
+[[records]]
+offset = 434
+nbytes = 77
+class  = "TBasket"
+role   = "basket 2: entries 8 to 10, three entries in range 1"
+
+[[records]]
+offset = 511
+nbytes = 77
+class  = "TBasket"
+role   = "basket 3: entries 11 to 13, the end of cluster range 1"
+
+[[records]]
+offset = 588
+nbytes = 85
+class  = "TBasket"
+role   = "basket 4: entries 14 to 18, in the open-ended range"
+
+[[records]]
+offset = 673
+nbytes = 860
+class  = "TTree"
+role   = "the tree record, byte-identical to ROOT's"
+
+[[records]]
+offset = 1533
+nbytes = 13794
+class  = "TList"
+role   = "StreamerInfo: seventeen infos"
+
+[[records]]
+offset = 15327
+nbytes = 117
+class  = "TFile"
+role   = "keys list -- one key, because no basket is ever in it"
+
+[[records]]
+offset = 15444
+nbytes = 82
+class  = "TFile"
+role   = "free segments"
+
+# --- the baskets: one per flush, and fCycle counts them ----------------------
+
+[[bytes]]
+name = "basket 0's fCycle: the basket number, not a directory cycle"
+offset = 288
+type = "i16"
+value = 0
+[[bytes]]
+name = "basket 0 header: version 3"
+offset = 318
+type = "i16"
+value = 3
+[[bytes]]
+name = "basket 0 fBufferSize: 100, the value the branch was created with"
+offset = 320
+type = "i32"
+value = 100
+[[bytes]]
+name = "basket 0 fNevBufSize: bytes per entry, because there is no offset array"
+offset = 324
+type = "i32"
+value = 4
+[[bytes]]
+name = "basket 0 fNevBuf: four entries"
+offset = 328
+type = "i32"
+value = 4
+[[bytes]]
+name = "basket 0 fLast: fKeylen + 16 bytes of data"
+offset = 332
+type = "i32"
+value = 81
+[[bytes]]
+name = "basket 0 flag: 0, the form of a basket written as its own record"
+offset = 336
+type = "u8"
+value = 0
+
+[[bytes]]
+name = "basket 1's fCycle"
+offset = 369
+type = "i16"
+value = 1
+[[bytes]]
+name = "basket 1 fBufferSize: 512, rewritten at the first flush"
+offset = 401
+type = "i32"
+value = 512
+[[bytes]]
+name = "basket 1 fNevBuf"
+offset = 409
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "basket 2 fNevBuf: three, the cluster size of range 1"
+offset = 490
+type = "i32"
+value = 3
+[[bytes]]
+name = "basket 2 fLast: fKeylen + 12"
+offset = 494
+type = "i32"
+value = 77
+
+[[bytes]]
+name = "basket 4's fCycle"
+offset = 604
+type = "i16"
+value = 4
+[[bytes]]
+name = "basket 4 fNevBuf: five, the size of the open-ended range"
+offset = 644
+type = "i32"
+value = 5
+[[bytes]]
+name = "basket 4 fLast: fKeylen + 20"
+offset = 648
+type = "i32"
+value = 85
+
+# --- the tree: the cluster ranges -------------------------------------------
+
+[[bytes]]
+name = "TTree class version"
+offset = 718
+type = "i16"
+value = 20
+[[bytes]]
+name = "fEntries"
+offset = 781
+type = "i64"
+value = 19
+[[bytes]]
+name = "fTotBytes: 81 + 81 + 77 + 77 + 85, summed over every basket"
+offset = 789
+type = "i64"
+value = 401
+[[bytes]]
+name = "fZipBytes: the same, since nothing is compressed"
+offset = 797
+type = "i64"
+value = 401
+[[bytes]]
+name = "fSavedBytes: 0, because no AutoSave watermark was reached"
+offset = 805
+type = "i64"
+value = 0
+[[bytes]]
+name = "fFlushedBytes: non-zero, so cluster boundaries were recorded"
+offset = 813
+type = "i64"
+value = 401
+[[bytes]]
+name = "fNClusterRange: two ranges closed, and one left open"
+offset = 845
+type = "i32"
+value = 2
+[[bytes]]
+name = "fAutoSave: ROOT's own derived value, reproduced as an input"
+offset = 873
+type = "i64"
+value = 3703700
+[[bytes]]
+name = "fAutoFlush: the size of the open-ended range"
+offset = 881
+type = "i64"
+value = 5
+[[bytes]]
+name = "fClusterRangeEnd: the is-present flag, set because the count is non-zero"
+offset = 897
+type = "u8"
+value = 1
+[[bytes]]
+name = "fClusterRangeEnd[0]: the last entry of range 0, inclusive"
+offset = 898
+type = "i64"
+value = 7
+[[bytes]]
+name = "fClusterRangeEnd[1]: so range 2 starts at 14"
+offset = 906
+type = "i64"
+value = 13
+[[bytes]]
+name = "fClusterSize: its own is-present flag, immediately after"
+offset = 914
+type = "u8"
+value = 1
+[[bytes]]
+name = "fClusterSize[0]: four entries per cluster in range 0"
+offset = 915
+type = "i64"
+value = 4
+[[bytes]]
+name = "fClusterSize[1]: three in range 1, and no third element"
+offset = 923
+type = "i64"
+value = 3
+
+# --- the branch: five baskets in three counted arrays -----------------------
+
+[[bytes]]
+name = "fBasketSize: 512, the value after OptimizeBaskets"
+offset = 1025
+type = "i32"
+value = 512
+[[bytes]]
+name = "fEntryOffsetLen: 0, because every entry is four bytes"
+offset = 1029
+type = "i32"
+value = 0
+[[bytes]]
+name = "fWriteBasket: five baskets on disk"
+offset = 1033
+type = "i32"
+value = 5
+[[bytes]]
+name = "fEntryNumber: fFirstEntry + fEntries"
+offset = 1037
+type = "i64"
+value = 19
+[[bytes]]
+name = "fMaxBaskets: 10, the floor, not fWriteBasket + 1"
+offset = 1060
+type = "i32"
+value = 10
+[[bytes]]
+name = "the branch's fTotBytes"
+offset = 1084
+type = "i64"
+value = 401
+[[bytes]]
+name = "fBaskets: fWriteBasket + 1 slots, every one of them null"
+offset = 1240
+type = "i32"
+value = 6
+[[bytes]]
+name = "fBasketBytes: the is-present flag"
+offset = 1272
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketBytes[0]"
+offset = 1273
+type = "i32"
+value = 81
+[[bytes]]
+name = "fBasketBytes[4]: the last real element"
+offset = 1289
+type = "i32"
+value = 85
+[[bytes]]
+name = "fBasketBytes[5]: zero padding to fMaxBaskets begins"
+offset = 1293
+type = "i32"
+value = 0
+[[bytes]]
+name = "fBasketBytes[9]: and ends at the tenth element"
+offset = 1309
+type = "i32"
+value = 0
+[[bytes]]
+name = "fBasketEntry: its own flag byte, four bytes past the array's end"
+offset = 1313
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketEntry[0]: equal to fFirstEntry, the one element ROOT complains about"
+offset = 1314
+type = "i64"
+value = 0
+[[bytes]]
+name = "fBasketEntry[2]: 8, which is fClusterRangeEnd[0] + 1"
+offset = 1330
+type = "i64"
+value = 8
+[[bytes]]
+name = "fBasketEntry[4]: 14, which is fClusterRangeEnd[1] + 1"
+offset = 1346
+type = "i64"
+value = 14
+[[bytes]]
+name = "fBasketEntry[5]: the terminator, one element past the last basket"
+offset = 1354
+type = "i64"
+value = 19
+[[bytes]]
+name = "fBasketEntry[6]: padding, and nothing reads it"
+offset = 1362
+type = "i64"
+value = 0
+[[bytes]]
+name = "fBasketSeek: the third flag byte"
+offset = 1394
+type = "u8"
+value = 1
+[[bytes]]
+name = "fBasketSeek[0]: where basket 0 was written"
+offset = 1395
+type = "i64"
+value = 272
+[[bytes]]
+name = "fBasketSeek[4]: and basket 4"
+offset = 1427
+type = "i64"
+value = 588
+[[bytes]]
+name = "fBasketSeek[5]: zero padding"
+offset = 1435
+type = "i64"
+value = 0
+[[bytes]]
+name = "fFileName: empty, so the baskets are in this file"
+offset = 1475
+type = "u8"
+value = 0

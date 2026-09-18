@@ -11,8 +11,9 @@ Prerequisites: [Writing a file](WritingFiles.md),
 [Reading entries](../04-ttree/ReadingEntries.md).
 
 Scope: **flat branches** — a scalar, a fixed-size array, or an array counted by
-another branch — one basket each. Producing a split `TBranchElement` is out of
-scope ([the layer's index](index.md#4-what-is-not-specified)).
+another branch — with as many baskets each as the writer chooses to flush (§7).
+Producing a split `TBranchElement` is out of scope
+([the layer's index](index.md#4-what-is-not-specified)).
 
 ## 1. The shape, and how far it is checked
 
@@ -23,24 +24,34 @@ A tree is not one record. It is:
 - **one record for the tree**, holding the branches, and inside them the leaves,
   as nested objects.
 
-`data/written/tree.root` is the worked example, and it reproduces
-`data/ttree/basket.root` — ROOT's own — **byte for byte in every record**: both
-baskets and the tree, keys included, once the wall-clock timestamp is masked.
-`tools/test_write.py` asserts it. The only part of the two files that differs is
-the `StreamerInfo` record, by one entry (§7.1).
+There are two worked examples, and each reproduces a ROOT-written file **byte for
+byte in every record** — every basket and the tree, keys included, once the
+wall-clock timestamp is masked. `tools/test_write.py` asserts both.
 
-That comparison is strict in a way the histogram one is not: a branch stores its
+| This project's | ROOT's | What it adds |
+|---|---|---|
+| `data/written/tree.root` | `data/ttree/basket.root` | two branches, one of them counted, three entries, **one basket each** |
+| `data/written/cluster.root` | `data/ttree/clusters.root` | one branch, nineteen entries, **five baskets** and two closed cluster ranges (§7) |
+
+The only part of either pair that differs is the `StreamerInfo` record, by one
+entry (§8.1).
+
+Those comparisons are strict in a way the histogram one is not: a branch stores its
 baskets' **offsets**, so a single byte's difference anywhere earlier in the file
-changes the tree record. The two files' names are the same length for that reason.
+changes the tree record. Each pair of file names is chosen to be the same total
+length for that reason.
 
 ## 2. Order of operations
 
 1. Accumulate each branch's entries into its basket buffer, recording an entry
    offset per entry if the branch needs one (§5.2).
-2. Place each basket as a record (§5) and note its `fSeekKey`, `fNbytes` and
+2. Whenever the writer chooses, **flush**: close the open buffer of every branch
+   into a basket and start a new one (§7). A tree with one basket per branch is
+   the case where this happens exactly once, at the end.
+3. Place each basket as a record (§5) and note its `fSeekKey`, `fNbytes` and
    `fObjlen`.
-3. Build the tree record (§3, §4) with those three numbers per branch.
-4. Write the `StreamerInfo` record, the key list — which contains the tree's key
+4. Build the tree record (§3, §4) with those three numbers **per basket**.
+5. Write the `StreamerInfo` record, the key list — which contains the tree's key
    and **not** the baskets' (§6) — the free list and the header
    ([Writing a file §3](WritingFiles.md#3-the-procedure)).
 
@@ -60,20 +71,21 @@ values a three-entry tree needs:
 | `TNamed` | framed | the tree's name and title; `fBits` carries `kMustCleanup` | free |
 | `TAttLine`, `TAttFill`, `TAttMarker` | framed | 602/1/1, 0/1001, 1/1/1.0f | free |
 | `fEntries` | `i64` | the entry count. **The only upper bound `TTree::GetEntry` checks** (`root/tree/tree/src/TTree.cxx:5725`) | **fixed** |
-| `fTotBytes` | `i64` | Σ over branches of `fKeylen + fObjlen` | derived |
-| `fZipBytes` | `i64` | Σ of `fNbytes` | derived |
-| `fSavedBytes`, `fFlushedBytes` | `i64` | 0 | free |
+| `fTotBytes` | `i64` | Σ over **every basket** of `fKeylen + fObjlen` | derived |
+| `fZipBytes` | `i64` | Σ of every basket's `fNbytes` | derived |
+| `fSavedBytes` | `i64` | 0 unless the writer imitates `AutoSave`; §7.5 | free |
+| `fFlushedBytes` | `i64` | 0 when every basket was flushed at the end, and `fZipBytes` as of the last *automatic* flush otherwise. **A reader uses the difference**: 0 means no cluster boundary was ever recorded ([TTree §6.1](../04-ttree/TTree.md#61-the-two-arrays)) | free, and §7.5 |
 | `fWeight` | `f64` | **1.0**, unless a weight is meant: `Draw` multiplies every entry by it (`root/tree/treeplayer/src/TSelectorDraw.cxx:929`) | **fixed in practice** |
 | `fTimerInterval`, `fUpdate` | `i32` | 0 | free |
 | `fScanField` | `i32` | 25 — rows before `Scan` prompts | free |
 | `fDefaultEntryOffsetLen` | `i32` | 1000; only affects branches created later | free |
-| `fNClusterRange` | `i32` | 0 for a tree written in one pass, which is all §1 covers. Non-zero means the two counted arrays below it have that many elements, and this procedure does not specify them ([index §4](index.md#4-what-is-not-specified)) | **fixed** at 0 here |
+| `fNClusterRange` | `i32` | the number of **closed** cluster ranges, 0 when the cluster size never changed; the two counted arrays below have exactly this many elements each (§7.4) | derived |
 | `fMaxEntries`, `fMaxEntryLoop` | `i64` | 1000000000000 | free |
 | `fMaxVirtualSize` | `i64` | **0 or above.** Negative diverts basket reading onto a whole-cluster path that walks `fBasketEntry` unbounded (`root/tree/tree/src/TBranch.cxx:1246-1247`) | free, with constraints — any non-negative value |
-| `fAutoSave` | `i64` | -300000000 | free |
-| `fAutoFlush` | `i64` | -30000000 | free |
+| `fAutoSave` | `i64` | -300000000 as constructed; ROOT rewrites it at the first automatic flush (§7.5). Nothing reads it back | free |
+| `fAutoFlush` | `i64` | -30000000 as constructed. **A positive value is the size of the last, open-ended cluster range** and is read as such (§7.4); a negative one is a byte watermark and says nothing about clusters | free, with constraints — §7.4 |
 | `fEstimate` | `i64` | 1000000. `TTree::Streamer` raises anything at or below 10000 to 1000000 on read (`root/tree/tree/src/TTree.cxx:9845-9847`), so the field is free in effect | free |
-| `fClusterRangeEnd`, `fClusterSize` | counted pointers | one `0x00` flag byte each, since `fNClusterRange` is 0 | derived |
+| `fClusterRangeEnd`, `fClusterSize` | counted pointers | `fNClusterRange` values each behind a `0x01` flag byte — or one `0x00` byte and nothing, when the count is 0 (§7.4) | derived |
 | `fIOFeatures` | framed | §3.2 | **fixed** |
 | `fBranches` | `TObjArray` **member object** | the branches, §4 | — |
 | `fLeaves` | `TObjArray` member object | **references** to the leaves inside `fBranches`, §3.1 | **fixed** |
@@ -129,8 +141,8 @@ order:
 | `TNamed` | framed | `fName` the branch name; **`fTitle` the leaflist**, e.g. `n/I` or `a[n]/F`. `fBits` is `0x00400000` in a ROOT-written file | free, but see §4.2 |
 | `TAttFill` | framed | 0, 1001 | free |
 | `fCompress` | `i32` | the file's compression settings, or 0 | free |
-| `fBasketSize` | `i32` | 32000 | free |
-| `fEntryOffsetLen` | `i32` | **non-zero iff the baskets carry an offset array** (`root/tree/tree/src/TBasket.cxx:691`); the value itself is not used | **fixed** (zero or not) |
+| `fBasketSize` | `i32` | 32000 by default; the value **after** any rewriting at flush (§7.3) | free |
+| `fEntryOffsetLen` | `i32` | **non-zero iff the baskets carry an offset array** (`root/tree/tree/src/TBasket.cxx:691`); the value itself is not used, and it is the one the **last** flush left (§5.2) | **fixed** (zero or not) |
 | `fWriteBasket` | `i32` | the number of baskets on disk — one past the last real index | **fixed** |
 | `fEntryNumber` | `i64` | `fFirstEntry + fEntries`; the per-branch upper bound on reading (`root/tree/tree/src/TBranch.cxx:1364-1366`) | **fixed** |
 | `fIOFeatures` | framed | as §3.2 | **fixed** |
@@ -139,14 +151,14 @@ order:
 | `fSplitLevel` | `i32` | 0 | free |
 | `fEntries` | `i64` | the branch's entry count | **fixed** |
 | `fFirstEntry` | `i64` | 0 for a tree written in one pass | **fixed** |
-| `fTotBytes` | `i64` | the basket's `fKeylen + fObjlen` | derived |
-| `fZipBytes` | `i64` | the basket's `fNbytes` | derived |
+| `fTotBytes` | `i64` | Σ over this branch's baskets of `fKeylen + fObjlen` | derived |
+| `fZipBytes` | `i64` | Σ of their `fNbytes` | derived |
 | `fBranches` | `TObjArray` member | empty for a flat branch | **fixed** |
 | `fLeaves` | `TObjArray` member | one leaf, §4.3 | **fixed** |
 | `fBaskets` | `TObjArray` member | `fWriteBasket + 1` slots, **all null**, §4.1 | derived — the slot count from `fWriteBasket`, the contents always null |
-| `fBasketBytes` | counted pointer, `i32` | element *i* is basket *i*'s `fNbytes`, then zeros to `fMaxBaskets`; with one basket, `[fNbytes, 0, …]` | derived — from the basket records |
-| `fBasketEntry` | counted pointer, `i64` | element *i* is the first entry number of basket *i*, and element `fWriteBasket` is the total entry count; with one basket, `[fFirstEntry, fEntryNumber, 0, …]` | derived — §8 invariants 2 and 3 |
-| `fBasketSeek` | counted pointer, `i64` | element *i* is basket *i*'s record offset, then zeros; with one basket, `[the offset, 0, …]` | derived — from where each basket was written |
+| `fBasketBytes` | counted pointer, `i32` | element *i* is basket *i*'s `fNbytes`, then zeros to `fMaxBaskets` | derived — from the basket records |
+| `fBasketEntry` | counted pointer, `i64` | element *i* is the first entry number of basket *i*, element `fWriteBasket` is the total entry count, and the rest is zero. **One element longer than there are baskets** | derived — §9 invariants 2 and 3 |
+| `fBasketSeek` | counted pointer, `i64` | element *i* is basket *i*'s record offset, then zeros | derived — from where each basket was written |
 | `fFileName` | counted string | empty — non-empty means the baskets are in another file | **fixed** |
 
 **The three counted pointers have no length of their own**: each is one flag byte
@@ -157,7 +169,8 @@ bookkeeping.
 
 ### 4.1 `fBaskets` is a `TObjArray` of nulls
 
-Not empty: `fWriteBasket + 1` entries, every one of them a null pointer.
+Not empty: `fWriteBasket + 1` entries — six for a five-basket branch — every one
+of them a null pointer.
 `TBranch::Streamer` removes from the array every basket that is already on disk
 before streaming (`root/tree/tree/src/TBranch.cxx:3195-3205`), but the array's
 `fLast` still remembers how many slots it had, and `TObjArray::Streamer` writes
@@ -262,7 +275,7 @@ The 19 bytes at the end of the key are the basket header:
 | Bytes | Field | Value |
 |---|---|---|
 | `i16` | version | 3 |
-| `i32` | `fBufferSize` | 32000 |
+| `i32` | `fBufferSize` | the branch's `fBasketSize` **when this basket was closed**, which is not the same for every basket of a branch (§7.3) |
 | `i32` | `fNevBufSize` | §5.1 |
 | `i32` | `fNevBuf` | the entry count in this basket |
 | `i32` | `fLast` | `fKeylen +` the data length, measured from the **start of the record** |
@@ -330,7 +343,153 @@ through `fBasketSeek`.
 
 Its `fSeekPdir` is still the directory's `fSeekDir`, and nothing checks it.
 
-## 7. The streamer infos
+## 7. More than one basket per branch
+
+A **flush** closes the open buffer of every branch into a basket and starts a new
+one. When to do it is the writer's choice — ROOT's own rule is a watermark, and
+that rule is policy ([index §3](index.md#3-what-is-specified)) — but what a flush
+*produces* is not: it lengthens the branch's three counted arrays, it may close a
+cluster range, and it sets `fFlushedBytes`, which is the one field that tells a
+reader any boundary was recorded at all.
+
+Everything in §3 to §6 already holds per basket. What follows is what changes when
+there is more than one.
+
+### 7.1 What one flush changes
+
+| Field | On the flush of basket *i* |
+|---|---|
+| a new basket record | written before the tree record, with `fCycle` = *i* and `fNevBuf` = the entries it holds |
+| `fWriteBasket` | becomes *i* + 1: the count of baskets on disk |
+| `fBasketBytes[i]`, `fBasketSeek[i]` | the new record's `fNbytes` and offset |
+| `fBasketEntry[i]` | the first entry number in that basket — so `fBasketEntry[0]` is `fFirstEntry` |
+| `fBasketEntry[i+1]` | the entry count so far, which the next flush overwrites and the last one leaves as the **terminator** (`root/tree/tree/src/TBranch.cxx:3274`) |
+| `fMaxBaskets` | the length of all three arrays: `max(fWriteBasket + 1, 10)` (§7.2) |
+| `fEntryOffsetLen` | rewritten from the entries this basket held, if the branch has an offset array (§5.2) |
+| `fTotBytes`, `fZipBytes` | on the branch *and* on the tree, increased by this basket's contribution |
+
+The order of the basket records is the writer's, but their **offsets** must match
+`fBasketSeek`, so the tree record cannot be built until every basket is placed
+(§2). Writing all of round 0 before any of round 1 is what ROOT's `FlushBaskets`
+produces, and it puts a cluster's baskets next to each other on disk, which is the
+whole point of a cluster.
+
+### 7.2 `fMaxBaskets` is not the number of baskets
+
+It is `max(fWriteBasket + 1, 10)`: `TBranch::Streamer` sets it to `fWriteBasket + 1`
+for the duration of the write and then floors it at 10
+(`root/tree/tree/src/TBranch.cxx:3190-3193`). Since the three counted pointers carry
+exactly `fMaxBaskets` values each and have no length of their own, **a five-basket
+branch writes ten elements per array**, five of them meaningful in `fBasketBytes`
+and `fBasketSeek`, six in `fBasketEntry`, and the rest zero.
+
+Getting the count wrong does not corrupt one field, it desynchronises everything
+after it: the three arrays are read at the wrong length, and `fFileName` ends up
+being read out of the middle of `fBasketSeek`. Lowering it by one in
+`data/written/cluster.root` is caught as
+`TBranch v13 consumed 323 bytes, byte count says 487` — a length complaint, not a
+wrong value, which is what a bad `fMaxBaskets` looks like from the reader's side.
+
+> A reader that finds `fWriteBasket >= fMaxBaskets` repairs the array silently
+> (§4.2), which is worth knowing only so that a writer does not lean on it.
+
+### 7.3 `fBasketSize` is rewritten at the first flush, and the baskets disagree
+
+ROOT calls `TTree::OptimizeBaskets` the first time `Fill` reaches a watermark
+(`root/tree/tree/src/TTree.cxx:4763`), which recomputes every branch's
+`fBasketSize` from the bytes written so far, with a floor of **512**
+(`root/tree/tree/src/TTree.cxx:7270`, set at `:7331`). A basket records the value
+in force when it was closed, so in `data/ttree/clusters.root` basket 0 carries
+`fBufferSize` 100 — the size the branch was created with — and baskets 1 to 4
+carry 512, as does the branch's own `fBasketSize`.
+
+**Nothing reads either field**: a basket's buffer is sized from `fLast` and
+`fNbytes`. It is specified here because a writer comparing its bytes with ROOT's
+will see the change and needs to know it is not a rule.
+
+### 7.4 Cluster ranges
+
+A **cluster** is a consecutive range of entries whose baskets, across all branches,
+were flushed together and therefore lie near each other in the file — the unit
+ROOT's read cache works in ([TTree §6](../04-ttree/TTree.md#6-clusters)). A tree
+does not store a list of them. It stores a piecewise-constant cluster *size*, and
+records a boundary only where that size **changes**:
+
+| Field | Value |
+|---|---|
+| `fClusterRangeEnd[i]` | the **last** entry of range *i*, inclusive — `fEntries - 1` at the moment the range closed |
+| `fClusterSize[i]` | the number of entries per cluster *within* range *i*, which is the watermark that was in force |
+| `fAutoFlush` | the size of the final, **open-ended** range, which is in neither array |
+| `fNClusterRange` | how many ranges closed |
+
+Range 0 starts at entry 0 and range *i* > 0 at `fClusterRangeEnd[i-1] + 1`, so the
+array of *ends* is enough. The rule for closing one is
+`TTree::MarkEventCluster` (`root/tree/tree/src/TTree.cxx:8466-8499`), which
+`SetAutoFlush` reaches under two conditions worth restating, because a writer that
+imitates ROOT must reproduce both or its ranges will not line up with its baskets:
+
+- **only after something has been flushed** — ROOT's test is `fFlushedBytes`, not
+  the entry count (`root/tree/tree/src/TTree.cxx:8452`), so changing the watermark
+  before the first flush changes nothing but the watermark;
+- **the size recorded is the old one**, because `fAutoFlush` is assigned after the
+  range is closed (`:8455-8457`).
+
+Once a range is closed, the next boundary is measured from the start of the current
+range and not from entry 0: ROOT's own flush test becomes
+`(fEntries - (fClusterRangeEnd[fNClusterRange - 1] + 1)) % fAutoFlush == 0`
+(`root/tree/tree/src/TTree.cxx:4799-4804`).
+
+`data/written/cluster.root` is the worked example. Nineteen entries, flushed at 4,
+8, 11, 14 and 19, with the watermark 4, then 3, then 5:
+
+| Range | Entries | Cluster size | Baskets |
+|---|---|---|---|
+| 0 | 0–7 | 4 — `fClusterSize[0]`, ending at `fClusterRangeEnd[0]` = 7 | 0 and 1, four entries each |
+| 1 | 8–13 | 3 — `fClusterSize[1]`, ending at `fClusterRangeEnd[1]` = 13 | 2 and 3, three entries each |
+| 2 | 14–18 | 5 — `fAutoFlush`, recorded nowhere else | 4, five entries |
+
+With one basket per cluster, `fBasketEntry` is `[0, 4, 8, 11, 14, 19, 0, 0, 0, 0]`
+and every cluster boundary is a basket boundary. **The converse does not hold** and
+a reader must not assume it: a basket that fills up mid-cluster is written early
+([TTree §6.2](../04-ttree/TTree.md#62-enumerating-clusters)).
+
+> **A writer is free to record no ranges at all**, and `data/written/tree.root` is
+> that case: `fNClusterRange` 0 with a negative `fAutoFlush` says "no cluster size
+> is recorded", and ROOT falls back to an estimate
+> ([TTree §6.2](../04-ttree/TTree.md#62-enumerating-clusters)). Recording ranges
+> that do not line up with the baskets is **legal and useless**: nothing checks the
+> two against each other, ROOT itself produces the mismatch whenever `SetAutoFlush`
+> is called mid-cluster, and the only cost is that the cache reads a "cluster"
+> whose baskets are not where it expected. Recording the boundaries a writer
+> actually flushed at is the whole value of the fields.
+
+### 7.5 `fFlushedBytes`, `fSavedBytes` and the rewriting of `fAutoSave`
+
+Three fields no reader needs in order to decode an entry. Two of them are read for
+something else, and the third is read by nothing at all — which is worth knowing in
+both directions.
+
+- **`fFlushedBytes`** is `fZipBytes` as of the last *automatic* flush
+  (`root/tree/tree/src/TTree.cxx:4816`). The flush `TTree::Write` does at the end
+  leaves it alone, so **0 is meaningful**: it is exactly the condition ROOT tests
+  for "nothing has been flushed yet" (`:4739-4742`), and a reader uses it to tell a
+  rewritten `fAutoFlush` from an original one
+  ([TTree §6.3](../04-ttree/TTree.md#63-fautoflush-and-fautosave-are-not-what-the-writer-asked-for)).
+- **`fSavedBytes`** is `fZipBytes` as of the last `AutoSave`
+  (`root/tree/tree/src/TTree.cxx:1542`), which rewrites the tree record mid-file.
+  **Nothing reads it back** at the current class version — `TTree::Streamer`
+  overwrites it with `fTotBytes`, and only on the pre-version-5 path
+  (`root/tree/tree/src/TTree.cxx:9884`) — so a writer that produces its file in one
+  pass puts 0 there and loses nothing.
+- **`fAutoSave`** is rewritten at that same first flush into a multiple of
+  `fAutoFlush` (`root/tree/tree/src/TTree.cxx:4770-4789`), which is why
+  `data/ttree/clusters.root` carries **3703700** when nothing asked for it:
+  `4 * ((300000000 / 81) / 4)`, from the constructor's -300000000 and the 81 bytes
+  the file then held. `data/written/cluster.root` passes that value in as an input,
+  because reproducing ROOT's arithmetic is not a requirement on a writer and
+  matching its bytes is what the case is for.
+
+## 8. The streamer infos
 
 Eighteen, for a two-branch tree:
 
@@ -356,7 +515,7 @@ the checksum beside each. A writer that emits them in the order above produces a
 record **byte-identical** to ROOT's up to the one entry below
 (`tools/test_write.py`).
 
-### 7.1 ROOT appends two rules that a new file cannot use
+### 8.1 ROOT appends two rules that a new file cannot use
 
 ROOT's record has a nineteenth entry: a `TList` named `listOfRules` holding two
 I/O customization rules
@@ -379,7 +538,7 @@ That equality is recent: until `tools/element_lists.py` compared an element's
 no checksum and in no byte count, which is why nothing had noticed
 ([Element lists §11](ElementLists.md#11-errata)).
 
-## 8. Invariants
+## 9. Invariants
 
 1. `fEntries` on the tree equals `fEntries` on every branch (for a tree written in
    one pass), and `fEntryNumber == fFirstEntry + fEntries` on each branch.
@@ -401,14 +560,31 @@ no checksum and in no byte count, which is why nothing had noticed
    count in the file.
 8. The directory's key list does not contain a `TBasket` key.
 9. `fMaxVirtualSize >= 0` and `fWeight` is the weight `Draw` should apply.
+10. `fClusterRangeEnd` and `fClusterSize` hold exactly `fNClusterRange` values
+    each, and each one's is-present flag is set **iff** the count is non-zero.
+11. `0 <= fFlushedBytes <= fZipBytes`, and the same for `fSavedBytes`.
+12. Each basket's `fNevBuf` equals `fBasketEntry[i+1] - fBasketEntry[i]`, so a
+    branch's baskets partition its entries and none of them is empty.
 
-1 to 6 and 8 are checked for the written files by `tools/check_write.py` through
-`tools/rootfile.py`, and the entry decoding of
-[Reading entries](../04-ttree/ReadingEntries.md) runs over them as well — the
-written tree's two baskets are decoded and their byte spans checked like any
-ROOT-written fixture's.
+1 to 6, 8 and 10 to 12 are checked for the written files by
+`tools/check_write.py` through `tools/rootfile.py` — 10 and 11 as
+[TTree invariants 3 and 2](../04-ttree/TTree.md#11-invariants), 12 as
+[TBranch invariant 6](../04-ttree/TBranch.md#11-invariants) — and the entry
+decoding of [Reading entries](../04-ttree/ReadingEntries.md) runs over them as
+well: every basket of every written tree is decoded and its byte spans checked
+like any ROOT-written fixture's.
 
-## 9. Class versions
+**Two things a reader must tolerate and a writer should not produce.** The reading
+side deliberately has no invariant that `fClusterRangeEnd` is *strictly* increasing
+or that `fClusterSize` is positive ([TTree §11](../04-ttree/TTree.md#11-invariants)),
+because ROOT produces both shapes: two `SetAutoFlush` calls with no `Fill` between
+them close two ranges at the same entry, and fast-merging writes a cluster size of
+**0** for a range whose source watermark was negative
+(`root/tree/tree/src/TTree.cxx:6504-6508`). Neither carries information — an empty
+range contains no entry, and a size of 0 means "not recorded" — so a writer has
+nothing to gain by emitting either.
+
+## 10. Class versions
 
 Every class a flat tree writes, with the version a writer emits. Checked against
 `ClassDef` in the pinned submodule by `tools/check_versions.py`.
@@ -430,10 +606,12 @@ Every class a flat tree writes, with the version a writer emits. Checked against
 `ROOT::TIOFeatures` is the exception: it has no `ClassDef` at all, which is why
 its version word is 0 and a checksum (§3.2).
 
-## 10. Reference files
+## 11. Reference files
 
 | File | What it is |
 |---|---|
-| `data/written/tree.root` | this project's: `n/I` and `a[n]/F`, three entries. Every record byte-identical to ROOT's |
+| `data/written/tree.root` | this project's: `n/I` and `a[n]/F`, three entries, one basket each. Every record byte-identical to ROOT's |
 | `data/ttree/basket.root` | ROOT's own, the comparison target |
+| `data/written/cluster.root` | this project's: `x/I`, nineteen entries, **five baskets** and two closed cluster ranges. Every record byte-identical to ROOT's |
+| `data/ttree/clusters.root` | ROOT's own, the comparison target for §7 |
 | `data/ttree/branch.root`, `data/ttree/leaf-forms.root` | the reading side's branch and leaf variety |

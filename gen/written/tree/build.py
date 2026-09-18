@@ -13,7 +13,7 @@ That is the point of the case, and `tools/test_write.py` asserts it.
 
 Only the `StreamerInfo` record differs, by one entry: ROOT appends a
 `listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and
-<= 18. A file written at version 20 cannot use them (`WritingTrees.md` 7.1).
+<= 18. A file written at version 20 cannot use them (`WritingTrees.md` 8.1).
 """
 
 from __future__ import annotations

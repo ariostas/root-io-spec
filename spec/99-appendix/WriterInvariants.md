@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **229
+Every layer of this specification ends with an `Invariants` section — **232
 entries across 31 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -90,7 +90,7 @@ From [Writing histograms §9](../06-writing/WritingHistograms.md#9-invariants).
 
 ## 5. A tree
 
-From [Writing trees §8](../06-writing/WritingTrees.md#8-invariants), and the
+From [Writing trees §9](../06-writing/WritingTrees.md#9-invariants), and the
 reading side's [TBranch](../04-ttree/TBranch.md),
 [TBasket](../04-ttree/TBasket.md) and [TLeaf](../04-ttree/TLeaf.md).
 
@@ -107,6 +107,10 @@ reading side's [TBranch](../04-ttree/TBranch.md),
 | `fEntries` on the tree agrees with the branches, and no entry is reachable past it | checked |
 | The key list contains no `TBasket` key | checked |
 | `fMaxVirtualSize >= 0` | nothing |
+| Each basket's `fNevBuf` equals `fBasketEntry[i+1] - fBasketEntry[i]`, so the baskets partition the entries | checked |
+| `fClusterRangeEnd` and `fClusterSize` hold exactly `fNClusterRange` values, and their is-present flag agrees with the count | checked — and a count that disagrees desynchronises the record, so nothing after `fBranches` parses |
+| `0 <= fFlushedBytes <= fZipBytes`, and the same for `fSavedBytes` | checked |
+| A recorded cluster range agrees with where the baskets actually end | nothing: ROOT's cluster iterator hands out ranges the baskets do not support |
 
 ## 6. The ones ROOT does not notice
 

@@ -487,6 +487,112 @@ class Trees(unittest.TestCase):
             self.assertIn('sourceClass="TTree"', rule)
 
 
+class Clusters(unittest.TestCase):
+    """Five baskets in one branch, against the five ROOT wrote.
+
+    `data/ttree/clusters.root` and `data/written/cluster.root` hold the same
+    nineteen entries in the same five baskets with the same two cluster ranges,
+    and every basket record and the `TTree` record is byte-identical. That is
+    what covers the three counted arrays at a length other than 1 -- five
+    `fBasketSeek` values, five `fBasketBytes`, six `fBasketEntry` and the zero
+    padding to `fMaxBaskets` -- and both cluster arrays.
+    """
+
+    def written(self) -> bytes:
+        import importlib.util
+        path = REPO / "gen/written/cluster/build.py"
+        spec = importlib.util.spec_from_file_location("cluster_build", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.build()
+
+    @staticmethod
+    def mask_datime(record: bytes) -> bytes:
+        return record[:10] + b"\x00" * 4 + record[14:]
+
+    def test_records_are_identical_to_roots(self):
+        ours = self.written()
+        root_buf, _, root_recs = rootfile.load(REPO / "data/ttree/clusters.root")
+        header = rootfile.read_header(ours)
+        our_recs = rootfile.read_records(ours, header)
+        wanted = [(r.class_name, r.offset, r.nbytes) for r in root_recs
+                  if r.class_name in ("TBasket", "TTree")]
+        self.assertEqual(
+            [(r.class_name, r.offset, r.nbytes) for r in our_recs
+             if r.class_name in ("TBasket", "TTree")], wanted)
+        self.assertEqual(len(wanted), 6)
+        for cls, offset, nbytes in wanted:
+            self.assertEqual(
+                self.mask_datime(bytes(root_buf[offset:offset + nbytes])),
+                self.mask_datime(bytes(ours[offset:offset + nbytes])),
+                f"{cls} at {offset}")
+
+    def test_cluster_ranges_close_on_a_changed_watermark(self):
+        """And only when a flush has already happened."""
+        tree = rw.Tree("t", "", auto_flush=4)
+        tree.branch("x", "I")
+        # Before any flush, changing the watermark records nothing: ROOT's
+        # condition is fFlushedBytes, not fEntries (TTree.cxx:8452).
+        for i in range(4):
+            tree.fill({"x": i})
+        tree.set_auto_flush(3)
+        self.assertEqual(tree.cluster_range_end, [])
+        self.assertEqual(tree.auto_flush, 3)
+        tree.flush()
+        for i in range(4, 7):
+            tree.fill({"x": i})
+        tree.set_auto_flush(5)
+        # fEntries is 7, so the range ends at 6, and its size is the *old*
+        # watermark.
+        self.assertEqual(tree.cluster_range_end, [6])
+        self.assertEqual(tree.cluster_size, [3])
+
+    def branch_of(self, baskets: int):
+        """Read back the branch of a tree written with `baskets` baskets."""
+        tree = rw.Tree("t", "")
+        tree.branch("x", "I")
+        for i in range(baskets):
+            tree.fill({"x": i})
+            tree.flush()
+        records = tree.records()
+        self.assertEqual(len([r for r in records
+                              if r.class_name == "TBasket"]), baskets)
+        f = rw.FileWriter("data/written/x.root")
+        for record in records:
+            f.add(record)
+        for info in rw.tree_infos(("I",)):
+            f.add_info(info)
+        buf = f.to_bytes()
+        header = rootfile.read_header(buf)
+        recs = rootfile.read_records(buf, header)
+        rec = [r for r in recs if r.class_name == "TTree"][0]
+        at = [r for r in recs if r.offset == header.seek_info][0]
+        all_infos = rootfile.read_streamer_infos(
+            rootfile.object_data(buf, at), at)
+        value = rootfile.decode_record(buf, rec, all_infos)
+        return rootfile.read_tree(buf, value, rec.offset).branches[0]
+
+    def test_max_baskets_is_the_floor_or_one_past_the_last(self):
+        """10 until there are ten baskets, then fWriteBasket + 1.
+
+        The three arrays are that long whichever it is, and the count is what a
+        reader parses the record with, so getting it wrong desynchronises
+        everything after `fBaskets` (`WritingTrees.md` 4).
+        """
+        few = self.branch_of(3)
+        self.assertEqual((few.write_basket, few.max_baskets), (3, 10))
+        self.assertEqual(len(few.basket_entry), 10)
+        # One element past the last basket is the terminator; the rest is zero.
+        self.assertEqual(few.basket_entry[:5], [0, 1, 2, 3, 0])
+        self.assertEqual(few.basket_bytes[3:], [0] * 7)
+
+        many = self.branch_of(12)
+        self.assertEqual((many.write_basket, many.max_baskets), (12, 13))
+        self.assertEqual(len(many.basket_entry), 13)
+        self.assertEqual(many.basket_entry[12], 12)
+        self.assertEqual(many.basket_bytes[12], 0)
+
+
 class Compression(unittest.TestCase):
     def test_block_round_trips_through_the_reader(self):
         data = b"hello " * 400

@@ -1244,12 +1244,8 @@ it implied. Ordered by how much it blocks a third party:
 
 1. ~~**The streamer-info element lists are not in `spec/`.**~~ **Done, 2026-09-18**
    — §8.6.
-2. **More than one basket per branch.** §3 writes one basket per branch and states
-   the general rule for the three counted arrays, but exercises it only at length 1.
-   Any tree big enough to flush is past what is written.
-3. **Cluster ranges.** A non-zero `fNClusterRange` populates `fClusterRangeEnd` and
-   `fClusterSize`, and no writing procedure covers them. Not a policy choice: the
-   arrays are a format consequence.
+2. ~~**More than one basket per branch.**~~ **Done, 2026-09-18** — §8.7.
+3. ~~**Cluster ranges.**~~ **Done, 2026-09-18** — the same work, §8.7.
 4. **`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7. The most
    commonly written classes after `TH1`.
 5. **Subdirectories.** `WritingFiles.md` §4.2 names the three differences and gives
@@ -1259,11 +1255,10 @@ it implied. Ordered by how much it blocks a third party:
 7. **`TGraph`**, which no writing document mentions and which is as common in real
    files as `TH1`.
 
-Items 2 and 3 are now the ones worth doing next, and they are one piece of work:
-a tree big enough to flush has more than one basket per branch *and* a populated
-cluster range, so neither is useful without the other. Nothing in the list is a
-correction — the documents are accurate about what they cover — and each is stated
-as a limit rather than left for a reader to discover.
+Items 4 to 7 are what is left, and none of them blocks a writer of the two things
+the layer names: a file of histograms, and a flat tree of any size. Nothing in the
+list is a correction — the documents are accurate about what they cover — and each
+is stated as a limit rather than left for a reader to discover.
 
 ### 8.6 The element lists, published (2026-09-18)
 
@@ -1320,6 +1315,47 @@ Two facts worth keeping, both from writing §3 of the document:
 `check_versions.py` went from 40 versions across 9 documents to **48 across 10**,
 because §9 of the new document is a class-version table and is therefore compared
 with `ClassDef` like every other.
+
+### 8.7 Flushing: many baskets and cluster ranges (2026-09-18)
+
+[`WritingTrees.md` §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch),
+items 2 and 3 of §8.5 in one piece of work, because a tree big enough to flush has
+both. Five subsections: what one flush changes, why `fMaxBaskets` is not the number
+of baskets, the rewriting of `fBasketSize`, cluster ranges, and
+`fFlushedBytes`/`fSavedBytes`/`fAutoSave`.
+
+**The worked example is a second byte-identical tree.** `data/written/cluster.root`
+reproduces `data/ttree/clusters.root` — nineteen entries, **five baskets**, two
+closed cluster ranges — and all five basket records plus the whole 860-byte `TTree`
+record are byte-identical to ROOT's, which is what took the three counted arrays
+past length 1: five `fBasketBytes`, five `fBasketSeek`, six `fBasketEntry`, the
+zero padding to `fMaxBaskets`, and both cluster arrays. It matched on the first run,
+which is the one case in this project where a procedure written from the source
+needed no correction from the bytes.
+
+What the work had to establish, none of it derivable from the reading side alone:
+
+| Fact | Why a writer cannot guess it |
+|---|---|
+| `fMaxBaskets` on disk is `max(fWriteBasket + 1, 10)` (`root/tree/tree/src/TBranch.cxx:3190-3193`) | it is not the in-memory capacity, and the three arrays are that long — a five-basket branch writes **ten** elements each |
+| `fBasketEntry` is one element longer than there are baskets | the extra element is the terminator, rewritten by every flush and left by the last |
+| A basket's `fBufferSize` is the branch's `fBasketSize` **when it closed** | ROOT rewrites `fBasketSize` at the first automatic flush through `OptimizeBaskets`, whose floor is 512, so basket 0 of `clusters.root` says 100 and the rest say 512 |
+| `fClusterRangeEnd[i]` is the last entry of the range, and `fClusterSize[i]` the **old** watermark | `SetAutoFlush` closes the range before assigning the new value (`root/tree/tree/src/TTree.cxx:8451-8458`), and only once something has been flushed |
+| `fAutoSave` 3703700 | `4 * ((300000000 / 81) / 4)` — ROOT's own arithmetic at the first flush, from the constructor's default and the bytes then written |
+| `fFlushedBytes` is set by an *automatic* flush and not by `Write`'s | which is what makes 0 mean "no cluster boundary was ever recorded" |
+
+**Two things a reader must tolerate and a writer should not produce** are now stated
+in §9 of the document: a non-strictly-increasing `fClusterRangeEnd` (two
+`SetAutoFlush` calls with no `Fill` between them) and an `fClusterSize` of 0 (from
+fast-merging). The reading side deliberately has no invariant against either, and
+saying so on the write side is what keeps the two halves from looking like they
+disagree.
+
+Policy stayed out of the writer: `rootwrite.Tree` gained `flush()`,
+`set_auto_flush()` and `mark_cluster()`, and the case calls them at the boundaries
+ROOT's watermark happened to produce. `fBasketSize` and `fAutoSave` are inputs for
+the same reason — reproducing ROOT's arithmetic is not a requirement on a writer,
+and matching its bytes is what the case is for.
 
 ## 9. Known gaps
 

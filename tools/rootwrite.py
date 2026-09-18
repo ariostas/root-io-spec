@@ -1563,6 +1563,10 @@ BASKET_KEY_VERSION = 1004
 #: The 19 bytes of TBasket header that sit inside fKeylen.
 BASKET_HEADER_LEN = 19
 
+#: TBranch::Streamer floors fMaxBaskets at 10 while writing, whatever the
+#: branch's real capacity is (`root/tree/tree/src/TBranch.cxx:3190-3193`).
+MIN_MAX_BASKETS = 10
+
 #: ROOT's defaults for the tree record's bookkeeping fields.
 DEFAULT_BASKET_SIZE = 32000
 DEFAULT_ENTRY_OFFSET_LEN = 1000
@@ -1651,8 +1655,27 @@ class Leaf:
 
 
 @dataclass
+class BasketBuffer:
+    """One basket's entries, closed and waiting to be written.
+
+    A branch holds one of these per flush. Two of the fields are snapshots of
+    branch state at the moment the basket was *closed* rather than now, because
+    ROOT rewrites both while filling continues: `buffer_size` is the branch's
+    `fBasketSize` then (`WritingTrees.md` 7.3) and `nev_buf_size` is the
+    `fEntryOffsetLen` the basket was created with (§5.1).
+    """
+
+    data: bytes
+    offsets: list
+    entries: int
+    first_entry: int
+    buffer_size: int
+    nev_buf_size: int
+
+
+@dataclass
 class Branch:
-    """One `TBranch` and its single basket."""
+    """One `TBranch` and its baskets, one per flush."""
 
     name: str
     leaf: Leaf
@@ -1664,16 +1687,23 @@ class Branch:
     #: exactly when the entries are not all the same length.
     entry_offset_len: int = 0
     first_entry: int = 0
-    # Filled in as entries arrive.
+    # Filled in as entries arrive: the open buffer.
     data: bytearray = field(default_factory=bytearray)
     offsets: list = field(default_factory=list)
     entries: int = 0
+    #: The baskets already closed, in flush order, and the entries in them.
+    flushed: list = field(default_factory=list)
+    written: int = 0
 
     def __post_init__(self):
         if self.title is None:
             self.title = f"{self.leaf.title}/{LEAF_LETTERS[self.leaf.kind]}"
         if self.leaf.counter is not None and self.entry_offset_len == 0:
             self.entry_offset_len = DEFAULT_ENTRY_OFFSET_LEN
+        #: fEntryOffsetLen as it was when the open buffer was created, which is
+        #: what that basket records as fNevBufSize (WritingTrees.md 5.1). It
+        #: differs from fEntryOffsetLen as soon as one flush has shrunk that.
+        self.capacity = self.entry_offset_len
 
     @property
     def variable(self) -> bool:
@@ -1711,36 +1741,94 @@ class Branch:
             return 2 * self.entries
         return n
 
+    def flush(self, next_basket_size: int | None = None) -> bool:
+        """Close the open buffer into a basket. False if there was nothing.
+
+        This is the write-side half of a cluster boundary: `fWriteBasket`
+        advances, the three counted arrays gain an element, and
+        `fEntryOffsetLen` is rewritten from the number of entries the basket
+        held (`WritingTrees.md` 7). `next_basket_size` is ROOT's
+        `OptimizeBaskets` rewriting `fBasketSize` at the first automatic flush
+        (§7.3); it is policy, so it is an input here.
+        """
+        if not self.entries:
+            return False
+        if self.variable:
+            nev_buf_size = self.capacity
+        else:
+            nev_buf_size = len(self.data) // self.entries
+        self.flushed.append(BasketBuffer(
+            data=bytes(self.data), offsets=list(self.offsets),
+            entries=self.entries, first_entry=self.first_entry + self.written,
+            buffer_size=self.basket_size, nev_buf_size=nev_buf_size))
+        self.entry_offset_len = self.flushed_entry_offset_len()
+        self.capacity = self.entry_offset_len
+        if next_basket_size is not None:
+            self.basket_size = next_basket_size
+        self.written += self.entries
+        self.data, self.offsets, self.entries = bytearray(), [], 0
+        return True
+
+    def baskets(self) -> list:
+        """Every basket this branch writes, in flush order.
+
+        Closes the open buffer first, which is what `TTree::Write` does through
+        `FlushBaskets`, so calling this twice adds nothing.
+        """
+        self.flush()
+        return [self._basket(i, b) for i, b in enumerate(self.flushed)]
+
     def basket(self) -> Obj:
-        """The branch's basket, as a record of its own.
+        """The one basket of a branch that has exactly one."""
+        baskets = self.baskets()
+        if len(baskets) != 1:
+            raise WriteError(f"branch {self.name} has {len(baskets)} baskets")
+        return baskets[0]
+
+    def _basket(self, index: int, buf: BasketBuffer) -> Obj:
+        """One basket, as a record of its own.
 
         Its key is 19 bytes longer than the strings account for, because
         `TBasket`'s own header lives inside `fKeylen` -- and its version is
-        1004, so the two offsets are 8 bytes wide whatever the file's size.
+        1004, so the two offsets are 8 bytes wide whatever the file's size. Its
+        `fCycle` is the basket number, which nothing reads
+        (`root/tree/tree/src/TBasket.cxx:1293`).
         """
         key_len = self.basket_key_len
-        payload = bytes(self.data)
+        payload = buf.data
         last = key_len + len(payload)
         if self.variable:
             # fNevBuf + 1 offsets, the last of which is never read: it is
             # whatever the array was initialised to, and ROOT's is 0.
-            payload += i32(self.entries + 1)
-            payload += b"".join(i32(o) for o in self.offsets) + i32(0)
-            nev_buf_size = DEFAULT_ENTRY_OFFSET_LEN
-        else:
-            fixed = len(self.data) // self.entries if self.entries else 0
-            nev_buf_size = fixed
-        header = (u16(BASKET_VERSION) + i32(self.basket_size)
-                  + i32(nev_buf_size) + i32(self.entries) + i32(last)
+            payload += i32(buf.entries + 1)
+            payload += b"".join(i32(o) for o in buf.offsets) + i32(0)
+        header = (u16(BASKET_VERSION) + i32(buf.buffer_size)
+                  + i32(buf.nev_buf_size) + i32(buf.entries) + i32(last)
                   + bytes([0]))
         return Obj(class_name="TBasket", name=self.name, title=self.tree_name,
                    payload=payload, key_version=BASKET_KEY_VERSION,
-                   key_extra=header, cycle=0, in_key_list=False)
+                   key_extra=header, cycle=index, in_key_list=False)
 
     # -- the branch's own record, inside the tree ------------------------
 
-    def write(self, p: Payload, seek: int, nbytes: int, obj_len: int,
-              max_baskets: int = 10) -> None:
+    def write(self, p: Payload, keys: list) -> None:
+        """The branch's own record, inside the tree's `fBranches`.
+
+        `keys` is this branch's basket keys in flush order, which is where the
+        three counted arrays come from: a writer cannot build this record until
+        every basket is placed (`WritingTrees.md` 7.1).
+        """
+        n = len(keys)
+        if n != len(self.flushed):
+            raise WriteError(f"branch {self.name}: {n} basket key(s) for "
+                             f"{len(self.flushed)} basket(s)")
+        # fMaxBaskets on disk is not the in-memory capacity: TBranch::Streamer
+        # sets it to fWriteBasket + 1, floored at 10, for the duration of the
+        # write (`root/tree/tree/src/TBranch.cxx:3190-3193`), and the three
+        # arrays are that long.
+        max_baskets = max(n + 1, MIN_MAX_BASKETS)
+        pad = max_baskets - n
+
         def body(q: Payload) -> None:
             q.tnamed(self.name, self.title, bits=BRANCH_BITS)
 
@@ -1749,38 +1837,40 @@ class Branch:
             q.framed(2, att_fill)
 
             q.raw(i32(self.compress) + i32(self.basket_size)
-                  + i32(self.flushed_entry_offset_len())
-                  + i32(1))                                   # fWriteBasket
-            q.raw(i64(self.first_entry + self.entries))       # fEntryNumber
+                  + i32(self.entry_offset_len)
+                  + i32(n))                                   # fWriteBasket
+            q.raw(i64(self.first_entry + self.written))        # fEntryNumber
             q.raw(io_features())
             q.raw(i32(0))                                     # fOffset
             q.raw(i32(max_baskets))                           # fMaxBaskets
-            q.raw(i32(0))                                     # fSplitLevel
-            q.raw(i64(self.entries) + i64(self.first_entry))
-            q.raw(i64(obj_len + self.basket_key_len))         # fTotBytes
-            q.raw(i64(nbytes))                                # fZipBytes
-            q.tobjarray("", [], embedded=True)                # fBranches
+            q.raw(i32(0))                                      # fSplitLevel
+            q.raw(i64(self.written) + i64(self.first_entry))
+            q.raw(i64(sum(k.key_len + k.obj_len for k in keys)))  # fTotBytes
+            q.raw(i64(sum(k.nbytes for k in keys)))            # fZipBytes
+            q.tobjarray("", [], embedded=True)                 # fBranches
             q.tobjarray("", [self.leaf.write], embedded=True)  # fLeaves
             # fBaskets has fWriteBasket + 1 slots and every one of them is
             # null: TBranch::Streamer removes from the array every basket that
             # is already on disk (WritingTrees.md 4.1).
-            q.tobjarray("", [lambda r: r.null()] * 2, embedded=True)
+            q.tobjarray("", [lambda r: r.null()] * (n + 1), embedded=True)
             # The three counted pointers: a flag byte, then fMaxBaskets values
-            # each, with no length of their own.
-            q.raw(b"\x01" + i32(nbytes)
-                  + i32(0) * (max_baskets - 1))               # fBasketBytes
-            q.raw(b"\x01" + i64(self.first_entry)
-                  + i64(self.first_entry + self.entries)
-                  + i64(0) * (max_baskets - 2))               # fBasketEntry
-            q.raw(b"\x01" + i64(seek)
-                  + i64(0) * (max_baskets - 1))               # fBasketSeek
-            q.raw(counted_string(""))                         # fFileName
+            # each, with no length of their own. Element i describes basket i;
+            # fBasketEntry has one element more than there are baskets, and the
+            # padding past it is zero.
+            q.raw(b"\x01" + b"".join(i32(k.nbytes) for k in keys)
+                  + i32(0) * pad)                             # fBasketBytes
+            q.raw(b"\x01" + b"".join(i64(b.first_entry) for b in self.flushed)
+                  + i64(self.first_entry + self.written)
+                  + i64(0) * (pad - 1))                       # fBasketEntry
+            q.raw(b"\x01" + b"".join(i64(k.seek_key) for k in keys)
+                  + i64(0) * pad)                             # fBasketSeek
+            q.raw(counted_string(""))                          # fFileName
         p.slot("TBranch", BRANCH_VERSION, body, key=id(self))
 
 
 @dataclass
 class Tree:
-    """A `TTree` of flat branches, one basket each."""
+    """A `TTree` of flat branches, with one basket per branch per flush."""
 
     name: str
     title: str = ""
@@ -1793,18 +1883,80 @@ class Tree:
     auto_save: int = DEFAULT_AUTO_SAVE
     auto_flush: int = DEFAULT_AUTO_FLUSH
     estimate: int = DEFAULT_ESTIMATE
+    saved_bytes: int = 0
+    #: The closed cluster ranges: the last entry of each, inclusive, and the
+    #: cluster size within it (`WritingTrees.md` 7.4).
+    cluster_range_end: list = field(default_factory=list)
+    cluster_size: list = field(default_factory=list)
+    #: How many times every branch has been flushed, and how many of those
+    #: rounds were automatic -- only the latter move fFlushedBytes (§7.5).
+    rounds: int = 0
+    automatic_rounds: int = 0
 
     def branch(self, name: str, kind: str, length: int = 1,
-               counter: "Branch | None" = None, title: str | None = None):
+               counter: "Branch | None" = None, title: str | None = None,
+               basket_size: int = DEFAULT_BASKET_SIZE):
         """Add a branch of one leaf, optionally counted by another branch."""
         leaf = Leaf(name=name, kind=kind, length=length,
                     counter=counter.leaf if counter is not None else None)
         if counter is not None:
             # fIsRange belongs on the *counter*, and nothing else sets it.
             counter.leaf.is_range = True
-        br = Branch(name=name, leaf=leaf, tree_name=self.name, title=title)
+        br = Branch(name=name, leaf=leaf, tree_name=self.name, title=title,
+                    basket_size=basket_size)
         self.branches.append(br)
         return br
+
+    def flush(self, *, automatic: bool = True,
+              basket_size: int | None = None) -> None:
+        """Close one basket on every branch: a cluster boundary.
+
+        `automatic` distinguishes the flush ROOT does from `TTree::Fill` when a
+        watermark is reached, which sets `fFlushedBytes`, from the one
+        `TTree::Write` does at the end, which does not
+        (`root/tree/tree/src/TTree.cxx:4816` against `:10012`). A reader uses
+        that difference: `fFlushedBytes` of 0 means no cluster boundary was ever
+        recorded.
+        """
+        flushed = [br.flush(next_basket_size=basket_size)
+                   for br in self.branches]
+        if not any(flushed):
+            return
+        self.rounds += 1
+        if automatic:
+            self.automatic_rounds = self.rounds
+
+    def set_auto_flush(self, value: int) -> None:
+        """Change the flush watermark, closing a cluster range if one is open.
+
+        `TTree::SetAutoFlush` records the boundary only when flushing has
+        already happened, and only when either watermark is a positive entry
+        count (`root/tree/tree/src/TTree.cxx:8451-8458`). The size it records is
+        the **old** value, because `fAutoFlush` is assigned afterwards.
+        """
+        if value == self.auto_flush:
+            return
+        if (self.auto_flush > 0 or value > 0) and self.automatic_rounds:
+            self.mark_cluster()
+        self.auto_flush = value
+
+    def mark_cluster(self) -> None:
+        """Close the open cluster range at the current entry count.
+
+        `TTree::MarkEventCluster` (`root/tree/tree/src/TTree.cxx:8466-8499`):
+        the range ends at `fEntries - 1`, inclusive, and its size is the current
+        watermark when that is positive.
+        """
+        if not self.entries:
+            return
+        self.cluster_range_end.append(self.entries - 1)
+        if self.auto_flush > 0:
+            self.cluster_size.append(self.auto_flush)
+        elif len(self.cluster_range_end) == 1:
+            self.cluster_size.append(self.entries)
+        else:
+            self.cluster_size.append(self.cluster_range_end[-1]
+                                     - self.cluster_range_end[-2])
 
     def fill(self, values: dict) -> None:
         """One entry. `values` maps each branch's name to its value(s)."""
@@ -1831,15 +1983,28 @@ class Tree:
         self.entries += 1
 
     def records(self) -> list:
-        """The baskets, then the tree record. In that order, necessarily."""
-        out = [br.basket() for br in self.branches]
+        """The baskets, then the tree record. In that order, necessarily.
+
+        Any entries still in an open buffer are flushed first -- one more basket
+        per branch -- because a tree record cannot describe a basket that is not
+        on disk. Baskets go out in flush order, all branches of round 0 before
+        any of round 1, which is the order ROOT's `FlushBaskets` produces.
+        """
+        self.flush(automatic=False)
+        out = []
+        for round_ in range(self.rounds):
+            for br in self.branches:
+                if round_ < len(br.flushed):
+                    out.append(br._basket(round_, br.flushed[round_]))
         out.append(Obj(class_name="TTree", name=self.name, title=self.title,
                        payload=b"", builder=self._payload))
         return out
 
     def _payload(self, key_len: int, placed) -> bytes:
-        by_name = {p.key.name: p for p in placed
-                   if p.key.class_name == "TBasket"}
+        by_name: dict = {}
+        for item in placed:
+            if item.key.class_name == "TBasket":
+                by_name.setdefault(item.key.name, []).append(item.key)
         p = Payload(key_len)
 
         def body(q: Payload) -> None:
@@ -1858,27 +2023,37 @@ class Tree:
                       + f32(MARKER_DEFAULTS[2]))
             q.framed(3, marker)
 
-            tot = sum(by_name[b.name].key.key_len + by_name[b.name].key.obj_len
-                      for b in self.branches)
-            zip_ = sum(by_name[b.name].key.nbytes for b in self.branches)
-            q.raw(i64(self.entries) + i64(tot) + i64(zip_) + i64(0) + i64(0))
+            keys = {b.name: by_name.get(b.name, []) for b in self.branches}
+            tot = sum(k.key_len + k.obj_len
+                      for b in self.branches for k in keys[b.name])
+            zip_ = sum(k.nbytes for b in self.branches for k in keys[b.name])
+            # fFlushedBytes is fZipBytes as of the last *automatic* flush, so
+            # it counts the baskets of those rounds only (7.5).
+            flushed = sum(k.nbytes for b in self.branches
+                          for k in keys[b.name][:self.automatic_rounds])
+            q.raw(i64(self.entries) + i64(tot) + i64(zip_)
+                  + i64(self.saved_bytes) + i64(flushed))
             q.raw(f64(self.weight))
             q.raw(i32(0) + i32(self.scan_field) + i32(0)
-                  + i32(self.default_entry_offset_len) + i32(0))
+                  + i32(self.default_entry_offset_len)
+                  + i32(len(self.cluster_range_end)))          # fNClusterRange
             q.raw(i64(self.max_entries) + i64(self.max_entries) + i64(0))
             q.raw(i64(self.auto_save) + i64(self.auto_flush)
                   + i64(self.estimate))
-            # fClusterRangeEnd and fClusterSize: counted pointers with
-            # fNClusterRange of 0, so a single absent-flag byte each.
-            q.raw(b"\x00" + b"\x00")
+            # fClusterRangeEnd and fClusterSize: counted pointers of
+            # fNClusterRange values each. With no closed range, that is a single
+            # *absent* flag byte each and nothing behind it; otherwise a present
+            # flag and exactly fNClusterRange values (7.4).
+            for values in (self.cluster_range_end, self.cluster_size):
+                if values:
+                    q.raw(b"\x01" + b"".join(i64(v) for v in values))
+                else:
+                    q.raw(b"\x00")
             q.raw(io_features())
             # TTree::fBranches is the one TObjArray in the record that ROOT
             # marks kIsOwner.
             q.tobjarray("", [
-                (lambda b: (lambda r: b.write(
-                    r, by_name[b.name].key.seek_key,
-                    by_name[b.name].key.nbytes,
-                    by_name[b.name].key.obj_len)))(br)
+                (lambda b: (lambda r: b.write(r, keys[b.name])))(br)
                 for br in self.branches
             ], bits=0x4000, embedded=True)
             # fLeaves holds references to the leaves already written inside

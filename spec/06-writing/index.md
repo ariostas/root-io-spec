@@ -68,7 +68,7 @@ with a plain `sha256`.
 | [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, keys, the key list, the free list, and where the end of the file is |
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
 | [Writing histograms](WritingHistograms.md) | `TH1F` and `TH1D`, member by member, at the current class version |
-| [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf, and its baskets |
+| [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf, its baskets, and flushing — more than one basket per branch, and the cluster ranges that come with it |
 | [Element lists](ElementLists.md) | The streamer info of each of the twenty-seven classes the other three documents need: every element, with every field |
 
 Each is written as a numbered procedure, with a table per record or per class
@@ -160,16 +160,12 @@ word.
 - **Policy.** Basket sizes, when to flush, how many entries per cluster, which
   compression setting: ROOT's choices, and a writer's to make differently. Where a
   choice has a *format* consequence — a basket over 16 MiB is split into blocks,
-  say — the consequence is specified and the choice is not.
-- **More than one basket per branch, and cluster ranges.** §3's tree procedure
-  writes one basket per branch, and gives `fBasketBytes`/`fBasketEntry`/`fBasketSeek`
-  as derived arrays whose general rule is stated but only exercised at length 1. A
-  tree with a non-zero `fNClusterRange` additionally carries two populated counted
-  arrays, `fClusterRangeEnd` and `fClusterSize`, which no procedure here specifies —
-  their meaning is on the reading side
-  ([Auxiliary](../04-ttree/Auxiliary.md)). This is a real limit, not a policy
-  choice: a writer of a tree larger than one basket per branch is past what is
-  written down.
+  say — the consequence is specified and the choice is not. Flushing is the largest
+  example: [Writing trees §7](WritingTrees.md#7-more-than-one-basket-per-branch)
+  specifies everything a flush *produces*, cluster ranges included, and states
+  ROOT's own rule for when to do it without requiring it. The two values ROOT
+  derives at its first flush, `fBasketSize` and `fAutoSave`, are inputs to this
+  project's writer for the same reason.
 - **Subdirectories.** [Writing a file §4.2](WritingFiles.md#42-a-subdirectory-record-is-not-the-same-shape)
   names the three ways a subdirectory's record differs but gives no procedure for
   creating one — nothing on cycle assignment, its own key list, or how the parent

@@ -184,11 +184,13 @@ tools/check_write.py --accept         # re-record data/written/ after a delibera
 no reason to consult a clock, so `rootwrite.py` takes the timestamp and UUID as
 inputs and the manifest is a plain sha256.
 
-**Three records are byte-identical to ROOT's**, which is the check that found every
-error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
+**Four kinds of record are byte-identical to ROOT's**, which is the check that
+found every error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
 `data/classes/histogram.root`, a `StreamerInfo` record of fifteen infos (9628),
-and both baskets plus the whole `TTree` record against `data/ttree/basket.root`.
-A fourth is identical bar one entry: the tree file's `StreamerInfo` record, where
+both baskets plus the whole `TTree` record against `data/ttree/basket.root`, and
+**five baskets plus the 860-byte `TTree` record** against
+`data/ttree/clusters.root`, which is the multi-basket and cluster-range case. One
+more is identical bar a single entry: a tree file's `StreamerInfo` record, where
 ROOT appends a `listOfRules` a file written at `TTree` version 20 cannot use.
 The tree comparison is the strictest, because a branch stores its baskets'
 *offsets*, so the two file names are deliberately the same length. When a

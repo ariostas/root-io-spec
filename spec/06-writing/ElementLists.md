@@ -346,7 +346,7 @@ Class version **3**, `fCheckSum` **`0xf9b1569f`**. 2 elements.
 ## 6. A flat tree file: the other nine
 
 With §4 these are the eighteen of
-[Writing trees §7](WritingTrees.md#7-the-streamer-infos). `TBranchRef`,
+[Writing trees §8](WritingTrees.md#8-the-streamer-infos). `TBranchRef`,
 `TRefTable` and `TObjArray` are all reached through null pointers the same way,
 and `ROOT::TIOFeatures` is the one class here with no `ClassDef` at all — an
 object of it carries a version word of 0 followed by a checksum

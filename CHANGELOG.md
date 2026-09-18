@@ -9,6 +9,18 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New: flushing, so a writer is no longer limited to one basket per branch**
+  ([Writing trees §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch)).
+  What a flush produces — `fWriteBasket`, the three counted arrays at any length,
+  `fMaxBaskets` as `max(fWriteBasket + 1, 10)`, a basket's `fCycle` and
+  `fBufferSize`, `fEntryOffsetLen` rewritten per flush — and the **cluster ranges**
+  that come with it: `fClusterRangeEnd` inclusive, `fClusterSize` as the watermark
+  in force, `fAutoFlush` as the size of the final open-ended range, and
+  `fFlushedBytes` non-zero as the only sign that any boundary was recorded. Any tree
+  big enough to flush was past what the writing layer covered; it no longer is.
+  `data/written/cluster.root` is the worked example and reproduces ROOT's
+  `data/ttree/clusters.root` — five baskets, two ranges, nineteen entries — with
+  every basket record and the whole `TTree` record byte-identical.
 - **New: the streamer-info element lists a writer has to emit**
   ([Element lists](spec/06-writing/ElementLists.md)). 27 classes and 157 elements —
   everything a writer of `TH1F`/`TH1D` histograms or a flat `TTree` must describe —
