@@ -7,6 +7,26 @@ bug ([spec/index.md](spec/index.md)).
 This file records what changed for a **reader**. The git log records how each fact
 was established, which is the other half of the story.
 
+## Unreleased
+
+- **Every branch-basket in the two corpora that any reader could decode is now
+  decoded and checked**: 27969 of 28036, 99.8%, and 1696 of 1696 over the files
+  the ROOT team published. The entry decoder reads a basket kept inside the
+  `TTree` record rather than written as its own key, which is most of a file
+  written through `TDirectory::WriteTObject`. The 67 that remain are a collection
+  whose value class has no streamer info in its file, and a class with a
+  hand-written `Streamer` — neither is unimplemented.
+- **`ReadingEntries.md` §4.1: resolve a counted array's counter branch by name
+  among the branch's siblings**, not through the recorded `fBranchCount`. ROOT
+  looks the name up over the whole tree, so a tree holding two split objects of
+  one class records the first object's counter on both — and reads no data for the
+  second. Erratum 6 has the witness: `alice_ESDs.root`, where ROOT reads 0 indices
+  for entries holding 18, 22, 6 and 13.
+- **`ReadingEntries.md` §4.2: a container's member needs one count per object.**
+  For `fType` 31 or 41 whose element is `T *x; //[n]`, the entry is one flag byte
+  then that object's values, per object, with the counts held as a column in the
+  sibling branch. Nothing in the file points from the member to that branch.
+
 ## 0.1.0 — 2026-09-17
 
 First release. Descriptive of **ROOT 6.40.04**, pinned as the `root/` submodule.

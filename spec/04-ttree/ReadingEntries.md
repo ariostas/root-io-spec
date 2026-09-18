@@ -17,7 +17,13 @@ Unchanged from [TBranch §10](TBranch.md#10-reading), and worth restating becaus
 the rest of this document assumes it. Given a branch and an entry number:
 
 1. Find the basket index *i* with `fBasketEntry[i] <= entry < fBasketEntry[i+1]`.
-2. Read that basket ([TBasket](TBasket.md)).
+2. Read that basket ([TBasket](TBasket.md)). **It need not be a record**: when
+   `fBasketSeek[i]` is 0 the basket is embedded in the `TTree` record itself
+   ([TBranch §5](TBranch.md#5-fbaskets-is-written-and-is-usually-empty)), and its
+   raw block plays the part the record offset plays below — every offset in step 3
+   is relative to the block start. A reader that can only fetch a basket by file
+   offset cannot read such an entry at all, and in a file written by
+   `TDirectory::WriteTObject` that is every entry it has.
 3. The entry's byte range within the basket payload is:
 
 | | start | end |
@@ -186,6 +192,61 @@ must be read for the same entry **before** this one, and a reader has to order
 its work accordingly. That is a real constraint, not an implementation detail: a
 member column cannot be decoded in isolation.
 
+### 4.1 Resolve the counter by name, not by `fBranchCount`
+
+> **`fBranchCount` can name the wrong branch, and a reader that follows it loses
+> data silently.** Resolve the counter by **name among the branch's own
+> siblings**: take this branch's name up to and including its last `.`, append the
+> count member's name — the same name the element carries as its counter and the
+> leaf carries in its title, `fAllBits[fNbytes]` — and use the sibling that
+> matches.
+
+That is what ROOT's writer *intends*: it builds exactly that name and then calls
+`TTree::GetBranch` on it (`root/tree/tree/src/TBranchElement.cxx:432-438`), which
+searches the **whole tree** and returns the first branch with that name. When a
+tree holds two split objects of one class whose sub-branches carry no parent
+prefix, both objects' members get a pointer to the **first** object's counter, and
+the read path uses it as it stands (`root/tree/tree/src/TBranchElement.cxx:4649`).
+
+> **Witnessed.** `alice_ESDs.root` (ROOT 5.34) splits an `AliESDVertex` twice, as
+> `SPDVertex` and `PrimaryVertex`; both objects' sub-branches are named plainly
+> `fNIndices` and `fIndices`, so both `fIndices` branches record the *same*
+> `fBranchCount`, the one under `SPDVertex`. Its value is 0 for all 20 entries.
+> `PrimaryVertex`'s own `fNIndices` holds 18, 22, 6, 13, … and its `fIndices`
+> entries are 37, 45, 13 and 27 bytes — exactly `1 + n × 2` for those counts. A
+> reader following the recorded pointer reads **no indices at all** and nothing
+> tells it so; ROOT is such a reader. See erratum 6.
+
+The entry's own byte range is the cross-check that catches it: for a fixed-width
+*T* the length is `1 + n × sizeof(T)` exactly, so a count that disagrees with the
+span is a count from the wrong branch.
+
+### 4.2 A container's member needs one count per object
+
+For `fType` 31 and 41 the element may itself be a counted array — `UChar_t *x;
+//[n]` inside the class the container holds. Then *two* counts are in play and
+they come from different places:
+
+- **how many objects** the entry has: the count branch, as the table above;
+- **how long each object's array is**: the sibling branch carrying the count
+  member, whose column for this entry holds **one value per object**.
+
+The column is then, per object, the ordinary [§3.4](#34-a-counted-array-a-flag-byte-then-n-values)
+shape — one flag byte, then that object's values:
+
+```
+Tracks                          entry 0   00 00 00 58          88 objects
+Tracks.fTPCClusterMap.fNbytes   entry 0   352 bytes = 88 x 4, every value 20
+Tracks.fTPCClusterMap.fAllBits  entry 0   1848 bytes = 88 x (1 + 20)
+                                          01 ff ff ... 7f  01 ff ff ... 7f  ...
+```
+
+from `alice_ESDs.root`. Nothing in the file points from `fAllBits` to `fNbytes`:
+`fBranchCount` on an `fType` 31 branch names the **master** branch, the clones
+count, so the per-object counter is reachable only through the name in the
+element and the leaf title — which is why §4.1's rule is the only one that works
+here.
+
 ## 5. What one member's bytes look like
 
 For everything but §3.1 and §3.5, the bytes are produced by the streamer
@@ -312,15 +373,14 @@ All six are checked over every fixture and both corpora. Invariant 2 is
 Invariant 5 is the general statement of the others and is the one a third-party
 reader should test itself against. It cannot be checked by a rule — only by
 decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
-reason that reader exists. Over the fixtures and both corpora it holds on 21 802
-branch-baskets. The 111 it cannot reach are named individually in the checker's
-`SKIPPED` report, with a count and a reason each. The two largest groups are a
-collection whose value class has no streamer info in the file (52, which
-[Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
-says nobody can read, ROOT included) and a `pair<K,V>` whose members are not
-fundamental types (34), which is a gap in
-[Collections §8](../02-serialization/Collections.md#8-stdmap) rather than in this
-document.
+reason that reader exists. Over the fixtures and both corpora it holds on **27 969
+branch-baskets, 99.8% of them**, with the remaining 67 named individually in the
+checker's `SKIPPED` report with a count and a reason each. Every one of those 67 is
+something **no reader could decode from the file**: a collection whose value class
+has no streamer info in it
+([Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
+says nobody can read those, ROOT included), or a class whose `Streamer` is
+hand-written. None is unimplemented.
 
 > Two of the reasons are worth naming here, because neither is a defect and
 > neither can be resolved from inside the file. A class whose `Streamer` is
@@ -338,6 +398,7 @@ document.
 | 3 | `root/io/doc/TFile/ttree.md:75`: `fMaximum` is "Maximum entries for a TClonesArray or variable array" | True as far as it goes, but it is also a read-time bound that ROOT enforces (§6). A reader that treats it as a hint accepts entries ROOT rejects |
 | 4 | — | Nothing anywhere states that the header of §5.3 is shared across a *column*. For `kStreamer`, `kSTL` and `kStreamLoop` an entry of *n* values carries one byte count and one version word between them, and a member-wise column carries one value-class version too. A reader that frames each value desynchronises on the second |
 | 5 | — | Nothing states that a `std::bitset` member can be written as a branch with no bytes in it. Before ROOT 6.08/06 it always was (§3.6), and the branch looks identical to one that holds data |
+| 6 | — | **A suspected ROOT bug, and a data-loss one.** `fBranchCount` is set from a name looked up over the whole tree (`root/tree/tree/src/TBranchElement.cxx:438`), so two split objects of one class whose sub-branches carry no parent prefix both point at the *first* object's counter. In `alice_ESDs.root` ROOT therefore reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13 (§4.1). The bytes are intact and self-describing; only the pointer is wrong. Resolve the counter among siblings instead |
 
 ## 10. Reference files
 

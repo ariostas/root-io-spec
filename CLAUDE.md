@@ -117,45 +117,42 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **26948 of 27949, 96.4%**, with 0 failures. Read a
-`0 failure(s)` line against the `ENTRIES` line: it means zero failures among the
-things checked. The 1001 skips are named individually and fall into four groups:
+Over the two corpora that is **27969 of 28036, 99.8%**, with 0 failures, and the
+67 skips are of two kinds only, both of them **things no reader could decode from
+the file**:
 
-- **920 an embedded basket** — a basket kept inside the `TTree` record rather than
-  written as its own key (`TBranch.md` §5). `TreeReader` fetches baskets by file
-  offset and an embedded one has none, so `ReadingEntries` invariant 5 cannot run
-  on it. Reachable, unimplemented, and by far the largest item left: `PLAN.md`
-  §8.3 item M8.
-- **48 a collection whose value class has no streamer info in the file** — not a
-  gap at all; `Collections.md` §9 says it is unreadable by anyone, ROOT included.
-- **18 a branch or class whose `Streamer` is hand-written**, which no streamer
-  info describes.
-- **15 a basket whose record could not be read here**, a missing codec or a
-  truncated file.
+- **a collection whose value class has no streamer info in it** — `Collections.md`
+  §9 says nobody can read those, ROOT included;
+- **a class whose `Streamer` is hand-written**, which no streamer info describes.
 
-So two of the four groups are the reader's own plumbing and two are things no
-reader could decode. `PLAN.md` §9.11 tracks what that leaves.
+**No skip anywhere is unimplemented any more**, over the fixtures or the corpora.
+Read a `0 failure(s)` line against the `ENTRIES` line all the same: it means zero
+failures among the things checked, and that is the number to quote.
 
-**That figure used to read 99.7%, and the difference is a correction, not a
-regression.** Until 2026-09-17 neither entry check looked at an embedded basket
-at all: the leaf-driven one iterated the baskets *below* `fWriteBasket` and the
-embedded one sits *at* it, so 1266 branch-baskets were in neither the numerator
-nor the denominator. The leaf-driven check now covers them, which is what closed
-346 of those skips outright and what turned the other 920 from invisible into a
-named line. A ratio that cannot see what it skipped is worth less than a lower
-ratio that can.
+**That figure read 99.7% until 2026-09-17, then 96.4%, and both moves were
+corrections.** Neither entry check had ever looked at an **embedded** basket — one
+kept inside the `TTree` record rather than written as its own key (`TBranch.md`
+§5). The leaf-driven check iterated the baskets *below* `fWriteBasket` and an
+embedded one sits *at* it, so 1266 branch-baskets were in neither the numerator nor
+the denominator: the old 99.7% was measuring the wrong denominator. Making them
+visible dropped the ratio to 96.4%, and then reading them raised it to 99.8% of a
+bigger number. A ratio that cannot see what it skipped is worth less than a lower
+one that can.
 
 Its companion lesson stands: two causes used to share the message
 `counter basket unavailable` — a basket whose codec is missing, and a counter
-basket embedded in the tree record — so they are spelled out separately. The
-count is only as informative as the reason, and a shared message hides a
-category.
+basket embedded in the tree record — so they are spelled out separately. The count
+is only as informative as the reason, and a shared message hides a category.
 
-**No skip over the fixtures is merely unimplemented any more.** `ttree/branch-clones`
-used to contribute four, because its counter branch keeps its basket embedded and
-the counter lookup could only fetch a record; it now reads the embedded basket out
-of the `TTree` payload. The two that remain are a class with a hand-written
-`Streamer` and a collection with no streamer info in its own file.
+**Reading those baskets found a ROOT bug**, which is the return on the work.
+`fBranchCount` is set from a counter name looked up over the whole tree
+(`root/tree/tree/src/TBranchElement.cxx:438`), so when a tree holds two split
+objects of one class whose sub-branches carry no parent prefix, both objects'
+counted-array members point at the **first** object's counter. In
+`alice_ESDs.root` ROOT reads 0 elements for `PrimaryVertex.fIndices`, whose entries
+hold 18, 22, 6 and 13. `TreeReader` resolves a counter among siblings instead —
+`ReadingEntries.md` §4.1 and erratum 6 — and the entry's byte span is the
+cross-check that catches the difference.
 
 **`spec/05-rntuple/` is not ours to edit.** `BinaryFormatSpecification.md` there
 is a byte-for-byte copy of ROOT's own RNTuple specification, and

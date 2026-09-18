@@ -3679,8 +3679,14 @@ class TreeReader:
 
     def __init__(self, buf: bytes, tree: Tree, infos: list[StreamerInfo],
                  fetch=None, tolerant: bool = False,
-                 custom: "set[str] | None" = None):
+                 custom: "set[str] | None" = None,
+                 tree_payload: bytes | None = None):
         self.buf = buf
+        # The TTree record's own object data, in which Branch.embedded[i].block
+        # is an offset. Without it a basket that was never written as a record is
+        # unreachable, which is most of a file written by TDirectory::WriteTObject
+        # (TBranch.md 5).
+        self.tree_payload = tree_payload
         self.tree = tree
         self.infos = infos
         self.tolerant = tolerant
@@ -3691,10 +3697,22 @@ class TreeReader:
             # Not in fBranches and it holds data all the same -- TTree.md 4.
             self.branches.append(tree.branch_ref)
         self.by_slot = {br.slot: br for br in self.branches}
+        self.by_name = {br.name: br for br in self.branches}
+        # Who holds whom, for resolving a counter among siblings rather than
+        # through fBranchCount -- ReadingEntries.md 4.1.
+        self._siblings: dict[int, list[Branch]] = {}
+        def index(children: list[Branch]) -> None:
+            for child in children:
+                self._siblings[child.slot] = children
+                index(child.branches)
+        index(tree.branches)
         self._records: dict[int, Record] | None = None
         self._info: dict[int, StreamerInfo] = {}
-        self._decoders: dict[int, Decoder] = {}
-        self._baskets: dict[int, Basket] = {}
+        # Keyed by (offset, embedded) rather than by offset alone: an embedded
+        # basket's offset is a position in the TTree payload and a record's is a
+        # position in the file, so the two number spaces overlap.
+        self._decoders: dict[tuple[int, bool], Decoder] = {}
+        self._baskets: dict[tuple[int, bool], Basket] = {}
         self._counts: dict[tuple[int, int], int] = {}
 
     def _default_fetch(self, seek: int):
@@ -3708,36 +3726,56 @@ class TreeReader:
         return self._info[br.slot]
 
     def basket_for(self, br: Branch, entry: int):
-        """`(record, buffer, basket, index)` for `entry` of `br`."""
+        """`(record, buffer, basket, index, embedded)` for `entry` of `br`."""
         i = find_basket(br, entry)
         if i >= len(br.basket_seek):
             raise FormatError(
                 f"branch {br.name!r}: basket {i} holds entry {entry} but "
                 f"fBasketSeek has {len(br.basket_seek)} entries")
-        got = self.fetch(br.basket_seek[i])
-        if got is None:
-            raise UnsupportedClass(f"basket of branch {br.name!r} unavailable")
-        rec, payload = got
-        if rec.offset not in self._baskets:
-            self._baskets[rec.offset] = read_basket(self.buf, rec, payload)
-        basket = self._baskets[rec.offset]
+        if not br.basket_seek[i] and i in br.embedded:
+            # Never written as a record: the basket is inside the TTree record,
+            # and its raw block is the buffer its own offsets are relative to --
+            # the block start plays the part the record offset plays for a basket
+            # of its own. TBranch.md 5, TBasket.md 4.1.
+            emb = br.embedded[i]
+            if self.tree_payload is None or emb.block < 0:
+                raise UnsupportedClass(
+                    f"basket {i} of branch {br.name!r} is embedded in the tree "
+                    f"record, and this reader was given no tree payload")
+            rec = Record(offset=emb.block, nbytes=0, key_len=emb.key_len)
+            basket, payload, embedded = emb.basket, self.tree_payload, True
+        else:
+            got = self.fetch(br.basket_seek[i])
+            if got is None:
+                raise UnsupportedClass(f"basket of branch {br.name!r} unavailable")
+            rec, payload = got
+            embedded = False
+            key = (rec.offset, False)
+            if key not in self._baskets:
+                self._baskets[key] = read_basket(self.buf, rec, payload)
+            basket = self._baskets[key]
         if basket.generated:
             raise UnsupportedClass(
                 "basket flag 80: the entry offsets are generated, TBasket.md 5.2.1")
-        return rec, payload, basket, entry - br.basket_entry[i]
+        return rec, payload, basket, entry - br.basket_entry[i], embedded
 
-    def decoder_for(self, rec: Record, payload: bytes) -> Decoder:
+    def decoder_for(self, rec: Record, payload: bytes,
+                    embedded: bool = False) -> Decoder:
         """A Decoder over one basket.
 
         The base is the basket record's offset, because that is buffer position
         0 for everything inside it -- the same convention as every other record
-        (Buffer.md section 1), and what basket_entry_range already assumes.
+        (Buffer.md section 1), and what basket_entry_range already assumes. For an
+        embedded basket the raw block start takes that role: ROOT reads the block
+        into the basket's own buffer, so positions inside it are relative to the
+        block and not to the TTree record that carries it.
         """
-        if rec.offset not in self._decoders:
-            self._decoders[rec.offset] = Decoder(payload, rec.offset, self.infos,
-                                                 tolerant=self.tolerant,
-                                                 custom=self.custom)
-        return self._decoders[rec.offset]
+        key = (rec.offset, embedded)
+        if key not in self._decoders:
+            self._decoders[key] = Decoder(payload, rec.offset, self.infos,
+                                          tolerant=self.tolerant,
+                                          custom=self.custom)
+        return self._decoders[key]
 
     def count_at(self, br: Branch, entry: int) -> int:
         """The Int_t a count or counter branch holds for `entry`.
@@ -3749,7 +3787,7 @@ class TreeReader:
         key = (br.slot, entry)
         if key in self._counts:
             return self._counts[key]
-        rec, payload, basket, index = self.basket_for(br, entry)
+        rec, payload, basket, index, _ = self.basket_for(br, entry)
         start, end = basket_entry_range(rec, basket, index)
         if start == end:
             # IsMissingCollection: the four bytes are rewound and the entry
@@ -3761,6 +3799,54 @@ class TreeReader:
                 count = 0
         self._counts[key] = count
         return count
+
+    def counter_branch(self, br: Branch, count_name: str) -> Branch:
+        """The branch holding `count_name` for `br`. ReadingEntries.md 4.1.
+
+        Resolved by NAME among this branch's siblings, and only then through
+        fBranchCount. ROOT does the opposite and it costs it data: the writer
+        builds the counter's name from this branch's own name and looks it up with
+        TTree::GetBranch (root/tree/tree/src/TBranchElement.cxx:432-438), which
+        searches the whole tree and returns the first match, so a tree holding two
+        split objects of one class records the FIRST object's counter on both --
+        ReadingEntries.md erratum 6, witnessed in alice_ESDs.root.
+        """
+        prefix = br.name[:br.name.rfind(".") + 1]     # "" when there is no dot
+        want = prefix + count_name
+        for sibling in self._siblings.get(br.slot, ()):
+            if sibling.name == want and sibling is not br:
+                return sibling
+        if want in self.by_name:
+            return self.by_name[want]
+        if br.count_slot >= 0 and br.count_slot in self.by_slot:
+            return self.by_slot[br.count_slot]
+        raise UnsupportedClass(
+            f"branch {br.name!r} needs the count {count_name!r} and no branch "
+            f"named {want!r} is in this tree")
+
+    def counts_column(self, br: Branch, count_name: str, entry: int,
+                      objects: int) -> list[int]:
+        """One count per object, from the counter branch's own column.
+
+        A split member of a container whose type is `T *x; //[n]` needs a
+        different n for every object in the entry, and the file holds them in the
+        sibling branch that carries n -- as a column of `objects` values, one per
+        object. ReadingEntries.md 4.2.
+        """
+        counter = self.counter_branch(br, count_name)
+        if objects <= 0:
+            return []
+        rec, payload, basket, index, _ = self.basket_for(counter, entry)
+        start, end = basket_entry_range(rec, basket, index)
+        span = end - start
+        if span % objects:
+            raise FormatError(
+                f"branch {counter.name!r}: {span} bytes for {objects} object(s), "
+                f"which does not divide")
+        width = span // objects
+        return [int.from_bytes(payload[start + i * width:
+                                       start + (i + 1) * width], "big")
+                for i in range(objects)]
 
     def count_for(self, br: Branch, entry: int) -> int:
         """The count a branch's own entry needs, from the branch fBranchCount
@@ -3797,13 +3883,14 @@ class TreeReader:
         if not self.holds_data(br):
             raise FormatError(
                 f"branch {br.name!r} is an interior node and holds no entries")
-        rec, payload, basket, index = self.basket_for(br, entry)
+        rec, payload, basket, index, embedded = self.basket_for(br, entry)
         start, end = basket_entry_range(rec, basket, index)
         return start, end, self.decode_entry(br, entry, rec, payload, basket,
-                                             index, start, end)
+                                             index, start, end, embedded)
 
     def decode_entry(self, br: Branch, entry: int, rec: Record, payload: bytes,
-                     basket: Basket, index: int, start: int, end: int) -> int:
+                     basket: Basket, index: int, start: int, end: int,
+                     embedded: bool = False) -> int:
         """Step 5 of ReadingEntries.md section 7, dispatched on fType and fID."""
         ft = br.element_type
         if ft is None:
@@ -3821,7 +3908,7 @@ class TreeReader:
         if br.class_name in self.custom:
             raise UnsupportedClass(
                 f"{br.class_name} has a hand-written Streamer")
-        decoder = self.decoder_for(rec, payload)
+        decoder = self.decoder_for(rec, payload, embedded)
         info = self.info_for_branch(br)
         fid = br.element_id
 
@@ -3847,14 +3934,25 @@ class TreeReader:
 
         # fType 31 and 41: n values of that element, back to back.
         if ft in (31, 41):
-            return decoder.read_column(el, max(self.count_for(br, entry), 0),
-                                       start)
+            objects = max(self.count_for(br, entry), 0)
+            if OFFSET_P <= el.ftype < 60 and el.count_name:
+                # Every object has its own count, and they are in the sibling
+                # branch that carries the counter -- one value per object.
+                # ReadingEntries.md 4.2.
+                pos = start
+                for n in self.counts_column(br, el.count_name, entry, objects):
+                    pos = decoder.read_element_value(
+                        el, pos, {el.count_name: n}).end
+                return pos
+            return decoder.read_column(el, objects, start)
 
         # fType <= 2 with fBranchCount: the Int_t n; Float_t *x; //[n] shape,
         # whose element is kOffsetP + T and whose count is on the other branch.
         counters: dict[str, int] = {}
-        if br.count_slot >= 0 and el.count_name:
-            counters[el.count_name] = self.count_for(br, entry)
+        if el.count_name and (br.count_slot >= 0
+                              or OFFSET_P <= el.ftype < 60):
+            counter = self.counter_branch(br, el.count_name)
+            counters[el.count_name] = self.count_at(counter, entry)
         return decoder.read_element_value(el, start, counters).end
 
 

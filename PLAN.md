@@ -457,6 +457,19 @@ reported** (§8 item M10).
    declared type name — but a hazard for every other reader, since the obvious
    checksum-to-info table decodes two of those three as the wrong type.
    `Collections.md` §8.2.
+9. **`fBranchCount` can name another object's counter branch, and ROOT then
+   loses the data silently.** The writer builds the counter's name from the
+   branch's own name and looks it up with `TTree::GetBranch`
+   (`root/tree/tree/src/TBranchElement.cxx:432-438`), which searches the **whole
+   tree** and returns the first match. A tree holding two split objects of one
+   class whose sub-branches carry no parent prefix therefore records the *first*
+   object's counter on both, and the read path uses it as it stands (`:4649`).
+   **Byte-verified, and the strongest candidate on this list**: in
+   `alice_ESDs.root` (ROOT 5.34, published by the ROOT team) `PrimaryVertex`'s
+   `fIndices` points at `SPDVertex`'s `fNIndices`, which is 0 for all 20 entries,
+   while its own entries are 37, 45, 13 and 27 bytes — `1 + n × 2` for counts of
+   18, 22, 6 and 13. ROOT reads no indices at all and reports nothing. The bytes
+   are intact; only the pointer is wrong. `ReadingEntries.md` §4.1 and erratum 6.
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
@@ -817,15 +830,39 @@ entry, not the build's own exit code.
 
 ### 8.3 Next tier, after the MVP
 
-**M8 — `TreeReader` and the embedded basket.** ✅ half done by M6 and now
-measured: the leaf-driven check reads an embedded basket, which closed the four
-`ttree/branch-clones` skips and 346 over the corpora. What is left is the other
-entry check — `rootfile.TreeReader`, which fetches a basket by file offset and so
-cannot reach one that has none. **920 branch-baskets**, every remaining
-plumbing skip over the two corpora and the single largest coverage item in the
-project. It needs the tree record's payload passed into `TreeReader` and
-`basket_for` to consult `Branch.embedded` before fetching; the risk is the buffer
-base, since a basket inside a `TTree` record shares that record's object map.
+**M8 — ✅ done 2026-09-17. `TreeReader` and the embedded basket.**
+*The largest coverage item in the project, and it paid for itself twice over.*
+
+`TreeReader` now takes the `TTree` record's payload and reads a basket that was
+never written as a record: `basket_for` consults `Branch.embedded` when
+`fBasketSeek[i]` is 0, and the raw block start plays the part the record offset
+plays for a basket of its own — including as the decoder's buffer base, since ROOT
+reads the block into the basket's own buffer rather than sharing the `TTree`
+record's object map. `ReadingEntries.md` §1 now says a basket need not be a record.
+
+**Both corpora: 27969 of 28036 branch-baskets, 99.8%, 0 failures**, up from
+26948 of 27949. The remaining 67 skips are of two kinds and **neither is
+unimplemented**: a collection whose value class has no streamer info in the file,
+and a class whose `Streamer` is hand-written. Over `gen/cern/` it is 1696 of 1696,
+**100%**.
+
+Decoding those 920 baskets for the first time turned up two facts, both now
+specified and both byte-witnessed in `alice_ESDs.root`:
+
+- **A ROOT bug, and a data-loss one** — §7.1 item 9, the strongest candidate on
+  that list. `fBranchCount` is set from a counter name looked up over the whole
+  tree, so two split objects of one class both point at the *first* object's
+  counter; ROOT reads 0 indices for a branch whose entries hold 18, 22, 6 and 13.
+  The fix for a reader is to resolve the counter **among the branch's siblings**,
+  which is `ReadingEntries.md` §4.1, and the entry's byte span is the cross-check
+  that catches the difference.
+- **A container's member needs one count per object** (`ReadingEntries.md` §4.2).
+  For `fType` 31 or 41 whose element is itself `T *x; //[n]`, the entry is, per
+  object, one flag byte then that object's values, and the per-object counts are a
+  column in the sibling branch carrying `n`. `Tracks.fTPCClusterMap.fAllBits` is
+  1848 bytes = 88 × (1 + 20), against 88 objects and 88 counts of 20. Nothing in
+  the file points from the member to its counter — `fBranchCount` on an `fType` 31
+  branch names the *master* branch — so §4.1's name rule is the only way in.
 
 **M9 — the RNTuple type mapping.** Still unaudited: the rest of *Type Name
 Normalization*, low-precision floats, the stdlib collections beyond
@@ -1087,26 +1124,26 @@ estimated:
 This is what the `SKIPPED` and `ENTRIES` lines of `check_invariants.py` count —
 1001 of 27949 branch-baskets over the two corpora:
 
-1. **An embedded basket, in `TreeReader`** — 920, the largest item in the project
-   and M8. The leaf-driven check reads one since M6; the entry-decode check
-   fetches baskets by file offset and an embedded basket has none.
-2. A collection whose value class has no streamer info in the file — 48
-   branch-baskets, and not a gap at all: `Collections.md` §9 says it is
-   unreadable by anyone, ROOT included.
-3. `fType` −1, a branch whose class writes its own `Streamer` — 18 including the
-   Jpp classes of `gen/foreign/IGNORE.toml`. It is the one `fType` value with no
+1. A collection whose value class has no streamer info in the file — and not a
+   gap at all: `Collections.md` §9 says it is unreadable by anyone, ROOT
+   included.
+2. `fType` −1, a branch whose class writes its own `Streamer`, including the Jpp
+   classes of `gen/foreign/IGNORE.toml`. It is the one `fType` value with no
    fixture, and needs a branch whose class has a hand-written `Streamer`.
-4. A basket whose record could not be read — 15, each one a missing codec or a
-   truncated file. The embedded **counter** basket that used to be in this group
-   is closed (M6).
-5. `kStreamLoop` values — 4, all in one file. The column's *extent* is checked
+
+Those two are all that is left — **67 branch-baskets of 28036** — and both are
+things no reader could decode. The embedded basket that was item 1 here is closed
+(M8), and so is the embedded **counter** basket (M6). What remains below is about
+values rather than about reaching them:
+
+3. `kStreamLoop` values — 4, all in one file. The column's *extent* is checked
    from its byte count; its values need the per-element counts held by a sibling
    branch's column.
-6. `TBranchSTL` entries — `ttree/split-ptr-collection` has one with data in it,
+4. `TBranchSTL` entries — `ttree/split-ptr-collection` has one with data in it,
    but it is not a `TBranchElement` and has no leaf, so neither entry check
    reaches it. `Splitting.md` §5 describes the branch; its entries stay
    undecoded.
-7. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
+5. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
    path is unexercised and unwritten.
 
 **Questions it left open.** Each is small, and each wants the submodule rather

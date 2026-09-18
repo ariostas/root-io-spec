@@ -1654,7 +1654,8 @@ class Checker:
             self._tree_payload = data
             _, _, infos = self.streamer_infos()
             reader = rootfile.TreeReader(self.buf, tree, infos or [],
-                                         self.fetch_basket, custom=self.custom)
+                                         self.fetch_basket, custom=self.custom,
+                                         tree_payload=data)
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_branch_element(branch, by_slot)
@@ -1682,16 +1683,31 @@ class Checker:
         """
         if br.element_type is None or br.file_name or not reader.holds_data(br):
             return
-        for i in range(min(br.write_basket, len(br.basket_seek))):
-            got = self.fetch_basket(br.basket_seek[i])
-            if got is None:
-                self.skip("ReadingEntries 8.5", "basket unavailable")
-                continue
-            rec, payload = got
-            try:
-                basket = self.basket(rec, payload)
-            except (rootfile.FormatError, struct.error, IndexError, ValueError):
-                continue
+        # Every basket the branch has, the one it kept in memory included: an
+        # embedded basket is as much data as a flushed one, and TreeReader reads
+        # it out of the TTree payload (TBranch.md 5).
+        for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+            if not br.basket_seek[i] and i in br.embedded:
+                emb = br.embedded[i]
+                if (emb.block < 0 or not emb.basket.nev_buf
+                        or self._tree_payload is None):
+                    continue
+                rec = rootfile.Record(offset=emb.block, nbytes=0,
+                                      key_len=emb.key_len)
+                payload, basket = self._tree_payload, emb.basket
+            else:
+                if not br.basket_seek[i]:
+                    continue        # no record and no embedded basket: nothing
+                got = self.fetch_basket(br.basket_seek[i])
+                if got is None:
+                    self.skip("ReadingEntries 8.5", "basket unavailable")
+                    continue
+                rec, payload = got
+                try:
+                    basket = self.basket(rec, payload)
+                except (rootfile.FormatError, struct.error, IndexError,
+                        ValueError):
+                    continue
             if basket.generated:
                 continue                # TBasket 5.2.1 offsets, not stored
             for e in self.entry_sample(basket.nev_buf):
@@ -1715,15 +1731,6 @@ class Checker:
                              f"{consumed - start}")
                     return
             self.verified += 1
-        emb = br.embedded.get(br.write_basket)
-        if emb is not None and emb.basket.nev_buf:
-            # Reachable, unimplemented, and counted rather than passed over:
-            # TreeReader fetches baskets by file offset and an embedded basket
-            # has none. The leaf-driven check above does cover these.
-            self.skip("ReadingEntries 8.5",
-                      "the basket at fWriteBasket is embedded in the tree "
-                      "record and TreeReader fetches baskets by file offset, "
-                      "which an embedded basket has none of (TBranch.md 5)")
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
     ELEMENT_TYPES = {-1, 0, 1, 2, 3, 4, 31, 41}

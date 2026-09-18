@@ -598,3 +598,65 @@ class CountedPointerWidth(unittest.TestCase):
         absent = rootfile.Value(name="fBasketSeek", ftype=56, start=0, end=1)
         self.assertEqual(
             rootfile._counted_pointer(b"\x00", absent, None, 10), [])
+
+
+class CounterResolution(unittest.TestCase):
+    """ReadingEntries.md 4.1: the counter is a sibling, not whatever
+    fBranchCount names.
+
+    The witness is alice_ESDs.root, which cannot be committed, so these build the
+    shape by hand: two split objects of one class whose sub-branches carry no
+    parent prefix, which is what makes ROOT's by-name lookup ambiguous.
+    """
+
+    def branch(self, name, slot, count_slot=-1, children=()):
+        return rootfile.Branch(
+            slot=slot, name=name, title="", compress=0, basket_size=0,
+            entry_offset_len=0, write_basket=0, entry_number=0, io_bits=0,
+            offset=0, max_baskets=10, split_level=0, entries=0, first_entry=0,
+            tot_bytes=0, zip_bytes=0, basket_slots=0, basket_objects=0,
+            embedded={}, basket_bytes=[], basket_entry=[0], basket_seek=[0],
+            file_name="", leaves=[], leaf_refs=[], branches=list(children),
+            cls="TBranchElement", element_type=0, element_id=5,
+            count_slot=count_slot)
+
+    def reader(self, extra=()):
+        first = [self.branch("fNIndices", 100), self.branch("fIndices", 101, 100)]
+        # The second object's fIndices records the FIRST object's counter, which
+        # is the bug: 100, not 200.
+        second = [self.branch("fNIndices", 200), self.branch("fIndices", 201, 100)]
+        top = [self.branch("SPDVertex", 10, children=first),
+               self.branch("PrimaryVertex", 20, children=second)]
+        top.extend(extra)
+        return rootfile.TreeReader(b"", tree(branches=top), [])
+
+    def test_the_sibling_wins_over_fbranchcount(self):
+        reader = self.reader()
+        second = reader.by_slot[201]
+        self.assertEqual(reader.counter_branch(second, "fNIndices").slot, 200)
+
+    def test_the_first_object_is_unaffected(self):
+        reader = self.reader()
+        first = reader.by_slot[101]
+        self.assertEqual(reader.counter_branch(first, "fNIndices").slot, 100)
+
+    def test_a_dotted_name_keeps_its_prefix(self):
+        clones = self.branch("Tracks", 300, children=[
+            self.branch("Tracks.fMap.fNbytes", 301),
+            self.branch("Tracks.fMap.fAllBits", 302)])
+        reader = self.reader(extra=[clones])
+        self.assertEqual(
+            reader.counter_branch(reader.by_slot[302], "fNbytes").slot, 301)
+
+    def test_fbranchcount_is_the_fallback_when_no_name_matches(self):
+        # Not a weakening: with no sibling of that name, the recorded pointer is
+        # the best the file offers, and it is what ROOT uses.
+        reader = self.reader()
+        self.assertEqual(
+            reader.counter_branch(reader.by_slot[201], "fNothing").slot, 100)
+
+    def test_nothing_to_resolve_with_is_named_not_guessed(self):
+        lonely = self.branch("fIndices", 400)          # count_slot -1
+        reader = self.reader(extra=[lonely])
+        with self.assertRaises(rootfile.UnsupportedClass):
+            reader.counter_branch(reader.by_slot[400], "fNothing")
