@@ -48,12 +48,12 @@ descriptions with their checksums computed from scratch.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**72 reference files, 1826 byte-level assertions, and 1321 source citations
+**72 reference files, 1838 byte-level assertions, and 1393 source citations
 checked against the pinned submodule across 46 documents**, plus 4 files this
 project wrote with 198 assertions of their own. The invariants also
-run over 226 files this project did not write — 154 from uproot's regression
-corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
-with **0 failures**, and 94% of the records in them decode. Those files are where
+run over 180 files this project did not write — 154 from uproot's regression
+corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
+with **0 failures**, and 95% of the records in them decode. Those files are where
 eighteen errors in this specification were found and fixed — plus one compression
 codec it had written off as unreadable, and one coverage figure it had been
 overstating (`PLAN.md` §9.8 and §9.9).

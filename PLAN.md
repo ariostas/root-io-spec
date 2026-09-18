@@ -17,7 +17,7 @@ Measured, 2026-09-18, by the checks in `tools/`:
 | Source citations checked | 1321, 0 failures |
 | Class versions checked against `ClassDef` | 40 |
 | Invariants over the fixtures and the written files | 76 files, 0 failures |
-| Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
+| Invariants over both corpora | 180 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
 | Unit tests | 289 |
 
@@ -714,7 +714,7 @@ asserting it, and the measurement moved decision 7:
   **do** carry them and do decode. Decision 7's "older files carry no streamer
   infos at all" was true of one file and wrong as a rule; the claim is now
   "specified for 4.00 and later, works in practice back to 3.04/02".
-- **`TBranch` is the only class in 226 files below a hand-written threshold.**
+- **`TBranch` is the only class in 180 files below a hand-written threshold.**
   Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
   `TLeafObject` that occurs anywhere in either corpus is above the version at
   which that class becomes streamer-info driven. That is what makes §9.1's
@@ -1408,7 +1408,7 @@ M2 and `spec/99-appendix/ForwardingStreamers.md`. The record now decodes, with
 
 ### 9.10 What the corpora already contain — measured 2026-09-17
 
-The census that reframes §9.1 and §3.5. Taken over all 226 corpus files by
+The census that reframes §9.1 and §3.5. Taken over all corpus files by
 walking every `StreamerInfo` record and every directory record.
 
 **Directory record versions**: 5 (339), 1 (24), 4 (5), 3 (2), 1001 (2 — the large

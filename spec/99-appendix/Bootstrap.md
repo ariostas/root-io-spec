@@ -112,8 +112,10 @@ not a damaged one ([§3.2](../02-serialization/StreamerInfo.md#32-an-empty-list-
 
 Hardcode these too, but a reader is running by the time it meets them, so they
 can be added one at a time as files demand. The index lives in
-[Standard classes](../03-classes/index.md); this is the same set as a checklist,
-with what goes wrong if it is skipped.
+[Standard classes](../03-classes/index.md); this is that set **and more**, as a
+checklist with what goes wrong if each is skipped — it adds the classes a reader
+meets through the container and the tree rather than as an object of its own,
+`TBasket` and `TBranchClones` among them.
 
 | Class | Symptom of not hardcoding it | Layout |
 |---|---|---|

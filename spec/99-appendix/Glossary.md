@@ -20,7 +20,7 @@ spells it. Where this specification had to choose a word, that is said.
 | **Cycle** | The small integer distinguishing successive versions of an object with the same name in a directory — the `;1` in `h;1`. [§4](../01-container/Record.md#4-cycles) |
 | **Directory record** | The record holding a `TDirectoryFile`'s own fields, including where its key list is. [Directories §2](../01-container/Directory.md#2-layout) |
 | **Key list** | The record a directory points at with `fSeekKeys`, holding a copy of every key in that directory. [§6](../01-container/Directory.md#6-key-lists) |
-| **Free segment** | A byte range in the file not occupied by any record. [Free segments](../01-container/FreeSegments.md) |
+| **Free segment** | A byte range occupied by no **live** record — a freed span still begins with a key-shaped header. The last entry is the unallocated tail beyond `fEND` rather than a range within the file. [Free segments](../01-container/FreeSegments.md) |
 | **Large-file flag** | `fVersion >= 1000000` in the header or a directory record, selecting 8-byte file offsets instead of 4. Three of them are independent. [File header §3](../01-container/FileHeader.md#3-fversion-and-the-large-file-flag), [Directories §3](../01-container/Directory.md#3-three-independent-large-file-flags) |
 | **Block header** | The nine bytes introducing one compressed block: a two-byte algorithm tag, a method byte, and two 24-bit little-endian sizes. [Compression §2](../01-container/Compression.md#2-block-header) |
 
@@ -48,7 +48,7 @@ spells it. Where this specification had to choose a word, that is said.
 | **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because the description is made of it. [Bootstrap classes](Bootstrap.md) |
 | **Object-wise** | A collection layout: a count, then each element written in full. [Collections §3](../02-serialization/Collections.md#3-object-wise) |
 | **Member-wise** | A collection layout: a count, then one column per member of the value class. Selected by `kStreamedMemberWise` in the version word. [§4](../02-serialization/Collections.md#4-member-wise) |
-| **Value class** | The type a collection holds. For a `std::map` it is `pair<K,V>`, for which ROOT writes no streamer info at all. [§8](../02-serialization/Collections.md#8-stdmap) |
+| **Value class** | The type a collection holds. For a `std::map` it is `pair<K,V>`, whose streamer info a file **may or may not** carry, unpredictably; a reader must prefer a recorded one and synthesise the layout otherwise. [§8](../02-serialization/Collections.md#8-stdmap) |
 | **PIDF** | The two-byte index, appended to a referenced `TObject`, of the `TProcessID` record that resolves its references. [References §2](../02-serialization/References.md#2-pidf-and-the-tprocessid-records) |
 
 ## `TTree`

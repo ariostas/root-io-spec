@@ -96,8 +96,11 @@ payload and so follows
 else in a ROOT file; the envelopes and pages the anchor points at are RNTuple's
 own format and are little-endian. The boundary is exactly the anchor's last byte.
 
-The struct makes it explicit — every member of `RTFNTuple` is an `RUInt64BE` or
-an `RUInt16BE` (`root/tree/ntuple/src/RMiniFile.cxx:547-560`).
+The struct makes it explicit — every member of `RTFNTuple` is big-endian:
+`RUInt32BE` for `fByteCount`, `RUInt16BE` for the four version words, and
+`RUInt64BE` for the offsets and lengths
+(`root/tree/ntuple/src/RMiniFile.cxx:547-560`). The `RUInt32BE` is the one ERRATA 2
+exists for, so it is worth naming rather than folding into "64 or 16".
 
 > Demonstrated by `rntuple/anchor` and `rntuple/fundamental-types`, which need
 > **both** orders to describe one file: its anchor assertions read big-endian and its envelope assertions read
@@ -216,6 +219,29 @@ integer, and a `//!` member with no field at all. Two things worth keeping:
 - **The type version of a class with no `ClassDef` is 0xFFFFFFFF**, because
   `TClass::GetClassVersion()` is −1 and the field is unsigned. ERRATA 8.
 
+The frames section came out clean. Its size field is a signed 64-bit
+little-endian integer whose sign selects record (positive) from list (negative),
+exactly as the prose says, and `SerializeFramePostscript` writes
+`marker * size` to set it (`root/tree/ntuple/src/RNTupleSerialize.cxx:973-980`);
+the read side recovers `nitems` only for a list frame and negates the size back
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:996-1007`).
+
+So did the footer and page list, which is worth recording because they are where
+a reader does its work. Checked field by field against `SerializeFooter`,
+`SerializeClusterGroup`, `SerializeAttributeSet`, `SerializePageList` and
+`SerializeClusterSummary`: the cluster summary really does pack `nEntries` into
+56 bits with 8 bits of flags above it and refuses more
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:1191-1193`); the suppressed-column
+marker really is `INT64_MIN`
+(`root/tree/ntuple/inc/ROOT/RNTupleSerialize.hxx:85`); and the claim that "the
+page size stored in the locator does _not_ include the checksum" is exactly what
+the reader relies on — it adds the eight bytes back itself
+(`root/tree/ntuple/src/RPageStorage.cxx:297`).
+
+Nothing here should be read as a statement that the unaudited sections are
+correct. They are simply not yet checked, which is the same standard the rest of
+this project holds itself to.
+
 ## 5. `std::map` cannot be written from the interpreter in 6.40.04
 
 The one type in *Stdlib Types and Collections* that this project cannot put in a
@@ -246,29 +272,6 @@ audited. And it is not necessarily a bug in RNTuple — the path taken here is t
 interpreted one, and ACLiC on this machine cannot compile a comparison (`CLAUDE.md`
 records why). What it is, is a reason the `std::map` row above says *source only*,
 and a candidate worth reporting with that caveat attached: `PLAN.md` §7.1 item 10.
-
-The frames section came out clean. Its size field is a signed 64-bit
-little-endian integer whose sign selects record (positive) from list (negative),
-exactly as the prose says, and `SerializeFramePostscript` writes
-`marker * size` to set it (`root/tree/ntuple/src/RNTupleSerialize.cxx:973-980`);
-the read side recovers `nitems` only for a list frame and negates the size back
-(`root/tree/ntuple/src/RNTupleSerialize.cxx:996-1007`).
-
-So did the footer and page list, which is worth recording because they are where
-a reader does its work. Checked field by field against `SerializeFooter`,
-`SerializeClusterGroup`, `SerializeAttributeSet`, `SerializePageList` and
-`SerializeClusterSummary`: the cluster summary really does pack `nEntries` into
-56 bits with 8 bits of flags above it and refuses more
-(`root/tree/ntuple/src/RNTupleSerialize.cxx:1191-1193`); the suppressed-column
-marker really is `INT64_MIN`
-(`root/tree/ntuple/inc/ROOT/RNTupleSerialize.hxx:85`); and the claim that "the
-page size stored in the locator does _not_ include the checksum" is exactly what
-the reader relies on — it adds the eight bytes back itself
-(`root/tree/ntuple/src/RPageStorage.cxx:297`).
-
-Nothing here should be read as a statement that the unaudited sections are
-correct. They are simply not yet checked, which is the same standard the rest of
-this project holds itself to.
 
 ## 6. The compatibility notes are reader requirements, and ROOT keeps the hard one
 

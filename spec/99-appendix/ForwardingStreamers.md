@@ -96,14 +96,14 @@ containers** are here — `THashList`, `TSortedList`, `TOrdCollection`,
 because they add no persistent state to the class they derive from. "Writes only
 its bases" is the intended behaviour, not a side effect.
 
-Measured across the 226 files of both corpora, ROOT 2.24/00 to 6.36/02, of which
-222 carry a `StreamerInfo` record at all: **no record** has one of these as its
+Measured across the 180 files of both corpora, ROOT 2.24/00 to 6.36/02, of which
+177 carry a `StreamerInfo` record at all: **no record** has one of these as its
 class, and exactly three are named by a streamer info anywhere.
 
-| Class | Where it turns up | Files, of 222 |
+| Class | Where it turns up | Files, of 177 |
 |---|---|---|
-| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 214 |
-| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 37 |
+| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 168 |
+| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 33 |
 | `TVirtualPerfStats` | a `kBase` of `TTreePerfStats`, in `aod_flushed.root` | 1 |
 
 A reader can carry those three and treat the rest as a lookup table for the day a

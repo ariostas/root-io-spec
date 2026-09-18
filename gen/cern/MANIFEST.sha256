@@ -9,7 +9,7 @@
 # Columns: sha256, bytes, the ROOT version in the file header, tier, remote path
 # relative to https://root.cern/files/.
 #
-# Tier "core" is 22 files and 5 MB: the version sweep, the divergent classes and
+# Tier "core" is 24 files and 5.5 MB: the version sweep, the divergent classes and
 # the containers that find things. Tier "physics" is 27 MB of real production
 # trees, useful as a regression corpus and nothing else. The multi-gigabyte files
 # are in LARGE.toml and are read by range request, never downloaded.
@@ -35,5 +35,7 @@ f09af27a8c2253facdcf75c425e2284878e837b6d655d1423dd474386d18af71       8190  5.2
 bd780b441818a2d6f858e594f6fc5361ab5886f6c24141845938c1079f6704c2      54216  6.11/01   core     stressHistogram.testRefRead.6.10.0.root
 841030b7d83a93937d7b9608e99f96a2eeafbf762b830d3b044dcfffb658e899      28704  6.19/01   core     tmva101.root
 aa6ed8d4bb821ab55c0a5ecb7cd2e05f098fc6a355ca6025e9f5e83c5fc62db6       2514  6.35/01   core     RNTuple.root
+83ea5e9a983ed373898d21e65542c60f9bf6345d81497d835dd6f1804397fcde      19593  5.25/05  core     aod_flushed.root
+2503d9d372cb4ffd59b32b0d46a346a1291786850eeafd3f6e5ec943500d9d7a     396878  5.01/01  core     gallery.root
 b10d2e4a1ac737ee6ebadacdab01987838ca7d18a64f6fc244a4b3bdc9bb11d6    7911341  6.23/01   physics  rootbench/SMHiggsToZZTo4L.root
 3e82490972377556e5d601bed82cd2a8080f017ffdb193100b418c7ca710479e   19009234  6.23/01   physics  rootbench/data_A.GamGam.100k.root

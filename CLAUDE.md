@@ -81,7 +81,7 @@ failure **is** evidence rather than a lead. It also reaches from ROOT 2.24/00 to
 6.35/01, where `gen/foreign/` starts at 4.00.
 
 ```sh
-tools/fetch_cern.py                         # core tier: 22 files, 5 MB
+tools/fetch_cern.py                         # core tier: 24 files, 5.5 MB
 tools/fetch_cern.py --tier physics          # 2 production trees, 27 MB more
 tools/fetch_cern.py --headers               # the 8 multi-GB files, ~8 KB of traffic
 tools/coverage_probe.py --summary build/cern/*.root
@@ -118,7 +118,7 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **27969 of 28036, 99.8%**, with 0 failures, and the
+Over the two corpora that is **27968 of 28035, 99.8%**, with 0 failures, and the
 67 skips are of two kinds only, both of them **things no reader could decode from
 the file**:
 

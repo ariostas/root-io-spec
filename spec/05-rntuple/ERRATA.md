@@ -57,12 +57,17 @@ specification to do. A reader comparing the two has no way to tell whether it is
 looking at a stale file or a stale document.
 
 **And it is about to matter.** The feature-flag table under *Feature Flags* says
-flag bit 0, *Nested Deferred Columns*, was "Introduced in 1.0.2.1" — a version no
-writer stamps. The flag is declared
-(`root/tree/ntuple/inc/ROOT/RNTupleDescriptor.hxx:780`) and nothing sets it yet,
-so no file carries it today; when one does, its anchor will say 1.0.2.0 while the
-document says the feature belongs to 1.0.2.1. Either the constant or the table
-has to move.
+flag bit 0, *Nested Deferred Columns*, was "Introduced in 1.0.2.1". **ROOT's own
+source says a different version**: the comment immediately above the flag's
+declaration reads *"Added in version 1.1.0.0 of the binary format"*
+(`root/tree/ntuple/inc/ROOT/RNTupleDescriptor.hxx:779`,
+`root/tree/ntuple/inc/ROOT/RNTupleDescriptor.hxx:780`). So the two disagree
+outright about which format version introduces the flag, not merely about a patch
+digit.
+
+Nothing sets it yet — the symbol occurs at that one line in the whole submodule —
+so no file carries it today, and the disagreement is harmless until one does.
+Either the comment or the table has to move.
 
 Already noted in `PLAN.md` §2.6 when this directory was first planned.
 
@@ -234,9 +239,9 @@ the eight-byte preamble in the other.
 
 | | |
 |---|---|
-| Length written | `typeAndSize \|= (size + 8) << 16` — the payload size **plus the checksum** (`root/tree/ntuple/src/RNTupleSerialize.cxx:895`) |
+| Length written | `typeAndSize \|= (size + 8) << 16`, where `size` is **everything written so far** — the 8-byte preamble and the payload — and the `+ 8` is the checksum still to come (`root/tree/ntuple/src/RNTupleSerialize.cxx:895`; the preamble is one `uint64`, `root/tree/ntuple/src/RNTupleSerialize.cxx:873-882`) |
 | Checksum written over | `SerializeXxHash3(envelope, size, ...)` — bytes `[0, size)`, i.e. everything **before** itself (`root/tree/ntuple/src/RNTupleSerialize.cxx:898`) |
-| Checksum verified over | `VerifyXxHash3(base, envelopeSize - 8, ...)` (`root/tree/ntuple/src/RNTupleSerialize.cxx:933`) |
+| Checksum verified over | `VerifyXxHash3(base, envelopeSize - 8, ...)` (`root/tree/ntuple/src/RNTupleSerialize.cxx:934`) |
 
 So: **the length includes the checksum, and the checksum covers everything except
 the checksum.** Both halves need saying, and the document says neither

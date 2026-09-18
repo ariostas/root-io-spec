@@ -37,11 +37,11 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Writing — the container, an object, histograms, a flat `TTree` | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
+| RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **72 reference files with 1826 byte-level assertions, 1321 source
+Behind it: **72 reference files with 1838 byte-level assertions, 1393 source
 citations checked against the pinned ROOT tree across 46 documents**, and the
-invariants of every layer run over 226 files this project did not write — ROOT
+invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
 The writing layer adds four files this project *did* write, with 198 assertions of
@@ -85,7 +85,7 @@ Then the layers, in order. They build on each other:
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes its audit has produced so far. Read the copy for the
    format and [ERRATA](05-rntuple/ERRATA.md) for where it and ROOT's code
-   disagree; six entries so far, one of which has already made two readers in
+   disagree; ten entries so far, one of which has already made two readers in
    ROOT's own repository diverge.
 
 [Bootstrap classes](99-appendix/Bootstrap.md) cuts across all of them, and is the
@@ -95,7 +95,7 @@ organised as a work order.
 [Hand-written streamers](99-appendix/HandWrittenStreamers.md) and
 [Forwarding streamers](99-appendix/ForwardingStreamers.md) are the two lists that
 cannot be derived from a file and so have to be published.
-[A writer's invariants](99-appendix/WriterInvariants.md) is the 223 `Invariants`
+[A writer's invariants](99-appendix/WriterInvariants.md) is the 224 `Invariants`
 entries of every layer re-sorted for a writer, with the one column the reading side
 does not need: who notices when you get it wrong — and the nine cases where nothing
 does.
@@ -121,8 +121,8 @@ they are ROOT's choices, not requirements of the format.
 ### How far back it reads
 
 The two halves of the format have different floors, and the difference is
-measured rather than estimated: 226 files written by ROOT releases from 2.24/00
-to 6.36/02 are read end to end whenever the checks run.
+measured rather than estimated: 180 files from ROOT releases 2.24/00 to 6.36/02
+are read end to end whenever the checks run.
 
 **The container layer has no practical floor.** The oldest file available,
 `pippa.root` at ROOT 2.24/00, walks completely: all 517 of its records are
@@ -143,14 +143,14 @@ practice back to 3.04/02.** Below that, the container layer alone applies.
 
 ### What is missing rather than excluded
 
-Across both corpora 94% of records decode. Everything that does not has a name,
+Across both corpora 95% of records decode. Everything that does not has a name,
 and `tools/coverage_probe.py` prints the reason per record:
 
 | Cause | Reads | What it is |
 |---|---|---|
 | No streamer infos in the file | 468 | the version floor above |
-| RooFit's own classes | 216 | out of scope, below |
-| An LZ4 payload where the `lz4` package is absent | 137 | the checker's environment, not the format |
+| RooFit's own classes | 190 | out of scope, below |
+| An LZ4 payload, when the `lz4` package is not installed | 0 here, 137 without it | the checker's environment, not the format |
 | `TASImage` | 8 | **the only gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
 
 `TASImage` is the only **specification** gap a file in either corpus hits. The
@@ -161,7 +161,7 @@ regenerate from the leaf, which
 [TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets) specifies;
 and one file ROOT itself refuses to open.
 
-**No class in 226 files is below a hand-written version threshold except
+**No class in 180 files is below a hand-written version threshold except
 `TBranch`, whose legacy layout is now specified** —
 [TBranch §13.1](04-ttree/TBranch.md#131-the-layout-below-version-10) covers
 versions 6 to 9. The others that keep a legacy layout under a threshold — `TH1`,

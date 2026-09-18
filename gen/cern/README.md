@@ -8,7 +8,7 @@ read a file nobody designed around it.
 exactly what was used and `tools/fetch_cern.py` reproduces it.
 
 ```sh
-tools/fetch_cern.py                  # core tier: 22 files, 5 MB
+tools/fetch_cern.py                  # core tier: 24 files, 5.5 MB
 tools/fetch_cern.py --tier physics   # 2 real production trees, 27 MB
 tools/fetch_cern.py --headers        # the 8 multi-GB files, by range request
 tools/coverage_probe.py --summary build/cern/*.root
@@ -34,7 +34,7 @@ provenance throughout.
 And it is the only source of **large files**: eight of them from 1.3 GB to 5.3 GB,
 read by HTTP range request rather than downloaded (see `LARGE.toml`).
 
-## Tier `core` — 22 files, 5 MB
+## Tier `core` — 24 files, 5.5 MB
 
 Curated. The listing has roughly forty near-identical `TGeoManager` geometry
 demos; one of them is here and the rest are not, because they differ only in their
@@ -65,6 +65,8 @@ does.
 | `stressHistogram.testRefRead.6.10.0.root` | 6.11/01 | `TH1` v7 |
 | `tmva101.root` | 6.19/01 | Nested directories, `TVectorT<float>`/`TVectorT<double>`, and bare `vector<int>` records |
 | `RNTuple.root` | **6.35/01** | The RNTuple container in 2.5 KB. Found [Compression erratum 5](../../spec/01-container/Compression.md#10-errata): an `RBlob` whose payload is *longer* than `fObjLen` and is stored raw |
+| `aod_flushed.root` | 5.25/05 | The only file in reach with a `TTreePerfStats`, whose `TVirtualPerfStats` base has a **forwarding** streamer — the independent witness for [Forwarding streamers](../../spec/99-appendix/ForwardingStreamers.md), and what makes that list's third entry checkable rather than asserted |
+| `gallery.root` | 5.01/01 | A second `TASImage` payload beside `galaxy.root`, so the one specification gap either corpus hits is witnessed in more than one file |
 
 ## Tier `physics` — 2 files, 27 MB
 
@@ -110,14 +112,21 @@ What that buys, none of which any fixture covers:
 
 ## Standing result
 
-Run 2026-09-15, tier `all`:
+Run 2026-09-18, tier `all`:
 
-- `tools/check_invariants.py`: **24 files, 0 failures**, with twelve `NOT CHECKED`
-  reasons, each naming a class or a codec rather than passing anything over.
-- `tools/coverage_probe.py`: 1396 decoded, 264 container, 515 partial, 205 blocked,
-  **0 no codec**. Of the blocked, 197 are RooFit classes in the two
-  `stressRooFit_*` files; the partial are overwhelmingly ROOT 2.x histograms in
-  files with no streamer infos.
+- `tools/check_invariants.py`: **26 files, 0 failures**, and every branch-basket
+  in them decoded — 1695 of 1695 — with the `NOT CHECKED` reasons each naming a
+  class or a codec rather than passing anything over.
+- `tools/coverage_probe.py`: of the blocked records, the great majority are RooFit
+  classes in the two `stressRooFit_*` files; the partial are overwhelmingly ROOT
+  2.x histograms in files with no streamer infos, which is the version floor of
+  [the scope statement](../../spec/index.md#how-far-back-it-reads) rather than a
+  gap in it.
+
+> Re-measured 2026-09-18, when `aod_flushed.root` and `gallery.root` were added.
+> Both were cited by the specification as corpus files and were in neither this
+> table nor `MANIFEST.sha256`, so `fetch_cern.py` did not fetch them and the
+> witnesses they carry could not be reproduced.
 - `tools/fetch_cern.py --headers`: **8 files, 0 failures**.
 
 ## Known gaps this corpus exposes

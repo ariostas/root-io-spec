@@ -9,6 +9,85 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **A full self-consistency review**, which corrected the specification in more
+  places than any previous change. The findings that matter most to a reader:
+  a **`TBasket` ignores the 256-byte compression threshold** that `TKey` applies,
+  so a small basket in a compressed file *is* compressed and a reader assuming
+  otherwise mis-parses the baskets of any sparsely filled tree
+  ([Compression §8](spec/01-container/Compression.md)); the **last entry in a
+  basket ends at `fLast`**, not at `fEntryOffset[j+1]`, whose slot is never written
+  ([Reading entries §1](spec/04-ttree/ReadingEntries.md)); a **fixed array of
+  collections** holds `fArrayLength` collections in one frame and the reading
+  procedure read only the first ([Collections §13](spec/02-serialization/Collections.md));
+  **`flag >= 80` in a basket header is terminal** for the offset array
+  ([TBasket §4](spec/04-ttree/TBasket.md)); a **collection of `Double32_t` or
+  `Float16_t`** is 4 and 3 bytes per element rather than the declared width,
+  because the element has no comment to parse; **`TBranchSTL` has five added
+  members**, not three, and `fContName` — the one naming the collection type — was
+  among the two that were missing ([Splitting §5](spec/04-ttree/Splitting.md)); and
+  **no file carries a `TCanvas` streamer info at all**, so a reader must dispatch on
+  the class name ([Canvas §2.1](spec/03-classes/Canvas.md)).
+- **The checksum's `[` locator is stricter than this specification said**
+  ([Streamer information §11](spec/02-serialization/StreamerInfo.md)). ROOT accepts
+  the bracket only when nothing but `/` and whitespace precedes it, so an ordinary
+  comment like `// x position [0, 1]` folds **nothing**; the plain search this
+  document specified is the rule of checksum variants 6 and below. `TPad` was
+  carried as the one unexplained checksum mismatch in the whole corpus and was
+  never ROOT's inconsistency — it was this. Nothing is unexplained now, and 698 of
+  743 streamer infos recompute exactly. The eight variants were also tabulated as
+  one difference each, where every test in `GetCheckSum` is a threshold on an
+  ordered code.
+- **New: recovering a file whose key list was never written**
+  ([Records §1.1](spec/01-container/Record.md)) — the scan ROOT uses, with the one
+  condition a third-party reader should *not* copy, since ROOT requires a compiled
+  dictionary and a reader without one recovers strictly more. Reading any ROOT file
+  includes files nobody closed, and no document had covered them.
+- **`fSeekFree == 0` is a one-way signal.** Three places made it an *iff* for
+  "never closed". `TFile::Write` writes the free list mid-job, so a crashed job
+  leaves a plausible-looking header behind: no field proves a clean close
+  ([File header §5.4](spec/01-container/FileHeader.md)).
+- **The two corpora are 180 files, not 226.** The published figure counted 48 files
+  on one machine that no manifest recorded, so `fetch_cern.py` never fetched them
+  and the number could not be reproduced. Two of those files — `aod_flushed.root`
+  and `gallery.root` — were cited by the specification as witnesses, and are now in
+  `gen/cern/MANIFEST.sha256` and its README; the other 46 were never referenced.
+  Re-measured over what the manifests record: **0 failures**, 95% of records decode,
+  and 27968 of 28035 branch-baskets have their entries checked.
+- **A `TBranchSTL`'s baskets were invisible to the entry checker**, in neither the
+  numerator nor the denominator, which is the mistake the embedded baskets taught
+  once already. They are now named as skips, and
+  [Splitting §5.1](spec/04-ttree/Splitting.md) specifies what they hold — one framed
+  `TIndArray` per entry, version word 0 and a checksum, since `TIndArray` is foreign.
+- **A foreign class's streamer info must record `fClassVersion` 1** even though the
+  object carries a version word of 0
+  ([Writing an object §2](spec/06-writing/WritingObjects.md)). A writer that records
+  0 to match tells every conforming reader that no checksum follows, and
+  desynchronises by four bytes on every tree and every branch. The rule existed only
+  in `tools/rootwrite.py`.
+- **What the writing layer does not cover is now named**
+  ([Writing §4](spec/06-writing/index.md)): the streamer-info **element lists**
+  themselves, which exist only in `tools/rootwrite.py` and are the largest thing
+  between a third party and a writer; more than one basket per branch, and cluster
+  ranges; subdirectories; and a `TLeafC` branch. Three ways to obtain the element
+  lists are given, including copying a `StreamerInfo` record verbatim.
+- **`TFormula` version 6 is refused by ROOT** and readable by this specification;
+  **`TLeafObject` is streamer-info driven at version 2** as well as 4 and above; and
+  **`kAnyPnoVT` (70) cannot occur on disk**, where two documents had disagreed.
+- `tools/inventory.py` called three unconditionally delegating streamers `guarded`,
+  which told a reader there was a legacy layout to implement when there is none;
+  fixing it needed a second pass, because requiring the call inside the braces
+  reclassified `RooCategory`, which delegates in a trailing `else`, in the
+  understating direction.
+- New checked invariant: **a key image agrees with the key of the record it points
+  at** ([Directories §9](spec/01-container/Directory.md) invariant 11). Nothing had
+  compared them — which is exactly the comparison ROOT never makes either, so a
+  disagreement is invisible to ROOT and fatal to everyone else.
+- **The RNTuple audit's own status was stale in three ways**: ten errata rather than
+  six, the type mapping marked unaudited where `NOTES` §4 marks it audited, and two
+  fixtures where there are eight. Erratum 1 now reports the real disagreement —
+  ROOT's source says the feature flag arrived in **1.1.0.0** where the document says
+  1.0.2.1.
+
 - **A writing layer**, `spec/06-writing/`, which extends the project past the
   reading side it was scoped to: [an overview](spec/06-writing/index.md) of what a
   writing procedure is here and what is deliberately left out, and
@@ -169,10 +248,12 @@ not, and read an entry out of a split or an unsplit `TTree`.
   nothing but Python, and meant to be vendored as test vectors.
 - **1134 source citations** across 40 documents, each checked to exist at the
   pinned commit; 25 class-version claims checked against `ClassDef` itself.
-- Per-layer **invariants** run over **226 ROOT files this project did not write**,
+- Per-layer **invariants** run over **the two corpora this project did not write**,
   from ROOT 2.24/00 to 6.36/02, at **0 failures**. 94% of their records decode and
   96.4% of their branch-baskets have their entries decoded and checked; what the
-  rest is, and why, is named file by file rather than averaged away.
+  rest is, and why, is named file by file rather than averaged away. (The file count
+  published with 0.1.0 was 226, which counted files no manifest recorded; the
+  reproducible corpus is 180. See the Unreleased entry.)
 - An independent reference reader, `tools/rootfile.py`, written from the
   specification rather than from ROOT's code, so that the two disagreeing is a
   detectable event. It reproduces `TFile::Map()` exactly.

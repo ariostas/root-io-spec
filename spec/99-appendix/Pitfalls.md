@@ -19,7 +19,9 @@ way, a length is a plausible number rather than an obvious error.
 **"Is this payload compressed" is an inequality, not a difference.** The test is
 `fObjlen > fNbytes - fKeylen`. A payload *longer* than `fObjlen` is stored raw
 with slack after it, which RNTuple's own key writer produces — and a reader using
-`!=` finds a compression magic in the slack and rejects the whole file.
+`!=` then tries to decompress the payload, finds no valid block header at its start,
+and rejects the whole file. (The slack sits *after* the object data and is never
+read as a header.)
 [Compression §1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality)
 
 **`fEND` is at most the file size, not equal to it.** ROOT compares the two only
@@ -116,8 +118,8 @@ later wrote — the code says `kStreamer`, and the layout is an STL collection
 anyway. [Streamer information §10](../02-serialization/StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
 
 **The version word inside a 500/501 frame is not the constant 10.** It is
-`TStreamerInfo`'s own class version in the writing ROOT: 8 before 5.26, 9 until
-6.35, 10 from 6.36. [Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)
+`TStreamerInfo`'s own class version in the writing ROOT: **8 or less** before 5.26,
+9 until 6.35, 10 from 6.36. [Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)
 
 **The order of infos in the `StreamerInfo` record is not a property of the file.**
 It is the order the writing process happened to register classes in, and two
@@ -202,7 +204,7 @@ node, not data. [Branches §11](../04-ttree/TBranch.md#11-invariants)
 normal on a split branch. [Leaves §4.2](../04-ttree/TLeaf.md#42-flen-can-be-1)
 
 **`fType` alone does not select the read procedure.** `fID`, `fSplitLevel` and
-`fStreamerType` participate, and two of the eleven procedures are reachable only
+`fStreamerType` participate, and two of the eleven conditions are reachable only
 through `fSplitLevel >= 100`.
 [Split branches §8](../04-ttree/TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)
 
@@ -218,7 +220,7 @@ failure: you cannot follow a wrong one.
 *is-present* byte of `fBasketSeek` doubles as a width selector at version 9.
 [Branches §13](../04-ttree/TBranch.md#13-class-versions)
 
-## 6. Two that are ROOT's bugs, not yours
+## 6. Three that are ROOT's bugs, not yours
 
 **An empty `TLeafC` string is misread by ROOT itself** when the `TLeafC` is not
 its branch's only leaf: the emptiness test compares whole-entry offsets. The file
@@ -229,5 +231,15 @@ doubles as an in-memory offset and a `TLeafC` contributes 1, so `c/C:x/I` reads
 `x` from the second byte of the string — silently, at write time as well as read.
 [Leaves §3.2](../04-ttree/TLeaf.md#32-foffset-is-a-position-in-the-entry)
 
-Both are recorded as bug candidates in `PLAN.md` §7.1, with the byte-level
+**A counted array's counter branch is resolved over the whole tree, so two split
+objects of one class share the first object's counter.** `fBranchCount` is set from
+a name looked up across every branch (`root/tree/tree/src/TBranchElement.cxx:438`),
+and when the sub-branches carry no parent prefix both objects' counted members point
+at the same counter. In `alice_ESDs.root` ROOT reads **0** elements for
+`PrimaryVertex.fIndices` whose entries hold 18, 22, 6 and 13 — silent data loss, in
+a file ROOT itself published. A reader must resolve the counter **among the
+branch's siblings** instead of following the recorded `fBranchCount`.
+[Reading entries §4.1](../04-ttree/ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
+
+All three are recorded as bug candidates in `PLAN.md` §7.1, with the byte-level
 reproducers, and are not yet reported upstream.

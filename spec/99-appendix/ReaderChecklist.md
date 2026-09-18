@@ -23,14 +23,14 @@ that is fine — almost everything below depends on this and nothing else.*
 | Read | For |
 |---|---|
 | [Conventions](../00-conventions.md) | Byte order, the primitive widths, the four string encodings |
-| [File header](../01-container/FileHeader.md) | The 64/100-byte header, and the `+1000000` flag that widens six fields |
+| [File header](../01-container/FileHeader.md) | The 64/100-byte header, and the `+1000000` flag that widens three fields — `fEND`, `fSeekFree` and `fSeekInfo` |
 | [Records and keys](../01-container/Record.md) | The key layout, `fNbytes`/`fObjlen`/`fKeylen`, cycles, the record chain |
 | [Directories and key lists](../01-container/Directory.md) | The root directory record, nested directories, the list of keys |
 | [Free segments](../01-container/FreeSegments.md) | Only if you intend to write, or to explain gaps |
 
 Implement: read the header, walk the record chain from `fBEGIN`, read the key of
 each record, and read the key list a directory points at. Recognise directory
-records **structurally** — by `fSeekDir`, `fSeekKeys`, `fSeekFree` — and not by
+records **structurally** — by `fSeekDir`, `fSeekParent`, `fSeekKeys` — and not by
 class name, because a `TFile` subclass is still a directory
 ([Directories §6.2](../01-container/Directory.md#62-the-key-list-record-cannot-be-identified-from-its-key)).
 
@@ -47,7 +47,7 @@ compression settings.*
 of it matters. The two things that bite:
 
 - **the test for "is this compressed" is an inequality**, `fObjlen > fNbytes - fKeylen`,
-  not an inequality of the two ([§1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality));
+  not a *difference* between the two ([§1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality));
 - a payload may be **several blocks**, each with its own 9-byte header, and you
   concatenate them ([§7](../01-container/Compression.md#7-multi-block-payloads)).
 
@@ -158,10 +158,10 @@ reader that does not implement that misses the tail of every branch it touches
 
 [Split branches](../04-ttree/TBranchElement.md) and
 [Splitting](../04-ttree/Splitting.md) describe the branch tree and what each
-branch holds; [Reading entries](../04-ttree/ReadingEntries.md) gives the eleven
-read procedures and the four fields that select between them — `fType`, `fID`,
-`fSplitLevel` and `fStreamerType`, not `fType` alone
-([§8](../04-ttree/TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)).
+branch holds; [Split branches §8](../04-ttree/TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)
+gives the eleven conditions — selecting ten distinct procedures, since
+`ReadLeavesMember` serves two of them — and the four fields that choose between
+them: `fType`, `fID`, `fSplitLevel` and `fStreamerType`, not `fType` alone.
 
 The fixtures are one per shape: `ttree/split-object`, `split-unsplit`,
 `split-naming`, `split-nested`, `split-counter`, `split-clones`,
@@ -180,7 +180,7 @@ bytes an entry occupies equal the bytes its decoding consumes. It is what turns
   `tree-branchref` and `tree-ntuple` cover them.
 - [RNTuple](../05-rntuple/index.md) — a different format in the same container.
   Read ROOT's own specification, which this project tracks verbatim, together
-  with [the errata](../05-rntuple/ERRATA.md): six places where it and ROOT's code
+  with [the errata](../05-rntuple/ERRATA.md): ten places where it and ROOT's code
   disagree, one of which has already made two readers in the same repository
   diverge.
 
@@ -198,18 +198,24 @@ Four checks, in increasing order of strength:
 3. **Consumption.** Decode an object and compare where you stopped against the
    byte count, and an entry against its span in the basket. Most errors of
    understanding show up here as an offset that is wrong by two or four bytes.
-4. **Files you did not choose.** This project's two corpora — 226 files written
-   by ROOT between 2.24/00 and 6.36/02 — found thirteen errors in this
-   specification that its own fixtures did not, because a fixture tests what its
-   author already understood.
+4. **Files you did not choose.** This project's two corpora — 180 files spanning
+   ROOT 2.24/00 to 6.36/02 — found errors in this specification that its own
+   fixtures did not, because a fixture tests what its author already understood.
+   The two halves differ in what a failure means: the 26 files of `gen/cern/` were
+   published by the ROOT team and a failure there **is** evidence, while the 154 of
+   `gen/foreign/` come from uproot's regression suite and include files uproot
+   itself wrote, so a failure there is a lead to be traced to a writer.
 
 ## 10. What you can leave out
 
 Deliberately, and without losing the ability to read ordinary files:
 
-- **Writing.** The format is specified for reading; the `Invariants` sections are
-  what a writer must satisfy, and nothing here prescribes how to satisfy them
-  (`PLAN.md` §2.8).
+- **Writing a file of your own**, if you only need to read. The `Invariants`
+  sections state what a conforming file satisfies, collected for a writer in
+  [A writer's invariants](WriterInvariants.md); and if you *do* need to write,
+  [Writing](../06-writing/index.md) gives the procedures — the container, an
+  object and its streamer info, `TH1F`/`TH1D` and a flat `TTree` — with every
+  field marked fixed, derived or free.
 - **Class layouts older than ROOT 4.** A file written before streamer
   information existed carries none, and its classes can only be read from
   hardcoded per-version layouts this specification does not give

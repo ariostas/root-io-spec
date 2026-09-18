@@ -13,7 +13,7 @@ as against `gen/foreign/`, which is uproot's regression suite and contains files
 uproot wrote: there, a failing invariant is a lead to be traced to a writer before
 it is evidence. Here it is evidence.
 
-  tools/fetch_cern.py                    the core tier: 22 files, 5 MB
+  tools/fetch_cern.py                    the core tier: 24 files, 5.5 MB
   tools/fetch_cern.py --tier physics     real production trees, 27 MB more
   tools/fetch_cern.py --tier all         both
   tools/fetch_cern.py --check            verify what is already downloaded

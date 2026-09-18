@@ -21,11 +21,13 @@ project's contribution is the audit** — checking it against
 `tools/sync_rntuple.py --check` runs in CI and fails if the copy drifts from the
 submodule, so the copy cannot quietly become a fork.
 
-Two fixtures carry the audit. **`gen/cases/rntuple/anchor`** is an RNTuple
-written by the pinned ROOT with compression off, whose bytes the errata are
-asserted against; before it existed, every byte in them came from one file in the
-CERN corpus written by an older release. **`gen/cases/rntuple/fundamental-types`**
-has one field per fundamental C++ type and pins the column each lands in.
+**Eight fixtures** carry the audit, one per form.
+**`gen/cases/rntuple/anchor`** is an RNTuple written by the pinned ROOT with
+compression off, whose bytes the errata are asserted against; before it existed,
+every byte in them came from one file in the CERN corpus written by an older
+release. **`fundamental-types`** has one field per fundamental C++ type and pins the
+column each lands in, and **`collections`**, **`user-class`**, **`projected`**,
+**`untyped`**, **`streamed`** and **`soa`** each pin one area of the type mapping.
 
 `tools/rootfile.py` reads an RNTuple anchor and header envelope independently of
 ROOT — written from the tracked copy, so the two disagreeing is a detectable
@@ -49,17 +51,22 @@ and everything below it from the tracked copy, and the three errata in between.
 
 ## Status
 
-**Six errata**, each verified against the pinned submodule and, where there are
-bytes to check, against `RNTuple.root`. Three are in the anchor and the ROOT file
-embedding, one in the locator type table, one in the envelope header, and one in
-the column type table — where the document lists a column encoding, `0x17
+**Ten errata**, each verified against the pinned submodule and, where there are
+bytes to check, against a fixture. Three are in the anchor and the ROOT file
+embedding, one in the locator type table, one in the envelope header, one in the
+column type table — where the document lists a column encoding, `0x17
 SplitReal16`, that ROOT's C++ implementation does not have and **ROOT's own
-JavaScript reader does**.
+JavaScript reader does** — and four in the type mapping, the last of which puts the
+*Extra type information* record in a different envelope from the one the document
+introduces it under.
 
-The audit now covers every envelope: the header's field, column, alias column and
-extra-type-info records, the footer's schema extension, cluster groups and
-attribute sets, and the page list's cluster summaries and page locations. The
-remaining half of the document — the C++ type mapping, limits, naming and the
-compatibility notes — is **not yet audited**, and
-[NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) says so plainly rather than
-leaving the silence to be read as approval.
+The audit now covers every envelope and, with one exception, the whole type
+mapping: the header's field, column, alias column and extra-type-info records, the
+footer's schema extension, cluster groups and attribute sets, the page list's
+cluster summaries and page locations, the stdlib types, user-defined classes and
+enums, projected fields and alias columns, `RNTupleCardinality`, untyped
+collections and records, ROOT streamed types, the SoA layout, and the limits,
+naming and compatibility notes. **What is left** is *Linked Attribute Sets* beyond
+its footer record frame and **classes with an associated collection proxy**;
+[NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) is the per-section table,
+including which claims rest on the source alone rather than on bytes.

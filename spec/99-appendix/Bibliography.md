@@ -12,10 +12,10 @@ engineering.
 maintained with the code, and the model this project follows. It is tracked here
 verbatim as [`05-rntuple/BinaryFormatSpecification.md`](../05-rntuple/BinaryFormatSpecification.md)
 with [errata](../05-rntuple/ERRATA.md) beside it; read the copy for the format
-and the errata for the six places it and ROOT's code disagree.
+and the errata for the ten places it and ROOT's code disagree.
 
 **`root/io/doc/TFile/*.md`** — the `TFile` and `TTree` documentation ROOT ships.
-It describes **release 3.02.06**, with one page partially refreshed to 6.22.06.
+It describes **release 3.02.06**, with four of its pages partially refreshed to 6.22.06.
 It still states that ZIP is the only compression algorithm and that there are
 "ten compression levels 0-9"; it has no coverage of `TBranchElement`,
 member-wise STL streaming, `Double32_t`, schema evolution, or the 64-bit layout
@@ -67,11 +67,13 @@ all. Its provenance is mixed: it contains files uproot wrote, so a disagreement
 is a lead rather than evidence (`PLAN.md` §3.4).
 
 **`root.cern/files`** (<https://root.cern/files/>) — files published by the ROOT
-team, written by ROOT, from release 2.24/00 to 6.35/01. This project curates 72
-of them; `gen/cern/README.md` says why each is listed. Because ROOT wrote them, a
+team, written by ROOT, from release 2.24/00 to 6.35/01. This project curates **34**
+of them — 26 downloaded and 8 multi-gigabyte files read by range request alone
+(`gen/cern/LARGE.toml`); `gen/cern/README.md` says why each is listed. Because ROOT wrote them, a
 failure there **is** evidence, which is what makes them worth the download.
 
-**The reference files here.** `data/` holds 65 small files, each with a
+**The reference files here.** `data/` holds 72 small files ROOT wrote, plus the 4
+in `data/written/` that this project wrote, each with a
 `case.toml` of byte-level assertions checkable with nothing but the standard
 library, so they work as test vectors for an implementation in any language —
 [Conventions §8](../00-conventions.md#8-reference-files).
