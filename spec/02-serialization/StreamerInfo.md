@@ -512,22 +512,48 @@ Then, for the current variant:
      (`root/io/io/src/TStreamerInfo.cxx:3643-3656`);
    - for each of the first `fArrayDim` extents, `acc_num(id, fMaxIndex[i])`
      (`root/io/io/src/TStreamerInfo.cxx:3658-3660`);
-   - the text between the first `[` and `]` of `fTitle`, if any, via
-     `acc_str` (`root/io/io/src/TStreamerInfo.cxx:3664-3678`).
+   - the text between `[` and `]` in `fTitle`, if any, via `acc_str`
+     (`root/io/io/src/TStreamerInfo.cxx:3664-3678`). **The `[` counts only when
+     nothing but `/` and whitespace precedes it**, which is what
+     `TVirtualStreamerInfo::GetElementCounterStart` enforces
+     (`root/core/meta/src/TVirtualStreamerInfo.cxx:98-110`). A comment like
+     `// x position [0, 1]` therefore folds **nothing**; only a leading
+     `[fN]`-style counter does. Variants 6 and below use a plain search for `[`
+     instead, and that is the one difference between variants 6 and 7.
 
 **There are eight variants**, because the algorithm changed over time and old
 files must still be matched (`root/core/meta/inc/TClass.h:111-122`):
 
-| Value | Name | Difference from current |
+**Each name describes what that variant lacks, but the tests in the code are
+thresholds on the ordered value, not independent switches**, so a variant differs
+from the current algorithm in every row whose threshold it fails — not only in the
+one its name mentions. The five decisions, with the line that makes each:
+
+| Decision | Applied when | Line |
 |---|---|---|
-| 1 | `kNoEnum` | no `+1` for an enum member |
-| 2 | `kReflexNoComment` | no comment text, no typedef resolution |
-| 3 | `kNoRange` | no comment text |
-| 4 | `kWithTypeDef` | type names left sugared |
-| 5 | `kReflex` | no typedef resolution |
-| 6 | `kNoRangeCheck` | a looser rule for locating the `[` |
-| 7 | `kNoBaseCheckSum` | base checksums not folded in |
-| 8 | `kLatestCheckSum` | current |
+| `+1` for an enum member | `code > kNoEnum`, so 2-8 | `:3620` |
+| Type name **as recorded**, still sugared | `code <= kWithTypeDef`, so 1, 3, 4 | `:3632` |
+| Type name **typedef-resolved**, `Long64_t` spelled out in full | `code` is 2 or 5 | `:3627-3630`, `:3646-3652` |
+| Type name typedef-resolved and `Long64_t`-normalised | 6, 7, 8 | `:3641` |
+| The comment text between `[` and `]` | `code > kNoRange`, so 4-8 | `:3664` |
+| The strict `[` locator of step 3 rather than a plain search | `code > kNoRangeCheck`, so 7, 8 | `:3666-3669` |
+| Each base's own checksum | `code > kNoBaseCheckSum`, so 8 only | `:3600-3602` |
+
+| Value | Name | What it lacks relative to the current algorithm |
+|---|---|---|
+| 1 | `kNoEnum` | the enum `+1`, resolved type names, the comment text, the strict `[` locator, base checksums |
+| 2 | `kReflexNoComment` | the comment text, `Long64_t` normalisation, the strict `[` locator, base checksums |
+| 3 | `kNoRange` | resolved type names, the comment text, the strict `[` locator, base checksums |
+| 4 | `kWithTypeDef` | resolved type names, the strict `[` locator, base checksums |
+| 5 | `kReflex` | `Long64_t` normalisation, the strict `[` locator, base checksums |
+| 6 | `kNoRangeCheck` | the strict `[` locator, base checksums |
+| 7 | `kNoBaseCheckSum` | base checksums |
+| 8 | `kLatestCheckSum` | nothing; this is the current algorithm |
+
+Note that variants 2 and 5 **do** resolve typedefs — ROOT's header comment "has no
+typedef at all" describes the resulting name, not the absence of resolution. What
+they do instead of `GetLong64_Name` is substitute `unsigned long long`,
+`long long` and `char` textually (`root/io/io/src/TStreamerInfo.cxx:3646-3652`).
 
 A reader matching an old file SHOULD try variants 1 through 7 when the current
 one does not match, which is what ROOT does
@@ -552,6 +578,9 @@ Reference values, useful as test vectors:
 | `TObjString` | `0x9c8e4800` |
 | `TList` | `0x69c5c3bb` |
 | `TObjArray` | `0xa99e6552` |
+| `TStreamerInfo` | `0x90566883` |
+| `TStreamerElement` | `0xdd0eb253` |
+| `TStreamerBase` | `0x092715b0` |
 
 ### 11.1 An enum member is recognisable, and it changes the value
 
@@ -578,18 +607,15 @@ spelling as an enum.
 **The checksum is computed from the class definition, not from the streamer info**
 (`root/core/meta/src/TClass.cxx:6604-6609`), and the two do not always contain the
 same information. Measured over every streamer info in this repository's reference
-files — **653 of them, of which 614 are reproduced exactly** by §11's algorithm
+files — **743 of them, of which 698 are reproduced exactly** by §11's algorithm
 applied to the info's own elements, `tools/test_write.py` — the remainder fall into
-three groups:
+three groups, and every one of them has a named cause:
 
 | Cause | Classes | What the info lacks |
 |---|---|---|
 | **A version-0 class lists no members** | `THashList`, `TSeqCollection` | `TStreamerInfo::Build` skips every member of a class whose version is 0 (`root/io/io/src/TStreamerInfo.cxx:552-554`), but the checksum still folds them. `THashList`'s `0xcc7e49c1` is reproduced by adding `fTable`/`THashTable*` by hand |
 | **A member ROOT rewrote for I/O** | `TF1`, `CollectionForms` | `std::array<Int_t,3>` is recorded as a fixed C array of `int` with `fArrayDim` 1, and `std::unique_ptr<T>` as `T*` — but the checksum folds the **declared** type name and no extents. `CollectionForms` is reproduced with `array<int,3>`; `TF1` with `unique_ptr<TFormula,default_delete<TFormula> >`, default template argument spelled out |
 | **ROOT's own value is wrong** | three `pair<…>` instances | A `pair`'s checksum can be computed before its members are known and is then cached forever (`root/core/meta/src/TClass.cxx:6655-6666`); `data/serialization/pairs.root` has three distinct pairs all carrying `0x0b5fb752`, and the fourth pair in the same file is correct and recomputable |
-
-One further mismatch, `TPad`, has no explanation yet. It is listed in
-`tools/test_write.py` as unexplained rather than left out of the measurement.
 
 **For a reader** the consequence is narrow: matching an object to an info by
 checksum uses the value *in the file*, which is always self-consistent, so none of
@@ -599,10 +625,6 @@ this affects decoding. It matters when checking a file, or when writing one.
 class as declared — including the `+1` per enum member and the declared spelling of
 a rewritten member — and not from the element list about to be emitted. See
 [Writing an object §7.3](../06-writing/WritingObjects.md#73-the-checksum).
-| `TStreamerInfo` | `0x90566883` |
-| `TStreamerElement` | `0xdd0eb253` |
-| `TStreamerBase` | `0x092715b0` |
-
 ## 12. Reading
 
 1. If `fSeekInfo` is 0 or not greater than `fBEGIN`, the file records no streamer

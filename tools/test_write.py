@@ -104,8 +104,10 @@ class Checksums(unittest.TestCase):
     #: members were known and cached forever (PLAN.md 7.1 item 8).
     PAIR_BUG = {"pair<TString,PHit*>", "pair<int,string>",
                 "pair<int,vector<short> >"}
-    #: One class whose mismatch is not explained. Listed rather than hidden.
-    UNEXPLAINED = {"TPad"}
+    #: Every mismatch now has a named cause. TPad used to be listed here; it
+    #: was this project's own bug in the `[` locator, not ROOT's
+    #: (`StreamerInfo.md` 11 step 3).
+    UNEXPLAINED: set[str] = set()
 
     def elements_of(self, info):
         return [
@@ -142,7 +144,28 @@ class Checksums(unittest.TestCase):
         self.assertEqual(unexpected, [])
         # A floor, so adding a fixture cannot fail this; the exception list
         # above is what makes the test strict.
-        self.assertGreater(matched, 600)
+        self.assertGreater(matched, 690)
+
+    def test_bracket_locator_is_strict(self):
+        """Only a `[` preceded by `/` and whitespace folds into the checksum.
+
+        `TPad` is the witness: four of its members carry a title like
+        `X bottom left corner of pad in NDC [0,1]`. A plain search for `[` folds
+        `0,1` and misses ROOT's value; ROOT's own locator folds nothing.
+        `StreamerInfo.md` 11 step 3.
+        """
+        self.assertEqual(rw._counter_start("[fN] the count"), 0)
+        self.assertEqual(rw._counter_start("/ [fN] after a comment slash"), 2)
+        self.assertIsNone(rw._counter_start("x position [0, 1]"))
+        self.assertIsNone(rw._counter_start("no brackets at all"))
+
+        pads = self.infos_named("data/classes/canvas.root", "TPad")
+        self.assertEqual(len(pads), 1)
+        info = pads[0]
+        self.assertTrue(any("[" in e.title for e in info.elements))
+        got = rw.checksum(rw.Info(info.name, info.class_version,
+                                  self.elements_of(info)))
+        self.assertEqual(got, info.checksum)
 
     def test_reference_values(self):
         """StreamerInfo.md 11's published test vectors."""

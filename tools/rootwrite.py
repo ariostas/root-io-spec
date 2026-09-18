@@ -796,6 +796,23 @@ def _acc_num(acc: int, n: int) -> int:
     return (acc * 3 + n) & 0xFFFFFFFF
 
 
+def _counter_start(title: str) -> int | None:
+    """Where the counter's `[` starts in a comment, or None.
+
+    Only `/` and whitespace may precede it, so an ordinary comment that happens
+    to contain brackets -- `// x position [0, 1]` -- contributes nothing to the
+    checksum. ROOT's rule, `TVirtualStreamerInfo::GetElementCounterStart`,
+    `root/core/meta/src/TVirtualStreamerInfo.cxx:98-110`; the looser plain search
+    belongs to checksum variants 6 and below (`StreamerInfo.md` 11).
+    """
+    for i, c in enumerate(title):
+        if c == "[":
+            return i
+        if c != "/" and not c.isspace():
+            return None
+    return None
+
+
 def checksum(info: Info) -> int:
     """`fCheckSum` for an info, per `StreamerInfo.md` 11 (current variant).
 
@@ -818,8 +835,9 @@ def checksum(info: Info) -> int:
         acc = _acc_str(acc, e.type_name)
         for i in range(e.array_dim):
             acc = _acc_num(acc, e.max_index[i])
-        if "[" in e.title and "]" in e.title[e.title.index("[") + 1:]:
-            inner = e.title[e.title.index("[") + 1:]
+        left = _counter_start(e.title)
+        if left is not None and "]" in e.title[left + 1:]:
+            inner = e.title[left + 1:]
             acc = _acc_str(acc, inner[:inner.index("]")])
     return acc
 
