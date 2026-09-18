@@ -1,23 +1,25 @@
 # PLAN — ROOT I/O Specification
 
 **Status: the reading side is specified end to end for files written by ROOT 4
-and later, and 0.1.0 is released.** The container, the object layer, the divergent
-classes and the whole `TTree` reading path are written, cited against the pinned
+and later, 0.1.0 is released, and the writing side now covers the container, an
+object, histograms and a flat `TTree`.** Everything is cited against the pinned
 submodule and checked against bytes; RNTuple tracks ROOT's own specification plus
-ten errata. The live work is **write support** — §2.9 and §8.4 — which extends the
-project past the reading side it was scoped to.
+ten errata. §2.9 and §8.4 are the write support, which extends the project past
+the reading side it was scoped to.
 
 Measured, 2026-09-18, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 41, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 71 / 1753, 0 failures |
-| Source citations checked | 1149, 0 failures |
-| Class versions checked against `ClassDef` | 25 |
-| Invariants over the fixtures | 71 files, 0 failures |
+| Specification documents | 46, plus the tracked RNTuple copy |
+| Reference files / byte assertions | 72 / 1826, 0 failures |
+| Files **this project wrote** / assertions | 4 / 198, 0 failures |
+| Source citations checked | 1321, 0 failures |
+| Class versions checked against `ClassDef` | 40 |
+| Invariants over the fixtures and the written files | 76 files, 0 failures |
 | Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
+| Unit tests | 289 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register — every gap the written documents record, so they can be picked up
@@ -223,7 +225,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-five things that are true, unobvious and have cost somebody time, each linked to the section that specifies it |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ☐ `WriterInvariants.md` | The collected index of §2.8, now with a second audience: §2.9's procedures state what a writer must *do*, and this is the list of what its output must *satisfy*. `tools/check_invariants.py` is already the executable form. §8.4 item M15 |
+| ✅ `WriterInvariants.md` | The 223 `Invariants` entries of the whole specification, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §6 is the nine cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -253,11 +255,11 @@ what a writer actually needs rather than by symmetry with the reading side:
 
 | File | State |
 |---|---|
-| ☐ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
-| ☐ `WritingFiles.md` | The container in write order: the header, the root directory record, a key, the key list, the free list, and the end-of-file rewrite |
-| ☐ `WritingObjects.md` | Framing an object, the version word, and the `StreamerInfo` record — including when a writer may omit it and what that costs |
-| ☐ `WritingHistograms.md` | `TH1F`/`TH1D`/`TH2F`/`TProfile` at the current class version, member by member |
-| ☐ `WritingTrees.md` | A `TTree` of flat branches at the current class version: the tree record, branches, leaves, baskets, and the fields that must agree with one another |
+| ✅ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
+| ✅ `WritingFiles.md` | The container in write order, and §13's ten mistakes ROOT reads without complaint |
+| ✅ `WritingObjects.md` | Framing, the version word, the object map, compression, and the `StreamerInfo` record down to each element subclass |
+| ✅ `WritingHistograms.md` | `TH1F` and `TH1D` member by member; `TH2F` and `TProfile` are §7 in outline only |
+| ✅ `WritingTrees.md` | A flat `TTree`: the tree record, branches, leaves, baskets, and the fields that must agree with one another |
 
 **Only the current version of each class.** A writer chooses what it emits, so
 there is never a reason to write an old layout; the legacy layouts stay on the
@@ -407,10 +409,10 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
 | RNTuple | ◐ upstream tracked, envelopes and the type mapping audited, ten errata; one form left (collection proxy) |
-| Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
+| Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
-| Writing (`spec/06-writing/`) | ◐ scoped 2026-09-18, decision 3 revised; the work is §8.4 |
+| Writing (`spec/06-writing/`) | ✅ container, object, histograms, flat `TTree` — every object-bearing record in `data/written/` byte-identical to ROOT's (§8.4) |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
@@ -1200,9 +1202,25 @@ entries — which only works if the counted array's offsets and `fLeafCount`
 resolved. And `check_invariants.py` decodes both baskets' entries and checks their
 byte spans, exactly as it does for a ROOT-written fixture.
 
-**M15 — `WriterInvariants.md`** and the front pages: the collected index of every
-`Invariants` entry, organised for a writer rather than by layer, and the status
-tables re-measured.
+**M15 — ✅ done 2026-09-18. `WriterInvariants.md`, and the front pages
+re-measured.**
+
+The 223 `Invariants` entries of 30 documents, re-sorted by the order a file is
+produced in — the file, each object, a histogram, a tree — with one column the
+reading side never needed: **who notices a violation.** Three values, and they are
+very unequal: `check_invariants.py`, ROOT, or nothing. §6 is the list of nine where
+the answer is nothing, which is the shortest useful page in the appendix.
+
+Also the class-version tables of the two class-level writing documents, which
+brought `check_versions.py` from 25 versions across 7 documents to **40 across 9**
+— so `TH1F` 3, `TH1` 8, `TAxis` 10, `TBranch` 13, `TBasket` 3 and the rest are now
+checked against `ClassDef` rather than asserted.
+
+**What write support is still not.** `TH2F` and `TProfile` are outlined and not
+specified; a split `TBranchElement`, an update to an existing file, and a
+user-defined class with a streamer info of its own are out of scope by decision 3.
+The four documents cover what a writer of histograms and flat trees needs, which is
+what the extension was asked for.
 
 ## 9. Known gaps
 

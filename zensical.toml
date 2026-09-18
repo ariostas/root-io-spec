@@ -69,6 +69,7 @@ nav = [
   ] },
   { "Appendix" = [
       { "Implementing a reader" = "99-appendix/ReaderChecklist.md" },
+      { "A writer's invariants" = "99-appendix/WriterInvariants.md" },
       { "Pitfalls" = "99-appendix/Pitfalls.md" },
       { "Bootstrap classes" = "99-appendix/Bootstrap.md" },
       { "Hand-written streamers" = "99-appendix/HandWrittenStreamers.md" },

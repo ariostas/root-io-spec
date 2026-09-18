@@ -22,9 +22,10 @@ The container and object serialization layers are written and checked — enough
 locate any object in a ROOT file and decode any user-defined class from the file's
 own streamer info. On top of them, `TArray` and the whole `TTree` reading path — the tree record,
 branches, leaves, baskets, splitting and decoding one entry — are written and
-checked. A **writing** layer is now under way, starting with the container: see
-[Writing ROOT files](06-writing/index.md). The repository's `PLAN.md` has the
-phasing, and its §9 every known gap.
+checked. On the other side, **[writing](06-writing/index.md)** is specified for the
+container, an object and its streamer info, histograms and a flat `TTree` — at the
+current version of each class, and checked by having ROOT read the result. The
+repository's `PLAN.md` has the phasing, and its §9 every known gap.
 
 | Layer | State |
 |---|---|
@@ -34,15 +35,20 @@ phasing, and its §9 every known gap.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
-| Writing — the container, and a file produced end to end | [partly](06-writing/index.md) |
+| Writing — the container, an object, histograms, a flat `TTree` | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, anchor and file embedding audited | [partly](05-rntuple/index.md) |
 
-Behind it: **71 reference files with 1753 byte-level assertions, 1223 source
-citations checked against the pinned ROOT tree across 42 documents**, and the
+Behind it: **72 reference files with 1826 byte-level assertions, 1321 source
+citations checked against the pinned ROOT tree across 46 documents**, and the
 invariants of every layer run over 226 files this project did not write — ROOT
-2.24/00 to 6.36/02 — with **0 failures**. The writing layer adds one file this
-project *did* write, which ROOT opens, reads and updates.
+2.24/00 to 6.36/02 — with **0 failures**.
+
+The writing layer adds four files this project *did* write, with 198 assertions of
+their own. Three of them are the strongest check here: **every object-bearing
+record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
+`TTree`, two `TBasket`s, and a `StreamerInfo` record of fifteen class
+descriptions.
 
 ## How to read it
 
@@ -71,8 +77,10 @@ Then the layers, in order. They build on each other:
    recorded streamer info.
 4. **`TTree`** — branches, leaves, baskets, splitting, and reading an entry.
 5. **[Writing](06-writing/index.md)** — the same format from the other side: which
-   bytes to emit, in what order, for the current version of each class. Smaller
-   than the reading side on purpose, and checked by having ROOT read the result.
+   bytes to emit, in what order, for the current version of each class. Four
+   documents — the container, an object, histograms, a flat `TTree` — each with
+   every field marked fixed, derived or free, and each checked by having ROOT read
+   what this project wrote.
 6. **[RNTuple](05-rntuple/index.md)** — a **verbatim tracked copy** of ROOT's own
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes its audit has produced so far. Read the copy for the
@@ -87,6 +95,10 @@ organised as a work order.
 [Hand-written streamers](99-appendix/HandWrittenStreamers.md) and
 [Forwarding streamers](99-appendix/ForwardingStreamers.md) are the two lists that
 cannot be derived from a file and so have to be published.
+[A writer's invariants](99-appendix/WriterInvariants.md) is the 223 `Invariants`
+entries of every layer re-sorted for a writer, with the one column the reading side
+does not need: who notices when you get it wrong — and the nine cases where nothing
+does.
 [Glossary](99-appendix/Glossary.md) defines every term used with a meaning it does
 not have in ordinary English, and
 [Bibliography](99-appendix/Bibliography.md) says what else exists and what each of

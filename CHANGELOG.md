@@ -27,6 +27,14 @@ was established, which is the other half of the story.
   `TList` down to each element subclass. `tools/test_write.py` builds that record
   for `TObjString` from the document and asserts it is **byte-identical** to the one
   ROOT wrote in `data/container/file-minimal.root`, checksum computed from scratch.
+- [A writer's invariants](spec/99-appendix/WriterInvariants.md): the 223
+  `Invariants` entries of the whole specification re-sorted by the order a file is
+  produced in, with one column the reading side never needed — **who notices a
+  violation**: `tools/check_invariants.py`, ROOT, or nothing. §6 is the nine cases
+  where the answer is nothing.
+- The class-version tables of the two class-level writing documents are checked
+  against `ClassDef`, taking `tools/check_versions.py` from 25 versions across 7
+  documents to **40 across 9**.
 - [Writing trees](spec/06-writing/WritingTrees.md): a flat `TTree` -- the basket
   records, the branch and leaf descriptions inside the tree record, and the fields
   that must agree with one another. **`data/written/tree.root` reproduces

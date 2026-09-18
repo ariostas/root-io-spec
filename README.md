@@ -24,11 +24,17 @@ schema evolution, references), the **standard classes** whose recorded streamer
 info does not describe their bytes, and **`TTree`** — the tree record, branches,
 leaves, baskets, splitting, and reading an entry out of a split or an unsplit tree.
 
-A **writing** layer is now under way: [spec/06-writing/](spec/06-writing/index.md)
-says which bytes to emit and in what order, for the current version of each class
-a writer needs. `tools/rootwrite.py` is its executable form, and the conformance
-test is that ROOT opens what it wrote, finds the values that went in, and says
-nothing.
+A **writing** layer now covers the other direction:
+[spec/06-writing/](spec/06-writing/index.md) says which bytes to emit and in what
+order — the container, an object and its streamer info, `TH1F`/`TH1D`, and a flat
+`TTree` — at the current version of each class. `tools/rootwrite.py` is its
+executable form, and the conformance test is that ROOT opens what it wrote, finds
+the values that went in, and says nothing.
+
+The result is stronger than that test needed to be: **every object-bearing record
+in `data/written/` is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`,
+a `TTree`, two `TBasket`s, and a `StreamerInfo` record of fifteen class
+descriptions with their checksums computed from scratch.
 
 | Layer | State |
 |---|---|
@@ -38,12 +44,13 @@ nothing.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
-| Writing — the container end to end; histograms and trees next | partly |
+| Writing — the container, an object, histograms, a flat `TTree` | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**71 reference files, 1753 byte-level assertions, and 1223 source citations
-checked against the pinned submodule across 42 documents.** The invariants also
+**72 reference files, 1826 byte-level assertions, and 1321 source citations
+checked against the pinned submodule across 46 documents**, plus 4 files this
+project wrote with 198 assertions of their own. The invariants also
 run over 226 files this project did not write — 154 from uproot's regression
 corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 94% of the records in them decode. Those files are where
@@ -60,8 +67,10 @@ corpus still hits. See [PLAN.md](PLAN.md) for the structure, phasing and
 decisions; §8 is the route to a first release and §9 lists every known gap.
 
 Scope in brief: reading is specified normatively, and writing two ways — per-layer
-invariants that a conforming file satisfies whatever wrote it, plus procedures in
-`spec/06-writing/` for producing one at the current version of each class. Free
+invariants that a conforming file satisfies whatever wrote it, collected for a
+writer in [spec/99-appendix/WriterInvariants.md](spec/99-appendix/WriterInvariants.md),
+plus procedures in `spec/06-writing/` for producing one at the current version of
+each class. Free
 space reuse, basket sizing and key ordering stay unspecified: they are ROOT's
 choices, not the format's. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.

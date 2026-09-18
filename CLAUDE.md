@@ -20,6 +20,7 @@ The full check suite, in the order CI runs it:
 ```sh
 tools/generate.py --check      # byte assertions in every case.toml (no ROOT needed)
 tools/check_invariants.py      # the Invariants sections of spec/01-container/
+tools/check_write.py           # gates 1 and 2 of spec/06-writing/ (--root adds gate 3)
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists (needs submodule)
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
@@ -154,6 +155,48 @@ hold 18, 22, 6 and 13. `TreeReader` resolves a counter among siblings instead �
 `ReadingEntries.md` §4.1 and erratum 6 — and the entry's byte span is the
 cross-check that catches the difference.
 
+### The writing layer, and why its checks are the strongest here
+
+`spec/06-writing/` is the write side: four documents, each a numbered procedure
+with every field marked **fixed**, **derived** or **free**. `tools/rootwrite.py` is
+the executable form — a pure-Python writer built from those documents, independent
+of `rootfile.py` — and `tools/check_write.py` puts each file through three gates
+(`spec/06-writing/index.md` §2):
+
+```sh
+tools/check_write.py                  # gates 1 and 2; no ROOT needed
+tools/check_write.py --root           # all three
+tools/check_write.py --accept         # re-record data/written/ after a deliberate change
+```
+
+1. the bytes match the committed copy in `data/written/` and every `[[bytes]]`
+   assertion holds;
+2. `rootfile.py` reads it and `check_invariants.py` accepts it;
+3. ROOT opens it, `verify.C` finds the values that went in, and **nothing on
+   either stream looks like a ROOT diagnostic** — a `BuildCheck` warning or a
+   `CheckByteCount` complaint fails the case, which is what makes gate 3 an
+   assertion about checksums and byte counts rather than about values.
+
+`data/written/` is **byte-reproducible**, unlike the rest of `data/`: a writer has
+no reason to consult a clock, so `rootwrite.py` takes the timestamp and UUID as
+inputs and the manifest is a plain sha256.
+
+**Three records are byte-identical to ROOT's**, which is the check that found every
+error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
+`data/classes/histogram.root`, a `StreamerInfo` record of fifteen infos (9628),
+and both baskets plus the whole `TTree` record against `data/ttree/basket.root`.
+The tree comparison is the strictest, because a branch stores its baskets'
+*offsets*, so the two file names are deliberately the same length. When a
+comparison fails, the difference is the finding — that is how the `TObjArray`
+pointer-versus-member framing, the Y axis's `fTitleOffset` of 0, and the
+`fEntryOffsetLen` shrink at flush were all discovered.
+
+Writing a class's streamer info is where a writer meets the checksum algorithm
+(`spec/02-serialization/StreamerInfo.md` §11). Two values **cannot** be computed
+from an element list and are carried as constants in `rootwrite.KNOWN_CHECKSUMS`:
+`THashList` and `TSeqCollection`, both class version 0, whose infos list no members
+while their checksums fold them. §11.2 has the other two exception classes.
+
 **`spec/05-rntuple/` is not ours to edit.** `BinaryFormatSpecification.md` there
 is a byte-for-byte copy of ROOT's own RNTuple specification, and
 `tools/sync_rntuple.py --check` fails if it drifts from the submodule — in CI, on
@@ -261,6 +304,11 @@ ROOT's format is layered and ~90% of classes are fully described by the containe
 plus serialization layers plus a `TStreamerInfo` read out of the file itself. Only
 the divergent classes need hand-written text. `docs_dir = "spec"`, so the directory
 is also the site.
+
+**`gen/written/<case>/`** — the write side's cases: a `build.py` defining
+`build() -> bytes`, a `case.toml` of the same shape, and a `verify.C` defining
+`void verify(const char *path)` that prints `FAIL` lines and `VERIFY OK`. See
+`gen/written/README.md`.
 
 **`gen/cases/<group>/<case>/`** — one `gen.C` (a ROOT macro defining
 `void gen(const char *out)`) plus one `case.toml`. Each case exercises *one* thing.
