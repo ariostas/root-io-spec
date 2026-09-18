@@ -11,7 +11,7 @@ No third-party dependencies.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 MAGIC = b"root"
 LARGE_FILE_VERSION_FLAG = 1000000
@@ -4289,6 +4289,36 @@ class RNColumn:
 
 
 @dataclass
+class RNAliasColumn:
+    """A column with no pages of its own. BinaryFormatSpecification "Alias columns".
+
+    Alias columns have no column ID: they are not referenced from the footer or
+    the page list, where only physical IDs may appear.
+    """
+
+    start: int
+    physical_id: int
+    field_id: int
+
+
+@dataclass
+class RNTypeInfo:
+    """One extra-type-information record of the header envelope.
+
+    Content identifier 0 is a ROOT-streamed TList of TStreamerInfo, which is why
+    `content` is a byte range rather than a decoded value: it belongs to the
+    object layer of spec/02-serialization/ rather than to RNTuple's own encoding.
+    """
+
+    start: int
+    content_id: int
+    type_version: int
+    type_name: str
+    content: int        # where the payload begins
+    end: int
+
+
+@dataclass
 class RNSchema:
     name: str
     description: str
@@ -4296,6 +4326,8 @@ class RNSchema:
     feature_flags: list[int]
     fields: list[RNField]
     columns: list[RNColumn]
+    alias_columns: list[RNAliasColumn] = field(default_factory=list)
+    type_info: list[RNTypeInfo] = field(default_factory=list)
 
 
 def _read_rn_field(buf: bytes, offset: int, field_id: int) -> RNField:
@@ -4393,9 +4425,42 @@ def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
     for i in range(frame.items):
         columns.append(_read_rn_column(buf, pos, i))
         pos = read_rn_frame(buf, pos).end
+    o = frame.end
+
+    # Two more lists, and both are usually empty: alias columns exist only for a
+    # projected field, and extra type information only for a streamed one.
+    aliases: list[RNAliasColumn] = []
+    frame = read_rn_frame(buf, o)
+    if not frame.is_list:
+        raise FormatError(f"alias column list at {o} is a record frame")
+    pos = frame.body
+    for _ in range(frame.items):
+        inner = read_rn_frame(buf, pos)
+        aliases.append(RNAliasColumn(start=pos,
+                                     physical_id=_u32le(buf, inner.body),
+                                     field_id=_u32le(buf, inner.body + 4)))
+        pos = inner.end
+    o = frame.end
+
+    type_info: list[RNTypeInfo] = []
+    frame = read_rn_frame(buf, o)
+    if not frame.is_list:
+        raise FormatError(f"extra type information list at {o} is a record frame")
+    pos = frame.body
+    for _ in range(frame.items):
+        inner = read_rn_frame(buf, pos)
+        content_id = _u32le(buf, inner.body)
+        type_version = _u32le(buf, inner.body + 4)
+        type_name, after = read_rn_string(buf, inner.body + 8)
+        type_info.append(RNTypeInfo(start=pos, content_id=content_id,
+                                    type_version=type_version,
+                                    type_name=type_name, content=after,
+                                    end=inner.end))
+        pos = inner.end
 
     return RNSchema(name=name, description=description, writer=writer,
-                    feature_flags=feature_flags, fields=fields, columns=columns)
+                    feature_flags=feature_flags, fields=fields, columns=columns,
+                    alias_columns=aliases, type_info=type_info)
 
 
 def read_rntuple(buf: bytes, rec: Record) -> tuple[RNTupleAnchor, RNSchema]:

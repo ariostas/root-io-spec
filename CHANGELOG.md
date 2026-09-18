@@ -9,15 +9,22 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
-- **The RNTuple type mapping is audited for the stdlib types and for user-defined
-  classes and enums**, with two new fixtures — `rntuple/collections` (fourteen
-  stdlib types) and `rntuple/user-class` (a struct with a base class, two enums, a
-  vector of itself and a transient member) — and a test per subsection of the
-  tracked specification, parsing each claim out of the document rather than
-  transcribing it. Two new errata: **7**, `Double32_t` keeps a `SplitReal32` column
-  in an uncompressed ntuple where every other default drops to unsplit; **8**, the
-  field record's `Type Version` is a signed class version in an unsigned word, so a
-  class with no `ClassDef` arrives as 0xFFFFFFFF.
+- **The RNTuple type mapping is audited**, every form but one, with six fixtures
+  and a test per subsection that parses each claim out of the tracked document
+  rather than transcribing it: the stdlib types, user-defined classes and enums,
+  projected fields and alias columns, `RNTupleCardinality`, untyped collections and
+  records, ROOT streamed types, and the SoA layout — which sets the one field flag
+  no fixture had reached. Only classes with an associated collection proxy are
+  left. Four new errata: **7**, `Double32_t` keeps a `SplitReal32` column in an
+  uncompressed ntuple where every other default drops to unsplit; **8**, the field
+  record's `Type Version` is a signed class version in an unsigned word, so a class
+  with no `ClassDef` arrives as 0xFFFFFFFF; **9**, the extra type information's
+  content is a length-prefixed string, four bytes the record's layout does not
+  show; **10**, that record lives in the **footer's** schema extension and never in
+  the header where the document introduces it, so a reader looking there finds no
+  streamer info on any file with a streamed field.
+- `tools/rootfile.py` reads the header envelope's alias column and extra type
+  information lists, and both version words of a field record.
 
 - **Every branch-basket in the two corpora that any reader could decode is now
   decoded and checked**: 27969 of 28036, 99.8%, and 1696 of 1696 over the files

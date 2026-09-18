@@ -524,3 +524,189 @@ class UserClassMapping(unittest.TestCase):
                       "evolution.", text)
         for hint in ("0xFFFFFFFF", "UINT32_MAX", "unversioned"):
             self.assertNotIn(hint, text)
+
+
+class SchemaOnlyFields(unittest.TestCase):
+    """Fields no C++ member produces: projected, untyped, streamed, SoA.
+
+    One fixture each, and the claims are the prose of *Alias columns*,
+    *RNTupleCardinality*, *ROOT streamed types*, *Untyped collections and records*
+    and the SoA subsection.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import rootfile
+        cls.rootfile = rootfile
+
+    def schema(self, name):
+        rootfile = self.rootfile
+        buf, _, recs = rootfile.load(REPO / f"data/rntuple/{name}.root")
+        rec = next(r for r in recs if r.class_name == "ROOT::RNTuple")
+        anchor, schema = rootfile.read_rntuple(buf, rec)
+        return buf, anchor, schema
+
+    @staticmethod
+    def columns_of(schema, field):
+        return [c for c in schema.columns if c.field_id == field.field_id]
+
+    # -- projected fields and alias columns ------------------------------
+
+    def test_a_projected_field_has_no_column_of_its_own(self):
+        _, _, s = self.schema("projected")
+        by_name = {f.name: f for f in s.fields}
+        for name in ("fEnergy", "fAlias", "fN32", "fN64"):
+            with self.subTest(field=name):
+                field = by_name[name]
+                self.assertTrue(field.flags & 0x02, "the projected flag")
+                self.assertIsNotNone(field.source_id)
+                self.assertEqual(self.columns_of(s, field), [])
+
+    def test_every_projected_field_has_an_alias_column(self):
+        _, _, s = self.schema("projected")
+        aliased = {a.field_id for a in s.alias_columns}
+        projected = {f.field_id for f in s.fields if f.flags & 0x02}
+        self.assertEqual(aliased, projected)
+
+    def test_one_physical_column_backs_several_alias_columns(self):
+        _, _, s = self.schema("projected")
+        physical = [a.physical_id for a in s.alias_columns]
+        self.assertEqual(physical.count(0), 3, physical)
+
+    def test_cardinality_is_projected_from_a_collection(self):
+        _, _, s = self.schema("projected")
+        by_name = {f.name: f for f in s.fields}
+        source = by_name["fVec"]
+        for name, width in (("fN32", "std::uint32_t"), ("fN64", "std::uint64_t")):
+            with self.subTest(field=name):
+                field = by_name[name]
+                self.assertEqual(field.type_name,
+                                 f"ROOT::RNTupleCardinality<{width}>")
+                self.assertEqual(field.source_id, source.field_id)
+                self.assertEqual(source.role, "collection")
+
+    # -- untyped ---------------------------------------------------------
+
+    def test_an_untyped_field_has_an_empty_type_name(self):
+        _, _, s = self.schema("untyped")
+        by_name = {f.name: f for f in s.fields}
+        self.assertEqual((by_name["fRecord"].role, by_name["fRecord"].type_name),
+                         ("record", ""))
+        self.assertEqual((by_name["fColl"].role, by_name["fColl"].type_name),
+                         ("collection", ""))
+        # Its members are ordinary typed fields, and the shapes are the typed ones.
+        self.assertEqual(by_name["fX"].type_name, "float")
+        self.assertEqual(self.columns_of(s, by_name["fRecord"]), [])
+        self.assertEqual([c.type_name for c in
+                          self.columns_of(s, by_name["fColl"])], ["Index64"])
+
+    # -- streamed --------------------------------------------------------
+
+    def test_a_streamed_field_is_role_4_with_an_index_and_a_byte_column(self):
+        _, _, s = self.schema("streamed")
+        field = next(f for f in s.fields if f.name == "fInner")
+        self.assertEqual((field.structure, field.role), (0x04, "streamer"))
+        self.assertEqual([c.type_name for c in self.columns_of(s, field)],
+                         ["Index64", "Byte"])
+
+    def test_the_streamer_info_is_not_in_the_header(self):
+        # ERRATA 10. The header's list is empty; the record is in the footer's
+        # schema extension, which test_the_streamer_info_is_in_the_footer reads.
+        _, _, s = self.schema("streamed")
+        self.assertEqual(s.type_info, [])
+
+    def test_the_streamer_info_is_in_the_footer_and_is_length_prefixed(self):
+        # ERRATA 9 and 10 together: walk the footer's schema extension by hand,
+        # because this project's reader stops at the header.
+        import struct
+        rootfile = self.rootfile
+        buf, anchor, _ = self.schema("streamed")
+        env = rootfile.read_rn_envelope(buf, anchor.seek_footer)
+        o = env.body
+        _, o = rootfile.read_rn_feature_flags(buf, o)
+        o += 8                                        # the header checksum
+        ext = rootfile.read_rn_frame(buf, o)
+        pos = ext.body
+        for _ in range(3):                            # fields, columns, aliases
+            pos = rootfile.read_rn_frame(buf, pos).end
+        type_info = rootfile.read_rn_frame(buf, pos)
+        self.assertEqual(type_info.items, 1)
+        inner = rootfile.read_rn_frame(buf, type_info.body)
+        content_id, type_version = struct.unpack_from("<II", buf, inner.body)
+        name, after = rootfile.read_rn_string(buf, inner.body + 8)
+        self.assertEqual((content_id, type_version, name), (0, 0, ""))
+        # The content is a string: a length, and only then the streamed object.
+        length = struct.unpack_from("<I", buf, after)[0]
+        self.assertEqual(after + 4 + length, inner.end)
+        count = struct.unpack_from(">I", buf, after + 4)[0]
+        self.assertTrue(count & 0x40000000, "a ROOT byte count")
+        self.assertEqual(count & ~0x40000000, length - 4)
+        self.assertEqual(buf[after + 12:after + 17], b"TList")
+        self.assertIn(b"RNStreamedInner", buf[after:inner.end])
+
+    # -- SoA -------------------------------------------------------------
+
+    def test_the_soa_flag_is_set_and_the_child_is_the_record(self):
+        _, _, s = self.schema("soa")
+        parent = next(f for f in s.fields if f.name == "fPoints")
+        self.assertEqual(parent.role, "collection")
+        self.assertTrue(parent.flags & 0x08, "the SoA flag")
+        self.assertTrue(parent.flags & 0x04, "has a checksum")
+        self.assertEqual(parent.type_name, "RNPointSoA")
+        self.assertEqual([c.type_name for c in self.columns_of(s, parent)],
+                         ["Index64"])
+        child = next(f for f in s.fields
+                     if f.parent_id == parent.field_id and f is not parent)
+        self.assertEqual((child.name, child.type_name, child.role),
+                         ("_0", "RNPointRecord", "record"))
+
+    def test_both_classes_carry_the_same_version_because_root_requires_it(self):
+        # root/tree/ntuple/src/RFieldMeta.cxx:707 refuses a mismatch, which the
+        # document does not mention. The checksums still differ.
+        _, _, s = self.schema("soa")
+        parent = next(f for f in s.fields if f.name == "fPoints")
+        child = next(f for f in s.fields
+                     if f.parent_id == parent.field_id and f is not parent)
+        self.assertEqual(parent.type_version, child.type_version)
+        self.assertNotEqual(parent.type_checksum, child.type_checksum)
+
+
+class WriterDefaults(unittest.TestCase):
+    """*Defaults* against RNTupleWriteOptions, and *Naming* against the validator.
+
+    Neither needs a file: both are claims about the writer, and the header is the
+    witness. Parsed out of the tracked copy so the table cannot drift.
+    """
+
+    SOURCE = REPO / "root/tree/ntuple/inc/ROOT/RNTupleWriteOptions.hxx"
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_the_three_documented_defaults_match_the_source(self):
+        text = self.SOURCE.read_text()
+        for member, expected in (
+                ("fApproxZippedClusterSize", 128 * 1024 * 1024),      # 128 MiB
+                ("fMaxUnzippedClusterSize", 10 * 128 * 1024 * 1024),  # 1280 MiB
+                ("fMaxUnzippedPageSize", 1024 * 1024)):               # 1 MiB
+            line = next(l for l in text.splitlines()
+                        if l.strip().startswith(f"std::size_t {member} ="))
+            value = line.split("=", 1)[1].strip().rstrip(";")
+            with self.subTest(member=member):
+                self.assertEqual(eval(value, {"fApproxZippedClusterSize":
+                                              128 * 1024 * 1024}), expected)
+
+    def test_the_documented_table_still_has_exactly_those_three_rows(self):
+        lines = TRACKED.read_text().splitlines()
+        start = lines.index("## Defaults")
+        rows = [l for l in lines[start:start + 12]
+                if l.startswith("|") and not set(l) <= set("|- ")]
+        # The header row plus three defaults. A fourth would mean the document
+        # started documenting more of RNTupleWriteOptions than it used to.
+        self.assertEqual(len(rows), 4, rows)
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_the_forbidden_characters_are_exactly_the_documented_ones(self):
+        source = (REPO / "root/tree/ntuple/src/RNTupleUtils.cxx").read_text()
+        for code in ("\\u002E", "\\u002F", "\\u0020", "\\u005C"):
+            self.assertIn(code, source)
+        self.assertIn("iscntrl", source)

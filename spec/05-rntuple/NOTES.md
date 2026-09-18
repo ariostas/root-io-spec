@@ -140,20 +140,30 @@ including its field and column records.
 | User-defined enums, scoped and unscoped | audited against bytes, clean — `rntuple/user-class` |
 | User-defined classes → Regular class / struct, base classes, transient members | audited against bytes, clean |
 | Field Description: the type version and checksum of a class field | audited against bytes — **ERRATA 8** |
+| Alias columns, and the projected-field flag | audited against bytes, clean — `rntuple/projected` |
+| `ROOT::RNTupleCardinality<SizeT>`, both widths | audited against bytes, clean |
+| Untyped collections and records | audited against bytes, clean — `rntuple/untyped` |
+| ROOT streamed types: role 0x04, its two columns | audited against bytes, clean — `rntuple/streamed` |
+| Extra type information: the record, and where the streamer info goes | audited against bytes — **ERRATA 9, 10** |
+| Classes representing a SoA layout: flag 0x08 | audited against bytes, clean — `rntuple/soa` |
+| Limits | audited against the encodings this project has already checked |
+| Naming specification | audited against the validator and by probing the writer, clean |
+| Defaults | audited against `RNTupleWriteOptions`, clean |
+| Notes on Backward and Forward Compatibility | audited: ROOT's reader implements the one MUST, §6 |
 
-**Not yet audited**: *Linked Attribute Sets* beyond its footer record frame, the
-collection-proxy and SoA forms of a user class, `RNTupleCardinality`, ROOT streamed
-types, untyped collections and records, plus *Limits*, *Naming specification*,
-*Defaults*, and *Notes on Backward and Forward Compatibility*.
+**What is left**: *Linked Attribute Sets* beyond its footer record frame, and
+**classes with an associated collection proxy** — the one type-mapping form with no
+fixture. The document itself says the associative half of it "are supported in the
+RNTuple binary format, but currently are not implemented in ROOT's RNTuple reader
+and writer", and the sequential half needs `TClass::SetCollectionProxy` with a
+`TCollectionProxyInfo`, which is a compiled template instantiation rather than a
+runtime attribute. It is the only row above that a `classes.h` and an interpreted
+macro cannot reach.
 
-Three of those need something this project has not built yet rather than another
-fixture of the same kind: a **collection proxy** and the **SoA layout** are
-dictionary attributes (`rntuple.streamerMode`, `rntuple.SoARecord`
-— `root/tree/ntuple/src/RFieldUtils.cxx:702-715`), which ACLiC cannot set from a
-plain header; `RNTupleCardinality` only exists as a **projected** field, so it
-needs the projection API; and a **streamed** field needs a class the dictionary
-marks unsplittable. All three are reachable, and each is one selection-XML or API
-call away rather than a new reading of the serializer.
+The dictionary attributes turned out **not** to be a barrier: they are settable at
+runtime, `cl->CreateAttributeMap(); cl->GetAttributeMap()->AddProperty(...)`, which
+is how `rntuple/streamed` and `rntuple/soa` exist at all. ROOT's own tests do the
+same (`root/tree/ntuple/test/rfield_streamer.cxx:54-57`).
 
 The type mapping is a different kind of material from the envelope sections. An
 envelope describes a byte layout, checkable field by field against the
@@ -259,3 +269,49 @@ the reader relies on — it adds the eight bytes back itself
 Nothing here should be read as a statement that the unaudited sections are
 correct. They are simply not yet checked, which is the same standard the rest of
 this project holds itself to.
+
+## 6. The compatibility notes are reader requirements, and ROOT keeps the hard one
+
+*Notes on Backward and Forward Compatibility* is the one section that constrains
+**readers** rather than bytes, so auditing it means asking whether ROOT's own
+reader does what it says. The load-bearing rule is the last one, because it is the
+only MUST:
+
+> When a reader encounters an unknown feature flag, it must refuse reading any
+> further.
+
+ROOT does. `DeserializeFeatureFlags` reads a chain of 64-bit words while the top
+bit is set (`root/tree/ntuple/src/RNTupleSerialize.cxx:1049-1065`), and
+`CheckFeatureFlags` fails with "unsupported format feature" on any bit it does not
+know (`root/tree/ntuple/src/RNTupleSerialize.cxx:1869-1877`), called from both the
+header and the footer deserializers (`:1903`, `:1958`).
+
+The other rules are SHOULDs about ignoring what a reader does not understand, and
+this project's own reader follows the important one by construction: every frame is
+sized from its own preamble and the next read starts at the frame's end, never at
+the sum of the fields read (`tools/rootfile.py`'s `read_rn_frame`). That is what
+makes a fixture written by a newer ROOT parse here rather than desynchronise.
+
+*Limits* needs no separate reading: every row is arithmetic over an encoding this
+directory has already audited — a 16-bit bit count gives the 8 kB element, a 16-bit
+type code the 64k column types, a 48-bit envelope length the 2^48 envelope, a
+56-bit entry count the 2^56 entries per cluster, a 32-bit string length the 4 GB
+metadata string. The two rows that are *design* rather than encoding — the 10 PB
+volume and the 8 TB cluster — say so themselves ("assuming", "depends on").
+
+*Defaults* matches `RNTupleWriteOptions`: 128 MiB approximate zipped cluster,
+1280 MiB maximum unzipped cluster (which is `10 *` the first, not an independent
+number), 1 MiB maximum unzipped page
+(`root/tree/ntuple/inc/ROOT/RNTupleWriteOptions.hxx:198-201`). The table omits a
+fourth default from the same block that a reader can see in the bytes:
+`fInitialUnzippedPageSize` is **256**, so the first page of a column in a small
+ntuple is 256 bytes rather than 1 MiB. The section says it summarizes, so that is a
+gap rather than an error — but it is the one of the four that explains a page size
+somebody will measure.
+
+*Naming specification* is clean, and checked from both sides: the validator forbids
+exactly `.`, `/`, space, `\` and control characters
+(`root/tree/ntuple/src/RNTupleUtils.cxx:31-50`), and the writer refuses an empty
+field name ("name cannot be empty string") and an empty ntuple name ("empty RNTuple
+name"), which the document says cannot be persistified and which the validator
+itself does not check — a different piece of ROOT does.

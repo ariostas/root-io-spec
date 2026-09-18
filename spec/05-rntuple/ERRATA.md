@@ -19,6 +19,8 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 6 | Header Envelope → Column Description | open | — |
 | 7 | Low-precision Floating Points | open | — |
 | 8 | Header Envelope → Field Description | open | — |
+| 9 | Header Envelope → Extra type information | open | — |
+| 10 | Header Envelope → Extra type information | open | — |
 
 Bytes come from two files.
 
@@ -418,3 +420,81 @@ The fix upstream is a sentence: say that 0xFFFFFFFF means the class carries no
 version, and that the type checksum is then its only identity. A reader today
 should treat 0xFFFFFFFF as "unversioned" rather than as a number, and fall back to
 the checksum — which is what the checksum flag is there for.
+
+---
+
+## 9. The extra type information's content is a length-prefixed string
+
+*Extra type information* draws the record frame as two 32-bit integers and then
+says:
+
+> The type information record frame has the following contents followed by a
+> string containing the type name.
+
+and, of content identifier 0:
+
+> The format of the content is a ROOT streamed `TList` of `TStreamerInfo` objects.
+
+Nothing says the content is itself a **string** — and it is. The serializer writes
+four values, and the last two are both strings:
+
+```cpp
+pos += RNTupleSerializer::SerializeUInt32(desc.GetTypeVersion(), *where);
+pos += RNTupleSerializer::SerializeString(desc.GetTypeName(), *where);
+pos += RNTupleSerializer::SerializeString(desc.GetContent(), *where);
+```
+
+`root/tree/ntuple/src/RNTupleSerialize.cxx:389-391`. An RNTuple string is a 32-bit
+little-endian length followed by the bytes, so there are **four bytes between the
+type name and the first byte of the `TList`**.
+
+> **Bytes.** In `rntuple/streamed` the record's content length is 438 at offset
+> 1236, and the streamed object starts at 1240 with `40 00 01 b2` — a ROOT byte
+> count of 434 with the 0x40000000 flag — then `ff ff ff ff` and `TList`. Both
+> words are asserted, on either side of the boundary.
+
+A reader that takes "the rest of the frame" as the object starts four bytes early
+and fails on the first byte count. The fix upstream is one clause: say that the
+content is a string, like the type name above it.
+
+---
+
+## 10. The streamer info is in the footer, not where the document introduces it
+
+*Extra type information* is a subsection of **Header Envelope**, and content
+identifier 0 — "Serialized ROOT streamer info" — is described there. A reader that
+looks for it there finds **nothing**, on every file that has a streamed field.
+
+It cannot be in the header. The set of classes serialized by the ROOT streamer is
+not known until the dataset is committed, which is where ROOT builds the record:
+
+```cpp
+ROOT::Internal::RNTupleLink RPagePersistentSink::CommitDatasetImpl()
+{
+   if (!fInfosOfStreamerFields.empty()) {
+      ...
+      RExtraTypeInfoDescriptorBuilder extraInfoBuilder;
+      extraInfoBuilder.ContentId(EExtraTypeInfoIds::kStreamerInfo)
+         .Content(RNTupleSerializer::SerializeStreamerInfos(fInfosOfStreamerFields));
+      fDescriptorBuilder.ReplaceExtraTypeInfo(...);
+   }
+   ... SerializeFooter(...)
+}
+```
+
+`root/tree/ntuple/src/RPageStorage.cxx:1290-1310`. The record therefore reaches the
+**footer envelope's schema extension**, whose four lists the document says are
+"identical to the last four fields in Header Envelope" and are to be interpreted
+"as if it was found directly at the end of the header". So the format permits both
+places and ROOT uses only one, which the document never says.
+
+> **Bytes.** `rntuple/streamed`'s header envelope has an **empty** extra type
+> information list; the footer's schema extension has one record, content
+> identifier 0, type version 0, empty type name, holding a `TList` whose
+> `TStreamerInfo` names `RNStreamedInner`. Asserted on both sides.
+
+This one matters more than its size suggests: the streamer info is what a reader
+needs to decode a streamed field at all, and the document sends it to the wrong
+envelope. The fix is a sentence in *Extra type information* saying that a writer
+emits `kStreamerInfo` in the footer's schema extension, because its content is only
+complete at commit time.

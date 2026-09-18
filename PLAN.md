@@ -362,7 +362,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Serialization | ✅ all seven documents |
 | Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
-| RNTuple | ◐ upstream tracked, envelopes audited, six errata; the type mapping is partial |
+| RNTuple | ◐ upstream tracked, envelopes and the type mapping audited, ten errata; one form left (collection proxy) |
 | Appendix | ✅ seven of eight; only `WriterInvariants.md` is left, and it is not MVP (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
@@ -873,68 +873,66 @@ specified and both byte-witnessed in `alice_ESDs.root`:
   the file points from the member to its counter — `fBranchCount` on an `fType` 31
   branch names the *master* branch — so §4.1's name rule is the only way in.
 
-**M9 — ◐ advanced 2026-09-17. The RNTuple type mapping: the stdlib and
-user-class halves are audited.**
-*The type mapping is the one part of the RNTuple document that cannot be read
-against the serializer — only against a file of that type — so it advances one
-fixture at a time.*
+**M9 — ✅ done 2026-09-18. The RNTuple type mapping is audited.**
+*The one part of the RNTuple document that cannot be read against the serializer —
+only against a file of that type — so it advanced one fixture at a time, six of
+them.*
 
-`gen/cases/rntuple/collections` is the second RNTuple fixture: fourteen stdlib
-types in one uncompressed ntuple, 55 byte assertions, and a test per subsection of
-*Stdlib Types and Collections* in `tools/test_rntuple.py`. `vector`, `RVec`,
-`array`, `variant`, `pair`, `tuple`, `bitset`, `unique_ptr`, `optional`, `set`,
-`atomic`, `string` and a nested `vector<vector<int>>` all come out exactly as the
-document says — field counts, parent columns, and the `_0`, `_1` child names,
-which the test **parses out of the tracked copy** rather than transcribing.
+| Fixture | Audits |
+|---|---|
+| `rntuple/fundamental-types` | the default column per C++ type, and the uncompressed rule |
+| `rntuple/collections` | fourteen stdlib types: `vector`, `RVec`, `array`, `variant`, `pair`, `tuple`, `bitset`, `unique_ptr`, `optional`, `set`, `atomic`, `string`, nested collections, `Double32_t` |
+| `rntuple/user-class` | a class, its base class as `:_0`, two enums, a `//!` member, the type version and checksum |
+| `rntuple/projected` | projected fields, alias columns, `RNTupleCardinality` in both widths |
+| `rntuple/untyped` | untyped collections and records — a role with an empty type name |
+| `rntuple/streamed` | structural role 0x04, its `Index64` + `Byte` columns, and the extra type information record |
+| `rntuple/soa` | flag 0x08, the last flag bit no fixture reached |
 
-Four things the document does not say, now in `NOTES.md` §4:
+Each claim is checked by a test that **parses it out of the tracked copy** rather
+than transcribing it, so neither the document on a submodule bump nor ROOT on a
+default change can move silently. Four errata came out of it:
 
-- **There is no "repetitive" structure on disk.** A `std::array` field is a
-  *plain* field with no columns and a repetition parameter; `std::bitset<8>` is the
-  same with a `Bit` column. Repetition is a field of the record, not a fifth
-  structural role.
-- **"An empty parent field" is the `record` role** for `pair` and `tuple`, and
-  *plain* for `atomic` and enums, although the document describes both in the same
-  words. It constrains the columns, not the role.
-- **Type name normalization reaches inside template arguments** —
-  `std::array<std::int32_t,3>` — and `RVec` is written fully qualified.
-- **ERRATA 7**: `Double32_t` keeps `SplitReal32` in an **uncompressed** ntuple,
-  where every other default drops to unsplit, because the `Double32_t` override
-  runs after the uncompressed adjustment and ignores it
-  (`root/tree/ntuple/src/RFieldBase.cxx:892-915`). Byte-witnessed against 26
-  unsplit columns in the same file.
+- **7** — `Double32_t` keeps `SplitReal32` in an **uncompressed** ntuple, where
+  every other default drops to unsplit, because its override runs after the
+  uncompressed adjustment and ignores it (`RFieldBase.cxx:892-915`).
+- **8** — the field record's `Type Version` is a signed class version in an
+  unsigned word, so a class with no `ClassDef` arrives as **0xFFFFFFFF**
+  (`RFieldMeta.cxx:645`).
+- **9** — the extra type information's **content is a length-prefixed string**,
+  which the record's layout does not show (`RNTupleSerialize.cxx:389-391`): there
+  are four bytes between the type name and the first byte of the `TList`.
+- **10** — and that record is in the **footer's** schema extension, never in the
+  header where the document introduces it, because the set of streamed classes is
+  only known at commit (`RPageStorage.cxx:1290-1310`). A reader that looks where
+  the document points finds nothing, on every file with a streamed field.
 
-**And one type that could not be written at all**: `std::map`, which aborts in
-`Fill()` on the interpreted path (`NOTES.md` §5, §7.1 item 10). Its row in the
-audit table says *source only*, which is the honest state.
+Three more facts that are ROOT's rules rather than the document's, each hit while
+building a fixture: a **top-level** field of a streamer-mode class is refused
+outright (`RFieldMeta.cxx:95`), so the streamed form exists only under a native
+field; an **SoA class and its record must carry the same class version**
+(`RFieldMeta.cxx:707`); and `std::map` **cannot be written at all** from the
+interpreter (§7.1 item 10).
 
-`gen/cases/rntuple/user-class` is the third fixture and audits the other half: a
-struct with a base class, two enums, a vector of itself and a transient member,
-47 assertions. *User-defined classes → Regular class / struct* and *User-defined
-enums* hold in every particular — record parent with no columns, members keeping
-their C++ names, a base class as `:_0`, an enum as a plain parent over its
-underlying integer type, and a `//!` member with **no field at all**. Two more
-findings:
+The prose sections are audited too, and did not need fixtures. *Limits* is
+arithmetic over encodings this project had already checked. *Naming* is clean from
+both sides — the validator's four characters plus control codes, and the writer
+refusing an empty name, which the validator itself does not check. *Defaults*
+matches `RNTupleWriteOptions`, with one omission worth knowing: the undocumented
+`fInitialUnzippedPageSize` of 256 is why a small ntuple's first page is 256 bytes.
+*Notes on Backward and Forward Compatibility* is reader requirements, and ROOT
+keeps the only MUST — it refuses an unknown feature flag
+(`RNTupleSerialize.cxx:1869-1877`).
 
-- **A regular class carries a type checksum and a type version**, which the
-  document mentions only under the SoA form. They are what lets a reader match a
-  class to a dictionary, so their absence from that section is a real gap.
-- **ERRATA 8**: the type version of a class with no `ClassDef` is **0xFFFFFFFF**,
-  because `TClass::GetClassVersion()` is −1 and the field record's word is
-  unsigned (`root/tree/ntuple/src/RFieldMeta.cxx:645`). A reader comparing
-  versions numerically — which is what the document says the field is for — reads
-  it as newer than everything ever written. ROOT guards exactly one use of the
-  value, and it is the SoA one the document does describe (`:706`).
+`rootfile.py` grew what the audit needed: the two version words of a field record,
+the **alias column list** and the **extra type information list**, neither of which
+it had parsed before.
 
-`rootfile.py` now keeps both version words of a field record, which it had been
-skipping.
-
-*Left*: the collection-proxy and SoA forms, `RNTupleCardinality`, streamed types,
-untyped collections and records, plus *Limits*, *Naming*, *Defaults* and the
-compatibility notes. Three of those need a mechanism rather than another fixture —
-the proxy and SoA forms are dictionary attributes ACLiC cannot set from a plain
-header, `RNTupleCardinality` exists only as a projected field, and a streamed field
-needs a class marked unsplittable — and `NOTES.md` §4 names which is which.
+*What is left, and it is one row*: **classes with an associated collection proxy**.
+The document says the associative half is not implemented in ROOT at all, and the
+sequential half needs `TClass::SetCollectionProxy` with a `TCollectionProxyInfo`,
+which is a compiled template instantiation rather than the runtime attribute that
+made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the only
+unaudited form.
 
 **M10 — report upstream.** Six RNTuple errata (lead with erratum 6: a column type
 the document specifies, ROOT does not implement, and JSROOT does — two readers in
