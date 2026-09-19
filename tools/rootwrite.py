@@ -356,6 +356,10 @@ class Directory:
                       seek_pdir=BEGIN).key_len
         self.add(hist.obj(key_len))
 
+    def add_graph(self, graph) -> None:
+        """Add a graph. Its payload needs its key's length for the same reason."""
+        self.add_hist(graph)
+
     # -- the two keys a directory owns ------------------------------------
 
     def record_key(self, seek_key: int, obj_len: int) -> Key:
@@ -484,6 +488,10 @@ class FileWriter:
         sized -- and a histogram's key length depends on its name and title.
         """
         self.root.add_hist(hist)
+
+    def add_graph(self, graph) -> None:
+        """Add a graph to the root directory."""
+        self.root.add_graph(graph)
 
     def mkdir(self, name: str, title: str | None = None, *,
               uuid: bytes = DEFAULT_UUID, saved: bool = True) -> Directory:
@@ -1714,6 +1722,16 @@ def histogram_infos(classes=("TH1F",)) -> list:
         raise WriteError(f"not a histogram class: {sorted(unknown)}")
     if "TProfile" in wanted:
         wanted.add("TH1D")        # its base, and it is written in the file
+    return _histogram_set(wanted).ordered(HISTOGRAM_INFO_ORDER)
+
+
+def _histogram_set(wanted: set) -> InfoSet:
+    """The `InfoSet` a histogram file needs, built bases-first.
+
+    Shared with `graph_infos`, because a `TGraph` declares a `TH1F*` and a
+    pointer member drags the pointee's whole info chain into the file even when
+    it is null (`WritingGraphs.md` 5).
+    """
     s = InfoSet()
     add, cs = s.add, s.cs
     s.common()
@@ -1840,7 +1858,204 @@ def histogram_infos(classes=("TH1F",)) -> list:
                     "Array of sum of squares of weights per bin", 62, 24,
                     "TArrayD"),
         ]))
-    return s.ordered(HISTOGRAM_INFO_ORDER)
+    return s
+
+
+#: TH1::fMaximum and fMinimum when unset, and a TGraph's too: the same sentinel
+#: in a different class (`WritingGraphs.md` 3.3).
+GRAPH_UNSET = NO_LIMIT
+#: What ROOT writes for a graph's attribute bases. Unlike a histogram's, none of
+#: it comes from gStyle: TAttLine and TAttMarker are default-constructed and
+#: TAttFill is initialised explicitly in every TGraph constructor
+#: (`root/hist/hist/src/TGraph.cxx:202`). So a graph's line colour is 1 where a
+#: histogram's is 602, and its fill style 1000 where a histogram's is 1001
+#: (`WritingGraphs.md` 3.1).
+GRAPH_LINE_DEFAULTS = (1, 1, 1)
+GRAPH_FILL_DEFAULTS = (0, 1000)
+GRAPH_MARKER_DEFAULTS = (1, 1, 1.0)
+#: TGraph::kClipFrame, set by every constructor through TGraph::Build
+#: (`root/hist/hist/src/TGraph.cxx:174`). A graph does *not* carry
+#: TObject::kMustCleanup, which a histogram in the same directory does
+#: (`WritingGraphs.md` 3.1).
+GRAPH_BITS = 0x400
+
+
+def counted_pointer(values, pack=f64) -> bytes:
+    """A counted array member: one flag byte, then the values.
+
+    `spec/02-serialization/ElementTypes.md` 4. The flag is 1 when the pointer is
+    non-null and 0 when it is, and an empty array is written as the flag alone --
+    ROOT writes 1 followed by nothing for a zero count, which is what
+    `fNpoints == 0` produces.
+    """
+    return b"\x01" + b"".join(pack(v) for v in values)
+
+
+@dataclass
+class Graph:
+    """A `TGraph` at class version 5, or a `TGraphErrors` at version 3.
+
+    `x` and `y` are the points in the order they go on disk -- ROOT stores them
+    as given and sorts nothing (`WritingGraphs.md` 3.2). `ex` and `ey` make it a
+    `TGraphErrors`; both or neither.
+
+    `fHistogram` is left null, which is what a graph ROOT has never drawn carries
+    and what a writer should emit: ROOT rebuilds the histogram on demand, and
+    letting it build one before `Write()` multiplies the record's size by six
+    (`WritingGraphs.md` 3.4).
+    """
+
+    name: str
+    title: str
+    x: list
+    y: list
+    ex: list | None = None
+    ey: list | None = None
+    #: fMinimum and fMaximum: the y range for drawing, or the -1111 sentinel.
+    minimum: float = GRAPH_UNSET
+    maximum: float = GRAPH_UNSET
+    option: str = ""
+    bits: int = GRAPH_BITS
+
+    def __post_init__(self):
+        if len(self.x) != len(self.y):
+            raise WriteError(f"{len(self.x)} x values against {len(self.y)} y")
+        if (self.ex is None) != (self.ey is None):
+            raise WriteError("a TGraphErrors needs both fEX and fEY")
+        for name, arr in (("fEX", self.ex), ("fEY", self.ey)):
+            if arr is not None and len(arr) != len(self.x):
+                raise WriteError(
+                    f"{name} has {len(arr)} values, fNpoints is {len(self.x)}")
+        if (self.minimum != GRAPH_UNSET or self.maximum != GRAPH_UNSET) \
+                and self.minimum > self.maximum:
+            raise WriteError("fMinimum above fMaximum")
+
+    @property
+    def class_name(self) -> str:
+        return "TGraphErrors" if self.ex is not None else "TGraph"
+
+    @property
+    def npoints(self) -> int:
+        return len(self.x)
+
+    def graph(self, q: Payload) -> None:
+        """The `TGraph` part: the four bases, the points, and the three tails."""
+        q.tnamed(self.name, self.title, bits=self.bits)
+
+        def line(r: Payload) -> None:
+            r.raw(b"".join(i16(v) for v in GRAPH_LINE_DEFAULTS))
+        q.framed(2, line)
+
+        def fill(r: Payload) -> None:
+            r.raw(b"".join(i16(v) for v in GRAPH_FILL_DEFAULTS))
+        q.framed(2, fill)
+
+        def marker(r: Payload) -> None:
+            r.raw(i16(GRAPH_MARKER_DEFAULTS[0]) + i16(GRAPH_MARKER_DEFAULTS[1])
+                  + f32(GRAPH_MARKER_DEFAULTS[2]))
+        q.framed(3, marker)
+
+        q.raw(i32(self.npoints))
+        q.raw(counted_pointer(self.x))
+        q.raw(counted_pointer(self.y))
+
+        # fFunctions is fType 64, a real pointer, so it is an object slot with a
+        # class record -- not TH1's in-place `//->` form. And its fBits are 0
+        # where a histogram's list carries 0x14000: a graph's list is a bare
+        # `new TList` (`root/hist/hist/src/TGraph.cxx:839`) that nothing has
+        # adopted.
+        def functions(r: Payload) -> None:
+            r.tobject()
+            r.raw(counted_string("") + i32(0))
+        q.slot("TList", 5, functions, key=id(self))
+
+        q.null()                               # fHistogram
+        q.raw(f64(self.minimum) + f64(self.maximum))
+        q.raw(counted_string(self.option))
+
+    def payload(self, key_len: int) -> bytes:
+        p = Payload(key_len)
+        if self.ex is None:
+            p.framed(5, self.graph)
+        else:
+            def body(q: Payload) -> None:
+                q.framed(5, self.graph)
+                q.raw(counted_pointer(self.ex))
+                q.raw(counted_pointer(self.ey))
+            p.framed(3, body)
+        return bytes(p.buf)
+
+    def obj(self, key_len: int) -> Obj:
+        return Obj(class_name=self.class_name, name=self.name,
+                   title=self.title, payload=self.payload(key_len))
+
+
+#: A graph file's registration order. `TH1F` and its whole chain are in it
+#: because `TGraph::fHistogram` is a `TH1F*`, and the three `TArray` infos with
+#: them -- which a histogram file does *not* carry (`WritingGraphs.md` 5).
+GRAPH_INFO_ORDER = (
+    "TGraph", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
+    "TH1F", "TH1", "TArrayF", "TArray", "TAxis", "TAttAxis", "TArrayD",
+    "TString", "THashList", "TList", "TSeqCollection", "TCollection",
+    "TGraphErrors",
+)
+
+
+def graph_infos(classes=("TGraph",)) -> list:
+    """Every `TStreamerInfo` a graph file needs, in ROOT's own order.
+
+    Nineteen of them for a file holding one `TGraph` and one `TGraphErrors`, and
+    eighteen for a file holding a single `TGraph` -- because `fHistogram` is a
+    `TH1F*`. See `WritingGraphs.md` 5.
+    """
+    unknown = set(classes) - {"TGraph", "TGraphErrors"}
+    if unknown:
+        raise WriteError(f"not a graph class: {sorted(unknown)}")
+    s = _histogram_set({"TH1F"})
+    add, cs = s.add, s.cs
+    add(Info("TGraph", 5, [
+        _base("TNamed", "The basis for a named object (name, title)", 67, 1,
+              cs("TNamed")),
+        _base("TAttLine", "Line attributes", 0, 2, cs("TAttLine")),
+        _base("TAttFill", "Fill area attributes", 0, 2, cs("TAttFill")),
+        _base("TAttMarker", "Marker attributes", 0, 3, cs("TAttMarker")),
+        # fNpoints is kCounter (6) because fX and fY name it, not because of
+        # its own declaration (`ElementLists.md` erratum 1).
+        _basic("fNpoints", "Number of points <= fMaxSize", 6, 4, "int"),
+        Element("TStreamerBasicPointer", "fX", "[fNpoints] array of X points",
+                48, 8, "double*", count_version=5, count_name="fNpoints",
+                count_class="TGraph"),
+        Element("TStreamerBasicPointer", "fY", "[fNpoints] array of Y points",
+                48, 8, "double*", count_version=5, count_name="fNpoints",
+                count_class="TGraph"),
+        # fType 64, not 63: fFunctions is a plain pointer here, so it is written
+        # as an object slot with a class record -- unlike TH1's, which is `//->`
+        # and streamed in place (`WritingGraphs.md` 3.2).
+        Element("TStreamerObjectPointer", "fFunctions",
+                "Pointer to list of functions (fits and user)", 64, 8,
+                "TList*"),
+        Element("TStreamerObjectPointer", "fHistogram",
+                "Pointer to histogram used for drawing axis", 64, 8, "TH1F*"),
+        _basic("fMinimum", "Minimum value for plotting along y", 8, 8,
+               "double"),
+        _basic("fMaximum", "Maximum value for plotting along y", 8, 8,
+               "double"),
+        Element("TStreamerString", "fOption",
+                "Options used for drawing the graph", 65, 24, "TString"),
+    ]))
+    if "TGraphErrors" in classes:
+        add(Info("TGraphErrors", 3, [
+            _base("TGraph", "Graph graphics class", 0, 5, cs("TGraph")),
+            Element("TStreamerBasicPointer", "fEX",
+                    "[fNpoints] array of X errors", 48, 8, "double*",
+                    count_version=5, count_name="fNpoints",
+                    count_class="TGraph"),
+            Element("TStreamerBasicPointer", "fEY",
+                    "[fNpoints] array of Y errors", 48, 8, "double*",
+                    count_version=5, count_name="fNpoints",
+                    count_class="TGraph"),
+        ]))
+    return s.ordered(GRAPH_INFO_ORDER)
 
 
 def tree_infos(leaf_kinds=("I", "F")) -> list:

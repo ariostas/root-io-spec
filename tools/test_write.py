@@ -754,6 +754,118 @@ class Compression(unittest.TestCase):
         self.assertIsNone(rw.zlib_blocks(os.urandom(4096), 9))
 
 
+class Graphs(unittest.TestCase):
+    """`TGraph` and `TGraphErrors` against the ones ROOT wrote.
+
+    `data/written/graph.root` and `data/classes/graph.root` hold the same two
+    objects under the same names, and both records are byte-identical -- as is the
+    **whole** `StreamerInfo` record, all 12169 bytes of nineteen infos, which no
+    other written case can say: the tree and profile files differ by the
+    `listOfRules` entry ROOT appends and this one has none.
+    """
+
+    ROOTS = "data/classes/graph.root"
+    MINE = "data/written/graph.root"
+
+    X = [0.0, 1.0, 2.0, 3.0]
+    Y = [0.5, 2.5, -1.0, 4.0]
+    EX = [0.1, 0.1, 0.2, 0.2]
+    EY = [0.25, 0.5, 0.25, 0.5]
+
+    def objects(self):
+        return {"g": rw.Graph("g", "four points", self.X, self.Y),
+                "gr": rw.Graph("gr", "with errors", self.X, self.Y,
+                               ex=self.EX, ey=self.EY)}
+
+    def test_records_are_identical_to_roots(self):
+        """A graph stores no offsets, so only the key length has to match."""
+        root_buf, _, root_recs = rootfile.load(REPO / self.ROOTS)
+        by_name = {r.name: r for r in root_recs}
+        for name, graph in self.objects().items():
+            with self.subTest(name):
+                rec = by_name[name]
+                key_len = rw.Key(class_name=graph.class_name, name=graph.name,
+                                 title=graph.title, obj_len=0, nbytes=0,
+                                 seek_key=0, seek_pdir=rw.BEGIN).key_len
+                self.assertEqual(key_len, rec.key_len)
+                self.assertEqual(
+                    graph.payload(key_len),
+                    bytes(root_buf[rec.offset + rec.key_len:
+                                   rec.offset + rec.nbytes]))
+
+    def test_the_whole_streamer_info_record_is_identical(self):
+        root_data, root_rec, theirs = streamer_infos(REPO / self.ROOTS)
+        mine_data, mine_rec, ours = streamer_infos(REPO / self.MINE)
+        self.assertEqual([i.name for i in ours], [i.name for i in theirs])
+        self.assertEqual(len(ours), 19)
+        payload = lambda d, r: bytes(d[r.offset + r.key_len:
+                                      r.offset + r.nbytes])
+        self.assertEqual(payload(mine_data, mine_rec),
+                         payload(root_data, root_rec))
+
+    def test_infos_match_roots_element_by_element(self):
+        _, _, infos = streamer_infos(REPO / self.ROOTS)
+        theirs = {i.name: i for i in infos}
+        ours = {i.name: i
+                for i in rw.graph_infos(("TGraph", "TGraphErrors"))}
+        self.assertEqual(list(ours), [i.name for i in infos])
+        for name, mine in ours.items():
+            with self.subTest(name):
+                self.assertEqual(mine.checksum, theirs[name].checksum)
+                self.assertEqual(mine.class_version,
+                                 theirs[name].class_version)
+
+    def test_a_graph_file_describes_the_tarray_family(self):
+        """Which a histogram file does not (`WritingGraphs.md` 5)."""
+        names = [i.name for i in rw.graph_infos()]
+        for cls in ("TArray", "TArrayF", "TArrayD", "TH1F", "TH1"):
+            self.assertIn(cls, names, cls)
+        hist = [i.name for i in rw.histogram_infos(("TH1F",))]
+        for cls in ("TArray", "TArrayF", "TArrayD"):
+            self.assertNotIn(cls, hist, cls)
+
+    def test_the_attribute_defaults_are_not_a_histograms(self):
+        self.assertEqual(rw.GRAPH_LINE_DEFAULTS, (1, 1, 1))
+        self.assertEqual(rw.LINE_DEFAULTS, (602, 1, 1))
+        self.assertEqual(rw.GRAPH_FILL_DEFAULTS, (0, 1000))
+        self.assertEqual(rw.FILL_DEFAULTS, (0, 1001))
+        # kClipFrame, and no kMustCleanup.
+        self.assertEqual(rw.GRAPH_BITS, 0x400)
+        self.assertEqual(rw.GRAPH_BITS & rw.K_MUST_CLEANUP, 0)
+
+    def test_the_sentinel_is_th1s(self):
+        g = rw.Graph("g", "", [], [])
+        self.assertEqual(g.minimum, -1111.0)
+        self.assertEqual(g.maximum, -1111.0)
+        self.assertEqual(rw.GRAPH_UNSET, rw.NO_LIMIT)
+
+    def test_an_empty_graph_writes_the_flag_alone(self):
+        g = rw.Graph("g", "", [], [])
+        self.assertEqual(rw.counted_pointer([]), b"\x01")
+        payload = g.payload(47)
+        # fNpoints 0, then two flag bytes and no values.
+        self.assertIn(b"\x00\x00\x00\x00\x01\x01", payload)
+
+    def test_mismatched_arrays_are_refused(self):
+        with self.assertRaises(rw.WriteError):
+            rw.Graph("g", "", [1.0, 2.0], [1.0])
+        with self.assertRaises(rw.WriteError):
+            rw.Graph("g", "", [1.0], [1.0], ex=[0.1])          # ey missing
+        with self.assertRaises(rw.WriteError):
+            rw.Graph("g", "", [1.0], [1.0], ex=[0.1, 0.2], ey=[0.1, 0.2])
+        with self.assertRaises(rw.WriteError):
+            rw.Graph("g", "", [1.0], [1.0], minimum=5.0, maximum=-5.0)
+
+    def test_a_tgrapherrors_is_a_tgraph_plus_two_arrays(self):
+        plain = rw.Graph("g", "t", self.X, self.Y)
+        errors = rw.Graph("g", "t", self.X, self.Y, ex=self.EX, ey=self.EY)
+        self.assertEqual(plain.class_name, "TGraph")
+        self.assertEqual(errors.class_name, "TGraphErrors")
+        # The TGraph block is unchanged; the frame and two arrays are added.
+        self.assertEqual(len(errors.payload(47)),
+                         len(plain.payload(47)) + 6 + 2 * (1 + 32))
+
+
 class LeafC(unittest.TestCase):
     """A `TLeafC` branch against `data/ttree/strings.root`.
 

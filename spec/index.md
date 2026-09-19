@@ -35,21 +35,22 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, a flat `TTree` | [written](06-writing/index.md) |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree` | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **75 reference files with 1950 byte-level assertions, 1499 source
-citations checked against the pinned ROOT tree across 47 documents**, and the
+Behind it: **76 reference files with 1981 byte-level assertions, 1536 source
+citations checked against the pinned ROOT tree across 48 documents**, and the
 invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
-The writing layer adds eight files this project *did* write, with 398 assertions of
-their own. Seven of them are the strongest check here: **every object-bearing
+The writing layer adds nine files this project *did* write, with 432 assertions of
+their own. Eight of them are the strongest check here: **every object-bearing
 record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
-`TH2F`, a `TH2D`, two `TProfile`s, three `TTree`s, **nine** `TBasket`s, a
-`StreamerInfo` record of fifteen class descriptions, and the eighteen each of a
-tree file and a profile file bar the one entry a file written today cannot use. The
+`TH2F`, a `TH2D`, two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s,
+**nine** `TBasket`s, and two whole `StreamerInfo` records, of fifteen and nineteen
+class descriptions, plus the eighteen each of a tree file and a profile file bar the
+one entry a file written today cannot use. The
 newest goes further: a file of nested subdirectories that matches a ROOT-written
 one **for all 1854 bytes** bar each key's timestamp, three UUIDs and the file's own
 name.

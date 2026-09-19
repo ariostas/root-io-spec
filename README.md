@@ -46,13 +46,13 @@ from scratch.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, a flat `TTree` | written |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree` | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**75 reference files, 1950 byte-level assertions, and 1499 source citations
-checked against the pinned submodule across 47 documents**, plus 8 files this
-project wrote with 398 assertions of their own. The invariants also
+**76 reference files, 1981 byte-level assertions, and 1536 source citations
+checked against the pinned submodule across 48 documents**, plus 9 files this
+project wrote with 432 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
@@ -81,8 +81,7 @@ covers is a file, an object, the five histogram classes `TH1F`, `TH1D`, `TH2F`,
 its cluster ranges.
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
 not, and `PLAN.md` §8.5 ranks the same list by how much each item blocks a third
-party — `TGraph` is what is left. The five largest items are
-done: the streamer-info element lists of all thirty-three classes a
+party, and **all seven are now done**. The element lists of all thirty-five classes a
 writer has to describe are published as
 [Element lists](spec/06-writing/ElementLists.md), read out of the ROOT-written
 fixtures rather than transcribed from this project's writer,
@@ -91,9 +90,11 @@ specifies flushing,
 [Writing histograms §7 and §8](spec/06-writing/WritingHistograms.md#7-th2f-and-th2d)
 specify `TH2` and `TProfile`, and
 [Writing a file §5](spec/06-writing/WritingFiles.md#5-a-subdirectory) specifies a
-tree of directories, and
+tree of directories,
 [Writing trees §4.5](spec/06-writing/WritingTrees.md#45-a-tleafc-the-one-leaf-whose-entries-are-not-all-the-same-length)
-specifies a string branch. The document is descriptive of ROOT 6.40.04 — where it
+specifies a string branch, and
+[Writing a graph](spec/06-writing/WritingGraphs.md) specifies `TGraph` and
+`TGraphErrors`. The document is descriptive of ROOT 6.40.04 — where it
 and the pinned submodule disagree, the submodule wins.
 
 ## Reference implementation

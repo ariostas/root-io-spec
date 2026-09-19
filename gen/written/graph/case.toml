@@ -1,0 +1,247 @@
+id   = "written/graph"
+file = "data/written/graph.root"
+size = 13605
+
+description = """
+Graphs written by tools/rootwrite.py, from spec/06-writing/WritingGraphs.md.
+
+g and gr hold what the ROOT-written fixture classes/graph holds under the same
+names, and both records are byte-identical to ROOT's -- as is the whole
+StreamerInfo record, all 12169 bytes of nineteen infos, with no listOfRules to
+subtract. The assertions below are the fixture's own offsets, which hold here
+because a graph stores no offsets of its own: only the key length has to match,
+and it does because the class, name and title do.
+
+gy is the object ROOT cannot produce: fMinimum -2 and fMaximum 5 with fHistogram
+still null. TGraph::SetMinimum builds the TH1F and the record grows sixfold; on
+disk the members are independent of it, and verify.C reads the range back.
+"""
+
+spec = ["spec/06-writing/WritingGraphs.md"]
+
+[[records]]
+offset = 100
+nbytes = 154
+class  = "TFile"
+name   = "data/written/graph.root"
+
+[[records]]
+offset = 254
+nbytes = 245
+class  = "TGraph"
+name   = "g"
+
+[[records]]
+offset = 499
+nbytes = 325
+class  = "TGraphErrors"
+name   = "gr"
+
+[[records]]
+offset = 824
+nbytes = 255
+class  = "TGraph"
+name   = "gy"
+
+[[records]]
+offset = 1079
+nbytes = 12233
+class  = "TList"
+name   = "StreamerInfo"
+
+[[records]]
+offset = 13312
+nbytes = 220
+class  = "TFile"
+name   = "data/written/graph.root"
+
+[[records]]
+offset = 13532
+nbytes = 73
+class  = "TFile"
+name   = "data/written/graph.root"
+
+[[keys]]
+name = "g"
+[[keys]]
+name = "gr"
+[[keys]]
+name = "gy"
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 13605
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 1079
+
+# --- g: the whole TGraph layout -------------------------------------------
+[[bytes]]
+name = "g byte count"
+offset = 301
+type = "u32"
+value = 1073742018
+[[bytes]]
+name = "g class version, TGraph 5"
+offset = 305
+type = "i16"
+value = 5
+[[bytes]]
+name = "g fBits: kClipFrame alone, and not kMustCleanup"
+offset = 319
+type = "u32"
+value = 1024
+[[bytes]]
+name = "g fLineColor: 1, TAttLine's own default and not gStyle's 602"
+offset = 343
+type = "i16"
+value = 1
+[[bytes]]
+name = "g fFillStyle: 1000, from TAttFill(0, 1000) in the constructor"
+offset = 357
+type = "i16"
+value = 1000
+[[bytes]]
+name = "g fNpoints"
+offset = 373
+type = "i32"
+value = 4
+[[bytes]]
+name = "g fX is a counted pointer: one flag byte, then fNpoints doubles"
+offset = 377
+type = "u8"
+value = 1
+[[bytes]]
+name = "g fX[0]"
+offset = 378
+type = "f64"
+value = 0.0
+[[bytes]]
+name = "g fX[3]"
+offset = 402
+type = "f64"
+value = 3.0
+[[bytes]]
+name = "g fY flag"
+offset = 410
+type = "u8"
+value = 1
+[[bytes]]
+name = "g fY[0]"
+offset = 411
+type = "f64"
+value = 0.5
+[[bytes]]
+name = "g fY[2], negative and stored in the order given"
+offset = 427
+type = "f64"
+value = -1.0
+[[bytes]]
+name = "g fFunctions: an object slot, so it has its own byte count"
+offset = 443
+type = "u32"
+value = 1073741855
+[[bytes]]
+name = "g fFunctions names its class in full"
+offset = 451
+type = "bytes"
+value = "TList"
+[[bytes]]
+name = "g fHistogram: a null pointer, four zero bytes"
+offset = 478
+type = "i32"
+value = 0
+[[bytes]]
+name = "g fMinimum: the -1111 sentinel, the same one TH1 uses"
+offset = 482
+type = "f64"
+value = -1111.0
+[[bytes]]
+name = "g fMaximum: the same"
+offset = 490
+type = "f64"
+value = -1111.0
+[[bytes]]
+name = "g fOption: an empty TString"
+offset = 498
+type = "u8"
+value = 0
+
+# --- gr: TGraphErrors adds two more counted arrays -------------------------
+[[bytes]]
+name = "gr byte count, the TGraphErrors frame"
+offset = 553
+type = "u32"
+value = 1073742091
+[[bytes]]
+name = "gr class version, TGraphErrors 3"
+offset = 557
+type = "i16"
+value = 3
+[[bytes]]
+name = "gr's TGraph base opens with its own byte count"
+offset = 559
+type = "u32"
+value = 1073742019
+[[bytes]]
+name = "gr's TGraph base version"
+offset = 563
+type = "i16"
+value = 5
+[[bytes]]
+name = "gr fNpoints"
+offset = 632
+type = "i32"
+value = 4
+[[bytes]]
+name = "gr fEX flag, after fOption closes the TGraph part"
+offset = 758
+type = "u8"
+value = 1
+[[bytes]]
+name = "gr fEX[0]"
+offset = 759
+type = "f64"
+value = 0.1
+[[bytes]]
+name = "gr fEY flag"
+offset = 791
+type = "u8"
+value = 1
+[[bytes]]
+name = "gr fEY[0]"
+offset = 792
+type = "f64"
+value = 0.25
+
+
+# --- gy: the range set, and fHistogram still null --------------------------
+[[bytes]]
+name = "gy fNpoints"
+offset = 953
+type = "i32"
+value = 4
+[[bytes]]
+name = "gy fHistogram: null, where ROOT's SetMinimum would have built a TH1F"
+offset = 1058
+type = "i32"
+value = 0
+[[bytes]]
+name = "gy fMinimum"
+offset = 1062
+type = "f64"
+value = -2.0
+[[bytes]]
+name = "gy fMaximum"
+offset = 1070
+type = "f64"
+value = 5.0
+[[bytes]]
+name = "gy fOption"
+offset = 1078
+type = "u8"
+value = 0

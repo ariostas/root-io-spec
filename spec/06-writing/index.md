@@ -69,7 +69,7 @@ with a plain `sha256`.
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
 | [Writing histograms](WritingHistograms.md) | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`, member by member, at the current class version |
 | [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf — fixed-width or a `TLeafC` string — its baskets, and flushing: more than one basket per branch, and the cluster ranges that come with it |
-| [Element lists](ElementLists.md) | The streamer info of each of the thirty-two classes the other three documents need: every element, with every field |
+| [Element lists](ElementLists.md) | The streamer info of each of the thirty-five classes the other four documents need: every element, with every field |
 
 Each is written as a numbered procedure, with a table per record or per class
 giving every field and, for each, whether its value is **fixed** (only one value is
@@ -155,10 +155,6 @@ word.
   [Splitting](../04-ttree/Splitting.md) documents as *ROOT's* decisions rather than
   the format's. A flat tree, or one branch holding a whole object unsplit, is what
   a writer needs and is what §3 covers.
-- **`TGraph`**, which no document here mentions and which is as common in real files
-  as `TH1`. Its layout is streamer-info driven at every version any corpus file
-  carries, so a reader needs nothing special for it; a writer needs its element
-  list and its members' meanings, and neither is published.
 - **RNTuple.** ROOT's own specification is tracked here
   ([RNTuple](../05-rntuple/index.md)) and it is written for both directions.
 - **Policy.** Basket sizes, when to flush, how many entries per cluster, which
@@ -171,10 +167,10 @@ word.
   derives at its first flush, `fBasketSize` and `fAutoSave`, are inputs to this
   project's writer for the same reason.
 - **The streamer-info element lists of any other class.**
-  [Element lists](ElementLists.md) publishes the thirty-two a histogram, a profile,
-  a flat tree or a bare `TObjString` needs, which was the largest omission here until 2026-09-18 and
+  [Element lists](ElementLists.md) publishes the thirty-five a histogram, a profile,
+  a graph, a flat tree or a bare `TObjString` needs, which was the largest omission here until 2026-09-18 and
   the one thing that made the writing layer unimplementable from the prose. It does
-  not generalise: a `TH3`, a `TGraph` or a user-defined class needs infos
+  not generalise: a `TH3`, a `TGraph2D` or a user-defined class needs infos
   that are not published, and there is no procedure for *deriving* an element list
   from a class definition — `TStreamerInfo::Build` is a dictionary walk, and this
   project specifies its output rather than reimplementing it. Two ways to obtain a

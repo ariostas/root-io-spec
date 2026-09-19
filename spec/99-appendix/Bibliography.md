@@ -72,7 +72,7 @@ of them — 26 downloaded and 8 multi-gigabyte files read by range request alone
 (`gen/cern/LARGE.toml`); `gen/cern/README.md` says why each is listed. Because ROOT wrote them, a
 failure there **is** evidence, which is what makes them worth the download.
 
-**The reference files here.** `data/` holds 75 small files ROOT wrote, plus the 8
+**The reference files here.** `data/` holds 76 small files ROOT wrote, plus the 9
 in `data/written/` that this project wrote, each with a
 `case.toml` of byte-level assertions checkable with nothing but the standard
 library, so they work as test vectors for an implementation in any language —

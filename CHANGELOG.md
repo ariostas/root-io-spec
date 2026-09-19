@@ -9,6 +9,34 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New document: [Writing a graph](spec/06-writing/WritingGraphs.md)** — `TGraph`
+  at class version 5 and `TGraphErrors` at 3, which completes the writing layer's
+  stated scope. A graph is a `TNamed` and three attribute bases, then `fNpoints` and
+  two counted arrays of doubles, then `fFunctions`, `fHistogram`, `fMinimum`,
+  `fMaximum` and `fOption`. Points are stored **in the order given** and nothing is
+  sorted. Three values a writer generalising from `TH1` gets wrong: `fBits` is
+  `0x400` (`kClipFrame`) and carries **no** `kMustCleanup`; `TAttFill` is fixed at
+  (0, **1000**) by a constructor mem-initialiser while the line and marker fields
+  come from `gStyle`'s *general* accessors, so a graph's line colour is 1 where a
+  histogram's is 602; and the empty `TList` in `fFunctions` has `fBits` 0 where a
+  histogram's list carries `0x14000`. `fMinimum`/`fMaximum` use `TH1`'s `-1111`
+  sentinel but are declared in the opposite order and are returned raw.
+- **New, for a reader and a writer: a null pointer writes *more* streamer infos than
+  a real one** ([Writing a graph §5](spec/06-writing/WritingGraphs.md#5-nineteen-streamer-infos-for-a-198-byte-object)).
+  A file holding one `TGraph` and nothing else carries **eighteen** infos and an
+  11772-byte `StreamerInfo` record, because `fHistogram` is a `TH1F*` that is null
+  and ROOT force-writes a null pointee's whole info chain. So a graph file describes
+  `TH1F`, `TH1`, `TAxis` and `TAttAxis` without containing a histogram, **and
+  describes `TArrayF`, `TArray` and `TArrayD`, which no histogram file does** — while
+  the same graph after `Fit("pol1")` describes fewer.
+- **Leave `fHistogram` null.** `TGraph::SetMinimum` goes through `GetHistogram()` and
+  writes a whole `TH1F` into the record, taking it from 245 bytes to 1213. The two
+  range members are independent of the pointer on disk, and ROOT reads them back from
+  a graph that has no histogram at all.
+- **New reference files** `data/classes/graph.root` and `data/written/graph.root`,
+  whose two graph records **and whole `StreamerInfo` record** are byte-identical.
+  Element lists: **35 classes, 194 elements**.
+
 - **New: a `TLeafC` string branch, so a writer covers every leaf form a flat tree
   needs** ([Writing trees §4.5](spec/06-writing/WritingTrees.md#45-a-tleafc-the-one-leaf-whose-entries-are-not-all-the-same-length)).
   One value per entry, as a counted string: one length byte then the characters with

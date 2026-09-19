@@ -11,7 +11,7 @@ a third party could not work around without reading this project's code.
 
 This extracts them from the **reference files ROOT wrote** and writes them into
 `spec/06-writing/ElementLists.md`, so the published tables are evidence about
-ROOT rather than a transcription of `rootwrite.py`. Six fixtures between them
+ROOT rather than a transcription of `rootwrite.py`. Seven fixtures between them
 carry every class:
 
     data/classes/histogram.root        the fifteen infos of a TH1F/TH1D file
@@ -23,6 +23,9 @@ carry every class:
     data/container/file-minimal.root   TObjString, the one info a file holding a
                                        single object carries
     data/ttree/strings.root            TLeafC, which only a string branch pulls in
+    data/classes/graph.root            TGraph and TGraphErrors -- and a third
+                                       independent copy of the TArray trio, which
+                                       a null TH1F* member drags in
 
 and every class the fixtures share is compared across them, so a table can only
 be published when every file that carries the class agrees on it, field for
@@ -81,9 +84,10 @@ SOURCES = (
     "data/classes/tarray-histogram.root",
     "data/container/file-minimal.root",
     "data/ttree/strings.root",
+    "data/classes/graph.root",
 )
 
-#: The six groups, each in bases-first order: a base's checksum is folded into
+#: The seven groups, each in bases-first order: a base's checksum is folded into
 #: the checksum of every class that inherits it (`StreamerInfo.md` §11 step 2),
 #: so this is the order a writer has to compute them in, and reading the tables
 #: in it means never meeting a checksum before the table that produces it.
@@ -96,6 +100,7 @@ GROUPS = {
              "TLeafC", "TBranch", "TRefTable", "TBranchRef", "TTree"),
     "arrays": ("TArray", "TArrayF", "TArrayD"),
     "objstring": ("TObjString",),
+    "graph": ("TGraph", "TGraphErrors"),
 }
 
 #: The infos a file of each kind carries, in the order ROOT writes them --
@@ -122,6 +127,12 @@ WRITE_ORDER = {
     "objstring": (
         "A file of one object", "data/container/file-minimal.root",
         ("TObjString",)),
+    "graph": (
+        "A graph file", "data/classes/graph.root",
+        ("TGraph", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
+         "TH1F", "TH1", "TArrayF", "TArray", "TAxis", "TAttAxis", "TArrayD",
+         "TString", "THashList", "TList", "TSeqCollection", "TCollection",
+         "TGraphErrors")),
     "strings": (
         "A tree with a string branch", "data/ttree/strings.root",
         ("TTree", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
@@ -251,6 +262,7 @@ def writer_infos() -> dict[str, rw.Info]:
                  + list(rw.histogram_infos(("TH2F", "TH2D", "TProfile")))
                  + list(rw.tree_infos(("I", "F", "C")))
                  + [arrays.by_name[n] for n in GROUPS["arrays"]]
+                 + list(rw.graph_infos(("TGraph", "TGraphErrors")))
                  + [rw.objstring_info()]):
         out[info.name] = info
     return out

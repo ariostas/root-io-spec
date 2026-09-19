@@ -1,7 +1,7 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **245
-entries across 31 documents**, counted as the numbered items in every section
+Every layer of this specification ends with an `Invariants` section — **248
+entries across 32 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
 adds the column that matters most on the write side: **who notices when you get it
@@ -18,7 +18,7 @@ Three sources of enforcement, and they are very unequal:
 |---|---|
 | **checked** | `tools/check_invariants.py` verifies it over every file it is given, including the ones this project writes |
 | **ROOT** | ROOT says something when it is violated — the message is in the linked document |
-| **nothing** | ROOT reads the file without complaint and the damage is silent. §6 collects these |
+| **nothing** | ROOT reads the file without complaint and the damage is silent. §7 collects these |
 
 ```sh
 tools/check_invariants.py <your-file.root>     # the checked column, on your output
@@ -62,7 +62,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 [Element types](../02-serialization/ElementTypes.md),
 [Compression](../01-container/Compression.md),
 [Writing an object §9](../06-writing/WritingObjects.md#9-invariants) and
-[Element lists §12](../06-writing/ElementLists.md#12-invariants).
+[Element lists §13](../06-writing/ElementLists.md#13-invariants).
 
 | Invariant | Where | Who notices |
 |---|---|---|
@@ -98,7 +98,19 @@ From [Writing histograms §10](../06-writing/WritingHistograms.md#10-invariants)
 | In a `TProfile`, `fBinSumw2` is empty or holds exactly `fNcells` values — a length between the two is dropped on the first call that reads it | checked |
 | In a `TProfile`, `fYmin <= fYmax`, and `fErrorMode` is 0 to 3 | checked |
 
-## 5. A tree
+## 5. A graph
+
+From [Writing a graph §6](../06-writing/WritingGraphs.md#6-invariants).
+
+| Invariant | Who notices |
+|---|---|
+| `fNpoints >= 0`, and each counted array's flag byte is 1 with `fNpoints` doubles after it — or 0, and then `fNpoints` is 0 too | checked, in two halves: the flag byte here, the length by the byte count |
+| `fMinimum` and `fMaximum` are both `-1111`, or `fMinimum <= fMaximum` | checked |
+| A file holding a `TGraph` describes `TH1F` and everything `TH1F`'s info names, `fHistogram` being null or not | nothing for ROOT; everything for every other reader |
+| `fFunctions` points at an empty `TList` rather than being null | nothing — a null reads back without a word, and ROOT never writes one |
+| `fBits` is `0x400` with no `kMustCleanup`, and `fHistogram` is null | nothing — a graph that differs reads and draws identically, but a non-null `fHistogram` makes the record five times the size |
+
+## 6. A tree
 
 From [Writing trees §9](../06-writing/WritingTrees.md#9-invariants), and the
 reading side's [TBranch](../04-ttree/TBranch.md),
@@ -126,7 +138,7 @@ reading side's [TBranch](../04-ttree/TBranch.md),
 | A `TLeafC` is its branch's **only** leaf | nothing, and ROOT itself writes the other shape: an empty string then becomes unreadable and every later leaf gets the wrong address |
 | A branch holding a `TLeafC` has `fEntryOffsetLen` non-zero and its baskets carry the offset array | checked |
 
-## 6. The ones ROOT does not notice
+## 7. The ones ROOT does not notice
 
 The shortest useful list in this document: violations that produce a file ROOT
 reads without a word, and that another reader may reject or misread. Each is
@@ -167,7 +179,7 @@ checkable on 2026-09-18, as
 compared a key image against the key of the record it points at, which is precisely
 the comparison ROOT never makes either.
 
-## 7. What is deliberately not constrained
+## 8. What is deliberately not constrained
 
 A writer may choose freely, and ROOT's own choices are given in the writing
 documents only so that a byte comparison against a ROOT-written file stays

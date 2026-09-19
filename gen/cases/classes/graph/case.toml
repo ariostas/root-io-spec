@@ -1,0 +1,256 @@
+id   = "classes/graph"
+file = "data/classes/graph.root"
+size = 14563
+
+description = """
+TGraph and TGraphErrors, and what a graph costs a file.
+
+A TGraph is a TNamed plus TAttLine, TAttFill and TAttMarker, then fNpoints and
+two counted arrays of doubles, then fFunctions, fHistogram, fMinimum, fMaximum and
+fOption. Its attribute values come from the class's own constructor rather than
+from gStyle -- TAttFill(0, 1000) is an explicit base initialiser -- so a graph's
+line colour is 1 where a histogram's is 602 and its fill style 1000 where a
+histogram's is 1001. fBits is 0x400, TGraph::kClipFrame, and **not** the
+kMustCleanup a histogram in the same directory carries.
+
+fFunctions is an empty TList, created unconditionally by every constructor and
+written as a real object slot with a class record -- fType 64, unlike TH1's
+`//->` fType 63 -- and its own fBits are 0.
+
+**fHistogram is why the file has nineteen streamer infos for three small
+objects.** It is a TH1F* and it is null in g and gr, but a pointer member drags
+the pointee's whole info chain in anyway: TH1F, TH1, TAxis, TAttAxis, THashList
+and -- unlike any histogram file -- TArrayF, TArray and TArrayD as well. A file
+holding one TGraph and nothing else carries eighteen of them, 11708 bytes of
+StreamerInfo record for a 198-byte object.
+
+Object gm shows what happens when the pointer is not null: TGraph::SetMinimum goes
+through GetHistogram(), which builds the TH1F, and the record grows from 198 bytes
+to 1161. A writer should set the two members and leave fHistogram null, which is
+what data/written/graph.root does; ROOT reads the range back from it.
+
+Compression off, so g and gr can be compared byte for byte with the records
+tools/rootwrite.py produces.
+"""
+
+spec = ["spec/06-writing/WritingGraphs.md", "spec/02-serialization/StreamerDriven.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 154
+class  = "TFile"
+name   = "data/classes/graph.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 254
+nbytes = 245
+class  = "TGraph"
+name   = "g"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 499
+nbytes = 325
+class  = "TGraphErrors"
+name   = "gr"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 824
+nbytes = 1213
+class  = "TGraph"
+name   = "gm"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 2037
+nbytes = 12233
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 14270
+nbytes = 220
+class  = "TFile"
+name   = "data/classes/graph.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 14490
+nbytes = 73
+class  = "TFile"
+name   = "data/classes/graph.root"
+cycle  = 1
+seek_pdir = 100
+
+# --- g: the whole TGraph layout -------------------------------------------
+[[bytes]]
+name = "g byte count"
+offset = 301
+type = "u32"
+value = 1073742018
+[[bytes]]
+name = "g class version, TGraph 5"
+offset = 305
+type = "i16"
+value = 5
+[[bytes]]
+name = "g fBits: kClipFrame alone, and not kMustCleanup"
+offset = 319
+type = "u32"
+value = 1024
+[[bytes]]
+name = "g fLineColor: 1, TAttLine's own default and not gStyle's 602"
+offset = 343
+type = "i16"
+value = 1
+[[bytes]]
+name = "g fFillStyle: 1000, from TAttFill(0, 1000) in the constructor"
+offset = 357
+type = "i16"
+value = 1000
+[[bytes]]
+name = "g fNpoints"
+offset = 373
+type = "i32"
+value = 4
+[[bytes]]
+name = "g fX is a counted pointer: one flag byte, then fNpoints doubles"
+offset = 377
+type = "u8"
+value = 1
+[[bytes]]
+name = "g fX[0]"
+offset = 378
+type = "f64"
+value = 0.0
+[[bytes]]
+name = "g fX[3]"
+offset = 402
+type = "f64"
+value = 3.0
+[[bytes]]
+name = "g fY flag"
+offset = 410
+type = "u8"
+value = 1
+[[bytes]]
+name = "g fY[0]"
+offset = 411
+type = "f64"
+value = 0.5
+[[bytes]]
+name = "g fY[2], negative and stored in the order given"
+offset = 427
+type = "f64"
+value = -1.0
+[[bytes]]
+name = "g fFunctions: an object slot, so it has its own byte count"
+offset = 443
+type = "u32"
+value = 1073741855
+[[bytes]]
+name = "g fFunctions names its class in full"
+offset = 451
+type = "bytes"
+value = "TList"
+[[bytes]]
+name = "g fHistogram: a null pointer, four zero bytes"
+offset = 478
+type = "i32"
+value = 0
+[[bytes]]
+name = "g fMinimum: the -1111 sentinel, the same one TH1 uses"
+offset = 482
+type = "f64"
+value = -1111.0
+[[bytes]]
+name = "g fMaximum: the same"
+offset = 490
+type = "f64"
+value = -1111.0
+[[bytes]]
+name = "g fOption: an empty TString"
+offset = 498
+type = "u8"
+value = 0
+
+# --- gr: TGraphErrors adds two more counted arrays -------------------------
+[[bytes]]
+name = "gr byte count, the TGraphErrors frame"
+offset = 553
+type = "u32"
+value = 1073742091
+[[bytes]]
+name = "gr class version, TGraphErrors 3"
+offset = 557
+type = "i16"
+value = 3
+[[bytes]]
+name = "gr's TGraph base opens with its own byte count"
+offset = 559
+type = "u32"
+value = 1073742019
+[[bytes]]
+name = "gr's TGraph base version"
+offset = 563
+type = "i16"
+value = 5
+[[bytes]]
+name = "gr fNpoints"
+offset = 632
+type = "i32"
+value = 4
+[[bytes]]
+name = "gr fEX flag, after fOption closes the TGraph part"
+offset = 758
+type = "u8"
+value = 1
+[[bytes]]
+name = "gr fEX[0]"
+offset = 759
+type = "f64"
+value = 0.1
+[[bytes]]
+name = "gr fEY flag"
+offset = 791
+type = "u8"
+value = 1
+[[bytes]]
+name = "gr fEY[0]"
+offset = 792
+type = "f64"
+value = 0.25
+
+# --- gm: SetMinimum materialised the histogram ----------------------------
+[[bytes]]
+name = "gm fHistogram is a slot, not a null: its byte count"
+offset = 1058
+type = "u32"
+value = 1073742782
+[[bytes]]
+name = "gm fHistogram's class"
+offset = 1066
+type = "bytes"
+value = "TH1F"
+[[bytes]]
+name = "gm fMinimum, 958 bytes of TH1F later"
+offset = 2020
+type = "f64"
+value = -2.0
+[[bytes]]
+name = "gm fMaximum"
+offset = 2028
+type = "f64"
+value = 5.0

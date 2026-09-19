@@ -1275,13 +1275,17 @@ it implied. Ordered by how much it blocks a third party:
    2026-09-18** — §8.8.
 5. ~~**Subdirectories.**~~ **Done, 2026-09-18** — §8.9.
 6. ~~**A `TLeafC` branch.**~~ **Done, 2026-09-18** — §8.10.
-7. **`TGraph`**, which no writing document mentions and which is as common in real
-   files as `TH1`.
+7. ~~**`TGraph`.**~~ **Done, 2026-09-18** — §8.11.
 
-Item 7 is what is left, and it does not block a writer of the two things the layer
-names: a file of histograms, and a flat tree of any size. Nothing in the
-list is a correction — the documents are accurate about what they cover — and each
-is stated as a limit rather than left for a reader to discover.
+**All seven are done.** The writing half of the stated scope is met as far as this
+project can show it: a third party following `spec/06-writing/` can write a file of
+histograms, profiles, graphs and flat trees at the current class versions, and nine
+worked examples prove each procedure against bytes ROOT wrote. What remains is not
+on this list — it is the standing scope in
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified): earlier class
+versions, updating an existing file, split branches, RNTuple, and the element list
+of any class beyond the thirty-five published. None of those is a gap in the prose;
+each is a limit the layer states.
 
 ### 8.6 The element lists, published (2026-09-18)
 
@@ -1524,6 +1528,70 @@ size a buffer from. `tools/rootfile.py` now exposes a `TLeafC`'s `fMinimum` and
 `TLeafC`'s element list is published with the rest
 ([`ElementLists.md` §7](spec/06-writing/ElementLists.md#7-a-flat-tree-file-the-other-ten)):
 33 classes, 179 elements.
+
+### 8.11 `TGraph`, and a null pointer that costs eighteen streamer infos (2026-09-18)
+
+[`WritingGraphs.md`](spec/06-writing/WritingGraphs.md), item 7 of §8.5 and the last
+of them. `TGraph` is as common in real files as `TH1` and no writing document had
+mentioned it.
+
+**The strongest pair in the layer.** `data/written/graph.root` against the new
+`data/classes/graph.root`: the `TGraph` record (198 bytes) and the `TGraphErrors`
+record (271) are byte-identical, and so is the **entire `StreamerInfo` record — all
+12169 bytes of nineteen infos**, with no `listOfRules` to subtract. Only the
+histogram file had ever matched a whole info record before. All nineteen checksums
+came out right the first time they were computed.
+
+It also needed no matching file-name length, and saying why is worth a line: a graph
+stores no offsets, so the class map — which is measured from the start of the record
+— lines up as soon as the **key length** does, and that needs only the same class,
+key name and title.
+
+Three of the six findings came out of the byte comparison failing, which is what it
+is for:
+
+| Fact | How it was found |
+|---|---|
+| `fBits` is `0x400`, `TGraph::kClipFrame`, and a graph carries **no** `kMustCleanup` where a histogram in the same directory does | the first diff, at `+20` |
+| `TAttFill` is fixed at (0, **1000**) by a mem-initialiser in every constructor, and the line and marker fields come from `gStyle`'s *general* accessors where a `TH1`'s come from its histogram ones — so a graph's line colour is 1 where a histogram's is 602 | the second diff |
+| The empty `TList` in `fFunctions` has `fBits` **0**, where a histogram's list carries `0x14000` | the third diff |
+| `fFunctions` is `fType` **64** where `TH1::fFunctions` is 63, so it is a pointer slot with a class record rather than streamed in place — 35 bytes against 21 | the element list |
+| `fMinimum` and `fMaximum` use `TH1`'s `-1111` sentinel, are declared in the **opposite order** to `TH1`'s, and are returned *raw* by `GetMinimum` where `TH1` computes | source, then the fixture |
+| **`SetMinimum` materialises `fHistogram`**, taking the record from 245 bytes to 1213 | `gm` in the fixture, written to show it |
+
+**And the finding that is worth the item on its own: a null pointer writes more
+streamer infos than a real one.** A file holding one `TGraph` and nothing else
+carries **eighteen** infos and an 11772-byte `StreamerInfo` record, because
+`fHistogram` is a `TH1F*` **and is null** — `TBufferFile::WriteFastArray` force-writes
+the pointee's info in that case, with ROOT's own comment *"must write StreamerInfo if
+pointer is null"* (`root/io/io/src/TBufferFile.cxx:2456-2463`), and `ForceWriteInfo`
+recurses over its elements' classes. So a graph file describes `TH1F`, `TH1`, `TAxis`
+and `TAttAxis` without containing a histogram — **and describes `TArrayF`, `TArray`
+and `TArrayD`, which no histogram file does.**
+
+Measured, on two files written by the same ROOT in one run:
+
+| | `TGraph` record | `StreamerInfo` | the `TArray` trio |
+|---|---|---|---|
+| never drawn, `fHistogram` null | 233 bytes | 11772 | **present** |
+| after `Fit("pol1")` | 2387 bytes | 16021 | **absent** |
+
+When the pointer is real the histogram is streamed through its own path, which tags
+only classes whose *generated* streamers run — and `TArrayF`'s is hand-written. That
+makes a plain `TGraph` file the cheapest source in existence for the three `TArray`
+element lists, which until now came from a `TH2F` inside a `TTree` branch; §10 of
+`ElementLists.md` now reads both and compares them, and its title no longer claims
+no file describes them.
+
+**Two new invariants, both checked, and the division between them is the honest
+part.** The obvious check on a counted array — its extent against `fNpoints` — is
+**circular**, because a reader derives the extent from the counter. What is checked
+is the flag byte and `fNpoints >= 0`; that there are exactly `fNpoints` values is
+enforced one layer down by the byte count, as `StreamerDriven` 10.1. Both were
+confirmed by corrupting `data/written/graph.root`.
+
+Element lists: **35 classes, 194 elements**, `TGraph` and `TGraphErrors` published
+with the rest.
 
 ## 9. Known gaps
 

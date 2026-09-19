@@ -159,7 +159,7 @@ cross-check that catches the difference.
 
 ### The writing layer, and why its checks are the strongest here
 
-`spec/06-writing/` is the write side: four numbered procedures with every field
+`spec/06-writing/` is the write side: five numbered procedures with every field
 marked **fixed**, **derived** or **free**, plus `ElementLists.md`, which is a table
 document rather than a procedure. `tools/rootwrite.py` is
 the executable form — a pure-Python writer built from those documents, independent
@@ -184,7 +184,7 @@ tools/check_write.py --accept         # re-record data/written/ after a delibera
 no reason to consult a clock, so `rootwrite.py` takes the timestamp and UUID as
 inputs and the manifest is a plain sha256.
 
-**Seven kinds of record are byte-identical to ROOT's**, which is the check that
+**Eight kinds of record are byte-identical to ROOT's**, which is the check that
 found every error worth having: a `TH1F` (596 bytes) and a `TH1D` (651) against
 `data/classes/histogram.root`, a `StreamerInfo` record of fifteen infos (9628),
 both baskets plus the whole `TTree` record against `data/ttree/basket.root`,
@@ -192,7 +192,8 @@ both baskets plus the whole `TTree` record against `data/ttree/basket.root`,
 `data/ttree/clusters.root`, which is the multi-basket and cluster-range case,
 a `TH2F`, a `TH2D` and two `TProfile`s against `data/classes/th2-profile.root`,
 a `TLeafC` basket with all three string forms plus the `TTree` record against
-`data/ttree/strings.root`, and
+`data/ttree/strings.root`, a `TGraph` and a `TGraphErrors` **plus the whole
+19-info `StreamerInfo` record** against `data/classes/graph.root`, and
 **two subdirectory records and three key lists** against
 `data/container/directories.root` — where the whole 1854-byte file matches bar each
 key's `fDatime`, three UUIDs and the file's own name.
@@ -212,10 +213,10 @@ from an element list and are carried as constants in `rootwrite.KNOWN_CHECKSUMS`
 `THashList` and `TSeqCollection`, both class version 0, whose infos list no members
 while their checksums fold them. §11.2 has the other two exception classes.
 
-`element_lists.py` publishes the element list of each of the thirty-three classes
+`element_lists.py` publishes the element list of each of the thirty-five classes
 those procedures need, into `spec/06-writing/ElementLists.md`, **read out of the
 ROOT-written fixtures** rather than out of `rootwrite.py` — and it compares the
-six sources against each other, compares every field with `rootwrite.py`, and
+seven sources against each other, compares every field with `rootwrite.py`, and
 recomputes each checksum from the list it publishes.
 
 ```sh

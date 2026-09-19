@@ -546,7 +546,7 @@ are not obvious:
   Their **checksums** are still needed, as the `fBaseCheckSum` of `TH1F` and
   `TH1D`, so a writer has to compute them from element lists it never emits;
   those three lists are
-  [Element lists §9](ElementLists.md#9-three-classes-no-file-describes). A `TH2F`
+  [Element lists §10](ElementLists.md#10-three-classes-a-histogram-file-does-not-describe). A `TH2F`
   and a `TH2D` need the same two, and a `TProfile` needs `TArrayD` through `TH1D`.
 - **Two checksums cannot be computed from an element list at all.**
   `THashList` and `TSeqCollection` are class version 0, so their infos list only

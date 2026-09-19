@@ -1149,6 +1149,80 @@ class Checker:
                 continue
             self.check_hist_shape(data, rec, hist, dim)
 
+    def check_graphs(self) -> None:
+        """The Invariants of `spec/06-writing/WritingGraphs.md` 6.
+
+        What is checkable here and what is not is worth stating, because the
+        obvious check is circular: `rootfile.py` derives each counted array's
+        extent *from* `fNpoints`, so comparing the two can never fail. The half
+        of invariant 1 with teeth is the flag byte -- a value other than 0 or 1,
+        or a 0 with points to write -- plus `fNpoints >= 0`. The "exactly
+        `fNpoints` values" half is enforced one layer down, by the byte count, as
+        `StreamerDriven` 10.1.
+
+        Confirmed by corrupting `data/written/graph.root`: a flag byte of 7 gives
+        "fX's flag byte is 7, not 0 or 1", and an inverted pair gives invariant 2.
+        `fNpoints` 4 -> 3 and 4 -> -1 desynchronise the decode first --
+        "TGraph v5 consumed 229 bytes, byte count says 192" -- which is the same
+        honest division the histogram checks have.
+        """
+        _, _, infos = self.streamer_infos()
+        if infos is None:
+            return
+        for rec in self.records:
+            if rec.free or not rec.key_len:
+                continue
+            if not rootfile.derives_from(infos, rec.class_name or "", "TGraph"):
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                value = rootfile.decode_record(data, rec, infos)
+            except rootfile.UnsupportedClass as exc:
+                self.skip("WritingGraphs 6.1", str(exc), unit="record")
+                continue
+            except (rootfile.FormatError, struct.error, IndexError) as exc:
+                self.bad("WritingGraphs 6.1",
+                         f"{rec.class_name} at {rec.offset}: {exc}")
+                continue
+            self.check_graph_shape(data, rec, value)
+
+    def check_graph_shape(self, data, rec, value) -> None:
+        where = f"{rec.class_name} at {rec.offset}"
+        by_name = {v.name: v for v in rootfile.walk(value)}
+        if "fNpoints" not in by_name:
+            self.skip("WritingGraphs 6.1",
+                      f"{rec.class_name}: no fNpoints in the decoded record",
+                      unit="record")
+            return
+        npoints = self._i32(data, by_name["fNpoints"])
+        if npoints < 0:
+            self.bad("WritingGraphs 6.1", f"{where}: fNpoints {npoints}")
+            return
+        # Invariant 1's flag byte, over every counted array in the record
+        # whichever class declared it: a TGraphErrors' fEX and fEY are the same
+        # shape, and so are the four arrays of a TGraphAsymmErrors.
+        for name in ("fX", "fY", "fEX", "fEY", "fEXlow", "fEXhigh", "fEYlow",
+                     "fEYhigh"):
+            member = by_name.get(name)
+            if member is None:
+                continue
+            present = data[member.start]
+            if present not in (0, 1):
+                self.bad("WritingGraphs 6.1",
+                         f"{where}: {name}'s flag byte is {present}, not 0 or 1")
+            elif not present and npoints:
+                self.bad("WritingGraphs 6.1",
+                         f"{where}: {name} is null though fNpoints is {npoints}")
+        # Invariant 2.
+        lo, hi = by_name.get("fMinimum"), by_name.get("fMaximum")
+        if lo is not None and hi is not None:
+            low, high = self._f64(data, lo), self._f64(data, hi)
+            if low > high:
+                self.bad("WritingGraphs 6.2",
+                         f"{where}: fMinimum {low} above fMaximum {high}")
+
     def _i32(self, data: bytes, value) -> int:
         return struct.unpack_from(">i", data, value.start)[0]
 
@@ -2961,6 +3035,7 @@ class Checker:
         self.check_formula()
         self.check_canvas()
         self.check_histogram()
+        self.check_graphs()
         self.check_matrix()
         self.check_basket()
         self.check_branches()
