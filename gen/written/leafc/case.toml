@@ -1,0 +1,217 @@
+id   = "written/leafc"
+file = "data/written/leafc.root"
+size = 16487
+
+description = """
+A TLeafC branch written by tools/rootwrite.py, from WritingTrees.md 4.5, holding
+the same content as the ROOT-written fixture ttree/strings: an Int_t branch, a
+C-string branch, and the three strings "ab", "" and 300 x'es.
+
+Both basket records and the whole TTree record are byte-identical to ROOT's, keys
+included, once the fixed timestamp is masked -- which is what pins fEntryOffsetLen,
+the offset array with its repeated entry for the empty string, and the leaf's fLen
+and fMaximum high-water marks. The two paths are 23 characters each so that every
+offset lines up; a branch stores its baskets' offsets, so it has to.
+
+The assertions below are the same offsets as the fixture's, and that is the point:
+the same numbers hold in a file this project wrote.
+"""
+
+spec = ["spec/06-writing/WritingTrees.md", "spec/04-ttree/TLeaf.md"]
+
+[[records]]
+offset = 100
+nbytes = 168
+class  = "TFile"
+name   = "data/written/leafc.root"
+
+[[records]]
+offset = 268
+nbytes = 77
+class  = "TBasket"
+name   = "n"
+
+[[records]]
+offset = 345
+nbytes = 393
+class  = "TBasket"
+name   = "s"
+
+[[records]]
+offset = 738
+nbytes = 1301
+class  = "TTree"
+name   = "t"
+
+[[records]]
+offset = 2039
+nbytes = 14253
+class  = "TList"
+name   = "StreamerInfo"
+
+[[records]]
+offset = 16292
+nbytes = 115
+class  = "TFile"
+name   = "data/written/leafc.root"
+
+[[records]]
+offset = 16407
+nbytes = 80
+class  = "TFile"
+name   = "data/written/leafc.root"
+
+# The baskets are not in the key list; only the tree is (WritingTrees.md 6).
+[[keys]]
+name = "t"
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 16487
+[[bytes]]
+name = "fSeekInfo"
+offset = 37
+type = "i32"
+value = 2039
+
+# --- The Int_t basket: fixed entries, so no offset array ------------------
+[[bytes]]
+name = "n basket version"
+offset = 314
+type = "i16"
+value = 3
+[[bytes]]
+name = "n fNevBufSize: bytes per entry, because the entries are fixed"
+offset = 320
+type = "i32"
+value = 4
+[[bytes]]
+name = "n fNevBuf"
+offset = 324
+type = "i32"
+value = 3
+[[bytes]]
+name = "n fLast: fKeylen + 3 x 4, and the record ends there"
+offset = 328
+type = "i32"
+value = 77
+[[bytes]]
+name = "n flag: 0, no offset array and no displacements"
+offset = 332
+type = "u8"
+value = 0
+
+# --- The TLeafC basket ----------------------------------------------------
+[[bytes]]
+name = "s fNevBufSize: fEntryOffsetLen as the basket was created, not a width"
+offset = 397
+type = "i32"
+value = 1000
+[[bytes]]
+name = "s fNevBuf"
+offset = 401
+type = "i32"
+value = 3
+[[bytes]]
+name = "s fLast: fKeylen + 3 + 0 + 305"
+offset = 405
+type = "i32"
+value = 373
+
+[[bytes]]
+name = "entry 0: the short counted form"
+offset = 410
+type = "bytes"
+value = [2, 0x61, 0x62]
+[[bytes]]
+name = "entry 1 is empty and writes nothing, so entry 2's escape byte follows"
+offset = 413
+type = "u8"
+value = 255
+[[bytes]]
+name = "entry 2: the real length, as an i32 after the escape"
+offset = 414
+type = "i32"
+value = 300
+[[bytes]]
+name = "entry 2: then the characters, with no length byte of their own"
+offset = 418
+type = "bytes"
+value = "xxxx"
+
+[[bytes]]
+name = "the offset array's count: fNevBuf + 1"
+offset = 718
+type = "i32"
+value = 4
+[[bytes]]
+name = "entry 0 begins at fKeylen"
+offset = 722
+type = "i32"
+value = 65
+[[bytes]]
+name = "entry 1 at 65 + 3"
+offset = 726
+type = "i32"
+value = 68
+[[bytes]]
+name = "entry 2 at the same offset: the empty entry consumed nothing"
+offset = 730
+type = "i32"
+value = 68
+[[bytes]]
+name = "the array's last element is 0, not the end of the data"
+offset = 734
+type = "i32"
+value = 0
+
+# --- The two branches disagree about fEntryOffsetLen ----------------------
+[[bytes]]
+name = "branch n fEntryOffsetLen: 0, because every entry is four bytes"
+offset = 1062
+type = "i32"
+value = 0
+[[bytes]]
+name = "branch s fEntryOffsetLen: 4 x fNevBuf after the flush shrank it"
+offset = 1547
+type = "i32"
+value = 12
+
+# --- The leaf -------------------------------------------------------------
+[[bytes]]
+name = "the leaf's class"
+offset = 1676
+type = "bytes"
+value = "TLeafC"
+[[bytes]]
+name = "fLen: the longest string plus one, a high-water mark"
+offset = 1715
+type = "i32"
+value = 301
+[[bytes]]
+name = "fLenType: one byte per character, and not sizeof(fMinimum)"
+offset = 1719
+type = "i32"
+value = 1
+[[bytes]]
+name = "fOffset: the only leaf in the branch, so 0"
+offset = 1723
+type = "i32"
+value = 0
+[[bytes]]
+name = "fIsRange: false -- a TLeafC is never a counter"
+offset = 1727
+type = "u8"
+value = 0
+[[bytes]]
+name = "fMinimum: 0, and never anything else on a TLeafC"
+offset = 1733
+type = "i32"
+value = 0
+[[bytes]]
+name = "fMaximum: the same high-water mark as fLen"
+offset = 1737
+type = "i32"
+value = 301

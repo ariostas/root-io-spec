@@ -9,11 +9,11 @@ every field of every `TStreamerElement`. Without that a writer can build a
 correctly framed record with nothing in it, so this document publishes the lists
 themselves.
 
-Thirty-two classes, which is every class a writer of histograms, profiles,
+Thirty-three classes, which is every class a writer of histograms, profiles,
 flat trees and a bare object has to describe:
 
 <!-- BEGIN GENERATED: counts -->
-**32 classes, 176 elements**, every one read out of a file ROOT wrote.
+**33 classes, 179 elements**, every one read out of a file ROOT wrote.
 <!-- END GENERATED -->
 
 Nothing here was transcribed from this project's writer. Every table is read out
@@ -405,10 +405,13 @@ Class version **7**, `fCheckSum` **`0x4bedee54`**. 8 elements.
 | 8 | `TStreamerObjectAny` | `fBinSumw2` | 62 `kAny` | 24 | `TArrayD` |  | `Array of sum of squares of weights per bin` |
 <!-- END GENERATED -->
 
-## 7. A flat tree file: the other nine
+## 7. A flat tree file: the other ten
 
 With §4 these are the eighteen of
-[Writing trees §8](WritingTrees.md#8-the-streamer-infos). `TBranchRef`,
+[Writing trees §8](WritingTrees.md#8-the-streamer-infos) — the concrete leaf
+classes vary with the branch types, so a file has as many `TLeafX` infos as it has
+kinds of leaf and no more: `TLeafI` and `TLeafF` for `data/ttree/basket.root`,
+`TLeafI` and `TLeafC` for `data/ttree/strings.root`. `TBranchRef`,
 `TRefTable` and `TObjArray` are all reached through null pointers the same way,
 and `ROOT::TIOFeatures` is the one class here with no `ClassDef` at all — an
 object of it carries a version word of 0 followed by a checksum
@@ -467,6 +470,16 @@ Class version **1**, `fCheckSum` **`0x3add9d72`**. 3 elements.
 | 1 | `TStreamerBase` | `TLeaf` | 0 `kBase` | 0 | `BASE` | base version 2; base checksum `0x6d1e8152` | `Leaf: description of a Branch data type` |
 | 2 | `TStreamerBasicType` | `fMinimum` | 5 `kFloat` | 4 | `float` |  | `Minimum value if leaf range is specified` |
 | 3 | `TStreamerBasicType` | `fMaximum` | 5 `kFloat` | 4 | `float` |  | `Maximum value if leaf range is specified` |
+
+### `TLeafC`
+
+Class version **1**, `fCheckSum` **`0xfbe3b2f3`**. 3 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TLeaf` | 0 `kBase` | 0 | `BASE` | base version 2; base checksum `0x6d1e8152` | `Leaf: description of a Branch data type` |
+| 2 | `TStreamerBasicType` | `fMinimum` | 3 `kInt` | 4 | `int` |  | `Minimum value if leaf range is specified` |
+| 3 | `TStreamerBasicType` | `fMaximum` | 3 `kInt` | 4 | `int` |  | `Maximum value if leaf range is specified` |
 
 ### `TBranch`
 
@@ -646,6 +659,14 @@ TBranchRef  TRefTable  TObjArray
 ```
 TObjString
 ```
+
+**A tree with a string branch** — 18 infos, as `data/ttree/strings.root` carries them:
+
+```
+TTree  TNamed  TObject  TAttLine  TAttFill  TAttMarker  ROOT::TIOFeatures
+TBranch  TLeafI  TLeaf  TLeafC  TList  TSeqCollection  TCollection  TString
+TBranchRef  TRefTable  TObjArray
+```
 <!-- END GENERATED -->
 
 ## 11. Class versions
@@ -662,13 +683,13 @@ that the fixtures' values *are* the current ones.
 | `TArrayD` | 1 | neither: no info is written |
 | `TArrayF` | 1 | neither: no info is written |
 | `TAttAxis` | 4 | histogram, th2-profile |
-| `TAttFill` | 2 | histogram, th2-profile, tree |
-| `TAttLine` | 2 | histogram, th2-profile, tree |
-| `TAttMarker` | 3 | histogram, th2-profile, tree |
+| `TAttFill` | 2 | histogram, th2-profile, tree, strings |
+| `TAttLine` | 2 | histogram, th2-profile, tree, strings |
+| `TAttMarker` | 3 | histogram, th2-profile, tree, strings |
 | `TAxis` | 10 | histogram, th2-profile |
-| `TBranch` | 13 | tree |
-| `TBranchRef` | 1 | tree |
-| `TCollection` | 3 | histogram, th2-profile, tree |
+| `TBranch` | 13 | tree, strings |
+| `TBranchRef` | 1 | tree, strings |
+| `TCollection` | 3 | histogram, th2-profile, tree, strings |
 | `TH1` | 8 | histogram, th2-profile |
 | `TH1D` | 3 | histogram, th2-profile |
 | `TH1F` | 3 | histogram |
@@ -676,19 +697,20 @@ that the fixtures' values *are* the current ones.
 | `TH2D` | 4 | th2-profile |
 | `TH2F` | 4 | th2-profile |
 | `THashList` | 0 | histogram, th2-profile |
-| `TLeaf` | 2 | tree |
+| `TLeaf` | 2 | tree, strings |
+| `TLeafC` | 1 | strings |
 | `TLeafF` | 1 | tree |
-| `TLeafI` | 1 | tree |
-| `TList` | 5 | histogram, th2-profile, tree |
-| `TNamed` | 1 | histogram, th2-profile, tree |
-| `TObjArray` | 3 | tree |
-| `TObject` | 1 | histogram, th2-profile, tree |
+| `TLeafI` | 1 | tree, strings |
+| `TList` | 5 | histogram, th2-profile, tree, strings |
+| `TNamed` | 1 | histogram, th2-profile, tree, strings |
+| `TObjArray` | 3 | tree, strings |
+| `TObject` | 1 | histogram, th2-profile, tree, strings |
 | `TObjString` | 1 | objstring |
 | `TProfile` | 7 | th2-profile |
-| `TRefTable` | 3 | tree |
-| `TSeqCollection` | 0 | histogram, th2-profile, tree |
-| `TString` | 2 | histogram, th2-profile, tree |
-| `TTree` | 20 | tree |
+| `TRefTable` | 3 | tree, strings |
+| `TSeqCollection` | 0 | histogram, th2-profile, tree, strings |
+| `TString` | 2 | histogram, th2-profile, tree, strings |
+| `TTree` | 20 | tree, strings |
 <!-- END GENERATED -->
 
 `ROOT::TIOFeatures` is absent because it has no `ClassDef` to check: it is a
@@ -709,7 +731,7 @@ foreign class, and 1 is what its info records
 5. Each class version in §11 is the one `ClassDef` declares in the pinned
    submodule.
 
-1 to 4 are checked by `tools/element_lists.py` over the five reference files; 4
+1 to 4 are checked by `tools/element_lists.py` over the six reference files; 4
 is checked for every info in every reference file by `tools/test_write.py`, and 5
 by `tools/check_versions.py`.
 
@@ -735,4 +757,5 @@ byte for byte — the fields below are in no checksum and in no byte count.
 | `data/classes/th2-profile.root` | §6, and a second copy of §4, §5's `TAxis` chain and `TH1D` — ROOT's own eighteen |
 | `data/classes/tarray-histogram.root` | §9, plus a second independent copy of thirteen of the classes in §4 to §7 |
 | `data/container/file-minimal.root` | §8, and a third copy of `TObject` and `TString`'s checksums |
+| `data/ttree/strings.root` | §7's `TLeafC`, which only a string branch pulls in, and the string-branch order in §10 |
 | `data/written/histogram.root`, `data/written/th2-profile.root`, `data/written/tree.root` | the same infos written from these tables; the histogram file's whole `StreamerInfo` record is byte-identical to ROOT's, all 9628 bytes |

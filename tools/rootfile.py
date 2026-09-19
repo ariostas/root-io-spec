@@ -2878,6 +2878,11 @@ class Leaf:
     is_unsigned: bool
     leaf_count: int       # the raw reference tag; 0 for none
     count_slot: int       # where that tag points, absolute; -1 for none
+    #: fMinimum and fMaximum, read only for a TLeafC, where they are Int_t and
+    #: mean something a reader needs (TLeaf.md 9). None for every other class,
+    #: whose pair is of the leaf's own type and says nothing but a range.
+    minimum: int | None = None
+    maximum: int | None = None
 
     @property
     def width(self) -> int | None:
@@ -3090,8 +3095,14 @@ def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
         # position, so that position is its identity. TLeaf.md section 3.1.
         counter = _read_leaf(buf, m["fLeafCount"], base)
         counter.slot = count_at
+    limits = {}
+    if entry.type_name == "TLeafC":
+        # Int_t on a TLeafC, and the only leaf class whose pair a reader uses.
+        for field in ("fMinimum", "fMaximum"):
+            if field in m:
+                limits[field[1:].lower()] = _i32(buf, m[field].start)
     return Leaf(
-        cls=entry.type_name, slot=entry.start, counter=counter,
+        cls=entry.type_name, slot=entry.start, counter=counter, **limits,
         name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
         length=length or 1,          # TLeaf.cxx:499, a stored 0 means 1
         len_type=_i32(buf, m["fLenType"].start),

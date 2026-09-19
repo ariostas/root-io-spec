@@ -2053,8 +2053,10 @@ def tree_infos(leaf_kinds=("I", "F")) -> list:
 # Trees, spec/06-writing/WritingTrees.md.
 # ---------------------------------------------------------------------------
 
-#: Per leaf kind: the element type of fMinimum/fMaximum, its width, the type
-#: name a streamer info records, and the struct format of one value.
+#: Per leaf kind: the element type of fMinimum/fMaximum, its width and the type
+#: name a streamer info records for them. `TLeafC` keeps `Int_t` here like every
+#: other leaf -- its own values are bytes, but its range members are not
+#: (`WritingTrees.md` 4.5).
 LEAF_SCALARS = {
     "I": (3, 4, "int"),
     "F": (5, 4, "float"),
@@ -2063,12 +2065,18 @@ LEAF_SCALARS = {
     "S": (2, 2, "short"),
     "B": (11, 1, "char"),
     "O": (18, 1, "bool"),
+    "C": (3, 4, "int"),
 }
+#: The struct format of fMinimum and fMaximum, which for every kind but C is
+#: also the format of one value in a basket.
 LEAF_FORMATS = {"I": ">i", "F": ">f", "D": ">d", "L": ">q", "S": ">h",
-                "B": ">b", "O": ">b"}
+                "B": ">b", "O": ">b", "C": ">i"}
+#: fLenType: the bytes one element occupies. It is *not* sizeof(fMinimum) for a
+#: TLeafC, which stores one byte per character (`WritingTrees.md` 4.5).
+LEAF_LEN_TYPES = {"C": 1}
 #: The letter a leaflist uses for each, which is also what fTitle carries.
 LEAF_LETTERS = {"I": "I", "F": "F", "D": "D", "L": "L", "S": "S", "B": "B",
-                "O": "O"}
+                "O": "O", "C": "C"}
 
 TREE_VERSION = 20
 BRANCH_VERSION = 13
@@ -2142,13 +2150,53 @@ class Leaf:
 
     @property
     def len_type(self) -> int:
-        return LEAF_SCALARS[self.kind][1]
+        return LEAF_LEN_TYPES.get(self.kind, LEAF_SCALARS[self.kind][1])
+
+    @property
+    def variable(self) -> bool:
+        """Whether this leaf's entries differ in length.
+
+        True for a counted array and for a `TLeafC`, and those are the two
+        things that force the branch's `fEntryOffsetLen` non-zero
+        (`WritingTrees.md` 4.5).
+        """
+        return self.kind == "C" or self.counter is not None
 
     def pack(self, values) -> bytes:
+        """One entry's bytes.
+
+        A `TLeafC` writes a counted string and **an empty one writes nothing at
+        all** -- not even the length byte, because `WriteFastArrayString`
+        returns first (`root/io/io/src/TBufferFile.cxx:2038`). That asymmetry is
+        the whole difficulty of the class; `WritingTrees.md` 4.5 and
+        `spec/04-ttree/TLeaf.md` 9 are the two halves of it.
+        """
+        if self.kind == "C":
+            if isinstance(values, bytes):
+                values = values.decode("latin-1")
+            if not isinstance(values, str):
+                raise WriteError("a TLeafC entry is a string")
+            return b"" if not values else counted_string(values)
         fmt = LEAF_FORMATS[self.kind]
         if not isinstance(values, (list, tuple)):
             values = [values]
         return b"".join(struct.pack(fmt, v) for v in values)
+
+    def note(self, values) -> None:
+        """Raise the high-water marks this entry moves.
+
+        A counter leaf's `fMaximum` must cover every count in the file
+        (`WritingTrees.md` 4.4). A `TLeafC` keeps a second, separate high-water
+        mark: `fLen` **and** `fMaximum` are both the longest string seen plus
+        one, and they are equal in every file ROOT writes (§4.5).
+        """
+        if self.kind == "C":
+            n = len(values) + 1
+            self.length = max(self.length, n)
+            self.maximum = max(self.maximum, n)
+        elif self.is_range:
+            biggest = max(values) if isinstance(values, (list, tuple)) else values
+            self.maximum = max(self.maximum, biggest)
 
     def write(self, p: Payload) -> None:
         ftype, size, _ = LEAF_SCALARS[self.kind]
@@ -2215,7 +2263,7 @@ class Branch:
     def __post_init__(self):
         if self.title is None:
             self.title = f"{self.leaf.title}/{LEAF_LETTERS[self.leaf.kind]}"
-        if self.leaf.counter is not None and self.entry_offset_len == 0:
+        if self.leaf.variable and self.entry_offset_len == 0:
             self.entry_offset_len = DEFAULT_ENTRY_OFFSET_LEN
         #: fEntryOffsetLen as it was when the open buffer was created, which is
         #: what that basket records as fNevBufSize (WritingTrees.md 5.1). It
@@ -2487,16 +2535,16 @@ class Tree:
                     raise WriteError(
                         f"branch {br.name} got {len(v)} values where "
                         f"{br.leaf.counter.name} says {count}")
-            elif isinstance(v, (list, tuple)) and len(v) != br.leaf.length:
+            elif (br.leaf.kind != "C" and isinstance(v, (list, tuple))
+                  and len(v) != br.leaf.length):
                 raise WriteError(
                     f"branch {br.name} got {len(v)} values where fLen is "
                     f"{br.leaf.length}")
             br.fill(v)
-            # A counter leaf's fMaximum must cover every count in the file, or
-            # ROOT clamps the read (WritingTrees.md 3.3).
-            if br.leaf.is_range:
-                br.leaf.maximum = max(br.leaf.maximum, v if not
-                                      isinstance(v, (list, tuple)) else max(v))
+            # The high-water marks: a counter leaf's fMaximum, which ROOT clamps
+            # the read with if it is too small (WritingTrees.md 4.4), and a
+            # TLeafC's fLen and fMaximum (§4.5).
+            br.leaf.note(v)
         self.entries += 1
 
     def records(self) -> list:

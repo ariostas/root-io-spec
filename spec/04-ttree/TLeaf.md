@@ -402,6 +402,45 @@ consumed, and read nothing if the remainder is zero.
 > with `02 61 62` for `"ab"` and the second ends at the `Bool_t` before it, with
 > the empty string contributing nothing.
 
+### 9.1 `fLen` is the reader's buffer size, and it can be too small
+
+A `TLeafC`'s `fLen` is not a multiplicity like every other leaf's. It is the
+longest string the leaf has ever written, plus one — `TLeafC::FillBasket` raises
+`fLen` and `fMaximum` together on every fill
+(`root/tree/tree/src/TLeafC.cxx:81-82`) — and on read it is the **capacity** ROOT
+hands its own buffer: `TLeafC::ReadBasket` passes it to `ReadFastArrayString`
+(`root/tree/tree/src/TLeafC.cxx:168`), which clamps the copy to `fLen - 1`
+characters (`root/io/io/src/TBufferFile.cxx:1315`).
+
+> A reader MUST take a string's length from the counted string in the entry and
+> MUST NOT derive it from `fLen`. `fLen` is advisory, and in one shape of file it
+> is **smaller than the longest string in the leaf's own baskets** — and then ROOT
+> silently returns a truncated value where the bytes on disk are complete.
+
+The two numbers part company because only one of the two writers of a tree raises
+`fLen`. `TLeafC::FillBasket` does; a **fast clone** does not, because it copies
+baskets wholesale and never calls it. `TTreeCloner::CollectBranches` widens the
+target leaf through `TLeafC::IncludeRange`
+(`root/tree/tree/src/TTreeCloner.cxx:343`), and that method touches `fMinimum` and
+`fMaximum` and nothing else (`root/tree/tree/src/TLeafC.cxx:98-109`). The target's
+`fLen` stays whatever it inherited from the first source tree.
+
+> **Measured, and `hadd` is enough to produce it.** Two files each holding a tree
+> with one `/C` branch, one with 2-character strings and one with 10-character
+> strings, merged with `hadd -f`: the result has `fLen` 3 and `fMaximum` 11, and
+> ROOT reads the ten-character entries back as `"01"`. Nothing is printed. The
+> baskets are byte copies of the sources', so the count byte in front of each of
+> those entries is 10 and all ten characters are there.
+>
+> `ttree/leafc-truncated` is that file, built with `CopyEntries(..., "fast")`
+> rather than `hadd` so it is reproducible: tree `short` has `fLen` 3 and
+> `fMaximum` 3, tree `long` has 11 and 11, and tree `merged` has **3 and 11**.
+> A reader that takes the length from the entry reads all three trees correctly,
+> which is to say it reads `merged` correctly where ROOT does not.
+
+So `fMaximum`, not `fLen`, is the number that always covers the data — invariant
+11 — and neither of them is where a string's length comes from.
+
 > **ROOT's own test is coarser than that, and gets this wrong.**
 > `TLeafC::ReadBasket` compares **whole-entry** offsets — `offset[i]` against
 > `offset[i+1]`, or against `fLast` for the last entry of a basket
@@ -447,6 +486,17 @@ consumed, and read nothing if the remainder is zero.
 8. `fOffset` of the first leaf of a branch is 0, **unless the branch stands under
    a `TBranchClones`** — see below.
 
+9. On a `TLeafC`: `fLenType` is 1, `fMinimum` is 0, and `fIsRange` is false.
+   None of the three has ever had another value — `fMinimum` cannot, because the
+   only code that assigns it requires `0 < 0` (`root/tree/tree/src/TLeafC.cxx:103`).
+10. On a `TLeafC` whose branch has entries, `1 <= fLen <= fMaximum`. They are
+    **equal** in a tree filled the ordinary way, because one function raises both
+    (§9.1); `fLen` is the smaller one in a fast-cloned tree, and a reader must not
+    read that as a corrupt file.
+11. On a `TLeafC` that is its branch's only leaf, every string in every basket is
+    at most `fMaximum - 1` bytes. This is the invariant `fLen` does **not**
+    satisfy, and the one a reader can size a buffer from.
+
 **Invariant 8's exception is not a weakening.** A sub-branch of a
 `TBranchClones` is one member of a `TClonesArray`, and its leaf's `fOffset` is that
 member's offset inside the object: in `ttree/branch-clones` the four sub-branches
@@ -471,6 +521,11 @@ testable one; its second half is not reachable in isolation, because a basket
 whose offset array is removed fails
 [TBasket §9](TBasket.md#9-invariants) invariant 4 first.
 
+Invariants 9 to 11 are checked over every `TLeafC` in the fixtures and both
+corpora — 24 of them — and 11 is the one with teeth: it decodes each entry's
+counted string and compares the longest with what the leaf claims. 10 and 11
+together are how a reader can allocate safely without trusting `fLen`.
+
 Invariant 6 is the one that ties the leaf layer to the basket layer arithmetically,
 and invariant 7 is the general form of it — it is the whole of §5 stated as a
 closure condition, and it is what a reader's own implementation should be checked
@@ -494,13 +549,22 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 10 | `root/tree/tree/src/TLeafC.cxx:137-138` implies the zero-byte empty string is historical | It is current behaviour: `WriteFastArrayString` still returns before writing when the length is 0 (§9) |
 | 11 | `root/tree/tree/inc/TLeaf.h:77`: `fOffset` is the "Offset in ClonesArray object (if one)" | Its usual meaning is a position within a basket entry; the `TClonesArray` reading is the rarest of three (§3.2) |
 | 12 | `root/tree/tree/src/TBranch.cxx:147-162` lists the leaflist codes | Accurate, but it never says only the first character is read, so `x/F16` silently produces a `TLeafF` (§2.1) |
+| 13 | `ttree.md:81` and `root/tree/tree/inc/TLeaf.h:75`: `fLen` is the "Number of fixed length elements in the leaf's data" | On a `TLeafC` it is nothing of the kind: it is the longest string written plus one, mutated during writing, and used on read as the caller's buffer size. It can be smaller than the longest string in the file, and ROOT then truncates (§9.1) |
 
-One inconsistency inside ROOT itself, source-verified but not file-verified:
-`TLeafC::ReadBasketExport` reads a bare `UChar_t` length with no 255-escape
-(`root/tree/tree/src/TLeafC.cxx:177-182`) where `FillBasket` writes one, so a
-`TBranchClones` branch holding a string of 255 characters or more should be
-unreadable by ROOT through that path. No fixture demonstrates it; see `PLAN.md`
-§7.1.
+**`TLeafC::ReadBasketExport` is a second, worse decoder**
+(`root/tree/tree/src/TLeafC.cxx:175-192`), reached only through
+`TBranch::GetEntryExport` — the `TClonesArray`/`TBranchClones` path
+(`root/tree/tree/src/TBranch.cxx:1821-1822`). It differs from `ReadBasket` in
+three ways, each of them a defect, all source-verified and none file-verified
+because no fixture puts a string leaf under a `TBranchClones`:
+
+| # | What it does | Consequence |
+|---|---|---|
+| 1 | reads a bare `UChar_t` length with no 255-escape (`:177-178`) | a string of 255 characters or more is misdecoded, where `FillBasket` wrote the escape |
+| 2 | has no empty-string detection at all, so it always consumes a length byte | an empty string desynchronises the buffer immediately, with none of §9's offset test |
+| 3 | on truncation it advances by the clamped length rather than the on-disk one (`:180-181`) | the buffer is left mid-string, where `ReadFastArrayString` deliberately advances by the true length (`root/io/io/src/TBufferFile.cxx:1314-1319`) |
+
+See `PLAN.md` §7.1.
 
 ## 12. Class versions
 
@@ -523,6 +587,8 @@ unreadable by ROOT through that path. No fixture demonstrates it; see `PLAN.md`
 | `ttree/leaf-truncated` | All four truncated-float encodings, and the 3-versus-4-byte asymmetry between `TLeafF16` and `TLeafD32` in both the data and the leaf record |
 | `ttree/basket` | A counter leaf and a counted array in two different branches, with `fLeafCount` as a cross-branch object reference |
 | `ttree/leaf-forms` | `TLeafG` at 8 bytes, `a[n][3]/F` with `fLen` 3, and a `TLeafC` with both string forms in one basket |
+| `ttree/strings` | A `/C` branch holding all three forms — short, **empty**, and the 255-escape — beside a fixed-width branch, so the two `fEntryOffsetLen` values sit in one file |
+| `ttree/leafc-truncated` | `fLen` 3 against `fMaximum` 11 on one leaf, from a fast clone: the file ROOT misreads and a conforming reader does not (§9.1) |
 
 `TLeafObject` and `TLeafElement` are covered elsewhere: `ttree/tree-branchref`
 has a `TLeafObject`, and the split cases hold 52 `TLeafElement`s between them.

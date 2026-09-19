@@ -9,6 +9,39 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **New: a `TLeafC` string branch, so a writer covers every leaf form a flat tree
+  needs** ([Writing trees §4.5](spec/06-writing/WritingTrees.md#45-a-tleafc-the-one-leaf-whose-entries-are-not-all-the-same-length)).
+  One value per entry, as a counted string: one length byte then the characters with
+  no terminator, the byte 255 followed by a big-endian `i32` when the length reaches
+  255, and — the case that matters — **nothing at all for an empty string**, not
+  even the length byte. So a `TLeafC` forces its branch's `fEntryOffsetLen` non-zero
+  and its baskets to carry the offset array, where an empty value shows up as two
+  equal entries. `fLen` and `fMaximum` are both the longest string in the file plus
+  one, which a writer only knows after a full pass; `fLenType` is 1 even though the
+  two range members are `Int_t`. A `TLeafC` must be its branch's **only** leaf, for
+  two independent reasons ([§4.6](spec/06-writing/WritingTrees.md#46-a-tleafc-must-be-its-branchs-only-leaf)).
+  `data/written/leafc.root` reproduces the new `data/ttree/strings.root` record for
+  record.
+- **New, and it changes what a correct reader does: a string's length comes from the
+  entry, never from the leaf's `fLen`**
+  ([TLeaf §9.1](spec/04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)).
+  `fLen` on a `TLeafC` is the size ROOT allocates for the value, and it can be
+  **smaller than the longest string in the leaf's own baskets** — a fast clone
+  raises `fMaximum` and leaves `fLen` alone, and `hadd` fast-merges by default. ROOT
+  then truncates the value on read and prints nothing, while the bytes on disk are
+  complete. Measured: merging 2-character strings with 10-character ones yields
+  `fLen` 3, `fMaximum` 11, and `"0123456789"` read back as `"01"`.
+  `data/ttree/leafc-truncated.root` is the new reference file. A reader that takes
+  the length from the counted string reads it correctly; `fMaximum`, not `fLen`, is
+  the number that always covers the data.
+- **Also new about `TLeafC::ReadBasketExport`** — the `TClonesArray` read path —
+  which has no empty-string detection, does not implement the 255-escape, and
+  desynchronises the buffer when it truncates (TLeaf §9). Source-verified; no
+  fixture puts a string leaf under a `TBranchClones`.
+- **New `TLeafC` element list**
+  ([Element lists §7](spec/06-writing/ElementLists.md#7-a-flat-tree-file-the-other-ten)),
+  bringing the published set to **33 classes, 179 elements**.
+
 - **New: subdirectories, so a writer can produce a tree of directories**
   ([Writing a file §5](spec/06-writing/WritingFiles.md#5-a-subdirectory)). A
   subdirectory's record is the same 60 bytes as the root directory's with **no name

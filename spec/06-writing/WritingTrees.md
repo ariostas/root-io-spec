@@ -24,17 +24,18 @@ A tree is not one record. It is:
 - **one record for the tree**, holding the branches, and inside them the leaves,
   as nested objects.
 
-There are two worked examples, and each reproduces a ROOT-written file **byte for
+There are three worked examples, and each reproduces a ROOT-written file **byte for
 byte in every record** — every basket and the tree, keys included, once the
-wall-clock timestamp is masked. `tools/test_write.py` asserts both.
+wall-clock timestamp is masked. `tools/test_write.py` asserts all three.
 
 | This project's | ROOT's | What it adds |
 |---|---|---|
 | `data/written/tree.root` | `data/ttree/basket.root` | two branches, one of them counted, three entries, **one basket each** |
 | `data/written/cluster.root` | `data/ttree/clusters.root` | one branch, nineteen entries, **five baskets** and two closed cluster ranges (§7) |
+| `data/written/leafc.root` | `data/ttree/strings.root` | a `/C` string branch beside a fixed-width one: all three entry forms, the empty one included (§4.5) |
 
-The only part of either pair that differs is the `StreamerInfo` record, by one
-entry (§8.1).
+The only part of any of the three pairs that differs is the `StreamerInfo` record,
+by one entry (§8.1).
 
 Those comparisons are strict in a way the histogram one is not: a branch stores its
 baskets' **offsets**, so a single byte's difference anywhere earlier in the file
@@ -214,13 +215,13 @@ base at version **2**:
 | Member | Type | Value |
 |---|---|---|
 | `TNamed` | framed | `fName` the leaf name **without** dimensions; `fTitle` **with** them — `n`, `a[n]`, `v[3]` |
-| `fLen` | `i32` | the fixed multiplicity: 1 for a scalar **and for a counted array**, `N` for `x[N]` |
+| `fLen` | `i32` | the fixed multiplicity: 1 for a scalar **and for a counted array**, `N` for `x[N]` — and something else entirely on a `TLeafC`, §4.5 |
 | `fLenType` | `i32` | the width of one value: 4 for `TLeafI`/`TLeafF`, 8 for `TLeafD`, 1 for `TLeafC` |
 | `fOffset` | `i32` | 0 for a single-leaf branch; otherwise the leaf's cumulative byte offset inside the entry (`root/tree/tree/src/TBranch.cxx:419`) |
 | `fIsRange` | `u8` | **1 on a counter leaf**, 0 otherwise |
 | `fIsUnsigned` | `u8` | 1 only for the lowercase type letters |
 | `fLeafCount` | pointer slot | null, or an **object reference** to the counter leaf |
-| `fMinimum`, `fMaximum` | the leaf's own type | 0, except `fMaximum` on a counter leaf — §4.4 |
+| `fMinimum`, `fMaximum` | `Int_t` for an integer leaf and a `TLeafC`, the leaf's own type otherwise | 0, except `fMaximum` on a counter leaf (§4.4) and on a `TLeafC` (§4.5) |
 
 **`fTitle` is load-bearing for `Draw` and `Scan` and nothing else.**
 `TTreeFormula` parses the dimensions out of it
@@ -254,6 +255,99 @@ the tree record, which means a full pass over the data.
 `fIsRange` is what makes the field meaningful: ROOT sets it on the counter as a
 side effect of building the counted leaf (`root/tree/tree/src/TLeaf.cxx:309`), and
 without it `GetLeafCountValues` returns nothing (`:367`).
+
+### 4.5 A `TLeafC`: the one leaf whose entries are not all the same length
+
+A string branch is `name/C`, its leaf is a `TLeafC` at class version 1, and three
+of §4.3's rows mean something else for it.
+
+| Field | A `TLeafC`'s value | Kind |
+|---|---|---|
+| `fLenType` | **1** — one byte per character. It is not `sizeof` the leaf's range members, which are `Int_t` like every other leaf's (§4.3 gives the width per class) | fixed |
+| `fLen` | the **longest string written, plus one**, and at least 1. Not a multiplicity and not the size of the `char[]` the writer filled from: `TLeafC::FillBasket` raises it on every fill (`root/tree/tree/src/TLeafC.cxx:82`) | derived, from all the data |
+| `fMaximum` | the same number, raised by the line above it (`:81`) | derived, from all the data |
+| `fMinimum` | 0, always. The only code that assigns it needs `0 < 0` to be true (`:103`) | fixed |
+| `fIsRange` | 0. A `TLeafC` is never a counter | fixed |
+| `fOffset` | 0 — see 4.6, which is why it can only ever be 0 | fixed |
+
+Both high-water marks have to be known **before the tree record is written**, so a
+writer needs the longest string in the file, which is one more reason the record
+comes last. They are equal in every file ROOT writes with `TTree::Fill`, and
+[TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)
+is the one path that separates them — a writer should not reproduce that.
+
+**`fEntryOffsetLen` is forced non-zero, and by a literal.** A branch whose leaf is
+a `TLeafC` gets 1000 (`root/tree/tree/src/TBranch.cxx:424-427`):
+
+```cpp
+if (leaf->InheritsFrom(TLeafC::Class())) {
+   // -- Leaf is a character string, we need an offset array.
+   fEntryOffsetLen = 1000;
+}
+```
+
+That 1000 is hard-coded, **not** `fTree->GetDefaultEntryOffsetLen()` — only
+`TBranchElement` consults the tree's default
+(`root/tree/tree/src/TBranchElement.cxx:361-363`), so `TTree::SetDefaultEntryOffsetLen`
+has no effect on a leaflist `/C` branch at all. The value is then rewritten at each
+flush like any other variable branch's (§7.1), so what a one-basket three-entry
+tree actually stores is 12. A writer may put any non-zero value there; what matters
+is that it is non-zero and that the baskets carry the array (§5.2).
+
+**The three entry forms.** One value per entry, and nothing else
+(`root/io/io/src/TBufferFile.cxx:2036-2060`):
+
+| Length `n` | Bytes |
+|---|---|
+| 0 | **nothing at all**, not even the length byte — `WriteFastArrayString` returns first (`:2038`) |
+| 1 … 254 | one `u8` `n`, then `n` raw characters, **no terminator** |
+| ≥ 255 | the `u8` 255, then `n` as a big-endian `i32`, then `n` raw characters |
+
+The empty case is the one to get right and the only one a reader cannot recover
+without the offset array. It is also what a null branch address produces: ROOT
+allocates a one-byte buffer holding `'\0'` rather than crashing
+(`root/tree/tree/src/TLeafC.cxx:240-243`), so an unset `/C` branch writes an empty
+string in every entry rather than nothing or garbage.
+
+> `data/written/leafc.root` holds all three: `"ab"` for three bytes, `""` for
+> none, and 300 characters for 305. Its offset array is `65, 68, 68` — **two equal
+> entries**, which is what an empty value looks like from the outside — and the
+> array's own count is 4, one more than the entries, with the extra element left at
+> 0 (§5.2).
+
+### 4.6 A `TLeafC` must be its branch's only leaf
+
+This is a restriction on the writer, not on the format: ROOT will build
+`s/C:x/I`, and the file it then writes cannot be read back correctly by ROOT or by
+anything else. Two independent reasons, and a writer only has to avoid the shape.
+
+**1. The empty string becomes unrecoverable.** `TLeafC::ReadBasket` detects an
+empty value by comparing the entry's **start** offset with the entry's **end** —
+`entryOffset[i]` against `entryOffset[i+1]`, or against `fLast` for the last entry
+of a basket (`root/tree/tree/src/TLeafC.cxx:146-166`). That tests whether the whole
+entry occupied zero bytes, which is the same question only when the `TLeafC` is
+both the first and the last leaf of the branch. With any other leaf present the
+test is false, ROOT falls through to `ReadFastArrayString`, and it reads the length
+byte **out of the next leaf's data**
+([TLeaf §9](../04-ttree/TLeaf.md#9-tleafc)). Nor could a correct reader do better:
+the value occupies no bytes, so with a leaf after it there is nothing to
+distinguish "empty string" from "this leaf is not here".
+
+**2. Every following leaf gets the wrong in-memory address.** A leaflist assigns
+each leaf a running `fOffset` and advances it by `fLenType × fLen`
+(`root/tree/tree/src/TBranch.cxx:436`). At that moment a freshly built `TLeafC` has
+`fLenType` 1 and `fLen` 1, so it contributes **one byte** however long the strings
+turn out to be. In `s/C:x/I` the leaf `x` is given `fOffset` 1, and
+`TBranch::SetAddress` hands it `fAddress + 1`
+(`root/tree/tree/src/TBranch.cxx:2705-2709`) — inside the string. ROOT persists
+that 1 in the leaf record, so a third-party reader can see the damage and cannot
+repair it.
+
+`tools/rootwrite.py` cannot express the shape at all: a `Branch` holds exactly one
+`Leaf`. That is the right restriction for a `/C` branch and costs nothing for the
+others, since one leaf per branch is what `TTree::Branch(name, address, "x/I")`
+produces anyway.
+
 
 ## 5. A basket
 
@@ -565,14 +659,29 @@ no checksum and in no byte count, which is why nothing had noticed
 11. `0 <= fFlushedBytes <= fZipBytes`, and the same for `fSavedBytes`.
 12. Each basket's `fNevBuf` equals `fBasketEntry[i+1] - fBasketEntry[i]`, so a
     branch's baskets partition its entries and none of them is empty.
+13. On a `TLeafC`: `fLenType` is 1, `fMinimum` is 0, `fIsRange` is 0, and `fLen`
+    and `fMaximum` are **equal** and are the longest string in the file plus one
+    (§4.5). A writer that lets them differ produces the file of
+    [TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small),
+    which ROOT reads with strings silently truncated.
+14. A `TLeafC` is the **only** leaf of its branch, and its `fOffset` is therefore 0
+    (§4.6).
 
-1 to 6, 8 and 10 to 12 are checked for the written files by
+1 to 6, 8 and 10 to 13 are checked for the written files by
 `tools/check_write.py` through `tools/rootfile.py` — 10 and 11 as
 [TTree invariants 3 and 2](../04-ttree/TTree.md#11-invariants), 12 as
 [TBranch invariant 6](../04-ttree/TBranch.md#11-invariants) — and the entry
 decoding of [Reading entries](../04-ttree/ReadingEntries.md) runs over them as
 well: every basket of every written tree is decoded and its byte spans checked
 like any ROOT-written fixture's.
+
+Invariant 13 is checked as
+[TLeaf invariants 9 to 11](../04-ttree/TLeaf.md#10-invariants), which state the
+inequality `fLen <= fMaximum` rather than the equality: a *reader* has to accept
+both, and only a writer owes the stronger claim. Invariant 14 is not checkable over
+files at all — ROOT writes the other shape, and `ttree/leaf` is such a file — so it
+is enforced by construction instead: `tools/rootwrite.py` gives a branch exactly one
+leaf.
 
 **Two things a reader must tolerate and a writer should not produce.** The reading
 side deliberately has no invariant that `fClusterRangeEnd` is *strictly* increasing
@@ -614,4 +723,7 @@ its version word is 0 and a checksum (§3.2).
 | `data/ttree/basket.root` | ROOT's own, the comparison target |
 | `data/written/cluster.root` | this project's: `x/I`, nineteen entries, **five baskets** and two closed cluster ranges. Every record byte-identical to ROOT's |
 | `data/ttree/clusters.root` | ROOT's own, the comparison target for §7 |
+| `data/written/leafc.root` | this project's: `n/I` and `s/C`, three entries, one basket each. Every record byte-identical to ROOT's |
+| `data/ttree/strings.root` | ROOT's own, the comparison target for §4.5 |
+| `data/ttree/leafc-truncated.root` | ROOT's own, and the file §4.5's last paragraph warns against writing: `fLen` 3 against `fMaximum` 11 |
 | `data/ttree/branch.root`, `data/ttree/leaf-forms.root` | the reading side's branch and leaf variety |

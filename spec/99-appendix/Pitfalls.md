@@ -52,6 +52,13 @@ the record's own key spells it `TDirectory`. A reader that adds `fKeylen` frames
 *next* entry from the middle of this one, and both spellings occur in one file.
 [Directories §6.5](../01-container/Directory.md#65-an-images-length-is-what-it-parses-to-never-its-fkeylen)
 
+**A string's length comes from the entry, never from the leaf's `fLen`.** `fLen`
+on a `TLeafC` is a buffer size, and in a fast-merged file — which is what `hadd`
+produces by default — it can be smaller than the longest string in the same
+baskets. ROOT then truncates the value and says nothing; a reader that trusts the
+counted string in the entry gets it right.
+[TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)
+
 **A basket key always uses the large-file layout**, whatever the file's size,
 because `TBasket` adds 1000 to `fVersion` unconditionally.
 [TBasket §1](../04-ttree/TBasket.md#1-a-basket-is-a-key-with-extra-fields)

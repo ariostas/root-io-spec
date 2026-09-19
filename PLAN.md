@@ -481,11 +481,13 @@ reported** (§8 item M10).
    string occupies zero bytes and `TLeafC::ReadBasket` detects that by comparing
    **whole-entry** offsets (`root/tree/tree/src/TLeafC.cxx:146-166`), which is
    only the same test when the `TLeafC` is the branch's only leaf. Verified at
-   byte level; a reproducer is written. `TLeaf.md` §9.
+   byte level; a reproducer is written. `TLeaf.md` §9, and `WritingTrees.md` §4.6
+   now states the writer's side: do not emit the shape.
 5. **A `TLeafC` cannot be followed by another leaf in a leaflist.** `fOffset`
    doubles as the in-memory offset, and a `TLeafC` contributes 1
    (`root/tree/tree/src/TBranch.cxx:436`), so `c/C:x/I` reads `x` from the second
-   byte of the string. Silent, verified at byte level. `TLeaf.md` §3.2.
+   byte of the string. Silent, verified at byte level. `TLeaf.md` §3.2,
+   `WritingTrees.md` §4.6.
 6. **The suspected `TFile::Recover` gap bug** — banked, still unverified.
 7. **An object of an `extending` class cannot be skipped by its byte count.**
    `TBufferFile::SkipObjectAny` seeks to `start + count + 4`
@@ -536,6 +538,28 @@ reported** (§8 item M10).
     `spec/06-writing/index.md` §3.1 needed. **Banked, not diagnosed.** The call may
     simply be unsupported for an emulated class — nothing in its documentation says
     so — and the usage needs checking before this goes anywhere.
+12. **`hadd` silently truncates strings.** *Reproduced 2026-09-18, with data loss;
+    the strongest candidate on this list alongside item 9.* A fast clone raises a
+    `TLeafC`'s `fMaximum` through `TLeafC::IncludeRange`
+    (`root/tree/tree/src/TTreeCloner.cxx:343`,
+    `root/tree/tree/src/TLeafC.cxx:98-109`) and never raises `fLen`, because
+    baskets are copied wholesale and `TLeafC::FillBasket` — the only thing that
+    raises `fLen` (`root/tree/tree/src/TLeafC.cxx:82`) — never runs. On read `fLen`
+    *is* the buffer size: `ReadFastArrayString` clamps the copy to `fLen - 1`
+    characters (`root/io/io/src/TBufferFile.cxx:1315`). So merging a file of short
+    strings with a file of long ones truncates every long string to the short
+    file's length, **silently**, while the bytes on disk stay complete.
+    **Measured**: `hadd -f` over two files whose `/C` branches hold 2- and
+    10-character strings gives `fLen` 3, `fMaximum` 11, and `"0123456789"` read
+    back as `"01"` for every entry of the second input.
+    `data/ttree/leafc-truncated.root` is the fixture — built with
+    `CopyEntries(..., "fast")` rather than `hadd` so it is reproducible — and its
+    `merged` tree's second basket holds a count byte of 10 in front of all ten
+    characters. Every reader that sizes a buffer from `fLen` inherits the bug;
+    `TLeaf.md` §9.1 says to size from the counted string in the entry instead, and
+    `tools/rootfile.py` does, so this project reads the file correctly where ROOT
+    does not. Related to items 4 and 5, which are the other two ways a `TLeafC`
+    loses data.
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
@@ -993,7 +1017,8 @@ made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the on
 unaudited form.
 
 **M10 — report upstream.** Ten RNTuple errata against a document the ROOT team
-owns, plus §7.1's twelve bug candidates. Lead with §7.1 item 9 — `fBranchCount`
+owns, plus §7.1's thirteen bug candidates. Lead with §7.1 items 9 and 12 —
+ `fBranchCount`
 naming another object's counter branch, byte-witnessed in a file the ROOT team
 published, and data loss — and with erratum 6, a column type the document
 specifies, ROOT does not implement and JSROOT does, so two readers in one
@@ -1249,13 +1274,12 @@ it implied. Ordered by how much it blocks a third party:
 4. ~~**`TH2F` and `TProfile`**, outlined in `WritingHistograms.md` §7.~~ **Done,
    2026-09-18** — §8.8.
 5. ~~**Subdirectories.**~~ **Done, 2026-09-18** — §8.9.
-6. **A `TLeafC` branch**, whose per-entry layout is specified only on the reading
-   side.
+6. ~~**A `TLeafC` branch.**~~ **Done, 2026-09-18** — §8.10.
 7. **`TGraph`**, which no writing document mentions and which is as common in real
    files as `TH1`.
 
-Items 6 and 7 are what is left, and neither blocks a writer of the two things
-the layer names: a file of histograms, and a flat tree of any size. Nothing in the
+Item 7 is what is left, and it does not block a writer of the two things the layer
+names: a file of histograms, and a flat tree of any size. Nothing in the
 list is a correction — the documents are accurate about what they cover — and each
 is stated as a limit rather than left for a reader to discover.
 
@@ -1454,6 +1478,52 @@ checksum recomputes from the published table.
 The same work found the **fourteenth format error** in `gen/foreign/`, which §9.8
 records: the invariant added that morning failed on a pre-5.34 file, and it was the
 specification that was wrong.
+
+### 8.10 A `TLeafC` branch, and a `hadd` bug (2026-09-18)
+
+[`WritingTrees.md` §4.5 and §4.6](spec/06-writing/WritingTrees.md#45-a-tleafc-the-one-leaf-whose-entries-are-not-all-the-same-length),
+item 6 of §8.5. A writer can now emit a string branch — the last leaf form a flat
+tree needs and the only one whose entries differ in length.
+
+**A third byte-identical tree pair.** `data/written/leafc.root` against the new
+`data/ttree/strings.root`: `n/I` and `s/C`, three entries, both basket records and
+the whole 1301-byte `TTree` record identical, keys included, and the `StreamerInfo`
+record identical bar the `listOfRules` entry. It matched on the first run, and
+`TLeafC`'s checksum `0xfbe3b2f3` came out right from the published element list the
+first time it was computed.
+
+The three strings are the three forms, and the empty one is in the middle so the
+offset array carries two equal entries:
+
+| Fact | Why a writer cannot guess it |
+|---|---|
+| An **empty string writes no bytes at all**, not even the length byte | `WriteFastArrayString` returns before writing (`root/io/io/src/TBufferFile.cxx:2038`), and nothing but the entry-offset array records that the value was there |
+| `fLen` is the **longest string plus one**, not a multiplicity | `TLeafC::FillBasket` raises it on every fill (`root/tree/tree/src/TLeafC.cxx:82`) and `fMaximum` beside it, so both need a full pass over the data before the tree record is written |
+| `fLenType` is 1 while `fMinimum`/`fMaximum` are `Int_t` | the leaf's own values are bytes; its range members are not, so the two numbers a writer reads off "the leaf's type" are different |
+| `fEntryOffsetLen` is forced to a **hard-coded 1000** | `root/tree/tree/src/TBranch.cxx:424-427` is a literal, not `fTree->GetDefaultEntryOffsetLen()`, so `TTree::SetDefaultEntryOffsetLen` has no effect on a leaflist `/C` branch at all |
+| A `TLeafC` must be its branch's **only** leaf | two independent reasons, §4.6: the empty-string test compares whole-entry offsets, and a `TLeafC` advances the leaflist's running `fOffset` by 1 whatever its strings are |
+
+**And it turned up a ROOT bug with silent data loss, which `hadd` reaches by
+default.** §7.1 item 12: a fast clone raises a `TLeafC`'s `fMaximum` and never its
+`fLen`, and `fLen` is what sizes the read buffer. Merging a file of 2-character
+strings with a file of 10-character ones gives `fLen` 3 and `fMaximum` 11, and ROOT
+returns `"01"` for every long string. The bytes are complete — the count byte in
+front of each is 10 — so the file is right and ROOT's reader is wrong.
+`data/ttree/leafc-truncated.root` is the fixture, and
+[TLeaf §9.1](spec/04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)
+states the reader's rule that avoids it: a string's length comes from the counted
+string in the entry, never from `fLen`.
+
+**Three new leaf invariants, all three checked** over all 24 `TLeafC` leaves in the
+fixtures and both corpora, and each confirmed by corrupting a field. The third,
+`TLeaf` 10.11, decodes every entry's counted string and compares the longest with
+`fMaximum` — it is the invariant `fLen` does not satisfy, and the one a reader can
+size a buffer from. `tools/rootfile.py` now exposes a `TLeafC`'s `fMinimum` and
+`fMaximum`, which nothing had read before.
+
+`TLeafC`'s element list is published with the rest
+([`ElementLists.md` §7](spec/06-writing/ElementLists.md#7-a-flat-tree-file-the-other-ten)):
+33 classes, 179 elements.
 
 ## 9. Known gaps
 

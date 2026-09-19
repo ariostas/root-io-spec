@@ -2660,6 +2660,8 @@ class Checker:
                     rootfile.resolve_leaf_count(lf, leaves)
                 except rootfile.FormatError as exc:
                     self.bad("TLeaf 10.4", f"{where}: {exc}")
+            if lf.cls == "TLeafC":
+                self.check_leafc(br, lf)
             if i == 0 and lf.offset != 0 and br.via != "TBranchClones":
                 # A sub-branch of a TBranchClones carries the member's offset
                 # inside the object, and ROOT forces it to -1 on read
@@ -2730,6 +2732,9 @@ class Checker:
                     self.bad("TLeaf 10.6",
                              f"{name}: fNevBufSize {basket.nev_buf_size} != the "
                              f"leaves' {fixed_width} bytes an entry")
+            if len(br.leaves) == 1 and br.leaves[0].cls == "TLeafC":
+                self.check_leafc_strings(payload, basket_rec, basket, br,
+                                         br.leaves[0])
             self.check_entries(payload, basket_rec, basket, br, leaves, i)
 
         # And the basket that was never written as a record. Its entry offsets
@@ -2743,6 +2748,60 @@ class Checker:
                 continue
             self.check_entries(data, rootfile.Record(offset=emb.block, nbytes=0),
                                emb.basket, br, leaves, i)
+
+    def check_leafc(self, br, leaf) -> None:
+        """TLeaf 10.9 and 10.10: what a `TLeafC` records about itself."""
+        where = f"branch {br.name!r} leaf {leaf.name!r}"
+        if leaf.len_type != 1:
+            self.bad("TLeaf 10.9",
+                     f"{where}: a TLeafC's fLenType is {leaf.len_type}, not 1")
+        if leaf.minimum not in (None, 0):
+            self.bad("TLeaf 10.9",
+                     f"{where}: a TLeafC's fMinimum is {leaf.minimum}, not 0")
+        if leaf.is_range:
+            self.bad("TLeaf 10.9", f"{where}: fIsRange is set on a TLeafC")
+        # fLen <= fMaximum once anything has been written. They are equal in a
+        # tree filled the ordinary way and fLen is the smaller one in a
+        # fast-cloned tree, which is the shape ROOT then misreads (TLeaf.md 9).
+        if br.entries and leaf.maximum is not None:
+            if not 1 <= leaf.length <= leaf.maximum:
+                self.bad("TLeaf 10.10",
+                         f"{where}: fLen {leaf.length} outside "
+                         f"[1, fMaximum {leaf.maximum}]")
+
+    def check_leafc_strings(self, payload, basket_rec, basket, br, leaf) -> None:
+        """TLeaf 10.11: `fMaximum` covers every string the baskets hold.
+
+        Only meaningful when the `TLeafC` is its branch's one leaf, because the
+        entry offsets bound the whole entry rather than the string. `fLen` is
+        deliberately *not* what is compared: it can be smaller, and then ROOT
+        truncates on read while the bytes here stay right (`TLeaf.md` 9).
+        """
+        offsets = basket.entry_offsets
+        if not offsets or leaf.maximum is None:
+            return
+        longest = 0
+        for e in range(min(basket.nev_buf, len(offsets))):
+            start = basket_rec.offset + offsets[e]
+            end = basket_rec.offset + (offsets[e + 1] if e + 1 < len(offsets)
+                                       else basket.last)
+            if end <= start:
+                continue          # an empty string occupies no bytes at all
+            n = payload[start]
+            if n == 255:
+                n = int.from_bytes(payload[start + 1:start + 5], "big",
+                                   signed=True)
+            if n < 0:
+                self.bad("TLeaf 10.11",
+                         f"branch {br.name!r}: entry {e} has a negative "
+                         f"string length {n}")
+                return
+            longest = max(longest, n)
+        if longest + 1 > leaf.maximum:
+            self.bad("TLeaf 10.11",
+                     f"branch {br.name!r}: a string of {longest} bytes needs "
+                     f"fMaximum at least {longest + 1}, the leaf says "
+                     f"{leaf.maximum}")
 
     def generated_offsets(self, basket, br, leaves, index):
         """TBasket.md 5.2.1: the offsets a flag-80 basket does not store."""

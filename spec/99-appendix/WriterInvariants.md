@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **240
+Every layer of this specification ends with an `Invariants` section — **245
 entries across 31 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -121,6 +121,10 @@ reading side's [TBranch](../04-ttree/TBranch.md),
 | `fClusterRangeEnd` and `fClusterSize` hold exactly `fNClusterRange` values, and their is-present flag agrees with the count | checked — and a count that disagrees desynchronises the record, so nothing after `fBranches` parses |
 | `0 <= fFlushedBytes <= fZipBytes`, and the same for `fSavedBytes` | checked |
 | A recorded cluster range agrees with where the baskets actually end | nothing: ROOT's cluster iterator hands out ranges the baskets do not support |
+| On a `TLeafC`: `fLenType` is 1, `fMinimum` is 0, `fIsRange` is 0 | checked |
+| On a `TLeafC`, `fLen` and `fMaximum` are **equal** and are the longest string in the file plus one | checked as `fLen <= fMaximum`, and `fMaximum` is checked against every string in the baskets — the equality is the writer's half |
+| A `TLeafC` is its branch's **only** leaf | nothing, and ROOT itself writes the other shape: an empty string then becomes unreadable and every later leaf gets the wrong address |
+| A branch holding a `TLeafC` has `fEntryOffsetLen` non-zero and its baskets carry the offset array | checked |
 
 ## 6. The ones ROOT does not notice
 
@@ -147,12 +151,16 @@ nothing in ROOT, not nothing at all.
    and leaves the destination untouched.
 8. **A counter leaf's `fMaximum` set too low**, which clamps the read and
    desynchronises the rest of the entry.
-9. **A missing streamer info.** ROOT reads a class it has compiled in without one,
+9. **A `TLeafC`'s `fLen` smaller than its longest string.** ROOT sizes the read
+   buffer from it and truncates the value, printing nothing, while the bytes in the
+   basket are complete. A fast merge — `hadd`'s default — produces exactly this.
+   [TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small).
+10. **A missing streamer info.** ROOT reads a class it has compiled in without one,
    and the warning that would say so fires only when the file's `fVersion` differs
    from the running ROOT's — so a writer stamping the current release silences it.
    Every reader that is not ROOT needs the info.
 
-Items 1, 2, 3, 4, 6 and 7 are checked by `tools/check_invariants.py`, which is why
+Items 1, 2, 3, 4, 6, 7 and 9 are checked by `tools/check_invariants.py`, which is why
 running it over your own output is worth more than reading this list. Item 2 became
 checkable on 2026-09-18, as
 [Directories §9](../01-container/Directory.md#9-invariants) invariant 11: nothing had

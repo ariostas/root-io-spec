@@ -1,0 +1,198 @@
+id   = "ttree/leafc-truncated"
+file = "data/ttree/leafc-truncated.root"
+size = 17807
+
+description = """
+A TLeafC whose fLen is smaller than the longest string in its own baskets, which
+is a shape ROOT writes and then misreads.
+
+TLeafC::FillBasket raises fLen and fMaximum together, so a tree filled the
+ordinary way always has fLen == fMaximum: tree "short" has 3 and 3, tree "long"
+has 11 and 11. A **fast clone** copies baskets wholesale, never runs FillBasket,
+and widens only fMaximum through TLeafC::IncludeRange -- so tree "merged", cloned
+from "short" and then fed both, has fLen 3 and fMaximum 11.
+
+fLen is what sizes the read buffer: ReadFastArrayString clamps to fLen - 1
+characters. So ROOT returns "01" for each of merged's last three entries while the
+basket at 2297 holds all ten characters of each, with a count byte of 10. Nothing
+is printed. hadd fast-merges by default, so files of this shape exist in the wild.
+
+A reader must take a string's length from the counted string in the entry and
+never from fLen, and it then reads this file correctly where ROOT does not.
+"""
+
+spec = ["spec/04-ttree/TLeaf.md", "spec/04-ttree/TBasket.md"]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 182
+class  = "TFile"
+name   = "data/ttree/leafc-truncated.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 282
+nbytes = 98
+class  = "TBasket"
+name   = "s"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 380
+nbytes = 850
+class  = "TTree"
+name   = "short"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1230
+nbytes = 121
+class  = "TBasket"
+name   = "s"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1351
+nbytes = 848
+class  = "TTree"
+name   = "long"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 2199
+nbytes = 98
+class  = "TBasket"
+name   = "s"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 2297
+nbytes = 121
+class  = "TBasket"
+name   = "s"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 2418
+nbytes = 856
+class  = "TTree"
+name   = "merged"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 3274
+nbytes = 14185
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 17459
+nbytes = 261
+class  = "TFile"
+name   = "data/ttree/leafc-truncated.root"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 17720
+nbytes = 87
+class  = "TFile"
+name   = "data/ttree/leafc-truncated.root"
+cycle  = 1
+seek_pdir = 100
+
+# --- The two sources: filled the ordinary way, so fLen == fMaximum --------
+[[bytes]]
+name = "short: fLen"
+offset = 910
+type = "i32"
+value = 3
+[[bytes]]
+name = "short: fLenType"
+offset = 914
+type = "i32"
+value = 1
+[[bytes]]
+name = "short: fMaximum, the same value"
+offset = 932
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "long: fLen"
+offset = 1879
+type = "i32"
+value = 11
+[[bytes]]
+name = "long: fMaximum, the same value"
+offset = 1901
+type = "i32"
+value = 11
+
+# --- The fast clone: only fMaximum was widened ----------------------------
+[[bytes]]
+name = "merged: fLen, inherited from 'short' and never raised"
+offset = 2950
+type = "i32"
+value = 3
+[[bytes]]
+name = "merged: fMaximum, widened by IncludeRange to cover 'long'"
+offset = 2972
+type = "i32"
+value = 11
+
+[[bytes]]
+name = "merged: fBasketSeek[0], a byte copy of short's basket"
+offset = 3136
+type = "i64"
+value = 2199
+[[bytes]]
+name = "merged: fBasketSeek[1], a byte copy of long's basket"
+offset = 3144
+type = "i64"
+value = 2297
+
+# --- The bytes ROOT will not give back ------------------------------------
+[[bytes]]
+name = "merged's second basket: a count byte of 10, not 2"
+offset = 2365
+type = "u8"
+value = 10
+[[bytes]]
+name = "and all ten characters, which ROOT truncates to two on read"
+offset = 2366
+type = "bytes"
+value = "0123456789"
+[[bytes]]
+name = "the offset array's count"
+offset = 2398
+type = "i32"
+value = 4
+[[bytes]]
+name = "entry 0 at fKeylen"
+offset = 2402
+type = "i32"
+value = 68
+[[bytes]]
+name = "entry 1 at 68 + 11"
+offset = 2406
+type = "i32"
+value = 79
+[[bytes]]
+name = "entry 2 at 79 + 11"
+offset = 2410
+type = "i32"
+value = 90

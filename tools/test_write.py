@@ -754,6 +754,145 @@ class Compression(unittest.TestCase):
         self.assertIsNone(rw.zlib_blocks(os.urandom(4096), 9))
 
 
+class LeafC(unittest.TestCase):
+    """A `TLeafC` branch against `data/ttree/strings.root`.
+
+    `data/written/leafc.root` holds the same two branches and the same three
+    strings -- `"ab"`, the empty one, and 300 characters -- and both basket
+    records and the whole `TTree` record are byte-identical to ROOT's, keys
+    included, once the timestamp is masked. The two file names are the same
+    length because a branch stores its baskets' offsets.
+    """
+
+    ROOTS = "data/ttree/strings.root"
+    MINE = "data/written/leafc.root"
+
+    def build(self):
+        tree = rw.Tree("t", "a tree")
+        tree.branch("n", "I")
+        tree.branch("s", "C")
+        for i, text in enumerate(("ab", "", "x" * 300)):
+            tree.fill({"n": i + 1, "s": text})
+        return tree
+
+    def written(self):
+        f = rw.FileWriter("data/written/leafc.root", "string leaves")
+        for record in self.build().records():
+            f.add(record)
+        for info in rw.tree_infos(("I", "C")):
+            f.add_info(info)
+        return f.to_bytes()
+
+    def test_records_are_identical_to_roots(self):
+        ours = self.written()
+        root_buf, _, root_recs = rootfile.load(REPO / self.ROOTS)
+        our_recs = rootfile.read_records(ours, rootfile.read_header(ours))
+        wanted = [(r.class_name, r.name) for r in root_recs
+                  if r.class_name in ("TBasket", "TTree")]
+        self.assertEqual([(r.class_name, r.name) for r in our_recs
+                          if r.class_name in ("TBasket", "TTree")], wanted)
+        self.assertEqual(wanted, [("TBasket", "n"), ("TBasket", "s"),
+                                  ("TTree", "t")])
+        for cls, name in wanted:
+            a = [r for r in root_recs
+                 if r.class_name == cls and r.name == name][0]
+            b = [r for r in our_recs
+                 if r.class_name == cls and r.name == name][0]
+            self.assertEqual(a.offset, b.offset, f"{cls} {name} offset")
+            self.assertEqual(
+                Trees.mask_datime(bytes(root_buf[a.offset:a.offset + a.nbytes])),
+                Trees.mask_datime(bytes(ours[b.offset:b.offset + b.nbytes])),
+                f"{cls} {name} record")
+
+    def test_streamer_info_matches_up_to_the_rules(self):
+        """Eighteen infos against eighteen, TLeafC's checksum included."""
+        root_data, root_rec, theirs = streamer_infos(REPO / self.ROOTS)
+        mine_data, mine_rec, ours = streamer_infos(REPO / self.MINE)
+        self.assertEqual([i.name for i in ours], [i.name for i in theirs])
+        self.assertIn("TLeafC", [i.name for i in ours])
+        payload = lambda d, r: bytes(d[r.offset + r.key_len:
+                                      r.offset + r.nbytes])
+        mine, theirs_bytes = payload(mine_data, mine_rec), payload(root_data,
+                                                                  root_rec)
+        self.assertLess(len(mine), len(theirs_bytes))
+        # The first 21 bytes carry the byte count and the entry count, which
+        # differs by the one listOfRules entry ROOT appends.
+        self.assertEqual(mine[21:], theirs_bytes[21:len(mine)])
+
+    def test_tleafc_checksum_is_roots(self):
+        _, _, infos = streamer_infos(REPO / self.ROOTS)
+        theirs = {i.name: i for i in infos}["TLeafC"]
+        mine = {i.name: i for i in rw.tree_infos(("C",))}["TLeafC"]
+        self.assertEqual(mine.checksum, theirs.checksum)
+        self.assertEqual(mine.checksum, rw.checksum(mine))
+
+    # -- the three entry forms -------------------------------------------
+
+    def test_an_empty_string_writes_no_bytes(self):
+        leaf = rw.Leaf(name="s", kind="C")
+        self.assertEqual(leaf.pack(""), b"")
+        self.assertEqual(leaf.pack("ab"), b"\x02ab")
+
+    def test_the_long_form_uses_the_255_escape(self):
+        leaf = rw.Leaf(name="s", kind="C")
+        packed = leaf.pack("x" * 300)
+        self.assertEqual(len(packed), 305)
+        self.assertEqual(packed[0], 255)
+        self.assertEqual(int.from_bytes(packed[1:5], "big"), 300)
+        self.assertEqual(packed[5:], b"x" * 300)
+        # 254 is still the short form; 255 is the first that is not.
+        self.assertEqual(len(leaf.pack("y" * 254)), 255)
+        self.assertEqual(len(leaf.pack("y" * 255)), 260)
+
+    def test_the_offset_array_repeats_for_an_empty_entry(self):
+        """Read out of the finished file, where a reader would find it."""
+        buf, _, records = rootfile.load(REPO / self.MINE)
+        rec = [r for r in records
+               if r.class_name == "TBasket" and r.name == "s"][0]
+        basket = rootfile.read_basket(buf, rec)
+        self.assertEqual(basket.nev_buf, 3)
+        # Entries 1 and 2 start at the same byte: entry 1 wrote nothing.
+        self.assertEqual(basket.entry_offsets, [65, 68, 68])
+        self.assertEqual(basket.last, 65 + 3 + 0 + 305)
+
+    # -- what the leaf and the branch record -----------------------------
+
+    def test_a_tleafc_forces_an_offset_array(self):
+        tree = self.build()
+        n, s = tree.branches
+        self.assertEqual(n.entry_offset_len, 0)
+        self.assertFalse(n.variable)
+        # 1000 to start with, shrunk to 4 x fNevBuf when the basket closes.
+        self.assertTrue(s.variable)
+        s.flush()
+        self.assertEqual(s.entry_offset_len, 12)
+        self.assertEqual(s.flushed[0].nev_buf_size, 1000)
+
+    def test_flen_and_fmaximum_are_the_longest_string_plus_one(self):
+        leaf = self.build().branches[1].leaf
+        self.assertEqual(leaf.length, 301)
+        self.assertEqual(leaf.maximum, 301)
+        self.assertEqual(leaf.minimum, 0)
+        self.assertEqual(leaf.len_type, 1)
+        self.assertFalse(leaf.is_range)
+        # fTitle carries no dimensions: a TLeafC has none to carry.
+        self.assertEqual(leaf.title, "s")
+
+    def test_flen_never_falls_back(self):
+        """A later shorter string does not lower the high-water mark."""
+        tree = rw.Tree("t", "")
+        tree.branch("s", "C")
+        tree.fill({"s": "abcd"})
+        tree.fill({"s": "x"})
+        self.assertEqual(tree.branches[0].leaf.length, 5)
+        self.assertEqual(tree.branches[0].leaf.maximum, 5)
+
+    def test_a_non_string_is_refused(self):
+        leaf = rw.Leaf(name="s", kind="C")
+        with self.assertRaises(rw.WriteError):
+            leaf.pack(3)
+
+
 class Subdirectories(unittest.TestCase):
     """`data/written/nested-subdir.root` against `data/container/directories.root`.
 

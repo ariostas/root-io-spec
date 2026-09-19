@@ -3,6 +3,7 @@
 # these files are byte-reproducible. See tools/check_write.py.
 3076edaf6bc7062068c1d0b2dcaf6d344ea608ec5fc136f9a9154229c0df24c7  data/written/cluster.root
 e7e9aa9a0b9ef840373a40148a8eedb06b776db87b5172746606ac6f562a2588  data/written/histogram.root
+6be7fe4c707f8a323219fb232b49880bd4b1c45ef024ea3ec89e3b6ec602957b  data/written/leafc.root
 c06115814263fb04cbbcefe67ba48008c9492608568117a6817f98a9a3df8c34  data/written/nested-subdir.root
 3e2a6e1f161df3e6d135637307ab30ef96d7452bdcd21044aa87a5a2134f9140  data/written/objstring.root
 6c01064687caaca54bffbe38a68378913e8ce45774b0e79173d41f34bdd3d3b4  data/written/streamerinfo.root

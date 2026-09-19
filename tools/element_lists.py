@@ -11,7 +11,7 @@ a third party could not work around without reading this project's code.
 
 This extracts them from the **reference files ROOT wrote** and writes them into
 `spec/06-writing/ElementLists.md`, so the published tables are evidence about
-ROOT rather than a transcription of `rootwrite.py`. Five fixtures between them
+ROOT rather than a transcription of `rootwrite.py`. Six fixtures between them
 carry every class:
 
     data/classes/histogram.root        the fifteen infos of a TH1F/TH1D file
@@ -22,6 +22,7 @@ carry every class:
                                        histogram file does not describe at all
     data/container/file-minimal.root   TObjString, the one info a file holding a
                                        single object carries
+    data/ttree/strings.root            TLeafC, which only a string branch pulls in
 
 and every class the fixtures share is compared across them, so a table can only
 be published when every file that carries the class agrees on it, field for
@@ -79,6 +80,7 @@ SOURCES = (
     "data/classes/th2-profile.root",
     "data/classes/tarray-histogram.root",
     "data/container/file-minimal.root",
+    "data/ttree/strings.root",
 )
 
 #: The six groups, each in bases-first order: a base's checksum is folded into
@@ -91,7 +93,7 @@ GROUPS = {
     "histogram": ("THashList", "TAttAxis", "TAxis", "TH1", "TH1F", "TH1D"),
     "derived": ("TH2", "TH2F", "TH2D", "TProfile"),
     "tree": ("TObjArray", "ROOT::TIOFeatures", "TLeaf", "TLeafI", "TLeafF",
-             "TBranch", "TRefTable", "TBranchRef", "TTree"),
+             "TLeafC", "TBranch", "TRefTable", "TBranchRef", "TTree"),
     "arrays": ("TArray", "TArrayF", "TArrayD"),
     "objstring": ("TObjString",),
 }
@@ -120,6 +122,12 @@ WRITE_ORDER = {
     "objstring": (
         "A file of one object", "data/container/file-minimal.root",
         ("TObjString",)),
+    "strings": (
+        "A tree with a string branch", "data/ttree/strings.root",
+        ("TTree", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
+         "ROOT::TIOFeatures", "TBranch", "TLeafI", "TLeaf", "TLeafC", "TList",
+         "TSeqCollection", "TCollection", "TString", "TBranchRef", "TRefTable",
+         "TObjArray")),
 }
 
 #: A class version 0 info lists no members while its checksum folds them
@@ -241,7 +249,7 @@ def writer_infos() -> dict[str, rw.Info]:
     out: dict[str, rw.Info] = {}
     for info in (list(rw.histogram_infos(("TH1F", "TH1D")))
                  + list(rw.histogram_infos(("TH2F", "TH2D", "TProfile")))
-                 + list(rw.tree_infos(("I", "F")))
+                 + list(rw.tree_infos(("I", "F", "C")))
                  + [arrays.by_name[n] for n in GROUPS["arrays"]]
                  + [rw.objstring_info()]):
         out[info.name] = info
