@@ -7,6 +7,7 @@ member, whose encoding table is easier to state than to generate, and element
 lists that no file ROOT wrote would contain.
 """
 
+import struct
 import sys
 import tempfile
 import unittest
@@ -118,7 +119,7 @@ class ElementListInvariants(unittest.TestCase):
 
 
 class InfoListInvariants(unittest.TestCase):
-    """SchemaEvolution.md invariants 1 and 2."""
+    """SchemaEvolution.md invariants 1 and 6."""
 
     def failures(self, infos):
         return [where for where, _ in check_invariants.info_list_failures(infos)]
@@ -149,6 +150,32 @@ class InfoListInvariants(unittest.TestCase):
         a = info(name="A")
         a.class_version = -1
         self.assertEqual(self.failures([a]), ["SchemaEvolution 9.1"])
+
+    def test_one_layout_twice_must_be_the_same_layout(self):
+        # Invariant 6, which is what makes 8.1's "take either entry" safe. Same
+        # class, same version, same checksum, different elements: ROOT writes no
+        # such pair, and a reader that took the wrong one would decode silently
+        # wrong. No fixture can hold it.
+        a = info(element("fA"), name="A")
+        b = info(element("fB"), name="A")
+        self.assertEqual(self.failures([a, b]), ["SchemaEvolution 9.6"])
+
+    def test_the_same_layout_twice_passes(self):
+        # The ROOT::TIOFeatures pair: identical elements, and in three corpus
+        # files only fBits differs -- kIsCompiled in one, kBuildOldUsed in the
+        # other two. fBits is not part of the comparison, so this passes.
+        a, b = info(element("fA"), name="A"), info(element("fA"), name="A")
+        b.bits = 0x3010000
+        self.assertEqual(self.failures([a, b]), [])
+
+    def test_two_versions_of_one_class_are_not_compared(self):
+        # data/written/two-versions.root: Grown at versions 1 and 2 with
+        # different checksums and different elements. Legitimate, and the
+        # object's version word chooses between them.
+        a = info(element("fA"), name="Grown")
+        b = info(element("fA"), element("fB"), name="Grown")
+        b.class_version, b.checksum = 2, 0xEE119598
+        self.assertEqual(self.failures([a, b]), [])
 
 
 class CountedString(unittest.TestCase):
@@ -424,6 +451,47 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
         si = info(element("fM", cls="TStreamerObjectAny", ftype=62,
                           type_name="TMatrixTSym<double>"))
         self.assertEqual(self.failures(si, {"TMatrixTSym"}), [])
+
+
+class OneIdentityTwoLayoutsIsCaught(unittest.TestCase):
+    """SchemaEvolution 9.6 against a real file, by forging a duplicate.
+
+    `data/written/two-versions.root` holds `Grown` at versions 1 and 2 with
+    different checksums and different element lists, which is legitimate. Making
+    the second entry claim the first's version and checksum is the state ROOT
+    never writes: one identity, two layouts, and a reader that takes the wrong
+    entry decodes silently wrong. The record is uncompressed, so it is a byte
+    patch.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/written/two-versions.root"
+    FIRST = struct.pack(">Ii", 0x0159165E, 1)       # fCheckSum, fClassVersion
+    SECOND = struct.pack(">Ii", 0xEE119598, 2)
+
+    def failures(self, data):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "forged.root"
+            path.write_bytes(data)
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return checker.failures
+
+    def test_the_fixture_itself_passes(self):
+        self.assertEqual(self.failures(self.PATH.read_bytes()), [])
+
+    def test_the_second_entry_claiming_the_first_identity(self):
+        buf = bytearray(self.PATH.read_bytes())
+        at = buf.find(self.SECOND)
+        self.assertNotEqual(at, -1)
+        self.assertEqual(buf.count(self.SECOND), 1)
+        buf[at:at + 8] = self.FIRST
+        bad = self.failures(bytes(buf))
+        self.assertEqual(len(bad), 2)
+        # 9.6 states it, and 10.1 is what it costs: the version-1 object is now
+        # decoded through a two-element layout and over-runs its byte count.
+        self.assertIn("SchemaEvolution 9.6", bad[1])
+        self.assertIn("(1 and 2 elements)", bad[1])
+        self.assertIn("StreamerDriven 10.1", bad[0])
 
 
 class PublishedExemptionLists(unittest.TestCase):

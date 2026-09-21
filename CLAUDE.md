@@ -13,8 +13,10 @@ describes **release 3.02.06** and is substantially wrong for current ROOT.
 side's second half — free-space reuse, key ordering, updating a file and schema
 evolution, all landed 2026-09-21 — and carries the six findings that came out of
 it. One live sub-plan: `PLAN-review.md` answers the first outside review, GitHub
-issue #1, which found a reader bug, a false invariant and an over-general erratum,
-so read it before trusting `StreamerDriven.md` 10.5 or `SchemaEvolution.md` §8.1.
+issue #1, which found a reader bug, a false invariant and an over-general erratum.
+All three are fixed (R1-R3, 2026-09-21); what is still open there is the audit of
+which published `Invariants` entries are checked at all, two documentation notes,
+the reply to the issue, and a scope decision on RooFit.
 A sub-plan is deleted once discharged, with anything durable moved into `PLAN.md`
 or `spec/` first.
 `spec/00-conventions.md` holds the conventions every specification document depends

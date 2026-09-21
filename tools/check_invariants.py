@@ -210,21 +210,44 @@ def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
     return failures
 
 
-def info_list_failures(infos) -> list[tuple[str, str]]:
-    """SchemaEvolution.md invariants 1 and 2, over one StreamerInfo record.
+def _element_signature(info) -> list[tuple]:
+    """What two entries for one layout must agree on. SchemaEvolution.md 9.6.
 
-    Separate from Checker so that invariant 2 can be exercised: no fixture can
-    hold two identical infos, because ROOT would not write one.
+    Deliberately not `fBits`, which is where the two legitimately differ, and not
+    `fSize`, which is `sizeof` on the writing machine and is masked everywhere
+    else for the same reason.
+    """
+    return [(e.cls, e.name, e.ftype, e.type_name, e.array_length,
+             tuple(e.max_index), e.title) for e in info.elements]
+
+
+def info_list_failures(infos) -> list[tuple[str, str]]:
+    """SchemaEvolution.md invariants 1 and 6, over one StreamerInfo record.
+
+    Separate from Checker so that both can be exercised: no fixture holds an
+    out-of-range fClassVersion, and none holds a pair that disagrees -- ROOT does
+    not write one, which is exactly what invariant 6 asserts.
     """
     failures: list[tuple[str, str]] = []
+    # There is no uniqueness invariant: two entries for one class may share a
+    # version and differ in checksum (SchemaEvolution.md 3), and may agree on
+    # both (8.1, which ROOT writes for ROOT::TIOFeatures). What invariant 6 says
+    # is that when they agree on both, the element lists agree too -- which is
+    # what makes "take either entry" safe.
+    layouts: dict[tuple, object] = {}
     for info in infos:
         if not 0 <= info.class_version <= 65000:
             failures.append((
                 "SchemaEvolution 9.1",
                 f"{info.name} has fClassVersion {info.class_version}"))
-        # No uniqueness invariant: two entries for one class may share a version
-        # and differ in checksum (SchemaEvolution.md 3), and may agree on both
-        # (8.1, which ROOT writes for ROOT::TIOFeatures).
+        key = (info.name, info.class_version, info.checksum)
+        first = layouts.setdefault(key, info)
+        if first is not info and _element_signature(first) != _element_signature(info):
+            failures.append((
+                "SchemaEvolution 9.6",
+                f"{info.name}: two entries at version {info.class_version} and "
+                f"checksum 0x{info.checksum:08x} have different element lists "
+                f"({len(first.elements)} and {len(info.elements)} elements)"))
     return failures
 
 

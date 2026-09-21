@@ -335,22 +335,51 @@ To read a member the reader's target does not have, or to leave a target member
 the file does not supply: nothing. Neither changes any bytes
 ([Streamer-driven reading §3](StreamerDriven.md#3-the-element-loop)).
 
-## 8.1 A class may appear twice in one `StreamerInfo` record
+### 8.1 A class may appear twice in one `StreamerInfo` record
 
-ROOT does not deduplicate the list. A record can hold two entries for one class
-with the same `fClassVersion`, the same `fCheckSum` and the same elements,
-differing only in `fBits` — where the difference is `kIsCompiled` (`BIT(16)`,
-`root/core/meta/inc/TVirtualStreamerInfo.h:82`), an in-memory flag that reaches
-disk because `fBits` is written wholesale by the `TNamed` base.
+ROOT does not deduplicate the list, because a `TStreamerInfo`'s identity is per
+*instance* rather than per class: a session that read one info from an input file
+and built another for the same class holds two, and writes both
+([Writing an object §8.4](../06-writing/WritingObjects.md#84-one-class-two-versions-in-one-file)).
 
-A reader MUST tolerate the duplicate and may take either entry; they describe the
-same layout. A reader that indexes the list by `(class, version)` and asserts
-uniqueness will reject ordinary files.
+A reader MUST tolerate the duplicate. What it must *not* do is assume the two
+entries are interchangeable, because two different things produce the pair:
 
-> Seen in three files of the foreign corpus (`PLAN.md` §9.8), all for
-> `ROOT::TIOFeatures`: `uproot-issue121.root` (ROOT 6.18/00) has 23 entries of
-> which two are `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`, `fBits`
-> `0x3000000` and `0x3010000`.
+- **the same layout twice.** Same `fClassVersion`, same `fCheckSum`, same
+  elements, differing only in `fBits`. Either entry will do;
+- **two layouts.** Different `fClassVersion`, or the same version with different
+  checksums — which is the schema-evolution case of §3 and §4, and there the
+  object's version word selects between them.
+
+So a reader that indexes the list by `(class, version)` and asserts uniqueness
+will reject ordinary files, and one that indexes by class alone and keeps the
+last entry can silently decode objects with the wrong layout.
+
+**Which `fBits` differ is not fixed, and a reader MUST NOT key on any of them.**
+`fBits` is written wholesale through the `TNamed` base, so what reaches disk is
+the writing session's in-memory status — including, in every case measured, the
+`TObject` allocation bits `kIsOnHeap` and `kNotDeleted`
+(`root/core/base/inc/TObject.h:90-91`), which say only that the object was on the
+heap and had not been destructed.
+
+> Measured across `data/` and both corpora: **three files carry a duplicate**,
+> all of them `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`, and the
+> differing bit is **not the same one**:
+>
+> | File | `fBits` | Differ in |
+> |---|---|---|
+> | `uproot-issue121.root` (6.18/00) | `0x3000000`, `0x3010000` | `kIsCompiled`, `BIT(16)` (`root/core/meta/inc/TVirtualStreamerInfo.h:82`) |
+> | `uproot-issue243.root` | `0x3030000`, `0x3010000` | `kBuildOldUsed`, `BIT(17)` (`root/core/meta/inc/TVirtualStreamerInfo.h:86`) |
+> | `uproot-issue-750.root` | `0x3030000`, `0x3010000` | `kBuildOldUsed` |
+>
+> In the second and third, **both** entries carry `kIsCompiled`; what separates
+> them is that one had been through `BuildOld` in the writing session and the
+> other had not (`root/io/io/src/TStreamerInfo.cxx:1885`). That is session state
+> and nothing else — which is the point.
+>
+> The fourth duplicate in `data/` is the other kind: `data/written/two-versions.root`
+> holds `Grown` at versions 1 and 2 with different checksums, where the two
+> entries describe genuinely different layouts and the version word chooses.
 
 ## 9. Invariants
 
@@ -365,11 +394,18 @@ uniqueness will reject ordinary files.
 5. No element of any streamer info has an `fType` in the `kSkip`, `kConv` or
    `kCache` families, or equal to 1000, 1001, 1002, 99997, 99999 or -2. (Stated
    and checked as [Element types §11](ElementTypes.md#11-invariants).)
+6. Two entries for one class that agree on **both** `fClassVersion` and
+   `fCheckSum` have **identical element lists** — same count, and each element
+   matching in class, `fName`, `fType`, `fTypeName`, array shape and `fTitle`.
+   This is what makes §8.1's "take either entry" safe. Entries that disagree on
+   either field describe different layouts and are selected by the object's
+   version word (§4), not by position in the list.
 
 **There is deliberately no uniqueness invariant.** Two entries for one class may
 share a `fClassVersion` and differ in `fCheckSum`, which §3 says is how an
 unversioned class is disambiguated; and they may agree on *both*, which §8.1 shows
 ROOT writing. A reader must index the list in a way that tolerates either.
+Invariant 6 is the weaker statement that replaces uniqueness.
 
 Invariant 2 is the one that gives checksums their job: it is what makes §4 step 2
 well defined.

@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **256
+Every layer of this specification ends with an `Invariants` section — **257
 entries across 32 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -82,6 +82,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | An info's `fCheckSum` is what the algorithm produces for the class it describes | StreamerInfo 11 | ROOT — `BuildCheck` warns at equal version |
 | Every `TList` entry in the `StreamerInfo` record is followed by one option byte; `TObjArray` entries by none | StreamerInfo 4, 5 | nothing |
 | Every class whose version word is above 0 has an info in the file, or is one a reader knows out of band | WritingObjects 10.5 | nothing for ROOT; everything for every other reader |
+| Two entries for one class at the same `fClassVersion` **and** `fCheckSum` have identical element lists | SchemaEvolution 9.6 | checked |
 | **The transitive closure**: every base class and every contained class has an info too, unless its `Streamer` is hand-written or forwarding | WritingObjects 8.2 | ROOT — loudly, and only for a reader without the base compiled in: `BuildOld` skips the base, `CheckByteCount` reports the short read, and the class comes out the wrong size |
 | A `TStreamerBase` element's `fBaseCheckSum` is the base info's `fCheckSum`, or 0 | StreamerInfo 13.7 | checked |
 | `fBaseVersion` is the base version the derived class was **built against** — not necessarily the version of the base info beside it | StreamerInfo 9.2 | nothing, and it is not an invariant: five corpus files disagree with their own base infos and all five are correct |
@@ -197,6 +198,14 @@ readable: where records are placed within the file, basket and buffer sizes, how
 many entries a cluster holds, which compression setting to use per record, key
 ordering within a directory, the `fDatime` of a key and the UUID of a file, and
 every attribute of `TAttLine`, `TAttFill`, `TAttMarker` and `TAttAxis`.
+
+**A streamer info's `fBits` is on that list too, and a reader must not key on
+it.** It is written wholesale through the `TNamed` base, so it carries the
+writing session's in-memory status — including `kIsOnHeap` and `kNotDeleted`,
+which say only that the object was on the heap and had not been destructed. The
+three corpus files that hold one class twice differ in `kIsCompiled` in one case
+and `kBuildOldUsed` in the other two
+([Schema evolution §8.1](../02-serialization/SchemaEvolution.md#81-a-class-may-appear-twice-in-one-streamerinfo-record)).
 
 **An update adds nothing to this page**, which is the useful thing to know about
 it. A file that was reopened eleven times satisfies exactly the invariants above

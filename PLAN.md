@@ -231,7 +231,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 254 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 257 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -590,7 +590,10 @@ what satisfied it:
 1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
    claim was the violation, and M6 found four more in the `TBranch` and `TLeaf`
    invariants. Criterion 1 is not a state a project reaches once — it is what the
-   two corpora keep testing.
+   two corpora keep testing, and §8.13 is the proof: the first outside review
+   broke it again on 2026-09-21 with three defects, all three fixed the same day,
+   and the thing that had let the worst of them stand was an invariant published
+   without a check.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -1685,28 +1688,42 @@ it, and sent back ten findings and six corroborations.
 **[`PLAN-review.md`](PLAN-review.md) orders the response**, and every item in it
 was re-checked here before it was planned.
 
-**It is not six gaps and four RooFit items; it is three defects and the rest.**
+**It is not six gaps and four RooFit items; it is three defects and the rest** —
+and **all three are fixed**, on 2026-09-21, which is what puts release criterion 1
+of §8.1, "no published claim is known to be wrong", back in force. Each turned out
+to be larger than the review could see from outside:
 
-- **`tools/rootfile.py` mis-reads a version-1001 directory record.** Class version
-  and offset width are independent axes; the reader tests `version > 1` for the
-  UUID, so for 1001 it invents sixteen bytes from **past the end of the record**.
-  Measured on `uproot-from-geant4.root`: record ends at 202, UUID read from 204.
-- **`StreamerDriven.md` invariant 5 is false**, and is contradicted by
+- **`tools/rootfile.py` mis-read a version-1001 directory record.** Class version
+  and offset width are independent axes; the reader tested `version > 1` for the
+  UUID, so for 1001 it invented sixteen bytes from **past the end of the record**
+  — on `uproot-from-geant4.root`, whose record ends at 202, from offset 204. The
+  same line was also wrong for a **version-2** record, which stores the UUID with
+  no `TUUID` version word, so two of the five class versions were mis-read.
+  Fixed, with a synthetic record in all six framings; and `gen/cern/` turns out
+  to witness versions 1, 3 and 4 after all, so every row of `Directory.md` §7's
+  payload table is now measured on a ROOT-written file except version 2.
+- **`StreamerDriven.md` invariant 5 was false**, contradicted by
   `data/classes/histogram.root` — `TH1F` names `TArrayF` as a `kBase` and no
-  `TArrayF` info exists in the file — by `data/written/histogram.root`, and by 36
-  elements in 27 corpus files. It has contradicted `ElementLists.md` §10 since
-  §8.11, and nothing noticed **because it was never added to
-  `check_invariants.py`**.
-- **`SchemaEvolution.md` §8.1 generalises from one file.** It says two duplicate
-  infos differ in `kIsCompiled`; in two of the three corpus files that carry the
+  `TArrayF` info exists in the file — and never added to `check_invariants.py`,
+  which is why nothing noticed. Its **member** half was wrong in a way the review
+  did not reach: 778 object-valued members across the corpora name a class their
+  file does not describe. The rule is the framing, not the class — inline codes
+  (`kBase`, 61, 62, 63, 68) must be described, nullable pointers (64, 69) need
+  not, since the pointer may be null everywhere and a non-null one names its
+  class in the bytes. Restated as §6.1, wired in, and the two remaining failures
+  over 226 files are g4tools', not ROOT's.
+- **`SchemaEvolution.md` §8.1 generalised from one file.** It said two duplicate
+  infos differ in `kIsCompiled`; in two of the three corpus files carrying the
   duplicate, both entries have `kIsCompiled` and they differ in `kBuildOldUsed`
-  (`BIT(17)`).
+  (`BIT(17)`). It was also conflating two different duplicates — same identity,
+  where either entry will do, against two versions of one class, where the
+  object's version word chooses. The half that is true is now invariant 9.6 and
+  is checked.
 
-So **release criterion 1 of §8.1 — "no published claim is known to be wrong" — is
-not met as of today**, and the first three items of the sub-plan are what restores
-it. The most valuable item is the fourth: an audit of which of the 254 published
-`Invariants` entries are wired into `check_invariants.py` at all, since the false
-one turned out to be an unchecked one.
+The remaining item to expect the most from is the fourth: an audit of which of the
+257 published `Invariants` entries are wired into `check_invariants.py` at all,
+since the false one turned out to be an unchecked one, and wiring it up caught a
+second claim within minutes.
 
 RooFit (their items 7–10) is a scope decision against decision 8 and is left open;
 the sub-plan argues for a middle course — treat three of the four as

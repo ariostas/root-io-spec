@@ -1,10 +1,10 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1 and R2 done** the same day,
-their outcomes recorded in §2. Every item below was re-checked against the
-corpora and against our own reference files *before* being planned, and the
-verification is recorded per item, because the point of a review is what it
-turns out to be right about.
+**Status: in progress.** Written 2026-09-21; **R1, R2 and R3 done** the same
+day — the three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again. Every
+item below was re-checked against the corpora and against our own reference
+files *before* being planned, and the verification is recorded per item, because
+the point of a review is what it turns out to be right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -182,12 +182,13 @@ including four of the six that describe a `TH3` at all.
 
 **And it corrected a claim made the same day.** `WritingObjects.md` §8.2, written
 for W4 that morning, named `TAtt3D` as one of six bases legitimately absent from
-files — resting on exactly those two g4tools files. Five of the six were right. The same paragraph
-also said the closure was *not* checkable because the exemption is a property of
-ROOT's source; it is, because the property is **published**, and the checker reads
-the exempt set out of `spec/99-appendix/` rather than out of the submodule. Both
-statements are now fixed, and its two population counts were re-measured while
-there (89 files, 731 base elements with an info).
+files — resting on exactly those two g4tools files. Five of the six were right.
+The same paragraph also said the closure was *not* checkable because the
+exemption is a property of ROOT's source; it is, because that property is
+**published**, and the checker reads the exempt set out of `spec/99-appendix/`
+rather than out of the submodule. Both statements are now fixed, and its two
+population counts were re-measured while there (89 files, 731 base elements with
+an info).
 
 **The process point the review made is the one that held.** The old invariant had
 never been wired in, and everything above — the member clause, the pointer rule,
@@ -214,6 +215,39 @@ The correct statement is weaker and more useful: the two entries differ only in
 `fBits`, the differing bits are in-memory status flags that reach disk because
 `fBits` is written wholesale, and **which** flags differ is not fixed. A reader
 must not key on any of them.
+
+**Done 2026-09-21.** The measurement reproduced exactly — three files across
+`data/` and both corpora carry a duplicate, all `ROOT::TIOFeatures` version 1 at
+checksum `0x1aa12f10`, `kIsCompiled` in one and `kBuildOldUsed` in the other two,
+where in those two **both** entries carry `kIsCompiled`. §8.1 is rewritten around
+it, and one detail makes the point better than the correction does: `0x3000000`
+is in *every* entry of all three, and it is `kIsOnHeap | kNotDeleted`
+(`root/core/base/inc/TObject.h:90-91`) — the bits that say an object was on the
+heap and had not been destructed. What reaches disk in `fBits` is the writing
+session's memory state.
+
+Two things were added rather than only corrected:
+
+1. **§8.1 conflated two different duplicates.** It said a reader "may take either
+   entry; they describe the same layout" — true of the `TIOFeatures` pair and
+   false of `data/written/two-versions.root`, which this project wrote for W4 and
+   which holds `Grown` at versions 1 and 2 with different checksums and different
+   elements. The rewritten section separates them: same identity means either
+   entry will do, different identity means the object's version word chooses. A
+   reader that indexes by class alone and keeps the last entry decodes silently
+   wrong.
+2. **The "take either" half is now an invariant**, `SchemaEvolution.md` 9.6: two
+   entries agreeing on `fClassVersion` **and** `fCheckSum` have identical element
+   lists. It was prose asserted about three files; it is now checked over all
+   226, and `fBits` is deliberately not part of the comparison, which is what the
+   correction above is about. Provoked by forging `two-versions.root` so its
+   second entry claims the first's identity: 9.6 fires, **and so does
+   `StreamerDriven` 10.1**, because the version-1 object is then decoded through
+   the two-element layout and over-runs its byte count. That is the cost the
+   invariant exists to prevent, visible in the same corruption.
+
+Count of published invariants: 256 → 257, and `WriterInvariants.md` gains the row
+plus a note under §8 that a streamer info's `fBits` is deliberately unconstrained.
 
 ## 3. Four gaps — things true of the wild that we do not say
 
@@ -378,7 +412,9 @@ Per the repository's convention the reply opens with the AI-content marker.
 1. ~~**R1** — the reader bug, plus a test.~~ **Done**: the fix is on both axes,
    the version-2 framing was wrong on the same line, and §7's payload table is
    now measured on ROOT-written files for every version but 2 (§2).
-2. **R3** — the `fBits` correction, measurable on files in hand.
+2. ~~**R3** — the `fBits` correction, measurable on files in hand.~~ **Done**:
+   the correction stands as measured, §8.1 was also conflating two kinds of
+   duplicate, and the half of it that is true is now invariant 9.6 (§2).
 3. ~~**R2** — restate invariant 5, wire it into `check_invariants.py`, confirm it
    catches a corruption, and check it over both corpora.~~ **Done**: the member
    half of the invariant was wrong too, the pointer/inline split is the real rule,
