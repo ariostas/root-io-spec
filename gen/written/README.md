@@ -47,3 +47,25 @@ Same discipline as `gen/cases/`: one case, one thing. Beyond that:
 - Assert the container fields ROOT recovers (`GetEND`, `GetSeekFree`, `GetNkeys`,
   the key's `fSeekKey` and `fObjlen`) as well as the object's values. A file can
   hold the right object and still be wrong about itself.
+
+## A case that updates a file
+
+`reopen-add` and `reopen-reuse` build a **base** with `rootwrite` inside the same
+`build()`, serialize it, and hand those bytes to `FileWriter.reopen`. Nothing else
+crosses: no committed fixture is read, and the update is given only what a third
+party opening the file would have. So when such a case matches a ROOT-written one
+byte for byte it says two things at once — that the base was byte-identical to
+ROOT's, and that the update reached ROOT's answer from it.
+
+The ROOT twin is an ordinary `gen/cases/` case whose `gen.C` creates the base,
+closes it, and reopens the *same path* for `UPDATE`. Both file names then have to
+be the **same length**, because four records carry the file's name — the directory
+record, the key list, the free record, and the repeated name — and two carry their
+own offsets. `data/container/reopened.root` against
+`data/written/reopen-add.root` is 28 characters each; `reopen-gap` against
+`reopen-reuse` is 30.
+
+Make a hole with `"overwrite"`, not `Delete`: `TDirectoryFile::Delete` writes the
+key list, the directory header and the free list before it returns
+(`root/io/io/src/TDirectoryFile.cxx:736-738`), so the layout then depends on when
+in the session the delete happened.

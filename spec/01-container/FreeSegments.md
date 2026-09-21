@@ -243,6 +243,9 @@ verifying and, if real, reporting upstream.
 | `container/gap` | A deleted record: an interior entry and its in-place marker |
 | `container/gap-reused` | The space being used again: an exact fit, a partial fit, and the remainder marked at its start |
 | `container/file-minimal` | The trailing entry alone, `fFirst == fEND`, `fLast == 2000000000` |
+| `container/reopen-gap` | A free list **inherited** by a second session: an entry the update fills exactly, and one it leaves |
+| `written/reopen-reuse` | The same file written by this project, byte for byte |
+| `written/reopen-add` | Three released spans coalescing into one 243-byte entry during a close |
 
 No fixture covers the large entry form or a `fLast` above 2000000000; both need a
 file over 2 GB, which cannot be committed. They are measured instead over eight

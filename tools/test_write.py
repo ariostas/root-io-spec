@@ -1168,15 +1168,22 @@ class Determinism(unittest.TestCase):
 
 
 
-def free_fields_blanked(data: bytes, name: bytes) -> bytes:
+def free_fields_blanked(data: bytes, name: bytes, extra=()) -> bytes:
     """`data` with every field a writer is free to choose blanked out.
 
     The timestamps, the UUIDs and the file's own name -- which is why two files
     compared this way must have names of the same length, or nothing after the
     first one would line up. Every span but the header UUID comes from parsing
     the file, so a record that moved would be compared at its new place and fail.
+
+    `extra` is for timestamps this cannot reach: the key of a record that has
+    been **released** is still on disk behind the gap marker, and a dead key
+    cannot be parsed out of a file. Each one has to be named by offset, which is
+    a claim in its own right about what is in the gap.
     """
     buf = bytearray(data)
+    for off in extra:
+        buf[off:off + 4] = bytes(4)
     buf[47:63] = bytes(16)                              # the header UUID
     while name in buf:
         i = buf.index(name)
@@ -1308,6 +1315,163 @@ class ReusedSpace(unittest.TestCase):
         self.assertEqual(self.ours[696:715], self.root[696:715])
         self.assertEqual(self.ours[700:715], b"123456789abcdef")
 
+
+
+class Updates(unittest.TestCase):
+    """Reopening a file, spec/06-writing/WritingFiles.md 13."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.add_ours = (REPO / "data/written/reopen-add.root").read_bytes()
+        cls.add_root = (REPO / "data/container/reopened.root").read_bytes()
+        cls.gap_ours = (REPO / "data/written/reopen-reuse.root").read_bytes()
+        cls.gap_root = (REPO / "data/container/reopen-gap.root").read_bytes()
+
+    def objstring(self, name, text):
+        return rw.Obj(class_name="TObjString", name=name,
+                      title="Collectable string class",
+                      payload=rw.tobjstring(text))
+
+    def base(self, name="data/written/reopen-add.root"):
+        f = rw.FileWriter(name, "a file to reopen")
+        f.add(self.objstring("str", "first"))
+        f.add_info(rw.objstring_info())
+        return f.to_bytes()
+
+    # -- the two whole-file comparisons ---------------------------------
+
+    #: The `fDatime` of two keys inside the 243-byte gap at 904: the base's
+    #: free-segment record, which began at 954, and `two;1`, which began at
+    #: 1042 and was freed by the WriteDelete. Both are dead and neither was
+    #: cleared -- releasing a record writes four bytes and moves on (2.4).
+    ADD_STALE = (964, 1052)
+    #: The same for `reopen-reuse`'s 208-byte gap at 1164, whose two dead
+    #: timestamps are of different kinds: 1215 is a **key image** inside the
+    #: base's released key list, and 1281 is the key of the base's own
+    #: free-segment record, which began at 1271.
+    GAP_STALE = (1215, 1281)
+
+    def test_an_appending_update_is_roots_byte_for_byte(self):
+        self.assertEqual(len(self.add_ours), len(self.add_root))
+        self.assertEqual(
+            free_fields_blanked(self.add_root, b"data/container/reopened.root",
+                                self.ADD_STALE),
+            free_fields_blanked(self.add_ours, b"data/written/reopen-add.root",
+                                self.ADD_STALE))
+
+    def test_an_update_into_a_hole_is_roots_byte_for_byte(self):
+        self.assertEqual(len(self.gap_ours), len(self.gap_root))
+        self.assertEqual(
+            free_fields_blanked(self.gap_root,
+                                b"data/container/reopen-gap.root",
+                                self.GAP_STALE),
+            free_fields_blanked(self.gap_ours,
+                                b"data/written/reopen-reuse.root",
+                                self.GAP_STALE))
+
+    def test_the_dead_keys_behind_the_marker_are_the_only_other_difference(self):
+        """A released record keeps its key, timestamp and all (2.4).
+
+        Everything in the 243-byte gap at 904 matches ROOT's byte for byte
+        except the two `fDatime` fields of the keys buried in it, which is the
+        evidence that neither writer clears what it releases.
+        """
+        ours = free_fields_blanked(self.add_ours,
+                                   b"data/written/reopen-add.root")
+        theirs = free_fields_blanked(self.add_root,
+                                     b"data/container/reopened.root")
+        differ = [i for i in range(len(ours)) if ours[i] != theirs[i]]
+        self.assertEqual(differ, [o + i for o in self.ADD_STALE
+                                  for i in range(4)])
+
+    # -- reading a file this writer did not produce ---------------------
+
+    def test_a_root_written_file_can_be_reopened(self):
+        """The base of an update need not be one of this writer's own files."""
+        f = rw.FileWriter.reopen(self.add_root,
+                                 "data/container/reopened.root")
+        self.assertEqual([(k.name, k.cycle, k.seek_key) for k in f._base.keys],
+                         [("str", 2, 1147), ("str", 1, 284), ("two", 2, 1259)])
+        self.assertEqual(f._base.entries, [(904, 1146), (1657, 2000000000)])
+        self.assertEqual(f._base.title, "a file to reopen")
+
+    def test_reopen_refuses_the_large_layout(self):
+        broken = bytearray(self.add_root)
+        broken[32] = 8
+        with self.assertRaises(rw.WriteError):
+            rw.FileWriter.reopen(bytes(broken), "x")
+
+    def test_reopen_refuses_a_header_shorter_than_the_large_one(self):
+        """fBEGIN 64 leaves no room for the 75-byte large header (13.8)."""
+        broken = bytearray(self.add_root)
+        broken[8:12] = (64).to_bytes(4, "big")
+        with self.assertRaises(rw.WriteError) as cm:
+            rw.FileWriter.reopen(bytes(broken), "x")
+        self.assertIn("75", str(cm.exception))
+
+    # -- what an update changes when it is asked to change nothing ------
+
+    def test_a_no_op_update_rewrites_three_timestamps_and_nothing_else(self):
+        data = self.base()
+        f = rw.FileWriter.reopen(data, "data/written/reopen-add.root",
+                                 datime=rw.pack_datime(2001, 2, 3, 4, 5, 6))
+        out = f.to_bytes()
+        self.assertEqual(len(out), len(data))
+        differ = [i for i in range(len(data)) if out[i] != data[i]]
+        # fDatimeM in the directory header, and the fDatime of the two keys
+        # that are recreated: the key list and the free record.
+        self.assertEqual(len(differ), 12)
+        starts = sorted({i for i in differ if i - 1 not in differ})
+        self.assertEqual(len(starts), 3)
+
+    def test_a_no_op_update_keeps_fseekinfo_and_fnbytesname(self):
+        data = self.base()
+        before = rootfile.read_header(data)
+        out = rw.FileWriter.reopen(
+            data, "data/written/reopen-add.root").to_bytes()
+        after = rootfile.read_header(out)
+        self.assertEqual(before.seek_info, after.seek_info)
+        self.assertEqual(before.nbytes_name, after.nbytes_name)
+        self.assertEqual(before.version, after.version)
+        self.assertEqual(before.uuid, after.uuid)
+
+    def test_the_file_name_is_not_taken_from_the_file(self):
+        """ROOT does not restore fName, so an update under a different path
+        leaves the file disagreeing with itself (13.6)."""
+        data = self.base()
+        other = "data/written/reopen-ADD-.root"       # the same 28 characters
+        out = rw.FileWriter.reopen(data, other).to_bytes()
+        header = rootfile.read_header(out)
+        records = rootfile.read_records(out, header)
+        self.assertEqual(records[0].name, "data/written/reopen-add.root")
+        keys = rootfile.read_key_list(
+            out, rootfile.read_directory(out, records[0]))
+        self.assertEqual(records[-1].name, other)
+        self.assertEqual(len(keys), 1)
+
+    # -- the two write options, which differ in three visible ways ------
+
+    def test_overwrite_reuses_the_address_and_keeps_the_cycle(self):
+        keys = self.reopened_keys(lambda f: f.overwrite(
+            self.objstring("str", "first")))
+        self.assertEqual([(k.name, k.cycle, k.seek_key) for k in keys],
+                         [("str", 1, 284)])
+
+    def test_write_delete_appends_and_advances_the_cycle(self):
+        keys = self.reopened_keys(lambda f: f.write_delete(
+            self.objstring("str", "first")))
+        self.assertEqual([(k.name, k.cycle) for k in keys], [("str", 2)])
+        self.assertNotEqual(keys[0].seek_key, 284)
+
+    def reopened_keys(self, do):
+        data = self.base()
+        f = rw.FileWriter.reopen(data, "data/written/reopen-add.root")
+        do(f)
+        out = f.to_bytes()
+        header = rootfile.read_header(out)
+        records = rootfile.read_records(out, header)
+        return rootfile.read_key_list(
+            out, rootfile.read_directory(out, records[0]))
 
 
 class Cycles(unittest.TestCase):

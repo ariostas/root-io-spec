@@ -288,6 +288,29 @@ class Checker:
         if h.units != (8 if h.large else 4):
             self.bad("FileHeader 10.10", f"fUnits {h.units} disagrees with the version flag")
 
+        self.check_header_floor(h.begin, h.large)
+
+    #: The length of the file header in each layout: 57 bytes of fields plus an
+    #: 18-byte UUID when the offsets are 8 bytes wide, 45 plus 18 when they are
+    #: 4 (`root/io/io/src/TFile.cxx:2680-2702`).
+    HEADER_LEN = {False: 63, True: 75}
+
+    def check_header_floor(self, begin: int, large: bool) -> None:
+        """FileHeader 10.11: the header fits before the first record.
+
+        It is rewritten in place at every close and its length is decided by
+        `fVersion`, so a file whose first record starts sooner would be
+        overwritten by its own header. Split out from `check_header` because the
+        only way to provoke it is to move `fBEGIN`, which destroys the record
+        walk that the rest of `check_header` needs.
+        """
+        need = self.HEADER_LEN[bool(large)]
+        if begin < need:
+            self.bad("FileHeader 10.11",
+                     f"fBEGIN {begin} is below the {need}-byte header its "
+                     f"fVersion selects: the header would overwrite the first "
+                     f"record")
+
     def at(self, offset: int):
         return next((r for r in self.records if r.offset == offset and not r.free), None)
 

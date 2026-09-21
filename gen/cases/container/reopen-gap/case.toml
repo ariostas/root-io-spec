@@ -1,0 +1,197 @@
+id   = "container/reopen-gap"
+file = "data/container/reopen-gap.root"
+size = 1928
+
+description = """
+An update meeting **free space it did not create**, which is what separates a
+writer that reopens a file from one that only appends to it.
+
+The base is closed with a hole in it: `big` is written with a 120-character
+payload and overwritten with a short one, so the file carries an interior
+`TFree` entry — 95 bytes at 398 — that the next session inherits. Nothing in the
+update knows where that hole came from. The free list is the whole of what it is
+told, and a writer that reopens a file inherits exactly that and nothing else.
+
+Three writes follow the reopen, and each resolves differently:
+
+* **an exact fit across sessions.** `fits` is 95 bytes, which is the hole to the
+  byte, so it lands at 398 and the free entry **disappears**. One session's
+  record exactly filling a span a different session released is the strongest
+  form of the claim that the free list is the whole interface between them;
+* **`"overwrite"`, which frees before it allocates.** `tail` is replaced by a
+  shorter record: the old span is on the free list in time for the allocation,
+  so the new record lands at **493**, the old one's address, leaving a 13-byte
+  remainder at 606 carrying its own `-13`. The cycle stays **1** — the old key
+  left the list before the new one was appended, so there was nothing to
+  increment. `container/reopened` shows `WriteDelete` getting the opposite
+  answer to both;
+* **no fit at all.** `wide` is 204 bytes, nothing free is big enough, and it is
+  appended.
+
+The hole is made with `"overwrite"` rather than `Delete` deliberately:
+`TDirectoryFile::Delete` is a **save**, writing the key list, the directory
+header and the free list before it returns
+(`root/io/io/src/TDirectoryFile.cxx:736-738`), so a delete costs three record
+writes and its layout depends on when in the session it happened.
+
+The `StreamerInfo` record at 619 is not rewritten — no class new to the file was
+used — and the free-segment record at 1053 and the key list at 1576 are, each
+freeing its own span first. The 208-byte gap at 1164 is what the close released
+and did not want back.
+
+Compression is off so every length is arithmetic.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/FreeSegments.md",
+  "spec/01-container/Record.md",
+]
+
+[[records]]
+offset = 100
+nbytes = 190
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 290
+nbytes = 108
+class  = "TObjString"
+role   = "big, written long by the base and overwritten short"
+
+[[records]]
+offset = 398
+nbytes = 95
+class  = "TObjString"
+role   = "fits: written by the update, exactly filling the hole the base left"
+
+[[records]]
+offset = 493
+nbytes = 113
+class  = "TObjString"
+role   = "tail, overwritten in place at its own old address"
+
+[[records]]
+offset = 619
+nbytes = 434
+class  = "TList"
+role   = "the StreamerInfo record, written by the base and not rewritten"
+
+[[records]]
+offset = 1053
+nbytes = 111
+class  = "TFile"
+role   = "the free list"
+
+[[records]]
+offset = 1372
+nbytes = 204
+class  = "TObjString"
+role   = "wide: too big for anything free, so appended"
+
+[[records]]
+offset = 1576
+nbytes = 352
+class  = "TFile"
+role   = "the key list"
+
+[[keys]]
+name = "big"
+
+[[keys]]
+name = "fits"
+
+[[keys]]
+name = "tail"
+
+[[keys]]
+name = "wide"
+
+# --- The header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1928
+
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 1053
+
+[[bytes]]
+name = "nfree: two interior entries and the trailing one"
+offset = 24
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fSeekInfo: the base's record, not rewritten by the update"
+offset = 37
+type = "i32"
+value = 619
+
+# --- The exact fit across sessions ---------------------------------------
+[[bytes]]
+name = "fits: fNbytes is the hole's length to the byte"
+offset = 398
+type = "i32"
+value = 95
+
+[[bytes]]
+name = "fits: fSeekKey is where the base's hole began"
+offset = 416
+type = "i32"
+value = 398
+
+[[bytes]]
+name = "fits: fCycle"
+offset = 414
+type = "i16"
+value = 1
+
+# --- overwrite reused the address and did not advance the cycle ----------
+[[bytes]]
+name = "tail: fSeekKey is the address its first version had"
+offset = 511
+type = "i32"
+value = 493
+
+[[bytes]]
+name = "tail: fCycle is still 1"
+offset = 509
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "the remainder tail left: -13 at 606"
+offset = 606
+type = "i32"
+value = -13
+
+# --- The free list agrees with both markers -------------------------------
+[[bytes]]
+name = "free entry 0: fFirst"
+offset = 1136
+type = "i32"
+value = 606
+
+[[bytes]]
+name = "free entry 0: fLast"
+offset = 1140
+type = "i32"
+value = 618
+
+[[bytes]]
+name = "free entry 1: fFirst"
+offset = 1146
+type = "i32"
+value = 1164
+
+[[bytes]]
+name = "the gap marker at 1164"
+offset = 1164
+type = "i32"
+value = -208

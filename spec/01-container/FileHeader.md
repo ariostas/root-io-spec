@@ -422,6 +422,13 @@ make the data ambiguous.
    it. A reader MUST take the key width from the flag, never from `fEND`.
 10. `fUnits` is 4 when `fVersion < 1000000` and 8 otherwise. ROOT does not enforce
     this and does not read the field.
+11. `fBEGIN` is at least the length of the header its own `fVersion` selects —
+    **63** bytes for the small layout, **75** for the large one. The header is
+    rewritten in place at every close, so a file whose first record began sooner
+    would be overwritten by it. The margin is not theoretical: four files in the
+    corpora have `fBEGIN` of 64, from ROOT 2.24/00 to 4.00, and would violate
+    this the moment they were pushed past 2 GB — see
+    [Writing a file §13.8](../06-writing/WritingFiles.md#138-crossing-2-gb-during-an-update).
 
 Not validated by ROOT, and therefore not safe to assume: `fCompress` is in range,
 the UUID is well-formed, and the padding is zero.

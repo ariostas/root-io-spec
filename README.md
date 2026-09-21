@@ -28,15 +28,17 @@ A **writing** layer now covers the other direction:
 [spec/06-writing/](spec/06-writing/index.md) says which bytes to emit and in what
 order — the container, an object and its streamer info, `TH1F`/`TH1D`,
 `TH2F`/`TH2D`/`TProfile`, and a flat `TTree` of as many baskets per branch as the
-writer flushes — at the current version of each class. `tools/rootwrite.py` is its
+writer flushes — at the current version of each class, and, since 2026-09-21,
+how to **reopen a file that already exists** and add to it. `tools/rootwrite.py` is its
 executable form, and the conformance test is that ROOT opens what it wrote, finds
 the values that went in, and says nothing.
 
 The result is stronger than that test needed to be: **every object-bearing record
 in `data/written/` is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`,
-a `TH2F`, a `TH2D`, two `TProfile`s, two `TTree`s, seven `TBasket`s, and a
+a `TH2F`, a `TH2D`, two `TProfile`s, three `TTree`s, nine `TBasket`s, and a
 `StreamerInfo` record of fifteen class descriptions with their checksums computed
-from scratch.
+from scratch — and **five of the thirteen files match ROOT's for every byte**, bar
+each key's timestamp, the file's own name and the UUIDs.
 
 | Layer | State |
 |---|---|
@@ -46,13 +48,13 @@ from scratch.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree` | written |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**77 reference files, 1993 byte-level assertions, and 1554 source citations
-checked against the pinned submodule across 48 documents**, plus 11 files this
-project wrote with 458 assertions of their own. The invariants also
+**79 reference files, 2021 byte-level assertions, and 1570 source citations
+checked against the pinned submodule across 48 documents**, plus 13 files this
+project wrote with 485 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
@@ -72,8 +74,10 @@ Scope in brief: reading is specified normatively, and writing two ways — per-l
 invariants that a conforming file satisfies whatever wrote it, collected for a
 writer in [spec/99-appendix/WriterInvariants.md](spec/99-appendix/WriterInvariants.md),
 plus procedures in `spec/06-writing/` for producing one at the current version of
-each class. Free space reuse, basket sizing and key ordering stay unspecified: they
-are ROOT's choices, not the format's.
+each class, and for reopening one. Basket sizing and *where* a record is placed
+stay unspecified: they are ROOT's choices, not the format's — though the
+allocator and the key ordering ROOT actually uses are now specified too, because
+a byte comparison against a ROOT-written file needs them.
 
 **The writing side is narrower than the reading side, deliberately.** What it
 covers is a file, an object, the five histogram classes `TH1F`, `TH1D`, `TH2F`,

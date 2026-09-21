@@ -9,6 +9,57 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **[Writing a file §13](spec/06-writing/WritingFiles.md) specifies updating a
+  file that already exists**, which was out of scope until now. It needs no new
+  allocation rule — §2 is the whole allocator, and an update inherits the free
+  list instead of starting one — and no record moves, because a directory record
+  is rewritten in place. What it does need is the **close sequence**, since each
+  step allocates out of what the step before it released, and the five things an
+  update reads: the header, the root directory record, the key list, the
+  free-segment record, and, unread, the two numbers naming the `StreamerInfo`
+  record.
+- **Four fields are taken from the file and the caller's wishes discarded** on
+  reopen: `fVersion`, `fBEGIN`, `fUnits` and `fCompress`, plus the title. So the
+  compression level passed to `TFile::Open` is ignored, and **a file updated by
+  6.40 can still declare it was written by 5.28** — every inference a reader
+  draws from `fVersion` is about the *first* writer.
+- **A file can disagree with itself about its own name.** ROOT deliberately does
+  not restore `fName`, so keys written by an update carry the path the file was
+  *opened* as while the root directory record still carries the path it was
+  *created* as. Copy a file, update the copy, and that rename is the **entire**
+  difference — eight bytes, four in each of two keys. A reader must not assume
+  the two agree.
+- **A no-op update is not a no-op.** Opened at its own path, written to not at
+  all, and closed, a file changes exactly **three** timestamps: `fDatimeM` in the
+  directory header, and the `fDatime` of the key list and the free record, both
+  of which are freed and refitted exactly where they were. Opening for reading
+  changes nothing.
+- **The three ways to write a name that already exists are now tabulated**
+  ([§13.5](spec/06-writing/WritingFiles.md)), because they differ in three
+  visible ways and not one: `"overwrite"` frees before it allocates, so the
+  replacement can reuse the old address and the cycle does **not** advance;
+  `"WriteDelete"` frees afterwards, so it cannot, and the cycle does. Both take
+  the **newest** key of that name, not the oldest.
+- **`TDirectoryFile::Delete` is a save, not a release**
+  ([§8.2](spec/06-writing/WritingFiles.md)): it writes the key list, the
+  directory header and the free list before returning. And `Delete("name")` with
+  no cycle touches memory only and leaves the file alone — it takes
+  `Delete("name;1")` to remove a key.
+- **New invariant, [File header §10](spec/01-container/FileHeader.md) 11:
+  `fBEGIN` is at least the header its own `fVersion` selects** — 63 bytes small,
+  **75** large. Four files in the corpora have `fBEGIN` of 64, from ROOT 2.24/00
+  to 4.00; `TFile::WriteHeader` allocates `fBEGIN` bytes and writes 75 when the
+  file is large, so pushing one of those past 2 GB would write over its own first
+  record. Derived from the source and the arithmetic, not witnessed —
+  [§13.8](spec/06-writing/WritingFiles.md) says so.
+- **Two new reference files, each matching a ROOT-written one for every byte** of
+  the file bar the timestamps, the name and the UUIDs:
+  `data/written/reopen-add.root` at **1657 bytes** — a reopen that adds a new
+  name, a second cycle and a `WriteDelete` — and
+  `data/written/reopen-reuse.root` at **1928**, whose update places a record into
+  a 95-byte hole the base left, filling it exactly. The agreement extends to the
+  dead keys buried behind the gap markers, which neither writer clears.
+
 - **[Writing a file §8.1](spec/06-writing/WritingFiles.md) specifies where a key
   goes in the key list, and what cycle it gets.** A name not already present is
   appended with cycle 1; a name that is present is inserted **before the first

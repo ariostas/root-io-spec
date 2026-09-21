@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **254
+Every layer of this specification ends with an `Invariants` section — **256
 entries across 32 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -34,21 +34,21 @@ From [File header](../01-container/FileHeader.md),
 [Records and keys](../01-container/Record.md),
 [Directories](../01-container/Directory.md),
 [Free segments](../01-container/FreeSegments.md) and
-[Writing a file §13](../06-writing/WritingFiles.md#13-invariants-a-writer-should-check-on-its-own-output).
+[Writing a file §14](../06-writing/WritingFiles.md#14-invariants-a-writer-should-check-on-its-own-output).
 
 | Invariant | Where | Who notices |
 |---|---|---|
 | Bytes 0-3 are `root`, and `0 <= fBEGIN <= fEND <= filesize` | FileHeader 1, 2, 5 | ROOT — it refuses to open |
-| `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 13.1 | checked |
+| `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 14.1 | checked |
 | The last free entry's `fLast` is strictly greater than `fEND` | FreeSegments 8 | nothing — and the next writer overwrites data |
 | `10 <= fNbytesName <= 10000`, and it equals the root directory record's `fKeylen` plus the two counted strings | FileHeader 10.4, Directory 9 | ROOT range-checks only |
 | Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no overlap and no unclaimed bytes | Record 8.8 | checked |
 | A freed span begins with a negative `fNbytes` | FreeSegments 4 | nothing, until a reader walks the chain |
-| A record placed in a span with bytes to spare is followed by a four-byte marker holding the remainder, and that remainder is in the free list | FreeSegments 8.6, WritingFiles 13.13 | checked |
-| **No free segment is 1, 2 or 3 bytes long** — the allocator skips a span it cannot leave a marker in | FreeSegments 8.10, WritingFiles 13.14 | checked |
-| Keys sharing a name carry **distinct cycles in descending order**, and none is 0 | Directory 9.14, WritingFiles 13.15 | checked — and nothing on ROOT's side: it takes the first match, so the wrong order returns the oldest copy |
+| A record placed in a span with bytes to spare is followed by a four-byte marker holding the remainder, and that remainder is in the free list | FreeSegments 8.6, WritingFiles 14.13 | checked |
+| **No free segment is 1, 2 or 3 bytes long** — the allocator skips a span it cannot leave a marker in | FreeSegments 8.10, WritingFiles 14.14 | checked |
+| Keys sharing a name carry **distinct cycles in descending order**, and none is 0 | Directory 9.14, WritingFiles 14.15 | checked — and nothing on ROOT's side: it takes the first match, so the wrong order returns the oldest copy |
 | A **negative** `fCycle` is the keep flag, and its magnitude is the cycle — a writer copying keys must not normalise the sign away | Record 3.8, WritingFiles 8.2 | nothing |
-| No two **live** records overlap. A record placed in released space lands on the bytes of the one that was there, which is correct | WritingFiles 13.16 | nothing — `tools/rootwrite.py` checks it as it writes, because a finished file cannot say which of two records was meant to be live |
+| No two **live** records overlap. A record placed in released space lands on the bytes of the one that was there, which is correct | WritingFiles 14.16 | nothing — `tools/rootwrite.py` checks it as it writes, because a finished file cannot say which of two records was meant to be live |
 | `fSeekFree`, `fSeekInfo` and `fSeekKeys` each name a record whose `fNbytes` matches the header's or the directory's copy | FileHeader 10.6, 10.8, Directory 9 | checked |
 | Every key image in the key list is byte-identical to the first `fKeylen` bytes of the record at its own `fSeekKey` | Directory 9 | nothing |
 | `fSeekPdir` is 0 in the root directory record's key and `fBEGIN` in every other key of that directory | WritingFiles 4.1 | nothing — but `TFile::Recover` filters on it |
@@ -59,6 +59,7 @@ From [File header](../01-container/FileHeader.md),
 | Each subdirectory appears in exactly one parent's key list, and its own list holds only what it contains | Directory 9.8, WritingFiles 5.4 | checked |
 | A directory record is never freed and never relocated, so subdirectories add no free entries to a create-only file | WritingFiles 5.3 | nothing — but ROOT refuses to free one itself (`TKey::Delete`) |
 | `fVersion >= 1000000` **iff** `fEND` exceeded 2000000000 at the last header write, and every key, directory offset and free entry uses the width its own flag selects | LargeFiles 8 | checked |
+| `fBEGIN` is at least the header its own `fVersion` selects — 63 bytes small, **75** large | FileHeader 10.11, WritingFiles 14.17 | checked — and nothing on ROOT's side, which writes the header over the first record instead |
 
 ## 3. Each object
 
@@ -192,6 +193,14 @@ readable: where records are placed within the file, basket and buffer sizes, how
 many entries a cluster holds, which compression setting to use per record, key
 ordering within a directory, the `fDatime` of a key and the UUID of a file, and
 every attribute of `TAttLine`, `TAttFill`, `TAttMarker` and `TAttAxis`.
+
+**An update adds nothing to this page**, which is the useful thing to know about
+it. A file that was reopened eleven times satisfies exactly the invariants above
+and no others, because nothing in the result records that it was reopened —
+[Writing a file §13](../06-writing/WritingFiles.md#13-updating-an-existing-file)
+is a procedure, not a new set of rules. The one invariant an update *should*
+check that a create need not is `fBEGIN`, above: a writer that creates files
+satisfies it by construction and one that reopens them was handed the number.
 
 `spec/06-writing/` marks each field **fixed**, **derived** or **free** for exactly
 this reason.

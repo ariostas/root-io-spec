@@ -434,12 +434,12 @@ phase.
 |---|---|---|
 | 1 | Scope of "every standard class" | **Revised 2026-09-17.** Not generated tables for ~440 classes: specify the classes whose streamer info does not describe their bytes, and let the generic algorithm cover the rest. The set comes from `inventory.py`, not from an estimate (§2.4) |
 | 2 | Normative status | Descriptive of 6.40.04; the pinned submodule is the tiebreaker; errata for suspected ROOT bugs |
-| 3 | Write support | **Revised 2026-09-18.** Reading normative. Writing gets both halves: per-layer invariants, which validate a file whatever wrote it (§2.8), and end-to-end **procedures** in `spec/06-writing/` for producing one — container, object, histogram, flat `TTree` — at the **current class version only**, with `tools/rootwrite.py` as the executable form and "ROOT reads it back and says nothing" as the conformance test (§2.9). Still unspecified: free-space reuse, updating an existing file, basket sizing, key ordering |
+| 3 | Write support | **Revised 2026-09-18, extended 2026-09-21.** Reading normative. Writing gets both halves: per-layer invariants, which validate a file whatever wrote it (§2.8), and end-to-end **procedures** in `spec/06-writing/` for producing one — container, object, histogram, flat `TTree` — at the **current class version only**, with `tools/rootwrite.py` as the executable form and "ROOT reads it back and says nothing" as the conformance test (§2.9). Free-space reuse, key ordering and **updating an existing file** are now specified too (§8.12). Still unspecified: basket sizing, and where within the file a record is placed |
 | 4 | Upstream relationship | Standalone repo, not blocking on review. RNTuple errata go upstream as PRs; open a conversation with the ROOT I/O team about eventually replacing `io/doc/TFile/` |
 | 5 | Fixture distribution | Core corpus committed (<10 MB). Legacy-ROOT and >2 GB cases as release artifacts with a committed manifest — superseded in practice by the two corpora (§3.4, §3.5) |
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims **reading** for files written by ROOT 4.00 and later, and M4 measured that it works back to **3.04/02**. The floor is not a release number but a property of the file: object decoding needs streamer infos, and a file old enough carries none. Exactly one corpus file is in that state — `pippa.root`, ROOT 2.24/00 — and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
-| 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope) | Four groups: the frameworks inside ROOT that define their own persistent classes (RooFit, the SQL backend, PROOF, both event displays, SOFIE — 15 classes in `streamers.toml`, each with its reason); what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and, on the write side, what decision 3 leaves out after its 2026-09-18 revision — earlier class versions, updating an existing file, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
+| 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope) | Four groups: the frameworks inside ROOT that define their own persistent classes (RooFit, the SQL backend, PROOF, both event displays, SOFIE — 15 classes in `streamers.toml`, each with its reason); what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and, on the write side, what decision 3 leaves out after its 2026-09-18 revision and its 2026-09-21 extension — earlier class versions, two writers on one file at once, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
 
 ## 7. Open items
 
@@ -1291,7 +1291,7 @@ histograms, profiles, graphs and flat trees at the current class versions, and n
 worked examples prove each procedure against bytes ROOT wrote. What remains is not
 on this list — it is the standing scope in
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified): earlier class
-versions, updating an existing file, split branches, RNTuple, and the element list
+versions, two writers on one file, split branches, RNTuple, and the element list
 of any class beyond the thirty-five published. None of those is a gap in the prose;
 each is a limit the layer states.
 
@@ -1640,9 +1640,19 @@ Three things in the sub-plan are worth knowing even before the work starts:
   evolution exists for is unwitnessed in the corpora. Only a written file can
   exercise it, and producing one needs the update mode the third item adds.
 
+**Three of the four have landed** (2026-09-21): W1 free-space reuse, W2 key
+ordering, and W3 updating an existing file, each with a file in `data/written/`
+that matches a ROOT-written one for **every byte** bar the timestamps, the name
+and the UUIDs — 1747, 1361, 1657 and 1928. Two new invariants came out of them
+(`FreeSegments 8.10`, `Directory 9.14`) and one out of W3
+(`FileHeader 10.11`), which is a **defect report** as much as an invariant: the
+large file header is 75 bytes, `TFile::WriteHeader` allocates `fBEGIN` of them,
+and four corpus files have `fBEGIN` of 64. W4, schema evolution from the writing
+side, is what remains.
+
 Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-not-specified)
-all still say these are out of scope, and **they stay that way until the work lands**
-— `PLAN-writing.md` §9 lists exactly what each becomes.
+are updated as each item lands — `PLAN-writing.md` §9 lists exactly what each
+becomes.
 
 ### 8.13 The first outside review (2026-09-21)
 

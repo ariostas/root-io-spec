@@ -440,6 +440,8 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/directories` | Two nesting levels, per-directory key lists, distinct UUIDs, `fSeekParent` |
 | `container/empty-directory` | A saved empty directory versus an unsaved one |
 | `container/cycles` | Several entries in one key list sharing a name, newest first (invariant 14) |
+| `container/reopened` | A key list **rebuilt by a second session**: keys copied verbatim, a new one inserted, and one removed by `WriteDelete` |
+| `written/reopen-add` | The same file written here, and `fDatimeM` refreshed while `fDatimeC` is not |
 
 No fixture yet covers a version 1, 2 or 3 directory record; those need files from
 ROOT 3, and belong with the legacy corpus. Nor does one cover §6.5's mismatched

@@ -182,5 +182,48 @@ class EntrySample(unittest.TestCase):
             self.assertTrue(all(0 <= e < n for e in picked), n)
 
 
+class HeaderFitsBeforeTheFirstRecord(unittest.TestCase):
+    """FileHeader 10.11, which is the invariant form of a hazard in ROOT.
+
+    `TFile::WriteHeader` allocates `fBEGIN` bytes and writes however many the
+    layout produced -- 63 small, 75 large (`root/io/io/src/TFile.cxx:2674`,
+    `:2709`). Files with `fBEGIN` of 64 exist: four in the corpora, the oldest
+    from ROOT 2.24/00. Pushing one of those past 2 GB would write over its own
+    first record, so the floor is worth stating even though no conforming file
+    can exhibit the violation -- which is why it is provoked here rather than by
+    corrupting a fixture, where moving `fBEGIN` destroys the record walk before
+    the check is reached.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/container/reopened.root"
+
+    def failures(self, begin, large=False):
+        c = check_invariants.Checker.__new__(check_invariants.Checker)
+        c.path = self.PATH
+        c.failures = []
+        c.check_header_floor(begin, large)
+        return c.failures
+
+    def test_the_real_files_fbegin_passes(self):
+        header = rootfile.read_header(self.PATH.read_bytes())
+        self.assertEqual(header.begin, 100)
+        self.assertEqual(self.failures(header.begin, header.large), [])
+
+    def test_a_begin_below_the_small_header_fails(self):
+        bad = self.failures(50)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("63-byte header", bad[0])
+
+    def test_sixty_four_passes_small_with_one_byte_to_spare(self):
+        """The four corpus files at fBEGIN 64 are legal, and only just."""
+        self.assertEqual(self.failures(64), [])
+
+    def test_sixty_four_fails_the_moment_the_file_goes_large(self):
+        """The hazard itself: the same file pushed past 2 GB."""
+        bad = self.failures(64, large=True)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("75-byte header", bad[0])
+
+
 if __name__ == "__main__":
     unittest.main()

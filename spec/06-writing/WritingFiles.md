@@ -632,6 +632,16 @@ name takes `3 + 1 = 4`. Cycles never decrease and can be sparse. Deleting every
 cycle of a name and writing it again starts at 1 once more, and the key is
 appended at the end, because the list no longer holds the name.
 
+**And `TDirectoryFile::Delete` is a save, not a release.** Before it returns it
+writes the key list, the directory header **and** the free list
+(`root/io/io/src/TDirectoryFile.cxx:736-738`), so a single delete costs three
+record writes and its effect on the layout depends on when in the session it
+happened. Only the `"overwrite"` option frees through `TKey::Delete` alone. One
+more trap in the same method: `Delete("name")` with no cycle decodes to cycle
+9999 (`root/core/base/src/TDirectory.cxx:1319`), which touches **memory only** and
+leaves the file alone. `Delete("name;1")` deletes a key; `Delete("name;*")`
+deletes every cycle of it.
+
 **A negative `fCycle` is legitimate and a writer should preserve it.** It marks
 the key as "keep", exempting it from purging, and the cycle is its magnitude
 ([Records §3.8](../01-container/Record.md#38-fcycle)). Nothing in this procedure
@@ -753,7 +763,240 @@ infos, the fixed timestamp and UUID. Every value below is asserted in
 bytes, and the difference is entirely the `StreamerInfo` record and the longer
 names.
 
-## 13. Invariants a writer should check on its own output
+## 13. Updating an existing file
+
+Everything above produces a file in one pass. An **update** is the other case: a
+file that already exists is opened, records are added to it, and it is closed
+again. Nothing in the format distinguishes the result — a file ROOT updated
+fourteen times and a file it wrote once are the same kind of file, and a reader
+cannot tell them apart. What differs is what the writer has to do, and it is
+smaller than it looks.
+
+**No new allocation rule is needed.** [§2](#2-allocation) is the whole
+allocator, and the only difference is where the free list comes from: an update
+inherits it instead of starting one. **No record moves.** A directory record is
+rewritten in place and never relocates
+([§5.3](#53-the-record-never-moves-and-a-directory-key-is-never-freed)), which is
+what makes an update possible at all — every `fSeekPdir` and `fSeekParent` in the
+file stays valid.
+
+### 13.1 What the file decides, and what the caller decides
+
+Four fields are taken **from the file** and the caller's wishes are discarded:
+`fVersion` (`root/io/io/src/TFile.cxx:734`), `fBEGIN` (`:737`), `fUnits` (`:745`)
+and `fCompress` (`:746`), and the title comes from the root directory record
+(`:839`). The compression level passed to `TFile::Open` is silently ignored on
+`UPDATE`, so a record added today is compressed the way the original writer
+chose. And because `fVersion` survives, **a file updated by 6.40 can still
+declare it was written by 5.28** — every inference a reader draws from
+`fVersion` is about the *first* writer, not the last.
+
+`fName` is the exception, and the source says why on the line that skips it:
+`// fName.ReadBuffer(buffer); file may have been renamed`
+(`root/io/io/src/TFile.cxx:838`). See [§13.6](#136-what-an-update-rewrites-in-place).
+
+One more thing the caller does not decide: `UPDATE` on a path that does not exist
+is **not an error**, it becomes a create (`root/io/io/src/TFile.cxx:533-534`).
+
+### 13.2 What an update reads
+
+Five things, and a writer needs nothing else about the file:
+
+| Read | From | For |
+|---|---|---|
+| the header | bytes 0..`fBEGIN` | `fEND`, `fSeekFree`, `fNbytesFree`, `fNbytesName`, `fSeekInfo`, `fNbytesInfo`, `fCompress`, `fVersion`, the UUID |
+| the root directory record | `fBEGIN` | `fDatimeC`, `fSeekKeys`, `fNbytesKeys`, the title, the directory's own UUID |
+| the key list | `fSeekKeys` | every key image, verbatim ([§13.3](#133-the-keys-already-there-are-copied-not-rebuilt)) |
+| the free-segment record | `fSeekFree` | the allocator's state |
+| **nothing** at `fSeekInfo` | — | the two numbers are copied forward unread ([§13.7](#137-the-streamerinfo-record-is-usually-not-rewritten)) |
+
+**The free list is the whole interface between one session and the next.** A
+writer is told which spans are free and nothing about what is in the rest of the
+file; it does not enumerate the live records, and neither does ROOT. Everything
+between `fBEGIN` and `fEND` that the free list does not claim is live by
+definition, and that is enough. `data/written/reopen-reuse.root` is that claim
+made testable: the base left a 95-byte hole at 398, the update was handed the
+bytes and nothing else, and the record it placed there is 95 bytes — an exact fit
+across two sessions, resolved from the free list alone.
+
+**A subdirectory nobody opened is not touched.** ROOT materialises a
+subdirectory's keys only when something asks for it, so an update that writes
+only into the root directory rewrites only the root directory's key list. The
+subdirectory's record and its key list keep their bytes and their addresses.
+
+### 13.3 The keys already there are copied, not rebuilt
+
+The new key list holds the images of the keys that were already in it, **byte for
+byte**, including each one's `fDatime` and `fCycle`. A writer that reopens a file
+therefore has to *read* a key image, which a writer that creates a file never
+does — and it must re-emit what it read rather than re-derive it, because
+`fDatime` is the original write's timestamp and a negative `fCycle` is the keep
+flag ([§8.2](#82-deleting-and-what-a-key-list-does-not-say)).
+
+New keys are inserted by the rule of [§8.1](#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets),
+which does not care that the keys it is inserting among came from another
+session.
+
+### 13.4 The close sequence
+
+The same four steps as a create, in the same order, each now with an old record
+to release first:
+
+1. **the `StreamerInfo` record**, if it changed — and usually it has not
+   ([§13.7](#137-the-streamerinfo-record-is-usually-not-rewritten));
+2. **each directory's key list**, which **always reallocates**: `WriteKeys`
+   frees its old record before it sizes the new one
+   (`root/io/io/src/TDirectoryFile.cxx:2200-2202`);
+3. **each directory's header**, rewritten **in place**
+   ([§13.6](#136-what-an-update-rewrites-in-place));
+4. **the free-segment record**, which also frees its own old span first
+   (`root/io/io/src/TFile.cxx:2599-2600`), and then the header.
+
+The order is visible in the bytes, because each step allocates out of what the
+step before it released. In `data/written/reopen-add.root` the free record ends
+up at **806**, which is exactly where the base's key list was: step 2 freed
+148 bytes there, step 4 asked for 98, and first fit gave it the front of them.
+The 243-byte gap at 904 is the rest of that span, the base's own free record and
+a record the update freed, coalesced into one entry.
+
+Nothing about this is a rule a writer must copy — where a record lands is
+ROOT's choice, not the format's ([§2.5](#25-how-much-of-this-a-writer-must-copy)).
+What a writer must copy is the *order*, because step 4 has to see what steps 1 to
+3 did to the free list.
+
+### 13.5 The three ways to write a name that already exists
+
+ROOT offers three, and they differ in one thing — when the old record is freed
+relative to when the new one is allocated — which decides three visible outcomes:
+
+| | plain | `"overwrite"` | `"WriteDelete"` |
+|---|---|---|---|
+| the old record | stays live | freed **before** the write (`root/io/io/src/TDirectoryFile.cxx:1977-1985`) | freed **after** the write (`:1986`, `:2004-2007`) |
+| the old key | stays in the list | removed before | removed after |
+| the new record's address | cannot reuse the old one | **can**, and does when it fits | cannot |
+| the new cycle | old + 1 | unchanged | old + 1 |
+| keys of that name afterwards | one more | the same number | the same number |
+
+Both fixtures measure a row of this table. In `data/written/reopen-reuse.root`,
+`overwrite` on `tail` put the replacement at **493** — the address its first
+version had — with `fCycle` still **1** and a 13-byte remainder behind it. In
+`data/written/reopen-add.root`, `WriteDelete` on `two` put the replacement at
+1259, nowhere near the 1042 it freed, with `fCycle` **2**.
+
+The victim in both cases is the **newest** key of that name, which is the one an
+unqualified lookup resolves to (`root/io/io/src/TDirectoryFile.cxx:1980`,
+`:1987`) — not the oldest.
+
+None of this is a format rule either. A writer may take any of the three and a
+reader can tell which was used only by the shape of the result.
+
+### 13.6 What an update rewrites in place
+
+Exactly one thing: a directory's **60-byte header**, at `fSeekDir + fNbytesName`
+(`root/io/io/src/TDirectoryFile.cxx:2161-2180`). Its key, and the repeated name
+and title that follow the key in the root directory's record, are **not**
+rewritten. Inside the header, `fDatimeM` is refreshed (`:2175`) and `fDatimeC` is
+not, so a file records when its root directory was created and when it was last
+changed, and after an update the two differ.
+
+`fNbytesName` is not recomputed either — it measures the key that was not
+rewritten, and the source says so on the line that computes where to write:
+`// do not overwrite the name/title part`
+(`root/io/io/src/TDirectoryFile.cxx:2177`). A writer that recomputed
+`fNbytesName` from the name it was opened with would produce a header that
+disagrees with the record, which
+[§14](#14-invariants-a-writer-should-check-on-its-own-output) item 3 catches.
+
+**Which is how a file comes to disagree with itself about its own name.** New
+keys carry `fName`, which is the path the file was *opened as*; the directory
+record's key still carries the path it was *created as*; and ROOT deliberately
+does not restore one from the other
+(`root/io/io/src/TFile.cxx:838`). Copy a file and update the copy, and the
+divergence is in the bytes:
+
+```
+                        before the update     after
+the record at 100       base.root             base.root
+the key list's key      base.root             noop.root
+the free record's key   base.root             noop.root
+```
+
+That is a whole no-op update: an eight-byte difference, four bytes in each of two
+keys, from nothing but the rename. **A reader must not assume the two agree**,
+and must not take either as the file's location.
+
+### 13.7 The `StreamerInfo` record is usually not rewritten
+
+There is an early-out: nothing is written unless a class **new to the file** was
+used (`root/io/io/src/TFile.cxx:3497-3503`). Adding a second `TObjString` to a
+file that already describes `TObjString` leaves `fSeekInfo` and `fNbytesInfo`
+untouched — both fixtures here show it, at 372 and 619 — while adding a `TNamed`
+to the same file frees the old record, writes a bigger one at the end, and leaves
+the old span for the key list to take.
+
+So an update touches **three** records in the common case and four in the
+uncommon one. A writer that rewrote the record unconditionally would be correct
+and would leak a few kilobytes per session; one that never rewrote it would
+produce a file nobody can read.
+
+When it *is* rewritten it must carry **every** info the file needs, not just the
+new ones — the record is replaced, not appended to. Merging the file's existing
+infos with the session's is [Schema evolution](../02-serialization/SchemaEvolution.md)'s
+subject and is not specified here; `tools/rootwrite.py` requires the caller to
+supply the complete list and rewrites the record when it is given one.
+
+### 13.8 Crossing 2 GB during an update
+
+An update is the only way a file can acquire a **mixed** layout: records written
+before the crossing carry 4-byte offsets and records written after it carry
+8-byte ones, in one file. Nothing coordinates the change. Each field widens when
+its own value crosses, independently:
+
+| What | Widens when | Cited |
+|---|---|---|
+| a key | its own `fSeekKey` is past 2000000000, which its `fVersion` then records as `+ 1000` | [Records §3](../01-container/Record.md) |
+| a free entry | its **`fLast`** is past 2000000000 — not its `fFirst` | `root/io/io/src/TFree.cxx:186` |
+| the header | **`fEND`** is past 2000000000, which adds 1000000 to `fVersion` and sets `fUnits` to 8 | `root/io/io/src/TFile.cxx:2679` |
+
+`volume.root` in `gen/cern/LARGE.toml` is the witness for the middle row: 51
+free entries, 32 of them 18 bytes and 19 of them 10, interleaved in one record.
+
+**And there is a hazard in the last row that a writer should refuse rather than
+reproduce.** The large header is **75 bytes**: 57 of fields plus 18 of UUID. The
+small one is 63. `TFile::WriteHeader` allocates `fBEGIN` bytes for it
+(`root/io/io/src/TFile.cxx:2674`) and then writes however many it produced
+(`:2709`). `fBEGIN` is read from the file (`:737`), and **files with `fBEGIN` of
+64 exist** — four of them in the corpora this specification is checked against,
+including `pippa.root` at ROOT 2.24/00 and `uproot-from-geant4.root` at 4.00.
+Updating one of those past 2 GB would write 75 bytes into a 64-byte buffer and
+over the first eleven bytes of the file's first record. This is derived from the
+source and the arithmetic; it is not witnessed here, because witnessing it means
+writing 2 GB into a file from 1997. A writer should decline to reopen a file
+whose `fBEGIN` is below 75, and `tools/rootwrite.py` does.
+
+### 13.9 A no-op update is not a no-op
+
+Open for update, write nothing, close: the key list and the free-segment record
+are still freed and rewritten, and the directory header is still stamped. On a
+file opened at its own path that is **three** timestamps and nothing else —
+`fDatimeM` in the directory header and the `fDatime` of the two recreated keys.
+Every other byte, `fEND` and `fSeekFree` included, is identical, because both
+records were freed, coalesced, and refitted exactly where they were.
+
+Opening for **reading** changes nothing at all.
+
+So an update procedure cannot describe itself as "no change, no write", and a
+reader cannot conclude from a fresh `fDatime` on a key list that anything in the
+file changed.
+
+### 13.10 Two writers, one file
+
+Out of scope, and worth saying rather than leaving: ROOT takes no lock a third
+party can see, and two processes with the same file open for update will each
+write a header describing its own idea of `fEND`. Nothing in the format detects
+it. A writer that wants safety has to arrange it outside the file.
+
+## 14. Invariants a writer should check on its own output
 
 The reading documents' `Invariants` sections are the full list, and
 `tools/check_invariants.py` runs them. These are the ones a writer gets wrong:
@@ -803,13 +1046,25 @@ The reading documents' `Invariants` sections are the full list, and
     gap is reused; two records both reachable from a key list sharing a byte is
     not, and nothing downstream would notice, because ROOT reads every record by
     its own offset.
+17. `fBEGIN` is at least the length of the header the file's own `fVersion`
+    selects — 63 bytes small, 75 large
+    ([File header §10](../01-container/FileHeader.md#10-invariants) 11). A writer
+    that only creates files satisfies this by construction; one that **updates**
+    should check it before it starts, because the file it was handed may not
+    ([§13.8](#138-crossing-2-gb-during-an-update)).
 
-Items 1, 2, 5, 6, 7 and 9 to 16 are the ones with no detector on ROOT's side at
-all (§14), and all of the new ones are checked by
+The update of §13 adds no allocation obligations of its own, and that is worth
+saying: every invariant above is checked the same way on a file that was written
+once and on a file that was reopened eleven times, because nothing in the result
+records which it was.
+
+Items 1, 2, 5, 6, 7 and 9 to 17 are the ones with no detector on ROOT's side at
+all (§15), and all of the new ones are checked by
 `tools/check_invariants.py` — as
 [Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, 12
 and 14, and as
-[Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7 and 10.
+[Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7 and 10,
+and as [File header §10](../01-container/FileHeader.md#10-invariants) 11.
 Number 16 is the exception and is checked in the writer itself: it is a
 property of the *act* of writing rather than of the file, since a finished file
 cannot say which of two overlapping records was meant to be live. The remaining obligation in §5.4 is not a property of a file and
@@ -817,7 +1072,7 @@ so is not among them: a directory left with `fSeekKeys` 0 while it owns records
 produces keys nothing can reach, and `tools/rootwrite.py` refuses it rather than
 checking for it afterwards.
 
-## 14. What ROOT does not check
+## 15. What ROOT does not check
 
 A writing specification has to say where the guard rails are missing, because the
 absent check is what makes a bug permanent. Each row is a mistake ROOT reads
@@ -842,7 +1097,7 @@ length (`root/io/io/src/TFile.cxx:714-730`), `0 <= fBEGIN <= fEND`
 (`:841-844`), and `fEND <= filesize` (`:881-887`) — truncation being the one
 condition it refuses to open.
 
-## 15. Errata
+## 16. Errata
 
 Against ROOT's shipped documentation in `root/io/doc/TFile/`, on points specific to
 writing. The reading-side errata are in the documents named in each row.
@@ -856,7 +1111,7 @@ writing. The reading-side errata are in the documents named in each row.
 | 5 | Silent on write ordering | `TFile::Close` and `TFile::Write` put the `StreamerInfo` record on opposite sides of the key list (§3), and both orders occur in ROOT-written files |
 | 6 | `freesegments.md` does not state the rule a writer needs | The last entry's `fLast` must exceed `fEND`, because that is the parse terminator (`root/io/io/src/TFile.cxx:1990-1995`), not because of any length |
 
-## 16. Reference files
+## 17. Reference files
 
 | File | What it demonstrates |
 |---|---|
@@ -869,6 +1124,10 @@ writing. The reading-side errata are in the documents named in each row.
 | `data/written/cycles-3.root` | §8.1 written here — **the same 1361 bytes** on the same terms |
 | `data/container/directories.root` | the subdirectory shape of §5, and the file `data/written/nested-subdir.root` is compared against record for record |
 | `data/written/nested-subdir.root` | §5 written: two nesting levels, three key lists, and ROOT writing into one of them (§5.3) |
+| `data/container/reopened.root` | §13 written by ROOT: a file created, closed, reopened, and added to three ways — a new name, a second cycle, and `WriteDelete` |
+| `data/written/reopen-add.root` | §13 written here — **the same 1657 bytes**, bar each key's `fDatime`, the file's own name and two UUIDs, including the two dead keys buried in the 243-byte gap |
+| `data/container/reopen-gap.root` | §13.2 written by ROOT: an update placing a record into a hole the base left, and `"overwrite"` reusing an address |
+| `data/written/reopen-reuse.root` | the same **1928 bytes** written here, the exact fit at 398 included |
 
 `tools/check_write.py --root` is the conformance test: it rebuilds each written
 file, compares it byte for byte, runs `tools/check_invariants.py` over it, and has

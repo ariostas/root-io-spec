@@ -1,0 +1,189 @@
+id   = "container/reopened"
+file = "data/container/reopened.root"
+size = 1657
+
+description = """
+A file **created, closed, and then opened again and added to** — the other way a
+ROOT file comes to exist, and the one a writer meets the moment it stops
+producing files from scratch.
+
+Everything up to 372 is the base: the root directory record, `str;1`, and a
+`StreamerInfo` record describing `TObjString`. Everything from 806 on is the
+update, and the three writes it performs are the three options
+`TObject::Write` offers, each resolving differently:
+
+* **a new name.** `two` is appended at the end of the file and appended to the
+  key list with cycle 1;
+* **the same name again.** `str` is written a second time: a second record, and
+  its key inserted *before* the first with cycle 2
+  ([§8.1](../../../spec/06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets));
+* **`WriteDelete`.** `two` is written again, and the old record is freed
+  **after** the new one is allocated
+  (`root/io/io/src/TDirectoryFile.cxx:1986`, `:2004-2007`). Because the old
+  record was still live when the new one was placed, the new one cannot land on
+  it; because the old key was still in the list when the new key was appended,
+  the cycle **advances**. `"overwrite"` is the same two operations in the other
+  order and gets the opposite answer on both counts — `container/reopen-gap`
+  shows it.
+
+**What the close does is the rest of the case.** The `StreamerInfo` record at
+372 is **not rewritten**: `fSeekInfo` still points at it, because nothing used a
+class the file did not already describe
+(`root/io/io/src/TFile.cxx:3497-3503`). The key list and the free-segment record
+both *are* rewritten, each freeing its old span before sizing the new one — which
+is why the free record at 806 sits exactly where the base's key list used to,
+and why the 243-byte gap at 904 is the rest of that span plus the base's own free
+record plus the freed `two;1`, all three coalesced.
+
+The root directory record is the one thing rewritten **in place**: its 60-byte
+header at 224 carries the new `fSeekKeys` and `fNbytesKeys` and a fresh
+`fDatimeM`, while `fDatimeC`, its key and the repeated name and title are
+untouched.
+
+Compression is off so every length is arithmetic.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/FreeSegments.md",
+  "spec/01-container/Directory.md",
+]
+
+[[records]]
+offset = 100
+nbytes = 184
+class  = "TFile"
+role   = "the root directory record, rewritten in place by the update"
+
+[[records]]
+offset = 284
+nbytes = 88
+class  = "TObjString"
+role   = "str;1, written by the base and untouched"
+
+[[records]]
+offset = 372
+nbytes = 434
+class  = "TList"
+role   = "the StreamerInfo record: written by the base, not rewritten"
+
+[[records]]
+offset = 806
+nbytes = 98
+class  = "TFile"
+role   = "the free list, placed in the span the base's key list released"
+
+[[records]]
+offset = 1147
+nbytes = 112
+class  = "TObjString"
+role   = "str;2, the same name written again"
+
+[[records]]
+offset = 1259
+nbytes = 118
+class  = "TObjString"
+role   = "two;2, written by WriteDelete before the old two;1 was freed"
+
+[[records]]
+offset = 1377
+nbytes = 280
+class  = "TFile"
+role   = "the key list, reallocated at the end"
+
+[[keys]]
+name = "str"
+
+[[keys]]
+name = "str"
+
+[[keys]]
+name = "two"
+
+# --- The header, after the update ----------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1657
+
+[[bytes]]
+name = "fSeekFree: the free record took the old key list's address"
+offset = 16
+type = "i32"
+value = 806
+
+[[bytes]]
+name = "nfree: the interior gap, and the trailing entry"
+offset = 24
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fNbytesName: unchanged by the update"
+offset = 28
+type = "i32"
+value = 124
+
+[[bytes]]
+name = "fSeekInfo: still the base's record, never rewritten"
+offset = 37
+type = "i32"
+value = 372
+
+[[bytes]]
+name = "fNbytesInfo"
+offset = 41
+type = "i32"
+value = 434
+
+# --- The directory header, rewritten in place at fSeekDir + fNbytesName ---
+[[bytes]]
+name = "the directory header's fNbytesKeys"
+offset = 234
+type = "i32"
+value = 280
+
+[[bytes]]
+name = "the directory header's fSeekDir"
+offset = 242
+type = "i32"
+value = 100
+
+[[bytes]]
+name = "the directory header's fSeekKeys"
+offset = 250
+type = "i32"
+value = 1377
+
+# --- WriteDelete advanced the cycle; the record is the new one ------------
+[[bytes]]
+name = "two;2: fCycle"
+offset = 1275
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "str;2: fCycle"
+offset = 1163
+type = "i16"
+value = 2
+
+# --- The gap: three spans coalesced into one -----------------------------
+[[bytes]]
+name = "the gap marker at 904 is -243"
+offset = 904
+type = "i32"
+value = -243
+
+[[bytes]]
+name = "the free list's first entry: fFirst"
+offset = 886
+type = "i32"
+value = 904
+
+[[bytes]]
+name = "the free list's first entry: fLast"
+offset = 890
+type = "i32"
+value = 1146

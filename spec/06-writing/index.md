@@ -143,12 +143,12 @@ word.
   no mechanism in the format to request one: the version word says what the writer
   emitted. The legacy layouts stay on the reading side, where files force them —
   [TBranch §13](../04-ttree/TBranch.md#13-class-versions) is the example.
-- **Updating an existing file.** Everything here creates a file from nothing. An
-  update has to reuse free space, rewrite a key list in place, and bump a key's
-  cycle number; those mechanisms are specified from the reading side
-  ([Free segments](../01-container/FreeSegments.md),
-  [Directories §6](../01-container/Directory.md#6-key-lists)) and a writer that
-  only ever creates files never meets them.
+- **Two writers on one file.** ROOT takes no lock a third party can see, and
+  nothing in the format detects two sessions updating one file
+  ([Writing a file §13.10](WritingFiles.md#1310-two-writers-one-file)). Updating a
+  file that already exists **is** specified, as of 2026-09-21
+  ([Writing a file §13](WritingFiles.md#13-updating-an-existing-file)); doing it
+  concurrently is not.
 - **Writing a split `TBranchElement`.** Reading one is specified
   ([Split branches](../04-ttree/TBranchElement.md)); producing one means
   reimplementing ROOT's splitting decisions, which

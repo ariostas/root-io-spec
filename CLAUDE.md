@@ -10,9 +10,10 @@ format spec (RNTuple); its `TFile`/`TTree` documentation in `root/io/doc/TFile/`
 describes **release 3.02.06** and is substantially wrong for current ROOT.
 
 `PLAN.md` holds the structure, scope decisions and phasing, and
-Two live sub-plans: `PLAN-writing.md` extends the write side (updating a file,
-free-space reuse, key ordering, schema evolution; splitting stays read-only, and
-that file says why), and `PLAN-review.md` answers the first outside review,
+Two live sub-plans: `PLAN-writing.md` extends the write side — free-space reuse,
+key ordering and **updating an existing file** have landed, schema evolution from
+the writing side is what remains, and splitting stays read-only with that file
+saying why, and `PLAN-review.md` answers the first outside review,
 GitHub issue #1 — which found a reader bug, a false invariant and an over-general
 erratum, so read it before trusting `StreamerDriven.md` 10.5 or
 `SchemaEvolution.md` §8.1.
@@ -204,6 +205,16 @@ a `TLeafC` basket with all three string forms plus the `TTree` record against
 **two subdirectory records and three key lists** against
 `data/container/directories.root` — where the whole 1854-byte file matches bar each
 key's `fDatime`, three UUIDs and the file's own name.
+
+**Five files match a ROOT-written one for every byte of the file**, on those same
+terms: `nested-subdir` (1854), `reused-space` (1747), `cycles-3` (1361), and the
+two **update** cases `reopen-add` (1657) and `reopen-reuse` (1928), whose bases
+are built in the same `build()` and handed to `FileWriter.reopen` as bytes — so
+the agreement says both that the base was ROOT's and that the update reached
+ROOT's answer from it. Their agreement extends to the dead keys buried behind a
+gap marker, which neither writer clears: `tools/test_write.py` names those two
+offsets per file rather than blanking them, because a dead key cannot be parsed
+out of a file.
 Two more are identical bar a single entry: the `StreamerInfo` record of a tree
 file and of a profile file, where ROOT appends a `listOfRules` that a file written
 at `TTree` 20 or `TProfile` 7 cannot use.

@@ -35,29 +35,30 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree` | [written](06-writing/index.md) |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **77 reference files with 1993 byte-level assertions, 1554 source
+Behind it: **79 reference files with 2021 byte-level assertions, 1570 source
 citations checked against the pinned ROOT tree across 48 documents**, and the
 invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
-The writing layer adds eleven files this project *did* write, with 458 assertions
-of their own. Ten of them are the strongest check here: **every object-bearing
+The writing layer adds thirteen files this project *did* write, with 485
+assertions of their own. Twelve of them are the strongest check here: **every object-bearing
 record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
 `TH2F`, a `TH2D`, two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s,
 **nine** `TBasket`s, and two whole `StreamerInfo` records, of fifteen and nineteen
 class descriptions, plus the eighteen each of a tree file and a profile file bar the
-one entry a file written today cannot use. The
-newest two go further still: a file of nested subdirectories that matches a
-ROOT-written one **for all 1854 bytes** bar each key's timestamp, three UUIDs and
-the file's own name, and a file whose records were placed into **released space**
-rather than appended — an exact fit, a partial fit and the remainder marker —
-matching ROOT's **for all 1747 bytes** on the same terms, down to the stale bytes
-left behind the marker, and a third of three cycles of one key name matching **for
-all 1361**.
+one entry a file written today cannot use.
+
+**Five of the thirteen match a ROOT-written file for every byte of the file**, not
+only its object records — bar each key's timestamp, the file's own name and the
+UUIDs, which no writer can be expected to reproduce: nested subdirectories at
+1854 bytes, records placed into **released space** at 1747, three cycles of one
+key name at 1361, and, newest, the two that **reopen a file and add to it** — at
+1657 and 1928 bytes, down to the dead keys still buried behind a gap marker,
+which neither writer clears.
 
 ## How to read it
 
@@ -104,7 +105,7 @@ organised as a work order.
 [Hand-written streamers](99-appendix/HandWrittenStreamers.md) and
 [Forwarding streamers](99-appendix/ForwardingStreamers.md) are the two lists that
 cannot be derived from a file and so have to be published.
-[A writer's invariants](99-appendix/WriterInvariants.md) is the 224 `Invariants`
+[A writer's invariants](99-appendix/WriterInvariants.md) is the 256 `Invariants`
 entries of every layer re-sorted for a writer, with the one column the reading side
 does not need: who notices when you get it wrong — and the nine cases where nothing
 does.
@@ -200,14 +201,16 @@ drift:
   the two places that trip a reader up — but DEFLATE, LZMA, LZ4 and Zstandard are
   somebody else's standards.
 - **On the write side**, everything [Writing §4](06-writing/index.md#4-what-is-not-specified)
-  lists: earlier class versions, updating an existing file, producing a split
-  `TBranchElement`, subdirectories, the element list of any class beyond the
-  twenty-seven [published](06-writing/ElementLists.md), `TH2F` and `TProfile`, a
-  `TLeafC` branch, and ROOT's policy choices — of which *when* to flush is the
-  largest, its consequences being specified
+  lists: earlier class versions, two writers on one file at once, producing a
+  split `TBranchElement`, the element list of any class beyond the thirty-five
+  [published](06-writing/ElementLists.md), and ROOT's policy choices — of which
+  *when* to flush is the largest, its consequences being specified
   ([Writing trees §7](06-writing/WritingTrees.md#7-more-than-one-basket-per-branch)).
-  The first three are out of scope by decision; the rest are limits of what has been
-  written so far, and `PLAN.md` §8.5 ranks them.
+  The first three are out of scope by decision; the element lists are a limit of
+  what has been written so far. **Updating a file that already exists is
+  specified**
+  ([Writing a file §13](06-writing/WritingFiles.md#13-updating-an-existing-file)),
+  as are subdirectories, `TH2F`, `TProfile`, `TGraph` and a `TLeafC` branch.
 
 ## Reference files
 

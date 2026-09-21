@@ -241,6 +241,37 @@ class Key:
         return (fixed + string_len(self.class_name) + string_len(self.name)
                 + string_len(self.title) + len(self.extra))
 
+    @classmethod
+    def parse(cls, data: bytes, off: int) -> "Key":
+        """Read a key image back, which only an **update** has to do.
+
+        A writer that creates a file never reads one; a writer that reopens one
+        has to, because the keys already in a directory go into the new key
+        list verbatim (`spec/06-writing/WritingFiles.md` 13.3). Small form
+        only, which is what `reopen` restricts itself to.
+        """
+        nbytes, version, obj_len = struct.unpack(">ihi", data[off:off + 10])
+        datime, key_len, cycle = struct.unpack(">Ihh", data[off + 10:off + 18])
+        if version > LARGE_KEY_VERSION:
+            raise WriteError(
+                "this writer reopens small-layout files only; a key at "
+                f"{off} is version {version} "
+                "(see spec/01-container/LargeFiles.md 3)")
+        seek_key, seek_pdir = struct.unpack(">ii", data[off + 18:off + 26])
+        pos = off + 26
+        strings = []
+        for _ in range(3):
+            n = data[pos]
+            strings.append(data[pos + 1:pos + 1 + n].decode("latin-1"))
+            pos += 1 + n
+        key = cls(class_name=strings[0], name=strings[1], title=strings[2],
+                  obj_len=obj_len, nbytes=nbytes, seek_key=seek_key,
+                  seek_pdir=seek_pdir, datime=datime, cycle=cycle,
+                  version=version, extra=data[pos:off + key_len])
+        if key.to_bytes() != data[off:off + key_len]:
+            raise WriteError(f"the key at {off} does not round-trip")
+        return key
+
     def to_bytes(self) -> bytes:
         if not self.large and max(self.seek_key, self.seek_pdir) > BIG:
             raise WriteError(
@@ -304,8 +335,30 @@ class Deleted:
     (`spec/06-writing/WritingFiles.md` 2.4).
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, cycle: int | None = None):
         self.name = name
+        #: Which cycle goes. None means the **newest**, which is what
+        #: `TDirectoryFile::GetKey` returns and what both write options use
+        #: (`root/io/io/src/TDirectoryFile.cxx:1979`, `:1986`); an integer is
+        #: ROOT's `Delete("name;N")`, the only form that deletes a key at all
+        #: -- `Delete("name")` decodes to cycle 9999 and touches memory only
+        #: (`root/io/io/src/TDirectoryFile.cxx:1229`, `:1246`).
+        self.cycle = cycle
+
+
+class Replaced:
+    """A record written first and the one it replaces freed afterwards.
+
+    ROOT's `"WriteDelete"`. It is not `delete` and `add` in the other order:
+    `TDirectoryFile::WriteTObject` takes the victim from the list **before** it
+    creates the new key (`root/io/io/src/TDirectoryFile.cxx:1986`) and deletes
+    it after the write (`:2004-2007`), so the key the new one displaces is the
+    one that was newest when the call started, not the one it just added
+    (`spec/06-writing/WritingFiles.md` 13.5).
+    """
+
+    def __init__(self, obj: Obj):
+        self.obj = obj
 
 
 class FreeList:
@@ -325,6 +378,28 @@ class FreeList:
         #: fEND: the first byte of the trailing entry, never a length
         #: (`root/io/io/src/TFile.cxx:2671-2672`).
         self.end = begin
+
+    @classmethod
+    def reopened(cls, entries, end: int) -> "FreeList":
+        """The allocator's state as an existing file records it.
+
+        An update inherits the free list rather than starting one, which is the
+        whole of what it has to know about where the file's bytes already went
+        (`spec/06-writing/WritingFiles.md` 13.2). `entries` is the free-segment
+        record decoded, in order, with inclusive `fLast`.
+        """
+        free = cls()
+        free.entries = [[first, last] for first, last in entries]
+        free.end = end
+        if not free.entries:
+            raise WriteError("a free list always has a trailing entry "
+                             "(spec/01-container/FreeSegments.md 8)")
+        if free.entries[-1][0] != end:
+            raise WriteError(
+                f"fEND {end} is not the last free entry's fFirst "
+                f"{free.entries[-1][0]} "
+                "(spec/01-container/FreeSegments.md 8)")
+        return free
 
     def place(self, n: int) -> tuple[int, int]:
         """Choose an offset for a record of `n` bytes.
@@ -436,6 +511,13 @@ class Directory:
         self.seek_dir = 0
         self.seek_keys = 0
         self.nbytes_keys = 0
+        #: fDatimeC as the file already records it, on an update. None on a
+        #: create, where it is the writer's own timestamp.
+        self.datime_c: int | None = None
+        #: fNbytesName as the file already records it, on an update. The key it
+        #: measures is not rewritten, so it survives a reopen under a name of a
+        #: different length (`spec/06-writing/WritingFiles.md` 13.6).
+        self.nbytes_name_fixed: int | None = None
         #: The records this directory's key list names, in write order.
         self.listed: list[_Placed] = []
         #: Set once the record is placed, so its payload can be filled in after
@@ -489,8 +571,8 @@ class Directory:
         self.listed.append(rec)
         return 1
 
-    def delete(self, name: str) -> None:
-        """Release the space of the last record added under `name`.
+    def delete(self, name: str, cycle: int | None = None) -> None:
+        """Release the space of a record of this name.
 
         The record's bytes stay where they are -- nothing is moved or cleared --
         and its span goes back on the free list with a marker over its first four
@@ -502,18 +584,34 @@ class Directory:
         `"overwrite"` option to `TObject::Write`, which frees before it allocates
         (`root/io/io/src/TDirectoryFile.cxx:1977-1985`) -- which is what lets the
         replacement land in the space the original released.
+
+        `cycle` selects one; the default is the **newest**, the one an
+        unqualified lookup would return (8.1).
         """
-        self.writer._sequence.append((self, Deleted(name)))
+        self.writer._sequence.append((self, Deleted(name, cycle)))
 
     def overwrite(self, obj: Obj) -> None:
         """`delete` the record of this name, then add this one.
 
         ROOT's `"overwrite"` in one call. Because the space is released first,
         a replacement of the same size lands at the same offset -- an exact fit
-        (`spec/06-writing/WritingFiles.md` 2.3).
+        (`spec/06-writing/WritingFiles.md` 2.3) -- and because the old key has
+        left the list before the new one is appended, the **cycle does not
+        advance** (13.5).
         """
         self.delete(obj.name)
         self.add(obj)
+
+    def write_delete(self, obj: Obj) -> None:
+        """Add this record, then release the one it replaces.
+
+        ROOT's `"WriteDelete"`. The same two operations as `overwrite` in the
+        other order, and the order is the whole difference: the new record is
+        allocated while the old one is still live, so it cannot land on it, and
+        the new key is appended while the old key is still in the list, so it
+        takes the next **cycle** (13.5).
+        """
+        self.writer._sequence.append((self, Replaced(obj)))
 
     def add_hist(self, hist) -> None:
         """Add a histogram, whose payload needs its own key's length."""
@@ -576,20 +674,29 @@ class Directory:
         for a subdirectory the fields start where the key ends
         (`spec/01-container/Directory.md` 1).
         """
+        if self.nbytes_name_fixed is not None:
+            return self.nbytes_name_fixed
         key_len = self.record_key(BEGIN, 0).key_len
         if self.is_root:
             key_len += string_len(self.name) + string_len(self.title)
         return key_len
 
-    def payload(self) -> bytes:
-        """The directory record's payload (`Directory.md` 2, version 5).
+    def header(self) -> bytes:
+        """The 60 bytes of the directory header (`Directory.md` 2, version 5).
 
-        `fDatimeC` and `fDatimeM` are one value here. ROOT sets both at
-        construction and refreshes `fDatimeM` on every header rewrite
-        (`root/io/io/src/TDirectoryFile.cxx:315-316`, `:2175`), which in a
-        single-pass write lands in the same second.
+        `fDatimeC` and `fDatimeM` are one value in a file this writer creates.
+        ROOT sets both at construction and refreshes `fDatimeM` on every header
+        rewrite (`root/io/io/src/TDirectoryFile.cxx:315-316`, `:2175`), which in
+        a single-pass write lands in the same second -- and which in an
+        **update** does not, so `datime_c` carries the value the file already
+        had (`spec/06-writing/WritingFiles.md` 13.6).
+
+        This is the part an update rewrites, and the only part: it is written in
+        place at `fSeekDir + fNbytesName`, past the key and past the repeated
+        name and title, neither of which is touched (5.3).
         """
-        body = (u16(DIR_VERSION) + u32(self.writer.datime)
+        created = self.writer.datime if self.datime_c is None else self.datime_c
+        body = (u16(DIR_VERSION) + u32(created)
                 + u32(self.writer.datime)
                 + i32(self.nbytes_keys) + i32(self.nbytes_name)
                 + i32(self.seek_dir)
@@ -597,10 +704,83 @@ class Directory:
                 + i32(self.seek_keys)
                 + u16(1) + self.uuid)
         body += b"\x00" * (DIR_RECORD_LEN - len(body))
+        return body
+
+    def payload(self) -> bytes:
+        """The directory record's payload: the root one repeats name and title."""
         if self.is_root:
             return (counted_string(self.name) + counted_string(self.title)
-                    + body)
-        return body
+                    + self.header())
+        return self.header()
+
+
+@dataclass
+class _Base:
+    """Everything an update has to read out of the file it is about to change.
+
+    Five records and nothing else: the header, the root directory record, the
+    key list, the free-segment record, and -- only as two numbers it copies
+    forward -- the `StreamerInfo` record
+    (`spec/06-writing/WritingFiles.md` 13.2).
+    """
+
+    data: bytes
+    version: int
+    end: int
+    seek_free: int
+    nbytes_free: int
+    nbytes_name: int
+    compress: int
+    seek_info: int
+    nbytes_info: int
+    uuid: bytes
+    entries: list
+    seek_keys: int
+    nbytes_keys: int
+    datime_c: int
+    recorded_name: str
+    title: str
+    keys: list
+
+
+def _read_free(data: bytes, seek: int, nbytes: int) -> list:
+    """Decode a free-segment record (`spec/01-container/FreeSegments.md` 2)."""
+    key = Key.parse(data, seek)
+    pos = seek + key.key_len
+    stop = seek + nbytes
+    if key.obj_len != nbytes - key.key_len:
+        raise WriteError("a free-segment record is never compressed; see "
+                         "spec/06-writing/WritingFiles.md 9")
+    out = []
+    while pos < stop:
+        version = struct.unpack(">h", data[pos:pos + 2])[0]
+        if version > 1000:
+            first, last = struct.unpack(">qq", data[pos + 2:pos + 18])
+            pos += 18
+        else:
+            first, last = struct.unpack(">ii", data[pos + 2:pos + 10])
+            pos += 10
+        if first == 0 and last == 0:
+            break                       # the zero padding of 9, not an entry
+        out.append((first, last))
+    return out
+
+
+def _read_keys(data: bytes, seek: int, nbytes: int) -> list:
+    """Decode a key-list record (`spec/01-container/Directory.md` 6)."""
+    key = Key.parse(data, seek)
+    if key.obj_len != nbytes - key.key_len:
+        raise WriteError("a key-list record is never compressed; see "
+                         "spec/06-writing/WritingFiles.md 8")
+    pos = seek + key.key_len
+    count = struct.unpack(">i", data[pos:pos + 4])[0]
+    pos += 4
+    out = []
+    for _ in range(count):
+        k = Key.parse(data, pos)
+        out.append(k)
+        pos += k.key_len
+    return out
 
 
 class FileWriter:
@@ -641,6 +821,79 @@ class FileWriter:
         #: lists are written in.
         self.subdirs: list[Directory] = []
         self.root = Directory(self, file_name, title, None, uuid)
+        #: What a reopened file already held; None when this writer is creating
+        #: one (`spec/06-writing/WritingFiles.md` 13).
+        self._base: _Base | None = None
+
+    # -- reopening --------------------------------------------------------
+
+    @classmethod
+    def reopen(cls, data: bytes, file_name: str, *,
+               datime: int = DEFAULT_DATIME) -> "FileWriter":
+        """An update: a writer positioned to add to a file that already exists.
+
+        `spec/06-writing/WritingFiles.md` 13. `file_name` is the path the file
+        is being opened *as*, which is what every key written from here carries
+        -- deliberately not what the file records about itself, because ROOT
+        does not restore that either (13.6). Everything else is inherited:
+        `fVersion`, `fCompress`, `fNbytesName`, the UUID and the title all come
+        off the file, and the compression level the caller might have wanted is
+        discarded exactly as `TFile::Open` discards it.
+        """
+        if data[0:4] != b"root":
+            raise WriteError("not a ROOT file")
+        (version, begin, end, seek_free, nbytes_free, _nfree,
+         nbytes_name) = struct.unpack(">iiiiiii", data[4:32])
+        units = data[32]
+        compress, seek_info, nbytes_info = struct.unpack(">iii", data[33:45])
+        if version >= 1000000 or units != UNITS_SMALL:
+            raise WriteError(
+                "this writer updates small-layout files only; this one is "
+                f"fVersion {version}, fUnits {units} "
+                "(see spec/01-container/LargeFiles.md)")
+        if begin != BEGIN:
+            raise WriteError(
+                f"fBEGIN is {begin}, not {BEGIN}; a file whose header is "
+                "shorter than 75 bytes cannot be pushed past 2 GB at all "
+                "(spec/06-writing/WritingFiles.md 13.8)")
+        uuid = data[47:63]
+
+        dir_key = Key.parse(data, begin)
+        pos = begin + dir_key.key_len
+        n = data[pos]
+        recorded_name = data[pos + 1:pos + 1 + n].decode("latin-1")
+        pos += 1 + n
+        n = data[pos]
+        title = data[pos + 1:pos + 1 + n].decode("latin-1")
+
+        head = begin + nbytes_name
+        (_dver, datime_c, _datime_m, nbytes_keys, dir_nbytes_name,
+         seek_dir, _seek_parent, seek_keys) = struct.unpack(
+            ">hIIiiiii", data[head:head + 30])
+        if dir_nbytes_name != nbytes_name or seek_dir != begin:
+            raise WriteError(
+                "the header and the root directory record disagree about the "
+                "directory (spec/01-container/Directory.md 9)")
+        dir_uuid = data[head + 32:head + 48]
+
+        f = cls(file_name, title, version=version, datime=datime,
+                uuid=dir_uuid, compress=compress)
+        f.root.nbytes_name_fixed = nbytes_name
+        f.root.datime_c = datime_c
+        f.root.seek_dir = begin
+        f.root.seek_keys = seek_keys
+        f.root.nbytes_keys = nbytes_keys
+        keys = _read_keys(data, seek_keys, nbytes_keys)
+        f.root.listed = [_Placed(key=k, payload=None, offset=k.seek_key)
+                         for k in keys]
+        f._base = _Base(
+            data=data, version=version, end=end, seek_free=seek_free,
+            nbytes_free=nbytes_free, nbytes_name=nbytes_name,
+            compress=compress, seek_info=seek_info, nbytes_info=nbytes_info,
+            uuid=uuid, entries=_read_free(data, seek_free, nbytes_free),
+            seek_keys=seek_keys, nbytes_keys=nbytes_keys, datime_c=datime_c,
+            recorded_name=recorded_name, title=title, keys=keys)
+        return f
 
     def add(self, obj: Obj) -> None:
         """Add an object to the root directory."""
@@ -659,13 +912,17 @@ class FileWriter:
         """Add a graph to the root directory."""
         self.root.add_graph(graph)
 
-    def delete(self, name: str) -> None:
+    def delete(self, name: str, cycle: int | None = None) -> None:
         """Release the space of a record in the root directory."""
-        self.root.delete(name)
+        self.root.delete(name, cycle)
 
     def overwrite(self, obj: Obj) -> None:
         """Replace a record in the root directory, freeing the old one first."""
         self.root.overwrite(obj)
+
+    def write_delete(self, obj: Obj) -> None:
+        """Replace a record in the root directory, freeing the old one after."""
+        self.root.write_delete(obj)
 
     def mkdir(self, name: str, title: str | None = None, *,
               uuid: bytes = DEFAULT_UUID, saved: bool = True) -> Directory:
@@ -752,7 +1009,6 @@ class FileWriter:
         return _Placed(key=key, payload=stored, listed=obj.in_key_list)
 
     def to_bytes(self) -> bytes:
-        free = FreeList()
         #: Every write, in the order it happens. Records are placed by the
         #: allocator rather than appended, so a record can land on the bytes of
         #: one that was released -- which is legal, and which is why the file is
@@ -760,6 +1016,8 @@ class FileWriter:
         #: rather than what has been written
         #: (`spec/06-writing/WritingFiles.md` 2).
         ops: list[tuple[str, int, object, int]] = []
+        free = (FreeList() if self._base is None
+                else FreeList.reopened(self._base.entries, self._base.end))
 
         def emit(off: int, left: int, blob) -> None:
             """A record, and the remainder marker if its span had bytes over."""
@@ -776,19 +1034,26 @@ class FileWriter:
                         span[1] - span[0] + 1))
 
         root = self.root
-        root.seek_dir = BEGIN
-        dir_key = root.record_key(BEGIN, root.obj_len)
-        pos, dir_left = free.place(dir_key.nbytes)
-        if pos != BEGIN:
-            raise WriteError("the root directory record goes at fBEGIN")
+        base = self._base
+        dir_key = None
+        dir_left = -1
+        if base is None:
+            root.seek_dir = BEGIN
+            dir_key = root.record_key(BEGIN, root.obj_len)
+            pos, dir_left = free.place(dir_key.nbytes)
+            if pos != BEGIN:
+                raise WriteError("the root directory record goes at fBEGIN")
 
         placed: list[_Placed] = []
         for home, item in self._sequence:
             if isinstance(item, Deleted):
                 # The record stays on disk; its span goes back on the free list
                 # and its key leaves the directory (WritingFiles.md 2.4).
-                victim = next((p for p in reversed(home.listed)
-                               if p.key.name == item.name), None)
+                candidates = [p for p in home.listed
+                              if p.key.name == item.name
+                              and (item.cycle is None
+                                   or p.key.cycle == item.cycle)]
+                victim = candidates[0] if candidates else None
                 if victim is None:
                     raise WriteError(f"nothing named {item.name!r} to delete")
                 home.listed.remove(victim)
@@ -810,6 +1075,16 @@ class FileWriter:
                 key.cycle = home.append_key(rec)
                 emit(pos, left, rec)
                 continue
+            victim = None
+            if isinstance(item, Replaced):
+                # The victim is chosen before the new record exists, which is
+                # the whole difference from `overwrite` (13.5).
+                victim = next((p for p in home.listed
+                               if p.key.name == item.obj.name), None)
+                if victim is None:
+                    raise WriteError(
+                        f"nothing named {item.obj.name!r} to replace")
+                item = item.obj
             obj = item
             if obj.builder is not None:
                 # A record whose payload depends on where earlier records
@@ -832,13 +1107,25 @@ class FileWriter:
                 if obj.cycle == CYCLE:
                     rec.key.cycle = cycle
             emit(rec.offset, rec.left, rec)
+            if victim is not None:
+                home.listed.remove(victim)
+                drop(victim.offset, victim.offset + victim.key.nbytes - 1)
 
         # The StreamerInfo record: a TList named "StreamerInfo", written before
         # the key lists because that is TFile::Close's order, and deliberately
         # *not* in any key list (WritingFiles.md 6).
         seek_info = nbytes_info = 0
         info_record = None
+        if base is not None and not self.infos:
+            # The early-out: an update rewrites nothing unless a class new to
+            # the file was used, and then the two numbers are copied forward
+            # untouched (root/io/io/src/TFile.cxx:3497-3503, 13.7).
+            seek_info, nbytes_info = base.seek_info, base.nbytes_info
         if self.infos:
+            if base is not None and base.seek_info:
+                # A rewrite frees the old record first, and the span it gives
+                # back is usually where the key list lands (13.7).
+                drop(base.seek_info, base.seek_info + base.nbytes_info - 1)
             key_len = Key(class_name="TList", name="StreamerInfo",
                           title="Doubly linked list", obj_len=0, nbytes=0,
                           seek_key=0, seek_pdir=BEGIN).key_len
@@ -861,6 +1148,12 @@ class FileWriter:
         for d in [root] + self.subdirs:
             if not d.saved:
                 continue
+            if d.seek_keys:
+                # WriteKeys always reallocates, freeing the old record before
+                # it sizes the new one, which is why a key list so often lands
+                # back on its own address (root/io/io/src/TDirectoryFile.cxx:2200,
+                # 13.4).
+                drop(d.seek_keys, d.seek_keys + d.nbytes_keys - 1)
             images = b"".join(p.key.to_bytes() for p in d.listed)
             payload = i32(len(d.listed)) + images
             key = d.keys_key(0, len(payload))
@@ -880,6 +1173,10 @@ class FileWriter:
         # remove an entry -- so the payload is sized first and zero-padded to
         # that size if the list came out shorter, exactly as ROOT does
         # (`root/io/io/src/TFile.cxx:2649-2657`).
+        if base is not None and base.seek_free:
+            # WriteFree does the same, and before it counts the entries
+            # (root/io/io/src/TFile.cxx:2598-2600).
+            drop(base.seek_free, base.seek_free + base.nbytes_free - 1)
         obj_len = 10 * len(free.entries)
         free_key = self._self_key(0, obj_len, seek_pdir=BEGIN)
         seek_free, free_left = free.place(free_key.nbytes)
@@ -893,7 +1190,7 @@ class FileWriter:
             raise WriteError("this writer produces small-layout files only; "
                              "see spec/01-container/LargeFiles.md")
 
-        out = bytearray(BEGIN)
+        out = bytearray(base.data) if base is not None else bytearray(BEGIN)
         out[0:4] = b"root"
         out[4:8] = i32(self.version)
         out[8:12] = i32(BEGIN)
@@ -907,20 +1204,29 @@ class FileWriter:
         out[37:41] = i32(seek_info)               # WritingFiles.md 6
         out[41:45] = i32(nbytes_info)
         out[45:47] = u16(1)                       # TUUID version
-        out[47:63] = self.uuid
+        out[47:63] = self.uuid if base is None else base.uuid
 
         # Every directory record's payload is known only now, because each names
         # its own key list.
         for d in self.subdirs:
             d.record.payload = d.payload()
-        root_record = _Placed(key=dir_key, payload=root.payload(),
-                              offset=BEGIN, left=dir_left)
-        ops.insert(0, ("rec", BEGIN, root_record, dir_key.nbytes))
-        if dir_left > 0:
-            ops.insert(1, ("mark", BEGIN + dir_key.nbytes,
-                           free.marker(BEGIN + dir_key.nbytes,
-                                       BEGIN + dir_key.nbytes + dir_left - 1),
-                           4))
+        if base is None:
+            root_record = _Placed(key=dir_key, payload=root.payload(),
+                                  offset=BEGIN, left=dir_left)
+            ops.insert(0, ("rec", BEGIN, root_record, dir_key.nbytes))
+            if dir_left > 0:
+                ops.insert(1, ("mark", BEGIN + dir_key.nbytes,
+                               free.marker(BEGIN + dir_key.nbytes,
+                                           BEGIN + dir_key.nbytes + dir_left - 1),
+                               4))
+        else:
+            # An update rewrites the directory **header** in place and nothing
+            # else of the record: not the key, not the repeated name and title
+            # (root/io/io/src/TDirectoryFile.cxx:2175, 13.6). The key is why a
+            # file updated under a different path disagrees with itself about
+            # its own name.
+            ops.append(("patch", BEGIN + base.nbytes_name, root.header(),
+                        DIR_RECORD_LEN))
         emit(seek_free, free_left,
              _Placed(key=free_key, payload=free_payload, offset=seek_free,
                      left=free_left))
@@ -932,15 +1238,33 @@ class FileWriter:
         # The file can be longer than fEND: releasing the last record moves fEND
         # back and ROOT does not truncate (WritingFiles.md 2.4), so the bytes of
         # a released record may sit past it. A *live* record may not.
-        physical = max([end] + [off + n for _, off, _, n in ops])
+        # A "free" op's `n` is the length of the merged span, which runs to the
+        # end of the trailing entry and is not a length of anything written:
+        # releasing a record writes four bytes (2.4). Only what is written sizes
+        # the file.
+        physical = max([end, len(out)]
+                       + [off + n for kind, off, _, n in ops if kind != "free"])
         out += bytearray(physical - len(out))
         live = bytearray(physical)
+        if base is not None:
+            # Everything the file already held is live except what its free list
+            # says is not. A reopened writer never has to enumerate the records
+            # it is not touching -- the free list is the whole of what it knows,
+            # and that is exactly what ROOT knows too (13.2).
+            live[BEGIN:base.end] = b"\x01" * (base.end - BEGIN)
+            for first, last in base.entries:
+                live[first:min(last + 1, base.end)] = bytes(
+                    max(0, min(last + 1, base.end) - first))
         for kind, off, item, n in ops:
             blob = item.to_bytes() if isinstance(item, _Placed) else item
             if kind == "rec" and off + len(blob) > end:
                 raise WriteError(f"a live record at {off} runs past fEND {end}")
+            if kind == "patch":
+                out[off:off + n] = blob
+                continue
             if kind == "free":
-                live[off:off + n] = bytes(n)
+                stop = min(off + n, physical)
+                live[off:stop] = bytes(max(0, stop - off))
             elif kind == "rec":
                 for i in range(off, off + len(blob)):
                     if live[i]:

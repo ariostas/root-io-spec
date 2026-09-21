@@ -1,0 +1,194 @@
+id   = "written/reopen-reuse"
+file = "data/written/reopen-reuse.root"
+size = 1928
+
+description = """
+An update placing a record **into a hole an earlier session left**, written by
+`tools/rootwrite.py` from
+[`WritingFiles.md` §13](../../../spec/06-writing/WritingFiles.md).
+
+**This file and `data/container/reopen-gap.root` are the same 1928 bytes**, bar
+each key's `fDatime`, the file's own name and two UUIDs — 181 bytes across 37
+runs. ROOT performed the same sequence on the same base. Both names are 30
+characters, because four records carry the file's name.
+
+The base closes with an interior `TFree` entry of 95 bytes at 398: `big` is
+written with a 120-character payload and overwritten with a short one. The
+update is handed the base's **bytes** and nothing else, so that entry is the
+only thing telling it the hole is there — which is exactly the situation a third
+party's writer is in when it opens a file somebody else produced.
+
+* **`fits` is 95 bytes**, the hole to the byte. It lands at 398 and the free
+  entry disappears — an exact fit across two sessions
+  ([§2.3](../../../spec/06-writing/WritingFiles.md#23-updating-the-free-list-and-the-three-outcomes));
+* **`tail` is overwritten**, which frees before it allocates, so the shorter
+  record lands at **493**, the address its first version had, leaving a 13-byte
+  remainder at 606 carrying its own `-13`. The cycle stays **1**: the old key had
+  left the list before the new one was appended. `written/reopen-add` shows
+  `WriteDelete` advancing it instead;
+* **`wide` is 204 bytes** and fits nothing free, so it is appended.
+
+The `StreamerInfo` record at 619 is not rewritten, and the 208-byte gap at 1164
+is what the close released and did not take back.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/FreeSegments.md",
+  "spec/01-container/Record.md",
+]
+
+writer  = "tools/rootwrite.py"
+datime  = "2000-01-01 00:00:00, fixed; see tools/rootwrite.py DEFAULT_DATIME"
+
+[[records]]
+offset = 100
+nbytes = 190
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 290
+nbytes = 108
+class  = "TObjString"
+role   = "big, overwritten short by the base"
+
+[[records]]
+offset = 398
+nbytes = 95
+class  = "TObjString"
+role   = "fits: the update's record, filling the base's hole exactly"
+
+[[records]]
+offset = 493
+nbytes = 113
+class  = "TObjString"
+role   = "tail, overwritten at its own old address"
+
+[[records]]
+offset = 606
+nbytes = -13
+role   = "the 13-byte remainder tail left behind"
+
+[[records]]
+offset = 619
+nbytes = 434
+class  = "TList"
+role   = "the StreamerInfo record, not rewritten"
+
+[[records]]
+offset = 1053
+nbytes = 111
+class  = "TFile"
+role   = "the free list"
+
+[[records]]
+offset = 1164
+nbytes = -208
+role   = "the 208-byte gap the close released"
+
+[[records]]
+offset = 1372
+nbytes = 204
+class  = "TObjString"
+role   = "wide: too big for anything free"
+
+[[records]]
+offset = 1576
+nbytes = 352
+class  = "TFile"
+role   = "the key list"
+
+[[keys]]
+name = "big"
+
+[[keys]]
+name = "fits"
+
+[[keys]]
+name = "tail"
+
+[[keys]]
+name = "wide"
+
+# --- The header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1928
+
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 1053
+
+[[bytes]]
+name = "nfree"
+offset = 24
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "fSeekInfo: the base's record"
+offset = 37
+type = "i32"
+value = 619
+
+# --- The exact fit across sessions ---------------------------------------
+[[bytes]]
+name = "fits: fNbytes is the hole's length"
+offset = 398
+type = "i32"
+value = 95
+
+[[bytes]]
+name = "fits: fSeekKey"
+offset = 416
+type = "i32"
+value = 398
+
+# --- overwrite reused the address and kept the cycle ---------------------
+[[bytes]]
+name = "tail: fSeekKey is its first version's address"
+offset = 511
+type = "i32"
+value = 493
+
+[[bytes]]
+name = "tail: fCycle is still 1"
+offset = 509
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "the remainder tail left"
+offset = 606
+type = "i32"
+value = -13
+
+# --- The free list agrees with both markers ------------------------------
+[[bytes]]
+name = "free entry 0: fFirst"
+offset = 1136
+type = "i32"
+value = 606
+
+[[bytes]]
+name = "free entry 0: fLast"
+offset = 1140
+type = "i32"
+value = 618
+
+[[bytes]]
+name = "free entry 1: fFirst"
+offset = 1146
+type = "i32"
+value = 1164
+
+[[bytes]]
+name = "the gap marker at 1164"
+offset = 1164
+type = "i32"
+value = -208

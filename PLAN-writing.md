@@ -324,7 +324,7 @@ why `nfree` can fall as well as rise.
 terminates on the first entry whose `fLast` exceeds `fEND`
 (`root/io/io/src/TFile.cxx:1990-1995`) and **`nfree` is parsed into a local that is
 never used again** (`root/io/io/src/TFile.cxx:681`, `:743`, `:753`) — a fact
-[Writing files §14](spec/06-writing/WritingFiles.md#14-what-root-does-not-check)
+[Writing files §15](spec/06-writing/WritingFiles.md#15-what-root-does-not-check)
 already records from the other direction. So the trailing entry is a hard
 requirement and the rest of the list is bookkeeping ROOT trusts. If a third-party
 allocator that is not first fit survives contact with ROOT — and nothing so far
@@ -398,7 +398,59 @@ multi-cycle name groups in 462 directories, and all six satisfy it. It would sti
 be the first invariant this project has that catches a *writer's* mistake in a file
 ROOT reads without a word, and W2's fixtures are what give it teeth.
 
-### W3 — Updating an existing file
+### W3 — Updating an existing file ✅ done 2026-09-21
+
+*Delivered: `WritingFiles.md` §13 in ten subsections, `FileWriter.reopen` in
+`tools/rootwrite.py`, and two fixture pairs — `container/reopened` and
+`container/reopen-gap` written by ROOT, `written/reopen-add` and
+`written/reopen-reuse` written here, **the same 1657 and 1928 bytes**, bar each
+key's `fDatime`, the file's own name and two UUIDs, and including the dead keys
+still buried behind the gap markers. One new invariant, `FileHeader 10.11`.*
+
+**Four of the open questions below were settled by measurement**, and two of them
+turned out to be bigger than the plan expected:
+
+1. **`kOverwrite` against `kWriteDelete` differ in three visible ways**, not one.
+   `overwrite` frees before it allocates, so the replacement lands at the old
+   address and the cycle does **not** advance; `WriteDelete` frees afterwards, so
+   it cannot, and the cycle does. Both take the **newest** key of that name.
+   Tabulated in §13.5, and both halves are in the bytes — `tail` at 493 with
+   cycle 1, `two` at 1259 with cycle 2.
+2. **The 2 GB question has an answer and it is a defect.** Each field widens when
+   its own value crosses, independently — a key on `fSeekKey`, a free entry on
+   `fLast` alone, the header on `fEND`. But the large header is **75 bytes** and
+   `TFile::WriteHeader` allocates `fBEGIN` of them; **four files in the corpora
+   have `fBEGIN` of 64**, so updating one past 2 GB writes over its own first
+   record. Stated as `FileHeader 10.11`, refused by `reopen`, and one for
+   `PLAN.md` M10.
+3. **A no-op update changes three bytes, not four**, and they are timestamps:
+   `fDatimeM` plus the `fDatime` of the two recreated keys. Everything else,
+   `fEND` included, is identical, because both records are freed and refitted
+   exactly where they were. A read-only open changes nothing.
+4. **Two writers, one file** is stated as out of scope in §13.10 and in
+   `spec/06-writing/index.md` §4, as planned.
+
+**Two findings the plan did not anticipate.** `TDirectoryFile::Delete` is a
+**save** — it writes the key list, the directory header and the free list before
+returning (`root/io/io/src/TDirectoryFile.cxx:736-738`) — which is why the
+fixtures make their holes with `"overwrite"` instead; and `Delete("name")` with no
+cycle touches memory only, so it takes `Delete("name;1")` to remove a key. Both
+are in §8.2.
+
+**And the invariants question resolved the other way.** The plan expected an
+update to need invariants of its own; it needs none, because nothing in the
+result records that a file was reopened. That is now said explicitly in §14 and
+in `WriterInvariants.md` §8. The one exception is `fBEGIN`, which a create
+satisfies by construction and an update is handed.
+
+**What the fixtures cost in naming.** Both pairs needed names of equal length —
+`data/container/reopened.root` against `data/written/reopen-add.root`, and
+`reopen-gap` against `reopen-reuse`, 28 and 30 characters — because four records
+carry the file's name and two carry their own offsets.
+
+---
+
+*The original plan for this item follows.*
 
 **The feature.** Everything above exists to make this possible. The procedure is
 a reopen: read the header, the free list and the key lists; write new records into
