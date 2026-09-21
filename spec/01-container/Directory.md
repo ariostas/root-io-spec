@@ -448,9 +448,19 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/reopened` | A key list **rebuilt by a second session**: keys copied verbatim, a new one inserted, and one removed by `WriteDelete` |
 | `written/reopen-add` | The same file written here, and `fDatimeM` refreshed while `fDatimeC` is not |
 
-No fixture yet covers a version 1, 2 or 3 directory record; those need files from
-ROOT 3, and belong with the legacy corpus. Nor does one cover §6.5's mismatched
-image: no ROOT this project can run still writes one. It is demonstrated instead
-by `uproot-issue64.root` in the third-party corpus
+No fixture covers a version 1, 2 or 3 directory record, and none can: no ROOT
+this project can run writes one, so `data/` is version 5 throughout — 99 records
+across 88 files. The legacy corpus supplies them instead, and every payload size
+in §7 is confirmed there: `pippa.root` (ROOT 2.24/00) holds 24 **version 1**
+records, 23 of them subdirectories of exactly 30 bytes; `mlpHiggs.root` (3.04/02)
+and `H1display.root` (3.05/07) hold one **version 3** record each, 48 bytes after
+the name and title copy and no reserved bytes; five further files carry version 4.
+**Version 2 is witnessed nowhere** — only ROOT 3.03/01 through 3.03/07 wrote it —
+so its version-word-less UUID is the one row of §7 resting on the source alone.
+The two **version 1001** records in `gen/foreign/` are the other axis: class
+version 1 in the wide layout, 42 bytes, no UUID (§3).
+
+§6.5's mismatched image is absent for the same reason, and is demonstrated
+instead by `uproot-issue64.root` in the third-party corpus
 (`gen/foreign/MANIFEST.sha256`), which `tools/check_invariants.py` reads and
 accepts for exactly the reason §6.5 gives.

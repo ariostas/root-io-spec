@@ -1,9 +1,10 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: ordered, not started.** Written 2026-09-21. Every item below was
-re-checked against the corpora and against our own reference files *before* being
-planned, and the verification is recorded per item, because the point of a review
-is what it turns out to be right about.
+**Status: in progress.** Written 2026-09-21; **R1 done** the same day, its
+outcome recorded in §2. Every item below was re-checked against the corpora and
+against our own reference files *before* being planned, and the verification is
+recorded per item, because the point of a review is what it turns out to be
+right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -71,6 +72,38 @@ invariant candidate that comes out of it is in R4.
 
 **Scope**: a one-line fix in `tools/rootfile.py`, a test in `tools/test_*.py`
 pinned to those two files, and the payload-size table in R4.
+
+**Done 2026-09-21.** The measurement stands exactly as planned — `uuid_offset`
+204 against a record ending at 202, and 158 against 156 in the smaller file — and
+the fix is the `version % 1000` test, on **both** axes rather than one.
+
+Three things came out of doing it that the plan did not have:
+
+1. **The same line was wrong a second time.** `version > 1` also assumed a
+   `TUUID` version word, which a **version 2** record does not have (§7's own
+   table, `TDirectoryFile.cxx:1792-1797`). So the reader mis-read two of the five
+   class versions, not one, and the second was already documented. Four tests fail
+   against the old line: the 1001 case on the two corpus files, the 1001 case
+   synthetically, and the version-2 framing.
+2. **The legacy versions are witnessed after all.** `spec/01-container/Directory.md`
+   §11 said no file covers version 1, 2 or 3. True of `data/`, which is version 5
+   throughout — 99 records over 88 files — but false since `gen/cern/` arrived:
+   `pippa.root` (ROOT 2.24/00) holds **24 version-1 records**, 23 of them exactly
+   the 30 bytes §7 predicts; `mlpHiggs.root` (3.04/02) and `H1display.root`
+   (3.05/07) hold a **version-3** record each at 48 bytes; five more files carry
+   version 4. So every row of §7's payload table is now measured on a
+   ROOT-written file **except version 2**, which only 3.03/01–3.03/07 wrote and
+   which nothing in either corpus carries. §11 says so; R4 should build its
+   per-(version, width) table on this rather than re-derive it.
+3. **A fixture cannot cover this and neither can a corrupted one**, which is why
+   the synthetic record in `tools/test_container.py` builds all six framings —
+   1, 2, 3, 5, 1001, 1005 — with a sentinel behind the payload so the old
+   behaviour is visible as *the next record's bytes returned as a UUID*. The
+   corpus tests skip when `build/foreign/` and `build/cern/` are not fetched;
+   they are the pin the plan asked for, and they are not the only check.
+
+Still open from this item, deliberately: no invariant compares a directory's UUID
+with anything, and none bounds the payload against (version, width). That is R4.
 
 ### R2 — `StreamerDriven.md` invariant 5 is false, and was never checked
 
@@ -293,7 +326,9 @@ Per the repository's convention the reply opens with the AI-content marker.
 
 ## 8. Order, and definition of done
 
-1. **R1** — the reader bug, plus a test. Half an hour, and it is wrong right now.
+1. ~~**R1** — the reader bug, plus a test.~~ **Done**: the fix is on both axes,
+   the version-2 framing was wrong on the same line, and §7's payload table is
+   now measured on ROOT-written files for every version but 2 (§2).
 2. **R3** — the `fBits` correction, measurable on files in hand.
 3. **R2** — restate invariant 5, wire it into `check_invariants.py`, confirm it
    catches a corruption, and check it over both corpora.

@@ -355,7 +355,16 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
         if seek_dir != rec.offset:
             continue
         uuid, uuid_offset = b"", p
-        if version > 1:                     # a UUID is present from version 2
+        # The class version and the offset width are independent axes: a record
+        # at version 1001 is class version 1 -- no UUID at all -- in the wide
+        # layout. So the width test above is on `version > 1000` and this one is
+        # on `version % 1000`, which also gets version 2 right: it stores the 16
+        # bytes with no TUUID version word in front of them.
+        # Directory.md 7; TDirectoryFile.cxx:1792-1797.
+        class_version = version % 1000
+        if class_version == 2:              # raw 16 bytes, no version word
+            uuid = buf[p : p + 16]
+        elif class_version > 2:
             uuid_offset = p + 2             # after the TUUID version word
             uuid = buf[uuid_offset : uuid_offset + 16]
         return Directory(

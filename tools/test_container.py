@@ -224,6 +224,159 @@ class HeaderFitsBeforeTheFirstRecord(unittest.TestCase):
         self.assertEqual(len(bad), 1)
         self.assertIn("75-byte header", bad[0])
 
+SENTINEL = bytes(range(0x70, 0x90))
+UUID = bytes(range(16))
+
+
+def directory_record(version: int, uuid: bytes = b"",
+                     *, offset: int = 100) -> tuple[bytes, rootfile.Record]:
+    """A synthetic directory record, framed as `TDirectoryFile::Streamer` writes it.
+
+    The two axes are independent: `version > 1000` widens the three offsets, and
+    `version % 1000` decides whether a UUID follows and how -- absent at 1, raw
+    16 bytes at 2, a version word first from 3 (Directory.md 7). The payload is
+    followed by a sentinel standing in for the next record, so a reader that runs
+    past the end of a UUID-less record picks up something recognisable.
+    """
+    large, class_version = version > 1000, version % 1000
+    key_len = 40                            # a subdirectory: fNbytesName == fKeylen
+    body = struct.pack(">hIIii", version, 1, 2, 0, key_len)
+    body += (struct.pack(">qqq", offset, 0, 900) if large
+             else struct.pack(">iii", offset, 0, 900))
+    if class_version == 2:
+        body += uuid
+    elif class_version > 2:
+        body += struct.pack(">h", 1) + uuid
+    if class_version >= 4 and not large:
+        body += b"\0" * 12                  # reserved, small layout only (5)
+    buf = b"\0" * offset + b"K" * key_len + body + SENTINEL
+    rec = rootfile.Record(
+        offset=offset, nbytes=key_len + len(body), key_version=4,
+        obj_len=len(body), datime=0, key_len=key_len, cycle=1,
+        seek_key=offset, seek_pdir=0, class_name="TDirectory",
+        name="alpha", title="alpha")
+    return buf, rec
+
+
+class DirectoryVersionAndOffsetWidthAreIndependent(unittest.TestCase):
+    """R1: a version-1001 record is class version 1 in the wide layout.
+
+    `rootfile.read_directory` used to decide the offset width from
+    `version > 1000` and the UUID's presence from `version > 1`, so for 1001 both
+    tests passed and it invented a UUID out of the bytes after the record. No
+    fixture can cover this and no invariant compared a directory's UUID with
+    anything, which is why it survived; the corpus cases below are the pin.
+    """
+
+    def parse(self, version, uuid=b""):
+        buf, rec = directory_record(version, uuid)
+        directory = rootfile.read_directory(buf, rec)
+        self.assertIsNotNone(directory)
+        self.buf = buf
+        return directory, rec
+
+    def test_version_1_has_no_uuid_and_a_30_byte_payload(self):
+        directory, rec = self.parse(1)
+        self.assertEqual(directory.uuid, b"")
+        self.assertEqual(rec.obj_len, 30)
+
+    def test_version_1001_has_no_uuid_either_and_42_bytes(self):
+        directory, rec = self.parse(1001)
+        self.assertEqual(directory.uuid, b"")
+        self.assertEqual(rec.obj_len, 42)
+        self.assertEqual(directory.seek_keys, 900)      # the wide layout is used
+        self.assertEqual(directory.uuid_offset, rec.payload_offset + rec.obj_len)
+        # The bug's signature: what the old test returned instead was these
+        # sixteen bytes, which belong to the record after this one.
+        self.assertEqual(self.buf[directory.uuid_offset:
+                                  directory.uuid_offset + 16], SENTINEL[:16])
+
+    def test_version_2_stores_the_uuid_with_no_version_word(self):
+        directory, rec = self.parse(2, UUID)
+        self.assertEqual(directory.uuid, UUID)
+        self.assertEqual(directory.uuid_offset, directory.fields_offset + 30)
+        self.assertEqual(rec.obj_len, 46)
+
+    def test_version_3_puts_a_version_word_first(self):
+        directory, rec = self.parse(3, UUID)
+        self.assertEqual(directory.uuid, UUID)
+        self.assertEqual(directory.uuid_offset, directory.fields_offset + 32)
+        self.assertEqual(rec.obj_len, 48)
+
+    def test_version_5_is_version_3_plus_the_reserved_bytes(self):
+        directory, rec = self.parse(5, UUID)
+        self.assertEqual(directory.uuid, UUID)
+        self.assertEqual(directory.uuid_offset, directory.fields_offset + 32)
+        self.assertEqual(rec.obj_len, 60)
+
+    def test_version_1005_widens_the_offsets_and_keeps_the_uuid(self):
+        directory, rec = self.parse(1005, UUID)
+        self.assertEqual(directory.uuid, UUID)
+        self.assertEqual(directory.uuid_offset, directory.fields_offset + 44)
+        self.assertEqual(directory.seek_keys, 900)
+        self.assertEqual(rec.obj_len, 60)
+
+
+CORPUS = Path(__file__).resolve().parents[1] / "build"
+
+
+class LegacyDirectoryRecordsInTheCorpora(unittest.TestCase):
+    """The measured witnesses for Directory.md 7's payload table.
+
+    Not committed files -- `tools/fetch_cern.py` and `tools/fetch_foreign.py`
+    fetch them -- so these skip when the corpus is absent. They are the reason R1
+    is a fix and not a guess: the two version-1001 records are real, and the
+    reader read a UUID from two bytes past the end of each.
+    """
+
+    def directories(self, name):
+        path = CORPUS / name
+        if not path.exists():
+            self.skipTest(f"{path} not fetched")
+        buf, header, records = rootfile.load(path)
+        return buf, [(r, d) for r in records
+                     if (d := rootfile.read_directory(buf, r)) is not None]
+
+    def test_g4tools_writes_version_1001_with_no_uuid(self):
+        for name, end in (("foreign/uproot-from-geant4.root", 202),
+                          ("foreign/uproot-issue-250.root", 156)):
+            with self.subTest(name):
+                buf, found = self.directories(name)
+                self.assertEqual(len(found), 1)
+                rec, directory = found[0]
+                self.assertEqual(directory.version, 1001)
+                self.assertEqual(rec.offset, 64)
+                self.assertEqual(rec.offset + rec.nbytes, end)
+                self.assertEqual(directory.uuid, b"")
+                # 2 + 4 + 4 + 4 + 4 + 3*8, and nothing after it.
+                self.assertEqual(directory.fields_offset + 42, end)
+                self.assertEqual(directory.uuid_offset, end)
+
+    def test_root_2_writes_version_1(self):
+        buf, found = self.directories("cern/pippa.root")
+        self.assertEqual(rootfile.read_header(buf).version, 22400)
+        self.assertEqual(len(found), 24)
+        self.assertEqual({d.version for _, d in found}, {1})
+        self.assertEqual({d.uuid for _, d in found}, {b""})
+        # 23 subdirectories at exactly the 30 bytes of the version-1 payload;
+        # the root directory's record adds the name and title copy.
+        self.assertEqual(sorted(r.obj_len for r, _ in found)[:23], [30] * 23)
+
+    def test_root_3_04_and_3_05_write_version_3(self):
+        for name, version in (("cern/mlpHiggs.root", 30402),
+                              ("cern/H1display.root", 30507)):
+            with self.subTest(name):
+                buf, found = self.directories(name)
+                self.assertEqual(rootfile.read_header(buf).version, version)
+                rec, directory = found[0]
+                self.assertEqual(directory.version, 3)
+                self.assertEqual(directory.uuid_offset,
+                                 directory.fields_offset + 32)
+                # 48 bytes of payload after the name and title copy, and no
+                # reserved bytes: those arrive with version 4.
+                self.assertEqual(rec.obj_len - (directory.nbytes_name
+                                                - rec.key_len), 48)
+
 
 if __name__ == "__main__":
     unittest.main()
