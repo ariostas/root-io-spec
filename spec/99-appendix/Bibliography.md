@@ -62,7 +62,7 @@ a good way to find a format fact that neither documented.
 ## 3. Files to test against
 
 **`scikit-hep-testdata`** (<https://github.com/scikit-hep/scikit-hep-testdata>) —
-the corpus uproot regression-tests against, 154 files of which this project uses
+the corpus uproot regression-tests against, 155 files of which this project uses
 all. Its provenance is mixed: it contains files uproot wrote, so a disagreement
 is a lead rather than evidence (`PLAN.md` §3.4).
 

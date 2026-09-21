@@ -20,7 +20,7 @@ Measured, 2026-09-21, by the checks in `tools/`:
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 85 files, 0 failures |
 | Invariants over both corpora | 180 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
-| Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
+| Entries decoded and checked | 28059 of 28126 branch-baskets, 99.8% |
 | Unit tests | 334 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
@@ -231,7 +231,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 258 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 259 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -365,7 +365,7 @@ something no fixture and no other listed file does.
 | | Files | Reach | Provenance |
 |---|---|---|---|
 | `gen/cern/` | 72 (+8 by range request, +2 physics) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
-| `gen/foreign/` | 154 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
+| `gen/foreign/` | 155 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
 
 A lead must be diagnosed against the pinned source and resolved to one of four
 things — a spec error, a missing format fact, a reader gap, or a file at fault.
@@ -948,7 +948,7 @@ plays for a basket of its own — including as the decoder's buffer base, since 
 reads the block into the basket's own buffer rather than sharing the `TTree`
 record's object map. `ReadingEntries.md` §1 now says a basket need not be a record.
 
-**Both corpora: 27969 of 28036 branch-baskets, 99.8%, 0 failures**, up from
+**Both corpora: 28059 of 28126 branch-baskets, 99.8%, 0 failures**, up from
 26948 of 27949. The remaining 67 skips are of two kinds and **neither is
 unimplemented**: a collection whose value class has no streamer info in the file,
 and a class whose `Streamer` is hand-written. Over `gen/cern/` it is 1696 of 1696,
@@ -1711,7 +1711,7 @@ to be larger than the review could see from outside:
   (`kBase`, 61, 62, 63, 68) must be described, nullable pointers (64, 69) need
   not, since the pointer may be null everywhere and a non-null one names its
   class in the bytes. Restated as §6.1, wired in, and the two remaining failures
-  over 226 files are g4tools', not ROOT's.
+  over 227 files are g4tools', not ROOT's.
 - **`SchemaEvolution.md` §8.1 generalised from one file.** It said two duplicate
   infos differ in `kIsCompiled`; in two of the three corpus files carrying the
   duplicate, both entries have `kIsCompiled` and they differ in `kBuildOldUsed`
@@ -1721,9 +1721,24 @@ to be larger than the review could see from outside:
   is checked.
 
 The remaining item to expect the most from is the fourth: an audit of which of the
-258 published `Invariants` entries are wired into `check_invariants.py` at all,
+259 published `Invariants` entries are wired into `check_invariants.py` at all,
 since the false one turned out to be an unchecked one, and wiring it up caught a
 second claim within minutes.
+
+R4 through R6 landed the same day: `Directory.md` §3.1 and §7.1 with invariant 15,
+`FileHeader.md` §8.1, and R6's three findings — a `fCheckSum` of 0 is a *failed*
+computation rather than a value (`SchemaEvolution.md` §3.1), `TTime`'s missing info
+is the writer's and ROOT was asked to prove it (`StreamerDriven.md` §6.2), and the
+file fetched for the first of those caught a **reader bug**: `TStreamerSTL`
+numbered `set` 5 and `multimap` 6 until 5.34/13, `Collections.md` §1 already said
+so, and `rootfile.py` did not do it. That is the third time in this review that the
+documents were right and the tooling was not, which is the argument for R7.
+
+**A corpus discrepancy came out of R6 and is `PLAN-review.md` §4.1**, unresolved
+and the user's call: `build/cern/` holds 72 files where `gen/cern/MANIFEST.sha256`
+lists 26, and the 46 extras — the `TGeoManager` demo sweep — are already evidence
+in `StreamerInfo.md` §9.2. Failure and entry figures do not depend on them; file
+counts do.
 
 RooFit (their items 7–10) is a scope decision against decision 8 and is left open;
 the sub-plan argues for a middle course — treat three of the four as
@@ -1841,9 +1856,12 @@ what close that, and their coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-154 files, **0 failures**. The probe: 28374 decoded, 705 container, 12 partial,
-24 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
-locally. The triage that got there turned **10 047 failures into 0** and found
+155 files, **0 failures**. The probe: 28485 decoded, 710 container, 7 partial,
+19 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
+locally. Re-measured 2026-09-21 after R6 added `uproot-issue283.root` and fixed
+the `set`/`multimap` `fSTLtype` repair in `rootfile.py`: the added file accounts
+for the extra decoded records, and the repair for **five** that were partial or
+blocked before it. The triage that got there turned **10 047 failures into 0** and found
 **eleven specification errors**, each one published, wrong and reader-facing —
 M6 added a twelfth from here, `TLeaf` 10.6 on `uproot-issue-250.root`:
 
@@ -1894,7 +1912,7 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-26 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 154 files
+26 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 155 files
 (4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's

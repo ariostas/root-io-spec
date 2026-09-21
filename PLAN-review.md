@@ -1,11 +1,12 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1–R5 done** the same day — the
-three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus two of §3's
-four gaps and the item-3 attribution. Every item below was re-checked against the
-corpora and against our own reference files *before* being planned, and the
-verification is recorded per item, because the point of a review is what it turns
-out to be right about.
+**Status: in progress.** Written 2026-09-21; **R1–R6 done** the same day — the
+three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus three of §3's
+four gaps and the item-3 attribution. R7, the reply and R8 remain; §4.1 is a new
+corpus question for the user. Every item below was re-checked against the corpora
+and against our own reference files *before* being planned, and the verification
+is recorded per item, because the point of a review is what it turns out to be
+right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -26,8 +27,9 @@ criterion 1 is "no published claim is known to be wrong"; as of this review it i
 not met, and R1–R3 are what it takes to meet it again.
 
 **Their corpus is bigger than ours.** They test on scikit-hep-testdata, 235 files;
-`gen/foreign/` is 154 of them. Two of their findings rest on files we do not have,
-and that is a corpus decision (§4) rather than a doubt about the finding.
+`gen/foreign/` was 154 of them, and is 155 since R6 added the one their item 4
+needed. Two of their findings rested on files we did not have, which was a corpus
+decision (§4) rather than a doubt about the finding.
 
 ## 1. What was verified, before planning
 
@@ -35,9 +37,9 @@ and that is a corpus decision (§4) rather than a doubt about the finding.
 |---|---|---|---|
 | 1 | Directory records of version **1001** exist | read both files | **Confirmed** — and it found a bug in our reader, R1 |
 | 2 | `fBEGIN = 64` with `fVersion = 40000` | read both headers | **Confirmed** |
-| 3 | `uproot-issue413.root` is groot's fixture, not uproot's | not independently checked | **Plausible**, and cheap to credit |
-| 4 | `fCheckSum == 0` occurs in a `TStreamerInfo` | scanned every info in the 218 corpus files whose `StreamerInfo` record parses | **Not reproducible here** — 0 occurrences; their witness is a file we lack |
-| 5 | `TTime` appears with no streamer info | read the file | **Confirmed** — two `TTime` records, 70 bytes each |
+| 3 | `uproot-issue413.root` is groot's fixture, not uproot's | corroborated from the bytes, not proven: Go type spellings, and its basket keys are not ROOT's | **Credited** (R5) |
+| 4 | `fCheckSum == 0` occurs in a `TStreamerInfo` | scanned every info in the 218 corpus files whose `StreamerInfo` record parses | **Not reproducible here** — 0 occurrences; their witness is a file we lack, now fetched and **confirmed**: two such infos, and it means a *failed* computation (R6) |
+| 5 | `TTime` appears with no streamer info | read the file | **Confirmed** — two `TTime` records, 70 bytes each, and ROOT would have described it (R6) |
 | 6 | Counterexamples to `StreamerDriven` 10.5 | scanned every info in both corpora **and in `data/`** | **Confirmed, and worse than reported** — R2 |
 | 7–10 | RooFit layouts | out of scope, not checked | **Needs a scope decision**, §5 |
 | — | Duplicate `TIOFeatures` in four files, and the differing bit is not always `kIsCompiled` | read all three of ours | **Confirmed on our own files** — R3 |
@@ -363,6 +365,60 @@ statement `SchemaEvolution.md` §3 needs is whether a zero checksum is a legitim
 value or a writer's omission, and either answer changes what a reader should do
 when §4 step 2 tries to use it as a lookup key.
 
+**Done 2026-09-21**, and it was worth the file. `uproot-issue283.root` is fetched
+and in the manifest (155 files now), and the answer is neither of the two the plan
+offered: **a zero checksum is a computation that failed.**
+
+`TClass::GetCheckSum` has exactly one path returning 0 — a base class whose meta
+information is unavailable, where it prints an `Error`, sets `isvalid` to false and
+returns 0 (`TClass.cxx:6704-6710`) — and `TStreamerInfo::Build` stores it anyway,
+because it calls the one-argument overload and never sees `isvalid`
+(`TStreamerInfo.cxx:447`). So the file records a failure the writing session was
+told about and a reader cannot see. `SchemaEvolution.md` §3.1 says so, and says
+what a reader does: treat the field as **absent**, never as a key.
+
+The measurement that rules out the alternatives is the useful part. The two zeros
+are `Sni3DataArray` and `I3Eval_t::ChannelContainer_t`, both with **no elements** —
+and emptiness is not the cause, because **247 other infos across the corpora also
+have no elements and every one carries the fold of its own class name**: `TString`
+`0x00017419`, `TAtt3D` `0x0000757a`, `TQObject` `0x00042e9c` and five more, all
+reproduced from the algorithm. The two zeros should have been `0x04442992` and
+`0x4c1ebbfe`. It is also not a custom-streamer marker, the review's reading: those
+247 include hand-written-`Streamer` classes, with proper checksums.
+
+**`TTime`: the writer is at fault, now checked rather than suspected.** ROOT
+6.40.04 writing two `TTime` objects emits the info (version 2, checksum
+`0x839dbf90`, one member `fMilliSec`), and so does adding a `TTime` to an existing
+histogram file opened for **update** — which is the obvious way to reach this state
+by accident, and which W3's StreamerInfo early-out made worth testing. That second
+test reproduces `uproot-issue-861.root`'s info list exactly: the same fourteen
+entries, **plus `TTime`**. The object bytes agree too — both writers frame it
+`40 00 00 0a | 00 02 | Long64_t`, `fObjlen` 14 — so nothing about the object is
+unusual and only its description is missing. `StreamerDriven.md` §6.2 has it, with
+the CoMPASS provenance (the file's own name is a Windows path) and its equally
+undescribed `CalibrationCoefficient`.
+
+**And the file caught a reader bug, which is the third finding.** Its `I3Eval_t`
+has a `set<long>` whose `fSTLtype` is **5**, and `rootfile.py` read 5 as
+`kSTLmultimap`, took the container to be paired, and crashed. `TStreamerSTL`
+numbered `kSTLset = 5` and `kSTLmultimap = 6` — the reverse of every other use of
+the enum — until `d1ffea01e01` standardised the declaration in **5.34/13**;
+`TStreamerSTL::Streamer` gained the read-side repair only in **6.00/00**
+(`cf539483218`), and it resolves the value from `fTypeName`. **The element version
+is 3 on both sides of the change**, so nothing in the element says which convention
+wrote it. Measured on one member across four files — `RooAbsArg._boolAttrib`, a
+`set<string>` — it is 5 in `stressRooFit_v522_ref.root` and `v534_ref.root` and 6
+in `uproot-issue49.root` and `uproot-issue-350.root`.
+
+`Collections.md` §1 **already stated the repair**, with the citation. So this is not
+a specification gap: it is the third time in this review that the documents were
+right and something else was not — R1 was the reader against `Directory.md` §7, R2
+was the checker against an invariant nobody wired up, and this is the reader again.
+Invariant 10 now checks it, on the value a reader ends up with, so the omission
+cannot come back: 1368 `TStreamerSTL` elements across `data/` and both corpora, and
+three of them need the repair to pass. `stl_kind` also learnt `ROOT::VecOps::RVec`,
+which it had been missing.
+
 **`TTime`**: confirmed — `uproot-issue-861.root` holds two top-level `TTime`
 records of 70 bytes each, and no `TTime` info. `TTime` has `ClassDef(TTime,2)`
 and is not in `HandWrittenStreamers.md` or `ForwardingStreamers.md`, so the
@@ -403,6 +459,42 @@ on R6 alone** — it is the only known witness to a zero checksum, and without i
 that item cannot be written at all. `uproot-issue243-new.root` does not: three
 files already witness the duplicate, and R3's correction is measurable on the two
 we have.
+
+**`uproot-issue283.root` is added** (2026-09-21), and it earned its place twice
+over: the zero checksum, and a reader bug nothing else in either corpus exposes
+(R6). The reason is recorded in `gen/foreign/MANIFEST.sha256`'s header, since that
+corpus has no README. 155 files now.
+
+### 4.1 A discrepancy this turned up, and it is the user's call
+
+**`build/cern/` holds 72 files and `gen/cern/MANIFEST.sha256` lists 26** — 24 core
+plus 2 physics. The other **46 are the `TGeoManager` demo sweep** from root.cern
+that `CLAUDE.md` says is deliberately excluded, "~40 near-identical demos and only
+one is included". They were fetched by hand in an earlier session, not by
+`tools/fetch_cern.py`, and nothing records them.
+
+That matters because **they are already load-bearing evidence**. The five files of
+[`StreamerInfo.md` §9.2](spec/02-serialization/StreamerInfo.md)'s `fBaseVersion`
+table are `aleph`, `atlas`, `cms` and `hades.root`, all four outside the manifest;
+so are most of the 48 `TAtt3D` witnesses R2 relied on. And every "over both
+corpora" file count published today — 471 directory records, 307 files carrying
+infos, 1368 `TStreamerSTL` elements — was measured over 155 + 72, not 155 + 26.
+
+What is **not** affected: failures and entry coverage. The 181-file reproducible
+corpus gives `28058 of 28125` branch-baskets and **0 failures**, against
+`27969 of 28036` and 0 over 227 files — the geometry files carry no trees, so they
+contribute file counts and nothing else.
+
+Two honest resolutions, and the choice is a corpus-scope decision like §5's:
+
+| | Add the 46 to the manifest, as a `geometry` tier | Drop them |
+|---|---|---|
+| For | They are ROOT-written and root.cern-published, so a failure is evidence; they already are evidence; the published numbers become reproducible | Keeps the corpus small, and `CLAUDE.md`'s "one demo is enough" rule intact |
+| Against | Amends a stated rule, and 46 near-identical geometry files earn little per file | §9.2's table and R2's `TAtt3D` control would have to be re-derived or dropped, and today's file counts re-measured |
+
+**Recommendation: add them as a tier**, because the alternative is to un-publish
+evidence that is correct. Either way the counts should then say which corpus they
+were measured over, which none of them currently do.
 
 Worth asking in the reply whether there is a reason `gen/foreign/` should track the
 whole of scikit-hep-testdata rather than a selection. The argument for is that
@@ -501,8 +593,11 @@ Per the repository's convention the reply opens with the AI-content marker.
    §4 and invariant 11 corrected; and the groot attribution, with the evidence
    separated from the claim (§3).
 6. **Reply to the issue** (§7), including the corpus question.
-7. **R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
-   ten-minute ROOT experiment and nothing else.
+7. ~~**R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
+   ten-minute ROOT experiment and nothing else.~~ **Done**, and it cost more than
+   ten minutes because the file it needed also caught a reader bug: a zero
+   checksum is a failed computation, `TTime`'s absence is the writer's, and
+   `set`/`multimap` were swapped in `fSTLtype` until 5.34/13 (§3).
 8. **R8** — the three framing observations, as container-layer questions.
 
 Done when: every item above has an outcome recorded in this file, the issue has a

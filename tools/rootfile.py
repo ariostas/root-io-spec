@@ -1073,6 +1073,19 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
     if ftype == 11 and type_name in ("Bool_t", "bool"):
         ftype = 18      # read-time fixup, root/core/meta/src/TStreamerElement.cxx:566
 
+    # The second read-time fixup, and the one that cannot be skipped: until
+    # 5.34/13 `TStreamerSTL` numbered kSTLset 5 and kSTLmultimap 6, the reverse
+    # of every other use of the enum, and the element version did not change --
+    # so fSTLtype alone cannot say which convention wrote it and fTypeName
+    # decides. Mirrors root/core/meta/src/TStreamerElement.cxx:2112-2122
+    # exactly, including its prefix test and its indifference to kOffsetP.
+    # Collections.md 1.
+    if tail.get("fSTLtype") in (STL_MULTIMAP, STL_SET):
+        if type_name.startswith(("set", "std::set")):
+            tail["fSTLtype"] = STL_SET
+        elif type_name.startswith(("multimap", "std::multimap")):
+            tail["fSTLtype"] = STL_MULTIMAP
+
     return Element(cls=cls, version=outer.version, name=name, title=title, bits=bits,
                    ftype=ftype, fsize=fsize, array_length=array_length,
                    array_dim=array_dim, max_index=max_index, type_name=type_name,
@@ -2540,6 +2553,7 @@ STL_MAP, STL_MULTIMAP, STL_SET, STL_MULTISET = 4, 5, 6, 7
 STL_BITSET, STL_FORWARD_LIST = 8, 9
 STL_UNORDERED_SET, STL_UNORDERED_MULTISET = 10, 11
 STL_UNORDERED_MAP, STL_UNORDERED_MULTIMAP = 12, 13
+STL_RVEC = 14
 STL_STRING = 365
 
 PAIRED = {STL_MAP, STL_MULTIMAP, STL_UNORDERED_MAP, STL_UNORDERED_MULTIMAP}
@@ -2612,12 +2626,16 @@ STL_KINDS = {
     "unordered_multiset": STL_UNORDERED_MULTISET,
     "unordered_map": STL_UNORDERED_MAP,
     "unordered_multimap": STL_UNORDERED_MULTIMAP,
+    # kROOTRVec: not std:: at all, and spelled in full on disk.
+    "ROOT::VecOps::RVec": STL_RVEC,
 }
 
 
 def stl_kind(type_name: str) -> int:
     """The fSTLtype a collection type name would carry. Collections.md 1."""
     bare = type_name.strip()
+    if bare.startswith("const "):
+        bare = bare[6:].strip()
     if bare.startswith("std::"):
         bare = bare[5:]
     head = bare[:bare.index("<")] if "<" in bare else bare

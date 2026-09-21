@@ -1145,6 +1145,22 @@ class Checker:
                                  f"{info.name}.{el.name} is a TStreamerSTLstring "
                                  f"with fSTLtype {stl} and fCtype "
                                  f"{el.tail.get('fCtype')}, not 365 and 365")
+                elif bare not in (300, 365):
+                    # 14.10. Checked on the value a reader ends up with, so it
+                    # fails on a reader that skips the set/multimap repair of
+                    # section 1 -- which is how it was found.
+                    try:
+                        want = rootfile.stl_kind(el.type_name)
+                    except rootfile.UnsupportedClass:
+                        self.no_codec.add(
+                            f"{el.type_name} is not a container name this "
+                            f"specification knows (Collections.md 1)")
+                        continue
+                    if bare != want:
+                        self.bad("Collections 14.10",
+                                 f"{info.name}.{el.name} has fSTLtype {stl}, but "
+                                 f"its fTypeName {el.type_name!r} is container "
+                                 f"{want}")
 
         for target in self.records:
             if target.free:

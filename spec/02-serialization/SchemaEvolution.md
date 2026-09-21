@@ -121,6 +121,42 @@ The algorithm itself is in
 > SHOULD instead treat a checksum mismatch as a warning rather than an error —
 > the checksum is a lookup key, not an integrity check.
 
+### 3.1 `fCheckSum` of 0 means the writer could not compute one
+
+**It is not a legitimate value and not a lookup key.** Every variant of the
+algorithm begins by folding the class name (§11 of
+[Streamer information](StreamerInfo.md#11-checksums)), so the least it can produce
+is that fold — which is 0 only for an empty name, and a class has a name. A reader
+that meets 0
+MUST treat the field as **absent**: it cannot be used for §4 step 2, and it must
+not be compared with a computed value, because a match would be an accident.
+
+`TClass::GetCheckSum` has exactly one path that returns it — a base class whose
+meta information is unavailable, where it prints
+`Error("GetCheckSum", "Calculating the checksum for (%s) requires the base class
+(%s) meta information to be available!")`, sets `isvalid` to `kFALSE` and returns
+0 (`root/core/meta/src/TClass.cxx:6704-6710`). `TStreamerInfo::Build` then stores
+that 0, because it calls the single-argument overload and never sees `isvalid`
+(`root/io/io/src/TStreamerInfo.cxx:447`). So the file records a failure the
+writing session was told about and a reader cannot see.
+
+> Measured across `data/` and both corpora, 307 files carrying infos: **two**
+> entries have `fCheckSum` 0, both in `uproot-issue283.root` (ROOT 5.28/00) —
+> `Sni3DataArray` and `I3Eval_t::ChannelContainer_t`, class version 1, no
+> elements.
+>
+> Their emptiness is not the explanation. **247 other infos across those files
+> also have no elements, and every one carries the fold of its own class name**:
+> `TString` `0x00017419`, `TAtt3D` `0x0000757a`, `TQObject` `0x00042e9c`,
+> `TAttBBox2D` `0x002549fc`, `RooPrintable` `0x017097c5`, `RooDirItem`
+> `0x0028c88e`, `KM3NETDAQ::JDAQHit` `0x530441c9`, `MGVMemoryCheckable`
+> `0x752eeea5`. An empty element list is ordinary and its checksum is well
+> defined. The two zeros would have been `0x04442992` and `0x4c1ebbfe`.
+>
+> It is therefore **not** a marker for a custom streamer, which is the natural
+> guess: the 247 include classes whose `Streamer` is hand-written, and they carry
+> proper checksums.
+
 ## 4. Choosing a streamer info
 
 Given a class name and a version word, a reader picks an entry from the file's

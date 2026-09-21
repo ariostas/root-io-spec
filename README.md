@@ -55,10 +55,10 @@ name and the UUIDs.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**79 reference files, 2021 byte-level assertions, and 1597 source citations
+**79 reference files, 2021 byte-level assertions, and 1599 source citations
 checked against the pinned submodule across 48 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also
-run over 180 files this project did not write — 154 from uproot's regression
+run over 181 files this project did not write — 155 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
 nineteen errors in this specification were found and fixed — plus one compression

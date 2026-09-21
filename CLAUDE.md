@@ -61,7 +61,7 @@ designed around to get a ranked list of what is still missing, rather than guess
 from `PLAN.md`:
 
 ```sh
-tools/fetch_foreign.py                      # 154 third-party files, 20 MB, to build/foreign/
+tools/fetch_foreign.py                      # 155 third-party files, 22 MB, to build/foreign/
 tools/coverage_probe.py --summary build/foreign/*.root
 ```
 
@@ -130,7 +130,7 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **27968 of 28035, 99.8%**, with 0 failures, and the
+Over the two corpora that is **28059 of 28126, 99.8%**, with 0 failures, and the
 67 skips are of two kinds only, both of them **things no reader could decode from
 the file**:
 

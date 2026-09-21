@@ -494,6 +494,84 @@ class OneIdentityTwoLayoutsIsCaught(unittest.TestCase):
         self.assertIn("StreamerDriven 10.1", bad[0])
 
 
+class SetAndMultimapWereSwapped(unittest.TestCase):
+    """Collections.md 1 and invariant 10: the repair `rootfile.py` lacked.
+
+    `TStreamerSTL` numbered kSTLset 5 and kSTLmultimap 6 until 5.34/13, the
+    reverse of every other use of the enum, and the read-side repair arrived only
+    in 6.00/00. The element version is 3 on both sides, so `fTypeName` is the only
+    thing that can decide -- and a reader that takes 5 at face value reads a set
+    as a multimap and consumes two values per element.
+
+    The corpus tests below drive the real parser, which is where the repair lives;
+    they are the ones that fail without it.
+    """
+
+    BUILD = Path(__file__).resolve().parents[1] / "build"
+
+    def find(self, name):
+        for sub in ("foreign", "cern"):
+            path = self.BUILD / sub / name
+            if path.exists():
+                return path
+        return None
+
+    def elements(self, name):
+        path = self.find(name)
+        if path is None:
+            self.skipTest(f"{name} not fetched")
+        _, _, infos = check_invariants.Checker(path).streamer_infos()
+        return {(i.name, e.name): e for i in infos for e in i.elements}
+
+    def test_a_pre_5_34_13_set_is_repaired(self):
+        """uproot-issue283.root carries fSTLtype 5 on a set<long>."""
+        el = self.elements("uproot-issue283.root")[("I3Eval_t", "BadChannelIDSet")]
+        self.assertEqual(el.type_name, "set<long>")
+        self.assertEqual(el.tail["fSTLtype"], rootfile.STL_SET)
+        self.assertEqual(el.version, 3)
+
+    def test_the_same_member_from_both_eras_reads_the_same(self):
+        """RooAbsArg._boolAttrib is a set<string> written as 5 and as 6."""
+        seen = set()
+        for name in ("stressRooFit_v534_ref.root", "uproot-issue49.root"):
+            if self.find(name) is None:
+                continue
+            el = self.elements(name)[("RooAbsArg", "_boolAttrib")]
+            self.assertEqual(el.type_name, "set<string>")
+            seen.add(el.tail["fSTLtype"])
+        if not seen:
+            self.skipTest("neither RooFit file is fetched")
+        # 5 on disk in the older file, 6 in the newer, and one value out here.
+        self.assertEqual(seen, {rootfile.STL_SET})
+
+    def test_every_collection_element_agrees_with_its_type_name(self):
+        """Invariant 10, over one file, through the real parser."""
+        for (cls, member), el in self.elements("uproot-issue283.root").items():
+            if el.cls != "TStreamerSTL":
+                continue
+            stl = el.tail["fSTLtype"]
+            bare = stl - rootfile.OFFSET_P if 40 <= stl <= 54 else stl
+            if bare in (300, 365):
+                continue
+            with self.subTest(f"{cls}.{member}"):
+                self.assertEqual(bare, rootfile.stl_kind(el.type_name))
+
+    def test_stl_kind_knows_the_published_table(self):
+        for name, want in (("set<long>", 6), ("multimap<int,int>", 5),
+                           ("map<int,int>", 4), ("vector<float>", 1),
+                           ("std::unordered_map<int,int>", 12),
+                           ("bitset<8>", 8)):
+            self.assertEqual(rootfile.stl_kind(name), want, name)
+
+    def test_rvec_is_a_known_container(self):
+        # fSTLtype 14, published in Collections.md 1 and missing from the reader
+        # until 2026-09-21.
+        self.assertEqual(rootfile.stl_kind("ROOT::VecOps::RVec<float>"), 14)
+
+    def test_a_const_qualified_name_resolves(self):
+        self.assertEqual(rootfile.stl_kind("const vector<int>"), 1)
+
+
 class PublishedExemptionLists(unittest.TestCase):
     """The two lists invariant 5 exempts, as `check_invariants` reads them.
 

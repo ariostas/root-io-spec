@@ -391,6 +391,36 @@ MUST NOT require its declared type to be described.
 >   `root/geom/geom/inc/TGeoPatternFinder.h:67`,
 >   `root/hist/hist/inc/TF1AbsComposition.h:21`).
 
+### 6.2 A file can omit an info ROOT would have written
+
+When the absent class is not exempt under §6.1, the writer is at fault — and that
+is worth establishing rather than assuming, because the alternative reading is
+that ROOT sometimes omits an info and the specification is wrong.
+
+`uproot-issue-861.root` is the measured case. It holds two top-level `TTime`
+records and no `TTime` info. `TTime` is `ClassDef(TTime,2)`, on neither published
+list, so §6.1 says the file must describe it.
+
+> **ROOT does describe it.** Writing two `TTime` objects with 6.40.04 produces a
+> `StreamerInfo` record holding `TTime` version 2, checksum `0x839dbf90`, one
+> member `fMilliSec` — and so does adding a `TTime` to an existing histogram file
+> opened for **update**, which is the obvious way to reach this state by accident.
+> That second test also reproduces the corpus file's info list exactly: the same
+> fourteen entries, plus `TTime`.
+>
+> The object bytes are identical either way. Both writers frame it as
+> `40 00 00 0a | 00 02 | Long64_t` — a byte count of 10, a version word of 2, and
+> eight bytes — and `fObjlen` is 14 in both. The corpus file's records are 70
+> bytes against ROOT's 50 only because its key carries a longer name and title.
+> **Nothing about the object is unusual; only its description is missing.**
+>
+> The file is CAEN CoMPASS output — its own name is a Windows path,
+> `C:/Users/…/HcompassF_226Ra_run_2_20231117_085722.root` — and it omits an info
+> for its own `CalibrationCoefficient` class too, a 44-byte object nothing in the
+> file describes. A reader that knows `TTime` out of band recovers the
+> milliseconds; a reader driven by the file alone cannot, and `Collections.md` §9
+> is the same situation one level down.
+
 ## 7. When the streamer info does not describe the bytes
 
 > **A class with a hand-written `Streamer` still has a streamer info in the file,

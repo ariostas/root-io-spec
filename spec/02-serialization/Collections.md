@@ -33,10 +33,33 @@ RVec 14      kSTLany 300     kSTLstring 365
 `kOffsetP` (40), so `vector<T>*` has `fSTLtype` 41
 (`root/core/meta/src/TStreamerElement.cxx:1806`).
 
-> **`set` is 6 and `multimap` is 5.** They were the other way round for years,
-> and `TStreamerSTL::Streamer` still repairs old files by re-reading `fTypeName`
-> (`root/core/meta/src/TStreamerElement.cxx:2112-2122`). The table in
-> `root/io/doc/TFile/streamerinfo.md` records the old, wrong order.
+> **`set` is 6 and `multimap` is 5, and a reader MUST NOT trust either value.**
+> `TStreamerSTL` numbered them the other way round — `kSTLset = 5`,
+> `kSTLmultimap = 6` — while every other use of the enum had them as above. The
+> declaration was standardised in **5.34/13** (`d1ffea01e01`, backported to the
+> 5.34 series) and `TStreamerSTL::Streamer` gained the read-side repair only in
+> **6.00/00** (`cf539483218`): when `fSTLtype` is 5 or 6 it takes the container
+> from `fTypeName` instead (`root/core/meta/src/TStreamerElement.cxx:2112-2122`).
+> The table in `root/io/doc/TFile/streamerinfo.md` records the old, wrong order.
+>
+> **Nothing in the element says which convention wrote it**, which is what makes
+> the repair mandatory rather than a legacy nicety: the element version is 3 on
+> both sides of the change. Measured on one member across four files —
+> `RooAbsArg._boolAttrib`, a `set<string>`, at element version 3 throughout:
+>
+> | File | `fSTLtype` |
+> |---|---|
+> | `stressRooFit_v522_ref.root` | **5** |
+> | `stressRooFit_v534_ref.root` | **5** |
+> | `uproot-issue49.root` | 6 |
+> | `uproot-issue-350.root` | 6 |
+>
+> `uproot-issue283.root` (ROOT 5.28/00) carries a third case, a `set<long>` at 5,
+> and it is the one that matters: a reader that takes 5 at face value reads a set
+> as a **multimap** and consumes two values per element. `tools/rootfile.py` did
+> exactly that until 2026-09-21, on a rule this document already stated —
+> invariant 10 now checks it. The pointer forms are **not** repaired: ROOT's test
+> is on 5 and 6 exactly, so a `set<T>*` at 45 keeps whatever it was given.
 
 Remember also that **`fType` on disk is always 500**
 ([Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)),
@@ -621,6 +644,12 @@ and the file has no info for it, the collection is not readable (§9).
 9. A member-wise collection whose count is 0, on a frame above version 6,
    occupies exactly the bytes of its two version words, its checksum if it has
    one, and the count — and nothing more (§4.3).
+10. A `TStreamerSTL`'s `fSTLtype`, less `kOffsetP` where present, names the same
+    container as the head of its `fTypeName`. It is checked on the value a reader
+    **ends up with**, so it fails on a reader that skips §1's `set`/`multimap`
+    repair — which is how the omission in `tools/rootfile.py` was found. Holds on
+    all 1368 `TStreamerSTL` elements of `data/` and both corpora; three of them
+    need the repair to pass.
 
 Invariant 6 is the one that fails on a file ROOT wrote (§9), which is why it is
 reported rather than assumed.

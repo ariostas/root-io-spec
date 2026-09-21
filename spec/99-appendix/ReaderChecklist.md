@@ -206,7 +206,7 @@ Four checks, in increasing order of strength:
    ROOT 2.24/00 to 6.36/02 — found errors in this specification that its own
    fixtures did not, because a fixture tests what its author already understood.
    The two halves differ in what a failure means: the 26 files of `gen/cern/` were
-   published by the ROOT team and a failure there **is** evidence, while the 154 of
+   published by the ROOT team and a failure there **is** evidence, while the 155 of
    `gen/foreign/` come from uproot's regression suite and include files uproot
    itself wrote, so a failure there is a lead to be traced to a writer.
 

@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **258
+Every layer of this specification ends with an `Invariants` section — **259
 entries across 32 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -79,6 +79,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | `fObjlen > fNbytes - fKeylen` **iff** the payload is compression blocks | Compression 1 | nothing — the inequality *is* the flag |
 | For one block, `9 + compressed size == fNbytes - fKeylen` and `uncompressed size == fObjlen` | Compression 4 | ROOT — the unzip fails |
 | A counted pointer is one flag byte and then exactly the count's worth of values | ElementTypes 4 | nothing |
+| A `TStreamerSTL`'s `fSTLtype` names the same container as its `fTypeName` — after the `set`/`multimap` repair a reader must apply | Collections 14.10, 1 | checked |
 | A version word is the class's own `ClassDef` version, or 0 followed by a checksum for a class with none | Buffer 3, 4 | ROOT — for a version it cannot resolve |
 | An info's `fCheckSum` is what the algorithm produces for the class it describes | StreamerInfo 11 | ROOT — `BuildCheck` warns at equal version |
 | Every `TList` entry in the `StreamerInfo` record is followed by one option byte; `TObjArray` entries by none | StreamerInfo 4, 5 | nothing |

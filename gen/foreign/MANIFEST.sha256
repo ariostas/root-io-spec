@@ -4,6 +4,13 @@
 #   https://github.com/scikit-hep/scikit-hep-testdata
 # Fetch with tools/fetch_foreign.py, then probe with tools/coverage_probe.py.
 # Columns: sha256, bytes, the ROOT version in the file header, name.
+#
+# The list is a selection, not all of scikit-hep-testdata. One file was added
+# afterwards for a named reason, which is the bar for any further addition
+# (CLAUDE.md): uproot-issue283.root is the only witness in either corpus to a
+# TStreamerInfo with fCheckSum 0, without which SchemaEvolution.md 3.1 could not
+# be written. It also turned out to be the only file carrying a `set` with the
+# pre-5.34/13 fSTLtype, which caught a reader bug (Collections.md 1, invariant 10).
 f37250be474fcd8d3c4e51883a3bb25990e5508a619e0c962f416245870e20c7      30847  6.18/04     issue367b.root
 c14a29b25b15b837226f396e920b5d9fb134f3558bef5b0a9db5d6d9606c5f3a     377623  6.22/08     nanoAOD_2015_CMS_Open_Data_ttbar.root
 89f570c50531955ec3555e95a7a48f0c070fd1e7808aab0cb2533ba96ef2f3d2       5266  6.30/02     string-example.root
@@ -70,6 +77,7 @@ bb88658a69f302bc43e5a3df071c73a08d0509b0e1eea6f1884933c02813923b       5767  6.2
 4df1e7a217ac9214e50a9a1464c044bade9b6465ac7ca7de78c676f4ab388870      27864  6.14/00     uproot-issue213.root
 f91988cdffc6074a34b4d62c991bb6eefdcc730925b67b59c84ae38fed47e765     116048  6.14/04     uproot-issue243.root
 677b380c8ed633c4decc50c293a45c45596a3fe4da5a5b9ef259cb05253b9803      10561  6.18/00     uproot-issue261.root
+e8675fb2d126a07abd95323fe3e1d7dcec7d6b416a86acb445425870f9479b35    2326101  5.28/00     uproot-issue283.root
 ba2f3849c32ab96ebfbdcf2dff71b61641e7a36a89220f274240b41242d97515       6066  6.10/08     uproot-issue30.root
 19dbf4f54607a4ceca079774267150af3c22abfc26c593054f98554f89856f48       7403  6.08/04     uproot-issue31.root
 4784891f971b7afb1c31aa8d15e4cf1e7ca474afc62054beadd9f1f60ce842ea     335372  5.34/30     uproot-issue327.root
