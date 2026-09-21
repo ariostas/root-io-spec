@@ -604,8 +604,29 @@ inside ROOT that define their own persistent classes", 15 classes in
 records in two `stressRooFit_*` files, plus the RooFit graphs in
 `uproot-issue-350.root`.
 
-**The decision is genuinely open and it is the user's, not mine.** What this plan
-can do is state the trade honestly:
+**Decided 2026-09-21: RooFit is in scope**, and `PLAN.md` decision 8 is revised.
+The trade below is what the decision was taken against, and the "For" column won on
+its first row: a second independent reader is asking, and will extend its own scope
+only once these classes are specified here. That is the strongest signal this
+project has had about what to write next, and the alternative was that the work
+happens anyway, downstream, without fixtures or byte tables.
+
+So R8 is no longer "the three framing observations instead". All four items get
+specified — but the classification below still decides the **order**, because two
+of them are container-layer facts that happen to have been found in RooFit files
+and are worth having whatever happens to the rest:
+
+| Order | Item | Why first |
+|---|---|---|
+| 1 | 10, `RooVectorDataStore`'s doubled collection frame | `delegating`, so the bytes are streamer-info driven and the frame is a `Collections.md` §2 gap — in scope before this decision |
+| 2 | 9, `RooAbsCategory`'s extra frame | its `Streamer` is **generated**: in no hand-written list at all, so again a framing rule rather than a private layout |
+| 3 | 8, `RooRealVar` as `extending` | an `inventory.py` question: it is classified `custom`, which is the stronger warning, so this refines a classification rather than fixing a wrong one |
+| 4 | 7, `RooLinkedList` v3 | the one genuine class layout, and the one needing a fixture and therefore RooFit in the generator environment |
+
+The cost decision 8 named is accepted: RooFit in `gen/` is a new build dependency.
+Items 1 and 2 need none of it — they need bytes, which the reply asks for.
+
+The trade as it was stated when the decision was open:
 
 | | For specifying RooFit | Against |
 |---|---|---|
@@ -625,8 +646,10 @@ and `HandWrittenStreamers.md` §3 currently name exactly three `extending` class
 and if `RooRealVar` is a fourth then either the list or the definition is wrong —
 which is an `inventory.py` question, not a RooFit question.
 
-That reframing costs little, keeps decision 8 intact, and answers most of what they
-actually need. It is R8, and it is the only RooFit item this plan proposes.
+That reframing was what this plan proposed while the decision was open. It is
+superseded: the decision went further, and all four items are in. The reframing
+survives as the *order* above, because two of the four are container-layer facts
+either way.
 
 ## 6. Corroborations — what to fold in
 
@@ -695,7 +718,9 @@ Per the repository's convention the reply opens with the AI-content marker.
    ten minutes because the file it needed also caught a reader bug: a zero
    checksum is a failed computation, `TTime`'s absence is the writer's, and
    `set`/`multimap` were swapped in `fSTLtype` until 5.34/13 (§3).
-8. **R8** — the three framing observations, as container-layer questions.
+8. **R8** — all four RooFit items, in the order §5 gives: the two framing
+   observations first, since they need no RooFit in `gen/`, then the `extending`
+   classification, then `RooLinkedList`'s layout.
 
 Done when: every item above has an outcome recorded in this file, the issue has a
 reply, and `PLAN.md` §8.1 criterion 1 is true again — which it is not today, and

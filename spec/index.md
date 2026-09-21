@@ -166,7 +166,7 @@ and `tools/coverage_probe.py` prints the reason per record:
 | Cause | Reads | What it is |
 |---|---|---|
 | No streamer infos in the file | 468 | the version floor above |
-| RooFit's own classes | 190 | out of scope, below |
+| RooFit's own classes | 190 | **being specified**; in scope from 2026-09-21, below |
 | An LZ4 payload, when the `lz4` package is not installed | 0 here, 137 without it | the checker's environment, not the format |
 | `TASImage` | 8 | **the only gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
 
@@ -195,10 +195,17 @@ from `spec/99-appendix/streamers.toml` and CI-checked, so the list cannot quietl
 drift:
 
 - **Frameworks that ship inside ROOT and define their own persistent classes** —
-  RooFit, whose workspaces are common in published files and which a reader will
-  meet; the SQL backend, where `TSQLFile` names a database rather than a ROOT
-  file; PROOF's `TRemoteObject`; both event displays; and TMVA SOFIE. Fifteen
-  classes, each with its reason beside it.
+  the SQL backend, where `TSQLFile` names a database rather than a ROOT file;
+  PROOF's `TRemoteObject`; both event displays; and TMVA SOFIE. Each with its
+  reason beside it.
+
+    > **RooFit was on that list until 2026-09-21 and is now in scope**, because a
+    > second independent reader asked for it rather than reverse-engineer it
+    > ([issue #1](https://github.com/ariostas/root-io-spec/issues/1)). Its
+    > workspaces are common in published files and a reader will meet them. The
+    > classes are not written yet, so `HandWrittenStreamers.md` still records them
+    > as `out-of-scope` until each is specified; that file is the list to watch,
+    > and it is CI-checked so the change cannot go unrecorded.
 - **What `TGeo*` fields mean.** Its 88 persistable classes are streamer-info
   driven and decode by the generic algorithm like anything else; what is out of
   scope is a hand-written account of the geometry they describe.
