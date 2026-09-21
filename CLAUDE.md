@@ -9,14 +9,14 @@ implement a reader without reading ROOT's C++ source. ROOT ships only one real
 format spec (RNTuple); its `TFile`/`TTree` documentation in `root/io/doc/TFile/`
 describes **release 3.02.06** and is substantially wrong for current ROOT.
 
-`PLAN.md` holds the structure, scope decisions and phasing, and
-Two live sub-plans: `PLAN-writing.md` extended the write side and is now
-**discharged** — free-space reuse, key ordering, updating an existing file and
-schema evolution from the writing side have all landed, and splitting stays
-read-only with that file saying why, and `PLAN-review.md` answers the first outside review,
-GitHub issue #1 — which found a reader bug, a false invariant and an over-general
-erratum, so read it before trusting `StreamerDriven.md` 10.5 or
-`SchemaEvolution.md` §8.1.
+`PLAN.md` holds the structure, scope decisions and phasing; its §8.12 is the write
+side's second half — free-space reuse, key ordering, updating a file and schema
+evolution, all landed 2026-09-21 — and carries the six findings that came out of
+it. One live sub-plan: `PLAN-review.md` answers the first outside review, GitHub
+issue #1, which found a reader bug, a false invariant and an over-general erratum,
+so read it before trusting `StreamerDriven.md` 10.5 or `SchemaEvolution.md` §8.1.
+A sub-plan is deleted once discharged, with anything durable moved into `PLAN.md`
+or `spec/` first.
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read those before writing spec text; this file covers how to *work* here, not
 what to write.

@@ -199,6 +199,7 @@ file does, and the reason goes in the README beside it.
 `PLAN.md` holds the structure, the scope decisions and what is left; `§8` is the
 route to the next release and `§9` lists every known gap. If you are looking for
 something to do, those gaps are ranked by how much of the corpora they block.
-`PLAN-writing.md` and `PLAN-review.md` are the open sub-plans — the extension of
-the writing layer, and the response to the first outside review. A sub-plan is
-deleted when it is discharged, as `PLAN-ttree.md` was.
+`PLAN-review.md` is the open sub-plan — the response to the first outside review.
+A sub-plan is deleted when it is discharged, as `PLAN-ttree.md` and
+`PLAN-writing.md` were; what is worth keeping moves into `PLAN.md` or into `spec/`
+first, and the git log keeps the rest.

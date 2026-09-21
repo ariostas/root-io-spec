@@ -244,8 +244,11 @@ each was confirmed to catch a corruption of a fixture.
 
 Where a write-side rule genuinely has no freedom — the compression block header,
 the `Double32_t` factor encoding, the `fNevBufSize` sign trick — it is specified
-exactly. Deliberately **not** specified: free-space allocation policy, basket
-sizing, key ordering, when ROOT chooses to rewrite a directory.
+exactly. Deliberately **not** specified: basket sizing, and *which* free span a
+writer picks. Free-space allocation and key ordering came into scope on 2026-09-21
+(§8.12) once it turned out that ROOT's order **within a key name** is load-bearing
+and its allocator's remainder rule is not optional; what stays free is the choice,
+and what is specified is what a choice produces.
 
 Invariants alone turned out to be **necessary and not sufficient**. They let a
 writer check a file it has already produced; they do not tell it which bytes to
@@ -262,8 +265,8 @@ what a writer actually needs rather than by symmetry with the reading side:
 | File | State |
 |---|---|
 | ✅ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
-| ✅ `WritingFiles.md` | The container in write order, **subdirectories** (§8.9), and §14's ten mistakes ROOT reads without complaint |
-| ✅ `WritingObjects.md` | Framing, the version word, the object map, compression, and the `StreamerInfo` record down to each element subclass |
+| ✅ `WritingFiles.md` | The container in write order, **subdirectories** (§8.9), the allocator and key order (§8.12), **updating an existing file** (§8.12), and §15's mistakes ROOT reads without complaint |
+| ✅ `WritingObjects.md` | Framing, the version word, the object map, compression, the `StreamerInfo` record down to each element subclass, and **what a reader at another class version needs** (§8.12) |
 | ✅ `WritingHistograms.md` | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile` member by member (§8.8) |
 | ✅ `WritingTrees.md` | A flat `TTree`: the tree record, branches, leaves, baskets, the multi-basket and cluster-range case (§8.7), and a **`TLeafC`** branch (§8.10) |
 | ✅ `WritingGraphs.md` | `TGraph` and `TGraphErrors`, and why a null `fHistogram` costs eighteen streamer infos (§8.11) |
@@ -271,7 +274,10 @@ what a writer actually needs rather than by symmetry with the reading side:
 
 **Only the current version of each class.** A writer chooses what it emits, so
 there is never a reason to write an old layout; the legacy layouts stay on the
-reading side, where files force them.
+reading side, where files force them. That is not the same as ignoring schema
+evolution: what a file must carry so that a reader at a *different* version can
+read it is specified (`WritingObjects.md` §8), and `data/written/two-versions.root`
+holds one class at two versions to prove it.
 
 **The conformance test is executable, and it is what makes these documents
 checkable the way the reading side is.** `tools/rootwrite.py` is a pure-Python
@@ -1601,67 +1607,74 @@ confirmed by corrupting `data/written/graph.root`.
 Element lists: **35 classes, 194 elements**, `TGraph` and `TGraphErrors` published
 with the rest.
 
-### 8.12 Extending the write side — the sub-plan (2026-09-21)
+### 8.12 Extending the write side ✅ done 2026-09-21
 
-§8.5 closed the scope the writing layer was given: the current versions of the most
-common types, created from nothing. **[`PLAN-writing.md`](PLAN-writing.md) orders
-the extension**, which takes in four of the things decision 3 and
-[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) currently exclude —
-**free-space reuse**, **key ordering** (cycles, order and deletion), **updating an
-existing file**, and **schema evolution from the writing side**. Those four are one
-feature seen from four angles: a writer that can reopen its own output.
+§8.5 closed the scope the writing layer was first given: the current versions of
+the most common types, created from nothing. A sub-plan, `PLAN-writing.md`, ordered
+the extension and was **deleted when discharged** the same day, as `PLAN-ttree.md`
+was; the git log holds its four items, `CHANGELOG.md` holds what each changed for a
+reader, and what follows is the part worth keeping in one place.
 
-The same shape as `PLAN-ttree.md`, which this one deliberately imitates: measured
-rather than estimated, every claim cited, and deleted when discharged.
+**Four items, all landed**, and they were one feature seen from four angles — a
+writer that can reopen its own output:
 
-**A fifth was drafted and cut: writing a split `TBranchElement`.** Reading one is
-finished — `TBranchElement.md`, `Splitting.md` and `TreeReader`, at 99.8% of
-branch-baskets over both corpora — and it stays that way, but the write side gets a
-scope statement instead of a procedure. The reasons are on the page because the
-asymmetry looks odd without them: jagged data does not need splitting (a flat
-branch with a counter leaf is what `Int_t n; Float_t x[n]` is, and
-`data/written/tree.root` already holds one); a split file is only fully usable by a
-reader that has the class, since `InitializeOffsets` reconstructs every member
-offset from the *branch name* plus a dictionary lookup; and an unsplit branch is
-never wrong, only slower to read. What `Writing §4` gains is that reasoning in
-place of its current one sentence.
+| | Added | Ends with |
+|---|---|---|
+| W1 | free-space reuse: the allocator, `WritingFiles.md` §2 | `written/reused-space`, **the same 1747 bytes** as ROOT's `container/gap-reused` |
+| W2 | key order, cycles and deletion, §8.1–§8.2 | `written/cycles-3`, **the same 1361** |
+| W3 | updating an existing file, §13 | `written/reopen-add` and `written/reopen-reuse`, **the same 1657 and 1928** |
+| W4 | schema evolution from the writing side, `WritingObjects.md` §8 | `written/two-versions` — one class at two versions, a file **no single ROOT session can produce** |
 
-Three things in the sub-plan are worth knowing even before the work starts:
+Each "the same N bytes" is a whole-file comparison against a ROOT-written fixture,
+differing only in the timestamps, the file's own name and the UUIDs. W4 has no twin
+because no one session can write one; it is checked by ROOT reading it instead.
 
-- **The order within a name group is not a convention.** ROOT never compares cycles
-  to pick a maximum — `Get`, `GetKey` and `FindKeyAny` all return the *first* match
-  in key-list order — so a writer that appends a new cycle at the end makes
-  `Get("h")` return the **oldest** copy, silently. Cycle order is **fixed**; the
-  order of distinct names is free.
-- **For a split tree, the shape is policy and the names are format.** A writer may
-  split less deeply than ROOT; it may not invent names. Which is also why the write
-  side declines to specify splitting rather than specifying it loosely.
-- **No file in 218 carries a class at two versions**, so the situation schema
-  evolution exists for is unwitnessed in the corpora. Only a written file can
-  exercise it, and producing one needs the update mode the third item adds.
+**What the four found, which is the durable part.** Five of these are corrections
+or defect reports rather than additions, and the last one is the most useful thing
+in the batch:
 
-**All four have landed** (2026-09-21): W1 free-space reuse, W2 key ordering, W3
-updating an existing file, and W4 schema evolution from the writing side. The
-first three each ended with a file in `data/written/` that matches a ROOT-written
-one for **every byte** bar the timestamps, the name and the UUIDs — 1747, 1361,
-1657 and 1928 — and W4 with a file **ROOT cannot produce**: one class at two
-versions, `written/two-versions`.
+- **the order within a key name is load-bearing.** ROOT never compares cycles —
+  `Get`, `GetKey` and `FindKeyAny` return the *first* match — so a writer that
+  appends a new cycle makes every unqualified lookup return the **oldest** copy,
+  silently. Measured by reversing three key images. `Directory 9.14`;
+- **the allocator's `+ 3` is not optional**: a span one, two or three bytes too
+  large is skipped and stays unused, because a partial fit must leave room for the
+  four-byte marker. `FreeSegments 8.10`;
+- **a file can disagree with itself about its own name.** ROOT does not restore
+  `fName` on update, so keys written by an update carry the path it was *opened*
+  as while the directory record carries the path it was *created* as;
+- **the large file header is 75 bytes and `TFile::WriteHeader` allocates `fBEGIN`
+  of them** — and four corpus files, from ROOT 2.24/00 to 4.00, have `fBEGIN` of
+  64. Updating one past 2 GB writes over its own first record. `FileHeader 10.11`;
+- **ROOT silently reads nothing for a top-level object of a `TObject`-derived class
+  it has no dictionary for.** `TKey::ReadObj` streams it with `tobj->Streamer()`,
+  which resolves to `TObject::Streamer` — ten bytes and stop. Witnessed on a file
+  **ROOT wrote itself**: `fA = 77`, `fB = 1.25` read back as 0 and 0, while this
+  project's reader recovers both. `SchemaEvolution.md` §7.1;
+- **and one invariant was written, committed and withdrawn the same day.** W4
+  claimed a `TStreamerBase`'s `fBaseVersion` matches the base info beside it; five
+  corpus files disproved it on the first run and all five are right. The return
+  beats the invariant: on four files the ROOT team publishes, `fBaseCheckSum` is 0
+  *and* `fBaseVersion` names a version the file has no info for — so the fallback
+  `StreamerInfo.md` §9.1 gave a reader **as a MUST** had nothing to land on. §9.2
+  is the correction.
 
-Three new invariants came out of them: `FreeSegments 8.10`, `Directory 9.14` and
-`FileHeader 10.11`. A fourth was withdrawn the day it was written — W4 claimed a
-`TStreamerBase`'s `fBaseVersion` matches the base info beside it, and five corpus
-files disproved it, which is how `StreamerInfo.md` §9.2 and the correction to §9.1
-were found. Two of the three that stand are **defect reports** as much as
-invariants. The large file header is 75 bytes, `TFile::WriteHeader` allocates
-`fBEGIN` of them, and four corpus files have `fBEGIN` of 64. And `TKey::ReadObj`
-streams a `TObject`-derived object with `tobj->Streamer()`, which for a class ROOT
-has no dictionary for reads ten bytes and stops — so ROOT returns a
-default-constructed object where this project's reader recovers the data, on a file
-ROOT wrote itself. Both are for M10.
+The last two are for M10. The fourth and fifth are why this project runs its
+invariants over files it did not write.
 
-Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-not-specified)
-are updated as each item lands — `PLAN-writing.md` §9 lists exactly what each
-becomes.
+**A fifth item was drafted and cut: writing a split `TBranchElement`**, and its
+reasoning now lives where a reader will meet it,
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) — jagged data does
+not need splitting and this layer already writes it; a split file is only fully
+usable by a reader that has the class, since `InitializeOffsets` rebuilds every
+member offset from the branch name plus a dictionary lookup; and an unsplit branch
+is never wrong, only slower to read. The two format facts that came out of scoping
+it are placed too: *the shape is policy, the names are format*, and the
+recommendation that a top-level branch name carry a **trailing dot**, which is in
+[Splitting §3.1](spec/04-ttree/Splitting.md#31-a-trailing-dot-changes-every-name-below)
+because that is where the person choosing a name is reading.
+
+Decision 3, §2.8, §2.9, §9.4 and Writing §4 are all updated.
 
 ### 8.13 The first outside review (2026-09-21)
 

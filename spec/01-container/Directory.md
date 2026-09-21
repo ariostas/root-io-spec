@@ -403,7 +403,12 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
     ascending order resolves every unqualified name to the *oldest* copy, with no
     diagnostic — measured in
     [Writing a file §8.1](../06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets).
-    A **negative** `fCycle` is the keep flag and counts as its magnitude (§3.8 of
+    Real files exercise this **thinly**: across both corpora and `data/`, 462
+    directories hold 2395 keys and only **six** name groups have more than one
+    cycle — all six in descending order. `data/written/cycles-3.root` is what
+    gives the invariant teeth, and no corpus file carries a **negative**
+    `fCycle` at all, which is why none demonstrates the keep flag.
+    A negative `fCycle` is the keep flag and counts as its magnitude (§3.8 of
     [Records](Record.md#38-fcycle)).
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the

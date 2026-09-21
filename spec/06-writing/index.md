@@ -158,11 +158,37 @@ word.
   at another version** is specified
   ([Writing an object §8](WritingObjects.md#8-writing-for-a-reader-that-is-not-you)).
 - **Writing a split `TBranchElement`.** Reading one is specified
-  ([Split branches](../04-ttree/TBranchElement.md)); producing one means
-  reimplementing ROOT's splitting decisions, which
-  [Splitting](../04-ttree/Splitting.md) documents as *ROOT's* decisions rather than
-  the format's. A flat tree, or one branch holding a whole object unsplit, is what
-  a writer needs and is what §3 covers.
+  ([Split branches](../04-ttree/TBranchElement.md),
+  [Splitting](../04-ttree/Splitting.md)) and is finished — 99.8% of branch-baskets
+  across both corpora decode, and neither remaining skip is a splitting gap.
+  Writing one is excluded, and since "we specify reading it and not writing it"
+  looks odd without them, the reasons are worth stating. There are three, and none
+  of them is effort:
+
+    1. **Jagged data does not need splitting, and this layer already writes it.**
+       What is usually wanted from columnar output is a variable-length array per
+       entry — `Int_t n; Float_t x[n]` — and that is a **flat** `TBranch` with a
+       counter leaf, with no `TBranchElement` anywhere.
+       [Writing trees §4.3](WritingTrees.md#43-the-leaf) specifies it and
+       `data/written/tree.root` contains one.
+    2. **A split file is only fully usable by a reader that has the class.**
+       `TBranchElement::InitializeOffsets` reconstructs each member's offset by
+       string surgery on the branch name followed by a **dictionary lookup**
+       (`root/tree/tree/src/TBranchElement.cxx:3186` onward, with a `Fatal` at
+       `:3727`). A reader without the class takes its columns from the streamer
+       info either way, so splitting buys it nothing.
+    3. **An unsplit branch is never wrong.** One branch at `fType` 0, `fID` −1
+       holding each whole object produces a file ROOT opens and reads correctly.
+       What it costs is read performance on the writer's own files, which is the
+       writer's trade to make — the same kind of choice as basket sizing, below.
+
+  Two facts from scoping this are about the format rather than the decision, and
+  a writer that ignores the recommendation still needs them. **The shape is
+  policy; the names are format**: a writer may split less deeply than ROOT would,
+  but it may not invent names, because the names are what the offsets are
+  reconstructed from. And **a trailing dot on every top-level branch name is
+  strictly better than ROOT's default** — see
+  [Splitting §3.1](../04-ttree/Splitting.md#31-a-trailing-dot-changes-every-name-below).
 - **RNTuple.** ROOT's own specification is tracked here
   ([RNTuple](../05-rntuple/index.md)) and it is written for both directions.
 - **Policy.** Basket sizes, when to flush, how many entries per cluster, which

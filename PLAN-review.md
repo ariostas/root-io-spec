@@ -155,9 +155,12 @@ document, with the provenance stated.
 `FileHeader.md` §8 ties `fBEGIN = 64` to ROOT ≤ 3.04, which is true of ROOT and
 false of files in the wild: both g4tools files pair `fBEGIN = 64` with
 `fVersion = 40000`. §4 already says to take `fBEGIN` from the header, so this is a
-note against §8, not a rule change. Worth pairing with the observation in
-`PLAN-writing.md` §7 open question 2, which is what a 64-byte `fBEGIN` does to a
-file that later crosses 2 GB.
+note against §8, not a rule change. It pairs with
+[File header §10](spec/01-container/FileHeader.md#10-invariants) invariant 11,
+added 2026-09-21: a 64-byte `fBEGIN` leaves no room for the 75-byte large header,
+so updating such a file past 2 GB would write over its own first record — which
+makes these two g4tools files the live examples of that hazard rather than
+curiosities.
 
 ### R6 — `fCheckSum == 0`, and `TTime`
 

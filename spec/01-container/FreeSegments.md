@@ -116,6 +116,15 @@ own comment notes that the marker may therefore be absent on disk, in which case
 only recovery suffers. A reader that walks the chain and finds a key where the free
 list says there is a gap SHOULD trust the free list.
 
+> **In practice it is never missing.** Across both corpora, 15 of 225 files carry
+> interior free space at all, holding **139 gaps** between them — 4 bytes at the
+> smallest, 63 at the median, 10908 at the largest — and in all 15 the markers and
+> the free list agree exactly, on length as well as on offset. So the hedge above
+> is about what a reader must *tolerate*, not about what it will meet: writing the
+> marker is a **fixed** obligation on the write side
+> ([Writing a file §2.3](../06-writing/WritingFiles.md#23-updating-the-free-list-and-the-three-outcomes)),
+> and invariant 6 checks it rather than merely allowing it.
+
 ### 4.3 Directories are never freed
 
 `TKey::Delete` refuses to delete a key marked as a directory

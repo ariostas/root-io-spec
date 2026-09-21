@@ -111,6 +111,19 @@ causes them (`root/tree/tree/src/TBranchElement.cxx:476-480`): *"this is very
 annoying. It is also very annoying that the naming conventions for the
 sub-branch names are different as well."*
 
+**Whoever *chooses* the name should choose the dot.** This is a recommendation
+rather than a format rule, and it is here because the reader of this section is
+often the person with the choice in hand. With no trailing dot the parent prefix
+is dropped from every child (`root/tree/tree/src/TBranchElement.cxx:6217`, and
+§3.2 for the mechanism), which is **exactly the condition under which the counter
+bug of [Reading entries §4.1](ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
+fires**: two split objects of one class whose sub-branches carry no parent prefix
+have ambiguous member names, and ROOT resolves each counted array's counter by
+looking that name up over the whole tree, so both objects point at the first
+object's counter. In `alice_ESDs.root` that loses every element of
+`PrimaryVertex.fIndices`. A trailing dot makes the names unambiguous and the bug
+unreachable, at the cost of a longer name.
+
 ### 3.2 Base classes are elided, class-typed members are not
 
 The mechanism behind the first four rows is one branch in `TBranchElement`'s
