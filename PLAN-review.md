@@ -634,9 +634,16 @@ No action is required on the six, but four carry citations worth having, since a
 second implementation confirming a byte pattern is exactly the evidence
 `spec/00-conventions.md` §7 says a citation cannot give:
 
-- `Buffer.md` §2.3's nineteen `00 01 00 03 40 00 …` records — they count the same
-  nineteen across 235 files, which turns our "19 records" into a measurement two
-  readers agree on;
+- `Buffer.md` §2.3's nineteen records — they count the same nineteen across 235
+  files, which turns our "19 records" into a measurement two readers agree on.
+  **Checking that before quoting it back found our own sentence wrong** (fixed
+  2026-09-21): it said all 19 "begin `00 01 00 03 40 00`", and only the 14 `TH1D`
+  do. The 5 `TH2D` begin `00 03 00 03 00 03` — three bare version words, no byte
+  count among them — so the *count* and the *shape* were right and the bytes were
+  one instance quoted as if it were all of them. The sharper fact, now published:
+  the depth at which framing resumes follows the class chain, so a reader matching
+  one prefix has hard-coded a class rather than implemented the rule. Sixth
+  correction of the review, and the only one not found by a check;
 - `uproot-issue-222.root` as a field witness for `Buffer.md` §4's version-0,
   byte-count-2, no-checksum case;
 - `0x00D7BED2` as a wild member-wise `pair<double,double>` checksum for

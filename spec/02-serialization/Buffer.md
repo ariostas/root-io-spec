@@ -118,9 +118,18 @@ not always written: a ROOT 4 record holding a `TH1D` opens with the bare version
 words of `TH1D` and then `TH1`, and only the `TNamed` base inside is framed.
 
 > Measured on the two ROOT 4.00/00 files of the foreign corpus (`PLAN.md` §9.8):
-> 19 records across them — `TH1D`, `TH2D` — begin `00 01 00 03 40 00 ...`, a
-> version word, a version word, and only then a byte count. Nothing in the record
-> says so; only the file header's version does.
+> **19** histogram records across them open with bare version words instead of a
+> byte count, and they do not all open the same way —
+>
+> | Records | Class | First six bytes |
+> |---|---|---|
+> | 14 | `TH1D` | `00 01 00 03 40 00` — a version word, a version word, then a byte count |
+> | 5 | `TH2D` | `00 03 00 03 00 03` — **three** version words, and no byte count among them |
+>
+> so the depth at which framing resumes is a property of the class chain, not of
+> the file. Nothing in the record says any of it; only the file header's version
+> does. A reader that recognises one prefix and not the other has hard-coded a
+> class rather than implemented the rule.
 
 A reader MUST therefore decide from the class, not from the first word, whether
 a payload is framed, and what the first word then means. Reading a `TArray`'s
