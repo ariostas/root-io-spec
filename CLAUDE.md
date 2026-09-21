@@ -9,9 +9,12 @@ implement a reader without reading ROOT's C++ source. ROOT ships only one real
 format spec (RNTuple); its `TFile`/`TTree` documentation in `root/io/doc/TFile/`
 describes **release 3.02.06** and is substantially wrong for current ROOT.
 
-`PLAN.md` holds the structure, scope decisions and phasing. `spec/00-conventions.md`
-holds the conventions every specification document depends on. Read both before
-writing spec text; this file covers how to *work* here, not what to write.
+`PLAN.md` holds the structure, scope decisions and phasing, and
+`PLAN-writing.md` is the live sub-plan extending the write side (updating a file,
+free-space reuse, key ordering, schema evolution, split branches).
+`spec/00-conventions.md` holds the conventions every specification document depends
+on. Read those before writing spec text; this file covers how to *work* here, not
+what to write.
 
 ## Commands
 

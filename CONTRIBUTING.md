@@ -199,3 +199,5 @@ file does, and the reason goes in the README beside it.
 `PLAN.md` holds the structure, the scope decisions and what is left; `§8` is the
 route to the next release and `§9` lists every known gap. If you are looking for
 something to do, those gaps are ranked by how much of the corpora they block.
+`PLAN-writing.md` is the one open sub-plan, ordering the extension of the writing
+layer; a sub-plan is deleted when it is discharged, as `PLAN-ttree.md` was.

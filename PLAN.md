@@ -1601,6 +1601,38 @@ confirmed by corrupting `data/written/graph.root`.
 Element lists: **35 classes, 194 elements**, `TGraph` and `TGraphErrors` published
 with the rest.
 
+### 8.12 Extending the write side — the sub-plan (2026-09-21)
+
+§8.5 closed the scope the writing layer was given: the current versions of the most
+common types, created from nothing. **[`PLAN-writing.md`](PLAN-writing.md) orders
+the extension**, which takes in the five things decision 3 and
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) currently exclude:
+
+1. **free-space reuse**, 2. **key ordering** — cycles, order and deletion,
+3. **updating an existing file**, 4. **schema evolution from the writing side**,
+and 5. **writing a split `TBranchElement`**.
+
+The same shape as `PLAN-ttree.md`, which this one deliberately imitates: measured
+rather than estimated, every claim cited, and deleted when discharged. Three things
+in it are worth knowing even before the work starts:
+
+- **The order within a name group is not a convention.** ROOT never compares cycles
+  to pick a maximum — `Get`, `GetKey` and `FindKeyAny` all return the *first* match
+  in key-list order — so a writer that appends a new cycle at the end makes
+  `Get("h")` return the **oldest** copy, silently. Cycle order is **fixed**; the
+  order of distinct names is free.
+- **For a split tree, the shape is policy and the names are format.**
+  `TBranchElement::InitializeOffsets` reconstructs each member's offset by string
+  surgery on the branch name and a dictionary lookup, with a `Fatal` on failure. A
+  writer may split less deeply than ROOT; it may not invent names.
+- **No file in 218 carries a class at two versions**, so the situation schema
+  evolution exists for is unwitnessed in the corpora. Only a written file can
+  exercise it, and producing one needs the update mode item 3 adds.
+
+Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-not-specified)
+all still say these are out of scope, and **they stay that way until the work lands**
+— `PLAN-writing.md` §9 lists exactly what each becomes.
+
 ## 9. Known gaps
 
 Every gap the written documents record. **None is a hole in the prose**: in every
