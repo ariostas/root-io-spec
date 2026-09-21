@@ -36,10 +36,11 @@ read by HTTP range request rather than downloaded (see `LARGE.toml`).
 
 ## Tier `core` — 24 files, 5.5 MB
 
-Curated. The listing has roughly forty near-identical `TGeoManager` geometry
-demos; one of them is here and the rest are not, because they differ only in their
-geometry. Each file below covers something no fixture and no other listed file
-does.
+Curated: each file below covers something no fixture and no other listed file
+does. The `TGeoManager` geometry demos used to be excluded from here for being
+near-identical, with `barres.root` standing in for the family; they now have a tier
+of their own and the reason is worth reading, because it is a lesson about
+corpora rather than about geometry.
 
 | File | ROOT | Why it is here |
 |---|---|---|
@@ -86,6 +87,36 @@ listed at <https://root.cern/files/rootbench/> and there is little point in
 mirroring more of them here: they are all flat analysis trees, and two is enough to
 notice a regression.
 
+## Tier `geometry` — 46 files, 19 MB
+
+The `TGeoManager` sweep from <https://root.cern/files/>, in seven ROOT releases
+from 5.17/07 to 6.08/06 — 45 of the 46 are 5.17 to 5.27, and one is 6.08/06.
+They **are** near-identical — mostly one `TGeoManager` per file, differing only in
+the detector — and on that ground they were deliberately left out, with
+`barres.root` in the `core` tier standing in for all of them.
+
+**That was wrong, and the way it went wrong is the point.** Somebody fetched the
+sweep by hand while chasing a question, four of the files became published evidence,
+and nothing recorded that the corpus the measurements used was larger than the
+corpus the manifest defined. `PLAN-review.md` §4.1 found the gap: `build/cern/`
+held 72 files where this manifest listed 26. What rested on the unlisted 46:
+
+| Where | What |
+|---|---|
+| [Streamer information §9.2](../../spec/02-serialization/StreamerInfo.md) | four of the five files in its `fBaseVersion` table — `aleph`, `atlas`, `cms` and `hades.root`, the counterexample that stopped a false invariant being published. Only `uproot-mc10events.root` was listed |
+| [Streamer-driven reading §6.1](../../spec/02-serialization/StreamerDriven.md) | most of the 48 `TAtt3D` witnesses, which are what prove the two g4tools files' missing info is the writer's fault and not ROOT's |
+| Every "over both corpora" file count | 471 directory records, 307 files carrying infos, 1368 `TStreamerSTL` elements |
+
+So they are listed, and the numbers that rest on them are reproducible. Two things
+are true at once: a corpus earns its place file by file (`PLAN.md` §3.4), and a
+file that has already been cited is *in* the corpus whether the manifest says so or
+not. The second is what this tier records.
+
+They are not free: `check_invariants.py` over all 72 takes about four minutes
+against one over the 26. They also add almost nothing to the entry coverage —
+28 126 branch-baskets against 28 125 without them — because a geometry file has no
+trees. **Their value is per-class breadth, not per-entry.**
+
 ## `LARGE.toml` — 8 files, 1.3 GB to 5.3 GB, never downloaded
 
 root.cern serves `Accept-Ranges: bytes`. The header (512 bytes) and the
@@ -112,11 +143,13 @@ What that buys, none of which any fixture covers:
 
 ## Standing result
 
-Run 2026-09-18, tier `all`:
+Run 2026-09-21, tier `all`:
 
-- `tools/check_invariants.py`: **26 files, 0 failures**, and every branch-basket
-  in them decoded — 1695 of 1695 — with the `NOT CHECKED` reasons each naming a
-  class or a codec rather than passing anything over.
+- `tools/check_invariants.py`: **72 files, 0 failures**, and every branch-basket
+  in them decoded — 1696 of 1696 — with the `NOT CHECKED` reasons each naming a
+  class or a codec rather than passing anything over. Re-measured 2026-09-21 with
+  the `geometry` tier listed: 46 more files and **one** more branch-basket, which
+  is the whole story of what a geometry file adds.
 - `tools/coverage_probe.py`: of the blocked records, the great majority are RooFit
   classes in the two `stressRooFit_*` files; the partial are overwhelmingly ROOT
   2.x histograms in files with no streamer infos, which is the version floor of

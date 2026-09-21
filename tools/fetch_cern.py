@@ -15,7 +15,8 @@ it is evidence. Here it is evidence.
 
   tools/fetch_cern.py                    the core tier: 24 files, 5.5 MB
   tools/fetch_cern.py --tier physics     real production trees, 27 MB more
-  tools/fetch_cern.py --tier all         both
+  tools/fetch_cern.py --tier geometry    the TGeoManager sweep, 46 files, 19 MB
+  tools/fetch_cern.py --tier all         all three
   tools/fetch_cern.py --check            verify what is already downloaded
   tools/fetch_cern.py --headers          check gen/cern/LARGE.toml by range request
   tools/fetch_cern.py --dir DIR          somewhere other than build/cern
@@ -184,8 +185,8 @@ def main(argv: list[str]) -> int:
 
     check_only = "--check" in argv
     tier = argv[argv.index("--tier") + 1] if "--tier" in argv else "core"
-    if tier not in ("core", "physics", "all"):
-        raise SystemExit(f"unknown tier {tier!r}: core, physics or all")
+    if tier not in ("core", "physics", "geometry", "all"):
+        raise SystemExit(f"unknown tier {tier!r}: core, physics, geometry or all")
     target = Path(argv[argv.index("--dir") + 1]) if "--dir" in argv else DEFAULT_DIR
     target.mkdir(parents=True, exist_ok=True)
 

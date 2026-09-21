@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""Verify every source citation in `spec/` against the pinned ROOT submodule.
+"""Verify every citation in `spec/`: source lines, and the files they measure.
 
 `spec/00-conventions.md` §7 promises that citations refer to the pinned commit.
 This checks that the promise holds: that each cited file exists in the submodule
 and that each cited line number is within that file. It catches the failure mode
 the convention is otherwise vulnerable to -- a citation that silently goes stale
 when the submodule is bumped.
+
+It also checks the other kind of citation, which went stale twice before anyone
+noticed: a **file** the specification names as evidence must be a fixture in
+`data/` or listed in a corpus manifest, so that `fetch_foreign.py` or
+`fetch_cern.py` can fetch it and the measurement can be reproduced. On 2026-09-18
+`aod_flushed.root` and `gallery.root` were cited and in no manifest; on 2026-09-21
+so were the four `TGeoManager` files carrying `StreamerInfo.md` §9.2's whole
+`fBaseVersion` table (`PLAN-review.md` §4.1). Both were fixed by hand. This is what
+stops a third.
 
 Requires the submodule to be checked out. Needs no third-party packages.
 
@@ -17,6 +26,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -77,6 +87,65 @@ PUBLISHED = (
 )
 
 
+#: ROOT file names that appear in `spec/` and are deliberately not corpus files:
+#: an illustration, a placeholder, a file an experiment wrote and threw away, or a
+#: name quoted out of another file's header. Anything else must be fetchable.
+NOT_CORPUS = {
+    "your-file.root": "a placeholder in a command example",
+    "map.root": "an illustration",
+    "Muons.root": "an illustration",
+    "base.root": "written and discarded by the update experiment of WritingFiles 13",
+    "collide.root": "written and discarded by the version-collision experiment of WritingObjects 8.5",
+    "noop.root": "written and discarded by the no-op update experiment of WritingFiles 13.9",
+    "HcompassF_226Ra_run_2_20231117_085722.root":
+        "the internal name uproot-issue-861.root carries in its own header, quoted",
+}
+
+ROOT_FILE = re.compile(r"`?([A-Za-z0-9_.\-]+\.root)`?")
+
+
+def fetchable() -> set[str]:
+    """Every file name a fixture or a manifest accounts for."""
+    names = {p.name for p in (REPO / "data").rglob("*.root")}
+    for manifest in ("gen/foreign/MANIFEST.sha256", "gen/cern/MANIFEST.sha256"):
+        for line in (REPO / manifest).read_text().splitlines():
+            if line[:1] and line[0] in "0123456789abcdef":
+                names.add(line.split()[-1].rsplit("/", 1)[-1])
+    large = tomllib.loads((REPO / "gen/cern/LARGE.toml").read_text())
+
+    def walk(value):
+        if isinstance(value, dict):
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+        elif isinstance(value, str) and value.endswith(".root"):
+            names.add(value.rsplit("/", 1)[-1])
+
+    walk(large)
+    return names
+
+
+def check_cited_files(paths: list[Path]) -> list[str]:
+    """Every .root the specification names is a fixture or in a manifest."""
+    known = fetchable()
+    failures = []
+    for path in paths:
+        cited = set()
+        for name in ROOT_FILE.findall(path.read_text()):
+            if name in known or name in NOT_CORPUS:
+                continue
+            cited.add(name)
+        for name in sorted(cited):
+            failures.append(
+                f"{path.relative_to(REPO)}: cites {name}, which is neither a "
+                f"fixture in data/ nor listed in a corpus manifest, so nothing "
+                f"can fetch it. Add it to a manifest, or to NOT_CORPUS in "
+                f"tools/check_citations.py if it is not evidence")
+    return failures
+
+
 def check_published_count(paths: list[Path]) -> list[str]:
     """Whether the front pages quote the citation total they actually have."""
     total = sum(len(CITATION.findall(p.read_text())) for p in paths)
@@ -101,6 +170,7 @@ def main(argv: list[str]) -> int:
     paths = [Path(a).resolve() for a in argv] or [
         p for p in sorted((REPO / "spec").rglob("*.md")) if p not in NOT_OURS]
     failures = check(paths)
+    failures += check_cited_files(paths)
     if not argv:
         failures += check_published_count(paths)
     for f in failures:

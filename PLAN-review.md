@@ -1,12 +1,11 @@
 # PLAN-review — the rootfilespec review, issue #1
 
 **Status: in progress.** Written 2026-09-21; **R1–R7 done** the same day — the
-three defects of §2, all four gaps of §3, and the item-3 attribution. The reply
-and R8 remain; §4.1 is a new corpus question for the user. Every item below was
-re-checked against the corpora and against our own reference files *before* being
-planned, and the verification is recorded per item, because the point of a review
-is what it turns out to be right about.
-
+three defects of §2, all four gaps of §3, the item-3 attribution, and §4.1's
+corpus question. The reply and R8 remain. Every item below was re-checked against
+the corpora and against our own reference files *before* being planned, and the
+verification is recorded per item, because the point of a review is what it turns
+out to be right about.
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
 [rootfilespec](https://github.com/nsmith-/rootfilespec) — a pure-Python,
@@ -520,7 +519,7 @@ over: the zero checksum, and a reader bug nothing else in either corpus exposes
 (R6). The reason is recorded in `gen/foreign/MANIFEST.sha256`'s header, since that
 corpus has no README. 155 files now.
 
-### 4.1 A discrepancy this turned up, and it is the user's call
+### 4.1 A discrepancy this turned up ✅ resolved 2026-09-21
 
 **`build/cern/` holds 72 files and `gen/cern/MANIFEST.sha256` lists 26** — 24 core
 plus 2 physics. The other **46 are the `TGeoManager` demo sweep** from root.cern
@@ -528,10 +527,11 @@ that `CLAUDE.md` says is deliberately excluded, "~40 near-identical demos and on
 one is included". They were fetched by hand in an earlier session, not by
 `tools/fetch_cern.py`, and nothing records them.
 
-That matters because **they are already load-bearing evidence**. The five files of
-[`StreamerInfo.md` §9.2](spec/02-serialization/StreamerInfo.md)'s `fBaseVersion`
-table are `aleph`, `atlas`, `cms` and `hades.root`, all four outside the manifest;
-so are most of the 48 `TAtt3D` witnesses R2 relied on. And every "over both
+That matters because **they are already load-bearing evidence**. Four of the five
+rows of [`StreamerInfo.md` §9.2](spec/02-serialization/StreamerInfo.md)'s
+`fBaseVersion` table are `aleph`, `atlas`, `cms` and `hades.root`, every one
+outside the manifest — only `uproot-mc10events.root` was listed — and so are most
+of the 48 `TAtt3D` witnesses R2 relied on. And every "over both
 corpora" file count published today — 471 directory records, 307 files carrying
 infos, 1368 `TStreamerSTL` elements — was measured over 155 + 72, not 155 + 26.
 
@@ -550,6 +550,40 @@ Two honest resolutions, and the choice is a corpus-scope decision like §5's:
 **Recommendation: add them as a tier**, because the alternative is to un-publish
 evidence that is correct. Either way the counts should then say which corpus they
 were measured over, which none of them currently do.
+
+**Done 2026-09-21**, that way. `gen/cern/MANIFEST.sha256` gains a `geometry` tier
+of 46 files, 19 MB, in seven ROOT releases from 5.17/07 to 6.08/06, and
+`fetch_cern.py --tier geometry`
+fetches it. Every row was verified twice before it was written: the digest against
+the local file, and the size against a `HEAD` request to
+`https://root.cern/files/<name>`, so all 46 are fetchable at the path the manifest
+claims. `--tier all` verifies 72 of 72.
+
+The counts that rested on the unlisted files are re-measured rather than adjusted:
+**227 files** in both corpora, 219 carrying a `StreamerInfo` record, and
+`ForwardingStreamers.md`'s table moves from 168/33/1 of 177 to **211/79/1 of 219**.
+That `THashList` row is its own confirmation — it names `TGeoManager::fHashPNE` as
+one of two sources, and it rose by exactly 46.
+
+**How far the drift had spread:** `PLAN.md`'s own corpora table already said
+`gen/cern/` was 72 files. So the documentation had been describing the corpus the
+measurements used for some time, and only the manifest — the one artefact a third
+party would fetch from — said 26.
+
+**The lesson is not "add the files", it is that this had already happened once.**
+`gen/cern/README.md`'s standing result records `aod_flushed.root` and
+`gallery.root` being cited and in no manifest on 2026-09-18, fixed by hand; this is
+the same failure three days later, with four files and a whole invariant table
+behind it. So it is now a check rather than a habit:
+**`tools/check_citations.py` fails on any `.root` the specification names that is
+neither a fixture in `data/` nor listed in a corpus manifest.** Seven names are
+allowlisted in `NOT_CORPUS`, each with its reason — a placeholder, two
+illustrations, three files an experiment wrote and discarded, and the Windows path
+`uproot-issue-861.root` carries in its own header. Provoked by unlisting
+`aleph.root`: the check names `StreamerInfo.md` as the document that would have
+become unreproducible.
+
+That check is the durable half of this item. The tier is just the backlog it found.
 
 Worth asking in the reply whether there is a reason `gen/foreign/` should track the
 whole of scikit-hep-testdata rather than a selection. The argument for is that

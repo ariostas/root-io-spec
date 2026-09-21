@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Tests for tools/check_coverage.py, the published-invariant audit.
+"""Tests for the two checks that keep this project's own claims checkable.
 
-The tool's whole value is that it fails, so these drive the three ways it can:
-an entry with no check and no reason, a reason for something that is checked
-after all, and a label a tool reports that no document publishes.
+`tools/check_coverage.py` is the published-invariant audit, and its whole value is
+that it fails, so these drive the three ways it can: an entry with no check and no
+reason, a reason for something that is checked after all, and a label a tool
+reports that no document publishes.
+
+`check_citations.check_cited_files` is the same idea for evidence rather than
+rules: a `.root` the specification names must be fetchable, or the measurement
+resting on it cannot be reproduced. That went unnoticed twice before it was a
+check.
 """
 
 import subprocess
@@ -13,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import check_citations  # noqa: E402
 import check_coverage  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
@@ -102,6 +109,46 @@ class TheToolFails(unittest.TestCase):
         out = self.run_tool(spec={path: doctored})
         self.assertEqual(out.returncode, 1)
         self.assertIn("FileHeader 10.11", out.stderr)
+
+
+class EveryCitedFileIsFetchable(unittest.TestCase):
+    """check_citations.check_cited_files, added after PLAN-review.md 4.1."""
+
+    SPEC = REPO / "spec"
+
+    def paths(self):
+        return [p for p in sorted(self.SPEC.rglob("*.md"))
+                if p not in check_citations.NOT_OURS]
+
+    def test_the_repository_passes(self):
+        self.assertEqual(check_citations.check_cited_files(self.paths()), [])
+
+    def test_the_fixtures_and_both_manifests_are_read(self):
+        known = check_citations.fetchable()
+        for name in ("file-minimal.root",            # data/
+                     "uproot-issue283.root",         # gen/foreign, added by R6
+                     "aleph.root",                   # gen/cern geometry tier
+                     "pippa.root"):                  # gen/cern core tier
+            self.assertIn(name, known, name)
+
+    def test_a_cited_file_in_no_manifest_fails(self):
+        """The case that went unnoticed twice: evidence nothing can fetch."""
+        path = self.SPEC / "01-container" / "FileHeader.md"
+        original = path.read_text()
+        try:
+            path.write_text(original + "\n> Measured on `not-a-corpus-file.root`.\n")
+            bad = check_citations.check_cited_files([path])
+            self.assertEqual(len(bad), 1)
+            self.assertIn("not-a-corpus-file.root", bad[0])
+            self.assertIn("nothing", bad[0])
+        finally:
+            path.write_text(original)
+
+    def test_the_illustrative_names_are_named(self):
+        """NOT_CORPUS is an allowlist, so each entry carries its reason."""
+        self.assertIn("your-file.root", check_citations.NOT_CORPUS)
+        for name, why in check_citations.NOT_CORPUS.items():
+            self.assertTrue(why.strip(), name)
 
 
 if __name__ == "__main__":

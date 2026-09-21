@@ -19,7 +19,7 @@ Measured, 2026-09-21, by the checks in `tools/`:
 | Class versions checked against `ClassDef` | 55 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 85 files, 0 failures |
-| Invariants over both corpora | 180 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
+| Invariants over both corpora | 227 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 28059 of 28126 branch-baskets, 99.8% |
 | Unit tests | 334 |
 
@@ -364,7 +364,7 @@ something no fixture and no other listed file does.
 
 | | Files | Reach | Provenance |
 |---|---|---|---|
-| `gen/cern/` | 72 (+8 by range request, +2 physics) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
+| `gen/cern/` | 72 — 24 core, 46 geometry, 2 physics (+8 more by range request) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
 | `gen/foreign/` | 155 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
 
 A lead must be diagnosed against the pinned source and resolved to one of four
@@ -755,7 +755,7 @@ asserting it, and the measurement moved decision 7:
   **do** carry them and do decode. Decision 7's "older files carry no streamer
   infos at all" was true of one file and wrong as a rule; the claim is now
   "specified for 4.00 and later, works in practice back to 3.04/02".
-- **`TBranch` is the only class in 180 files below a hand-written threshold.**
+- **`TBranch` is the only class in 227 files below a hand-written threshold.**
   Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
   `TLeafObject` that occurs anywhere in either corpus is above the version at
   which that class becomes streamer-info driven. That is what makes §9.1's
@@ -1751,11 +1751,15 @@ So the tally for the review is **five false or incomplete published claims**, an
 every one of them was in the population nothing was checking. That is the durable
 lesson and it is now enforced rather than remembered.
 
-**A corpus discrepancy came out of R6 and is `PLAN-review.md` §4.1**, unresolved
-and the user's call: `build/cern/` holds 72 files where `gen/cern/MANIFEST.sha256`
-lists 26, and the 46 extras — the `TGeoManager` demo sweep — are already evidence
-in `StreamerInfo.md` §9.2. Failure and entry figures do not depend on them; file
-counts do.
+**A corpus discrepancy came out of R6 and is resolved as `PLAN-review.md` §4.1.**
+`build/cern/` held 72 files where `gen/cern/MANIFEST.sha256` listed 26, and the 46
+extras — the `TGeoManager` demo sweep — were already evidence in
+`StreamerInfo.md` §9.2. They are now a `geometry` tier, every row verified against
+a `HEAD` request to root.cern, and the counts that rested on them re-measured: 227
+files in both corpora, 219 carrying a `StreamerInfo` record. **The durable half is
+a check, not the files**: this had already happened once, on 2026-09-18, so
+`check_citations.py` now fails on any `.root` the specification names that no
+fixture and no manifest accounts for.
 
 RooFit (their items 7–10) is a scope decision against decision 8 and is left open;
 the sub-plan argues for a middle course — treat three of the four as
@@ -1929,7 +1933,7 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-26 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 155 files
+72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 155 files
 (4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's

@@ -96,15 +96,19 @@ containers** are here — `THashList`, `TSortedList`, `TOrdCollection`,
 because they add no persistent state to the class they derive from. "Writes only
 its bases" is the intended behaviour, not a side effect.
 
-Measured across the 180 files of both corpora, ROOT 2.24/00 to 6.36/02, of which
-177 carry a `StreamerInfo` record at all: **no record** has one of these as its
+Measured across the 227 files of both corpora, ROOT 2.24/00 to 6.36/02, of which
+219 carry a `StreamerInfo` record at all: **no record** has one of these as its
 class, and exactly three are named by a streamer info anywhere.
 
-| Class | Where it turns up | Files, of 177 |
+| Class | Where it turns up | Files, of 219 |
 |---|---|---|
-| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 168 |
-| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 33 |
+| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 211 |
+| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 79 |
 | `TVirtualPerfStats` | a `kBase` of `TTreePerfStats`, in `aod_flushed.root` | 1 |
+
+> The `THashList` row rose from 33 to 79 when `gen/cern/`'s geometry tier was
+> listed on 2026-09-21, which is the row predicting its own increase: 46 more
+> `TGeoManager` files, 46 more `fHashPNE`.
 
 A reader can carry those three and treat the rest as a lookup table for the day a
 file surprises it. `tools/rootfile.py` does exactly that, and says so.

@@ -97,13 +97,21 @@ failure **is** evidence rather than a lead. It also reaches from ROOT 2.24/00 to
 ```sh
 tools/fetch_cern.py                         # core tier: 24 files, 5.5 MB
 tools/fetch_cern.py --tier physics          # 2 production trees, 27 MB more
+tools/fetch_cern.py --tier geometry         # the TGeoManager sweep, 46 files, 19 MB
+tools/fetch_cern.py --tier all              # all three, 72 files
 tools/fetch_cern.py --headers               # the 8 multi-GB files, ~8 KB of traffic
 tools/coverage_probe.py --summary build/cern/*.root
 tools/check_invariants.py build/cern/*.root
 ```
 
-`gen/cern/README.md` says why each file is listed and what gaps it exposes; the
-listing has ~40 near-identical `TGeoManager` demos and only one is included.
+`gen/cern/README.md` says why each file is listed and what gaps it exposes. The ~40
+near-identical `TGeoManager` demos used to be excluded for being near-identical;
+they are the `geometry` tier since 2026-09-21, because four of them turned out to
+carry `StreamerInfo.md` §9.2's whole `fBaseVersion` table and nothing recorded that
+the corpus the measurements used was bigger than the corpus the manifest defined
+(`PLAN-review.md` §4.1). **A file the specification cites is in the corpus whether
+the manifest says so or not**, which is now a check: `check_citations.py` fails on a
+cited `.root` that no fixture and no manifest accounts for.
 
 `--headers` is the interesting one. root.cern serves `Accept-Ranges: bytes`, so the
 header and free-segment record of a 5 GB file cost a few hundred bytes each, and

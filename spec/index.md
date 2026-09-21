@@ -41,7 +41,7 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 
 Behind it: **79 reference files with 2021 byte-level assertions, 1599 source
 citations checked against the pinned ROOT tree across 48 documents**, and the
-invariants of every layer run over 180 files this project did not write — ROOT
+invariants of every layer run over 227 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
 The writing layer adds fourteen files this project *did* write, with 493
@@ -138,7 +138,7 @@ they are ROOT's choices, not requirements of the format.
 ### How far back it reads
 
 The two halves of the format have different floors, and the difference is
-measured rather than estimated: 180 files from ROOT releases 2.24/00 to 6.36/02
+measured rather than estimated: 227 files from ROOT releases 2.24/00 to 6.36/02
 are read end to end whenever the checks run.
 
 **The container layer has no practical floor.** The oldest file available,
@@ -178,7 +178,7 @@ regenerate from the leaf, which
 [TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets) specifies;
 and one file ROOT itself refuses to open.
 
-**No class in 180 files is below a hand-written version threshold except
+**No class in 227 files is below a hand-written version threshold except
 `TBranch`, whose legacy layout is now specified** —
 [TBranch §13.1](04-ttree/TBranch.md#131-the-layout-below-version-10) covers
 versions 6 to 9. The others that keep a legacy layout under a threshold — `TH1`,

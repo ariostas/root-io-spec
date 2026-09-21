@@ -11,8 +11,17 @@
 #
 # Tier "core" is 24 files and 5.5 MB: the version sweep, the divergent classes and
 # the containers that find things. Tier "physics" is 27 MB of real production
-# trees, useful as a regression corpus and nothing else. The multi-gigabyte files
-# are in LARGE.toml and are read by range request, never downloaded.
+# trees, useful as a regression corpus and nothing else. Tier "geometry" is the
+# TGeoManager sweep, below. The multi-gigabyte files are in LARGE.toml and are read
+# by range request, never downloaded.
+#
+# Tier "geometry" is the TGeoManager sweep: 46 files, 19 MB, in seven ROOT
+# releases from 5.17/07 to 6.08/06. They were excluded as near-identical until
+# 2026-09-21, when
+# PLAN-review.md 4.1 found that four of them were already load-bearing evidence --
+# StreamerInfo.md 9.2's fBaseVersion table is aleph, atlas, cms and hades.root --
+# and that most of the TAtt3D control of StreamerDriven.md 6.1 is here too. They
+# are listed so the measurements that rest on them are reproducible.
 b420976630878093fe8f014420ce7a23a82e841eadbee890d369e744e19179dc     391645  2.24/00   core     pippa.root
 e46c683f56a4fe2e38037ef963a4ef27f3a175cb03c1f7230c093ac64f516a65      44364  3.04/02   core     mlpHiggs.root
 f7e9902ca2e33df2488ae91aab5293c2a1ffaa3bf6a3930c70d608233a6b785c       8711  3.05/07   core     H1display.root
@@ -39,3 +48,49 @@ aa6ed8d4bb821ab55c0a5ecb7cd2e05f098fc6a355ca6025e9f5e83c5fc62db6       2514  6.3
 2503d9d372cb4ffd59b32b0d46a346a1291786850eeafd3f6e5ec943500d9d7a     396878  5.01/01  core     gallery.root
 b10d2e4a1ac737ee6ebadacdab01987838ca7d18a64f6fc244a4b3bdc9bb11d6    7911341  6.23/01   physics  rootbench/SMHiggsToZZTo4L.root
 3e82490972377556e5d601bed82cd2a8080f017ffdb193100b418c7ca710479e   19009234  6.23/01   physics  rootbench/data_A.GamGam.100k.root
+6bc13067c701045dd55a4f2620abf607c84b3e292dec8f9e0bab1ba9363c0b44      11461  6.08/06  geometry LHCb002_data_v1.root
+1834ecafcb5bb3733f6a8840d2ca20e669bd0ebae6c6cd51540e8c0d89b7e620     115251  5.17/09  geometry aleph.root
+9f2deba12e215af0444ed954149d2c51e17a9cbbc5f6f3bcde03fcc9526491d0       9645  5.17/07  geometry alice_ESDgeometry.root
+7d66bf8c56906cab64aabd07151a403047c007b2eab4cbb2c83d10f40d0d3c46    4031593  5.23/01  geometry atlas.root
+f28101244733b7c83fee17e97d0106b00003a10bbde313c53f169b81c39a7e07       5215  5.23/01  geometry atlas_diff.root
+f410c43892ed78a5f2ac3bd0d69dac432c2240a7a2fc71862deac4942d81381d     992857  5.17/09  geometry babar.root
+389b58a005eee27635147f49c07553f68b1b1b327a0600310c2fd3e103c2daf1     204817  5.23/03  geometry belle.root
+4a6148c783cfbeff978e8fbb97deaa0ff462628a440864f0a9626e21d29b80dd      39115  5.23/03  geometry bes.root
+7d4c61c34a5c799bdffee6958d6b0c56b2c29767d5c6ec027321c1f8270dc5d3     117855  5.17/09  geometry brahms.root
+f7f6a04d28672bccbf3454eb94ef4f502f7f74a4107853ad22976dc311b7d939     815330  5.23/03  geometry btev.root
+909272a4f07c4785afb99c3c6b9401ca04fe644ccb07a4bff6c1ba72d4dcf7c3    1397212  5.17/09  geometry cdf.root
+55da29d16c395087dd0dd6d9dc576e6f36e9fe008e353cea6442a80f27ad3bd2      18836  5.23/03  geometry chambers.root
+87b6bcb90f81aed4ca752e95a68abedbbadaca34d308031b73dc02f8639d4d63      63121  5.23/03  geometry cheongwadae.root
+630eeb6db362e3286df55019ef65e28e63efbc3f22fb02717feba6ef3d784abf    1469246  5.17/09  geometry cms.root
+cbcf076d4a66366b492ea04cf5340563328eda812e0f8aaec4d60e13fbbb4b0a      10442  5.18/00  geometry cms_calo_hist.root
+67d1e4a4896414157c43090c54619724aa0e65a9b1a2cd910ed1fc9435e280d8    2200091  5.17/09  geometry d0.root
+5c5ab5eba4e9630988790431f2420ea7c02c8e20b9683a707725717a8a81c2b8     418098  5.23/03  geometry dubna.root
+6db1058dabf7ac7b4c96a61e3ddde586e33ae5a5ae218af0d088a4dd3a215b52      69774  5.23/03  geometry e907.root
+a657b698e655a85f5b73db35a01e0fe0f1d9b1e292b3757e8028f3561317558a    2264125  5.27/07  geometry europe.root
+0660aeb541797d0e8f5ca859d2c2481b59cb694467efb4a79e3f476693546b32      26130  5.23/03  geometry felix.root
+79e3bfa02d62d21b663a1d9838270734bd62b72b409c9b74e8e0748dc4deafaf      13312  5.23/03  geometry ganil.root
+cdf7cb127d458d24d2f0fd7e3c97a87bbc916da71883491a94910c99512f067a     323666  5.23/03  geometry gem.root
+61c98bede3c3fc30ab820f8c38b34b2f7e444d042c6627828cc58a55ebdd174c      79040  5.17/09  geometry hades.root
+7d4fd2ba94e67d7a501e1401f90755954c55d8e8aa65f25557d5cbe73e96d8c5      37495  5.23/03  geometry hermes.root
+af4989022c0406d92bac23956009f2bbcf82bf4f1997884cd08b36610da48ab6     233233  5.23/03  geometry integral.root
+e14d61c82e6e8b2fb30834a2d4e474aab48b604c2d6862cf0c3daa2d800dbdf8      23557  5.23/03  geometry lego.root
+a53c5a53385ea81cbc23aca7fd4e74261218bba94432e463b00c78bb508ccb29     336049  5.17/09  geometry lhcbfull.root
+5beebd1c532f5468cb7ef71a73111c12b681de12646ef2eea629f13ad55563f3      36121  5.23/03  geometry minos_far.root
+93d4adc5cf1d70899df96f4d9e056c8dacc5009157925c514ec0d671c960ed1a      40852  5.23/03  geometry minos_near.root
+a08748b831b1fa4bb100610a6a04c41ee8f47dae0a12818e02d53db8fda20331      16436  5.23/03  geometry na35.root
+a60fcafe5807f5613bf14b1a2ed2a12b5c03662d0e8f24bdc417541d811137ce      56361  5.23/03  geometry na47.root
+fc54b0790a786f0c4998d2853bf2d8ce2075b5154139f702efc34354c711f51c      95267  5.23/03  geometry na49.root
+b337cabefc34e260dc39935df30c4433071ce907efd22f4f089008ac0d240bf8      56692  5.23/03  geometry p326.root
+5695daa4309d2421b453d1d1ca3cb1c69b3f202c1c00ca668d2fd409f3fcae4f     133281  5.23/03  geometry phenix.root
+1025d5624e366aa5aed7f99de85e59aae7cd824aaa1bacd3f049469d69e2aee0      89408  5.23/03  geometry phobos2.root
+948684b0d2c282765ec67e31b51a4a67a0afc86567262e37d1cd1baec3e20160      80019  5.23/03  geometry robot.root
+b818133480f8e93b70e33a8b0193c108383918ed4bc6fa2bcb6a3c5db0419501     780050  5.23/03  geometry sdc.root
+c471d7b2b2f377196a10c9fde2c5ebb8f479d0102f64512d918b4235eaedde2d     161555  5.23/03  geometry sld.root
+d477fa27654c06ed79dc1d06338ef33c48ab8181be11db2a832c5d53aa75deec     639539  5.23/03  geometry south_gate.root
+e32a92710a69a664129896c08303dcdee2aac27eaa881a736dfbbc1e841820b4     483717  5.23/01  geometry star.root
+4780d15583efbf8a1968a1888c9e9bf6d1f4b953166b155942207c475f8dae43      27026  5.23/03  geometry station1.root
+2803b688bf8cf57ec6a54a51e1712b8238dec71352398f207995cc631a4b4f71      50518  5.23/03  geometry station2.root
+67ba1219d5fecf126100ed7e6c15f0906b5aa22d207b0f733cb7f4f9ffd8fb40      59507  5.23/03  geometry tank.root
+d85aab797e59a008043ce783144bc0f28549df9d441002d4b218b2f70828aeed     591214  5.23/03  geometry tesla.root
+2cf3644fc1fd5dbdba23de38800ad9ab5d862b535d07f527d99933dc7198f5e1     995631  5.27/07  geometry usa.root
+fcc714e6ef2c436f43468b7c1685a0558dfab3c2939598dafa727d18ef37feb4      11913  5.23/03  geometry wa91.root

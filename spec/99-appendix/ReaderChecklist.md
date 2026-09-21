@@ -202,10 +202,10 @@ Four checks, in increasing order of strength:
 3. **Consumption.** Decode an object and compare where you stopped against the
    byte count, and an entry against its span in the basket. Most errors of
    understanding show up here as an offset that is wrong by two or four bytes.
-4. **Files you did not choose.** This project's two corpora — 180 files spanning
+4. **Files you did not choose.** This project's two corpora — 227 files spanning
    ROOT 2.24/00 to 6.36/02 — found errors in this specification that its own
    fixtures did not, because a fixture tests what its author already understood.
-   The two halves differ in what a failure means: the 26 files of `gen/cern/` were
+   The two halves differ in what a failure means: the 72 files of `gen/cern/` were
    published by the ROOT team and a failure there **is** evidence, while the 155 of
    `gen/foreign/` come from uproot's regression suite and include files uproot
    itself wrote, so a failure there is a lead to be traced to a writer.
