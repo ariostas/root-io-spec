@@ -3,12 +3,12 @@
 **Status: ordered, not started.** Written 2026-09-21 against the pinned submodule
 (`v6-40-04`) and measured over the 225 corpus files that `tools/rootfile.py`
 loads, plus five byte-level experiments run with ROOT 6.40.04 — the release the
-submodule pins — whose outputs are quoted throughout. Everything in §5 is a
+submodule pins — whose outputs are quoted throughout. Everything in §2 and §3 is a
 measurement, not an estimate.
 
 `PLAN.md` §8.4 ordered the first half of the write side and §8.5 closed it: a
 third party following `spec/06-writing/` can create a file of histograms,
-profiles, graphs and flat trees. This sub-plan orders the five things that were
+profiles, graphs and flat trees. This sub-plan orders four of the things that were
 deliberately left out of that scope and are now being brought into it:
 
 1. **free-space reuse** — placing a record in a gap rather than at the end;
@@ -16,13 +16,21 @@ deliberately left out of that scope and are now being brought into it:
 3. **updating an existing file** — the mode that needs both of the above;
 4. **schema evolution on the write side** — what a writer must record so that a
    reader at a *different* class version can still read the file, without this
-   project ever specifying how to *write* an earlier version;
-5. **writing a split `TBranchElement`**.
+   project ever specifying how to *write* an earlier version.
+
+The four are one feature seen from four angles: **a writer that can reopen its own
+output.** The first two are machinery the third needs; the fourth is what the third
+turns out to require as soon as the file it reopens was written by a different
+ROOT.
+
+A fifth was drafted and cut — **writing a split `TBranchElement`**. Reading one is
+finished and stays finished; the write side gets a scope statement with its
+reasoning instead of a procedure, and the subsection after W4 is that reasoning.
 
 `PLAN.md` decision 3 and
-[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) both name these as
-out of scope. **Both have to change when this lands**, and §9 says exactly how.
-Until then they are accurate and this file is the intention.
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) name all of it as
+out of scope. **The first three items of each have to change when this lands**, and
+§9 says exactly how; the split-branch entry stays and gains its reasons.
 
 ## 1. Why this is the next thing
 
@@ -241,11 +249,12 @@ found for it; one has to be **built**, and building it requires exactly what thi
 plan adds, an update of a file written earlier. `PLAN.md` §9.4 listed it as a gap
 needing "two ROOT sessions or two files". It needs the same thing W3 does.
 
-## 4. The five items
+## 4. The four items
 
 Ordered by dependency, not by size. W1 and W2 are prerequisites of W3 and are
-small; W3 is the feature; W4 rides on W3 because it needs the file W3 produces;
-W5 is independent and is the largest thing here.
+small; W3 is the feature; W4 rides on W3 because it needs the file W3 produces.
+A fifth — writing a split `TBranchElement` — was drafted and then cut; the
+subsection after W4 says why, since the reasoning is the useful part.
 
 Each item ends the way every item in `PLAN.md` §8.4 ended: with a file in
 `data/written/` that ROOT opens without a word, and — wherever a ROOT-written
@@ -555,96 +564,67 @@ does not exist in 218 corpus files. `verify.C` reads both objects back. This is
 the one case in this plan that produces a file **no ROOT session can produce**,
 which makes it the most interesting and the one most likely to find something.
 
-### W5 — A split `TBranchElement`
+### Not an item: a split `TBranchElement`, which stays read-only
 
-**The largest item, and the one with a scope decision in front of it.**
+This was drafted as W5 and is **deliberately not one**. The decision is worth
+recording with its reasoning, because "we specify reading it and not writing it"
+is an odd-looking asymmetry until the reasons are on the page.
 
-**What is already specified.** [Splitting](spec/04-ttree/Splitting.md) documents
-which classes ROOT splits (`TClass::CanSplit`, eleven conditions), the naming
-rules including the trailing-dot behaviour, `fSplitLevel`, and collections of
-pointers; [Split branches](spec/04-ttree/TBranchElement.md) documents `fType` and
-`fID`, the `fClassName` relationship, `fBranchCount`, and the nine-way read
-dispatch. `tools/rootfile.py` decodes the result. What is missing is everything
-about *producing* one.
+**Reading one is finished.** [Splitting](spec/04-ttree/Splitting.md) and
+[Split branches](spec/04-ttree/TBranchElement.md) specify the branch tree, the
+naming rules, `fSplitLevel`, `fType`/`fID` and the nine-way read dispatch;
+`rootfile.TreeReader` decodes it, and the `ENTRIES` line over both corpora is
+**27969 of 28036 branch-baskets, 99.8%, 0 failures**, with neither remaining skip
+being a split-branch gap. What is left is `PLAN.md` §9.11's residue —
+`TBranchSTL` entries, `kStreamLoop` values, a non-null `fBranchCount2` — and it
+stays there, on the reading side, where it already is.
 
-**The scope decision, and the research for this plan has already reshaped it.**
-`Splitting.md` §2 says the split decision is ROOT's and not the format's — "a file
-that splits `std::string` is not invalid; it is simply not one ROOT 6.40.04 would
-write" — which suggested a writer could pick any shape it liked. That is half
-right, and the other half is the most important thing found for this item:
+**Writing one would buy a third party very little**, for three reasons:
 
-> **The shape is policy. The names are format.**
+1. **Jagged data does not need splitting, and this layer already writes it.** What
+   people usually want from "columnar output" is a variable-length array per
+   entry, `Int_t n; Float_t x[n]`, and that is a **flat** `TBranch` with a counter
+   leaf — no `TBranchElement` anywhere.
+   [Writing trees §4.3–§4.4](spec/06-writing/WritingTrees.md#43-the-leaf) specifies
+   it and `data/written/tree.root` contains one, written as
+   `tree.branch("a", "F", counter=n)`.
+2. **A split file is only fully usable by a reader that has the class.**
+   `TBranchElement::InitializeOffsets` reconstructs each member's offset by string
+   surgery on the branch name followed by a **dictionary lookup**
+   (`root/tree/tree/src/TBranchElement.cxx:3186` onward, `Fatal` at `:3727`). So
+   splitting buys nothing for a consumer that is uproot or a third-party reader —
+   they take the columns from the streamer info either way.
+3. **An unsplit branch is never wrong.** A branch at `fType` 0, `fID` −1 holding
+   each whole object produces a file ROOT opens and reads correctly. The cost is
+   read performance on files the writer itself produced, which is the writer's own
+   trade to make — exactly the kind of choice `PLAN.md` §8.4 settled as policy.
 
-`TBranchElement::InitializeOffsets`
-(`root/tree/tree/src/TBranchElement.cxx:3186` onward) does **not** read a member's
-offset out of the file. It reconstructs it by *string surgery on the branch name* —
-strip the mother's name, strip the base-class suffix, strip the parent's name,
-strip leading and trailing dots — and then looks the remainder up in the
-dictionary as a real data member. Failure is a `Fatal` while the branch is being
-created (`root/tree/tree/src/TBranchElement.cxx:3727`). Two other mechanisms match sub-branches by name prefix as
-well.
+**What the writing layer says instead**, and it is a paragraph rather than a
+procedure: a conforming writer SHOULD emit unsplit branches; here is what a split
+file requires of whoever produces one — the `fType` set, the naming rules,
+`fMaximum`, and the closure of streamer infos — and here is
+[the reading side](spec/04-ttree/Splitting.md) for anyone who wants to. That
+paragraph belongs in
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified), which already
+excludes split branches and currently gives one sentence of reason.
 
-So a writer that invents a naming scheme produces a file ROOT parses structurally
-and then resolves to the **wrong offsets**, or refuses outright. Names are
-therefore **fixed**, and the three naming rules — trailing dot, internal dot, and
-no dot — are not a diff convenience but a conformance requirement. That also means
-the document can make a recommendation ROOT's own default does not follow: **end
-every top-level branch name with a dot**, because it is what makes the counter
-lookup unambiguous and it is exactly the condition under which §7.1 item 9's bug
-does not fire.
+**Two facts found while scoping it are worth keeping**, because they are true of
+the format rather than of the plan:
 
-With that settled, the scope is: **implement the shape ROOT produces for one case
-at a time**, starting with a split of a flat class of basic types — which is
-`gen/cases/ttree/split-object`, already committed, already decoded, and therefore
-already a byte target. The document additionally says which fields ROOT *reads*
-and which it merely records, so a third party splitting less deeply knows what it
-is allowed to leave out.
-
-**What the writer has to get right, and where each value comes from.** The research
-for this plan established the shape of it; every line is to be re-verified against
-bytes when the section is written:
-
-| Field | Comes from |
-|---|---|
-| `fClassName`, `fCheckSum`, `fClassVersion` | the streamer info that `fID` indexes — so a branch for `Event::fNtrack` carries `fClassName == "Event"`, which is what [Split branches §5](spec/04-ttree/TBranchElement.md#5-fclassname-names-the-class-fid-indexes) already says from the reading side. The checksum is the **info's**, the version is the **class's current** one, and they can disagree |
-| `fID` | the index of the element in that info; `-1` unsplit top level, `-2` split top level |
-| `fType` | one of `-1, 0, 1, 2, 3, 4, 31, 41` and nothing else — ROOT calls `Fatal` on any other value, on both the read and the write path |
-| `fOffset` | the member's offset **inside the value class**, and only for `fType` 31 and 41; every other branch leaves it 0 and uses a transient array that is not persisted |
-| `fMaximum` | at least the largest count ever written, or ROOT rejects the read with an error and substitutes 0 |
-| `fEntryOffsetLen` | 1000 for anything in a container, a base class, a `char*`, `fBits` or a composite — and **not** for a plain fixed-size scalar. A `TClonesArray` master resets it to 0 where an STL master does not, and a flush rewrites it anyway ([Writing trees §7](spec/06-writing/WritingTrees.md#7-more-than-one-basket-per-branch) already specifies that shrink) |
-
-**And the bytes are simpler than the bookkeeping.** A `fType` 1 or 2 branch and a
-split top-level branch **write no baskets at all** — only their entry count
-advances. A `fType` 4 master writes exactly one `i32` per entry; its `fType` 41
-children write that many values back to back, with no per-element framing, no
-version word and no byte count. The member-wise-ness is implied by `fType`, not
-encoded in the stream — which is the opposite of the `kStreamedMemberWise` flag a
-collection carries when it stays *inside* one branch.
-
-**A known bug sits in the middle of this item, and the mechanism is now exact.**
-`PLAN.md` §7.1 item 9: when a top-level branch name contains no dot, `Unroll`
-**drops the parent prefix entirely** (`root/tree/tree/src/TBranchElement.cxx:6217`),
-so the counted-array element's counter name has no prefix either and
-`fTree->GetBranch()` matches the first branch of that name anywhere in the tree
-(`:438`). A writer implementing this has to take a position rather than record one,
-and the position the document should take is the trailing dot — the first place in
-this project where the write side *avoids* a ROOT bug instead of documenting it.
-The reader's side of it stays
-[Reading entries §4.1](spec/04-ttree/ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount).
-
-**Fixtures.** `gen/written/split-object`, against the committed
-`data/ttree/split-object.root`. Then, and only if the first lands cleanly, a
-collection member (`fType` 41), which is the shape 1503 corpus branches have.
-
-**One negative finding to confirm with bytes before it is written down**: there
-appears to be **no per-basket or per-column header** on the split-collection path —
-per basket there is only the `TBasket` key and the entry-offset table, and per
-entry only the master's four bytes and the members' values. The fixtures decide it.
+- **The shape is policy; the names are format.** A writer may split less deeply
+  than ROOT would. It may not invent names, because the names are what the offsets
+  are reconstructed from.
+- **A trailing dot on every top-level branch name is strictly better than ROOT's
+  default.** With no dot, `Unroll` drops the parent prefix from every child
+  (`root/tree/tree/src/TBranchElement.cxx:6217`), which is precisely the condition
+  under which `PLAN.md` §7.1 item 9's counter bug fires. That belongs in
+  [Splitting §3](spec/04-ttree/Splitting.md#3-names) as a note to anyone *choosing*
+  a branch name, reader or writer.
 
 ## 5. The fixture matrix
 
-Nine new cases, two of them ROOT-written and there only to be a byte target.
-`data/written/` grows from nine files to **sixteen**.
+Eight new cases, two of them ROOT-written and there only to be a byte target.
+`data/written/` grows from nine files to **fifteen**.
 
 | Case | Kind | Proves |
 |---|---|---|
@@ -656,7 +636,6 @@ Nine new cases, two of them ROOT-written and there only to be a byte target.
 | `gen/written/update-cycle` | ours | an update that adds a cycle |
 | `gen/cases/container/update-twin` | ROOT | ROOT performing those same three updates on the same committed bases |
 | `gen/written/update-evolve` | ours | one file, two layouts of one class — **the file no ROOT session produces** |
-| `gen/written/split-object` | ours | a split `TBranchElement` against `data/ttree/split-object.root` |
 
 The three `update-*` cases are what make the whole plan checkable, and the reason
 is worth stating once more: **`data/written/` is byte-reproducible**, so a case
@@ -705,12 +684,12 @@ rediscovered.
    written down as anything.
 3. **Does a no-op update really change four bytes and no more?** If so it belongs
    in `Pitfalls.md` as well as in the procedure.
-4. **Is there genuinely no per-basket header on the split-collection path?**
-   §4's W5 says the source shows none; a fixture settles it.
-5. **What should a writer emit for `fBranchCount` on a split branch**, given that
-   ROOT's own value is wrong in the case §7.1 item 9 describes? The trailing-dot
-   recommendation avoids the case, but the document should say what to do when a
-   writer is handed a name without a dot.
+4. **Does an update of a file this project wrote round-trip through ROOT and back
+   into our writer?** One direction is already measured — ROOT updated
+   `data/written/objstring.root` cleanly, reusing the key list's space, placing
+   the new record at the old `fEND` and **adding a `StreamerInfo` record** because
+   our file deliberately has none. The other direction is the test that matters:
+   our writer updating a file ROOT wrote.
 
 ## 8. What this does *not* add
 
@@ -722,13 +701,17 @@ without anyone deciding it should:
   needs, not about emitting an old layout.
 - **RNTuple writing.** Upstream's specification covers both directions.
 - **Two writers on one file.** ROOT takes no lock a third party can see.
+- **Writing a split `TBranchElement`**, which the subsection after W4 argues at
+  length. Reading one is finished and stays finished; a writer emits unsplit
+  branches, and a flat branch with a counter leaf already covers what jagged data
+  needs.
 - **`TBranchSTL`, and collections of pointers at split level 100.** Zero corpus
   coverage, one fixture, and not decodable by either entry check today
-  (`PLAN.md` §9.11).
-- **Policy, still.** Basket sizes, when to flush, how deep to split, which gap to
-  choose. W1 and W5 both specify what a choice *produces* rather than requiring a
-  particular choice — which is the treatment `PLAN.md` §8.4 settled on and this
-  plan does not reopen.
+  (`PLAN.md` §9.11) — a **reading** gap, and it stays in §9.11.
+- **Policy, still.** Basket sizes, when to flush, which gap to choose. W1
+  specifies what a choice *produces* rather than requiring a particular choice —
+  which is the treatment `PLAN.md` §8.4 settled on and this plan does not
+  reopen.
 
 ## 9. What changes in `PLAN.md` when this lands
 
@@ -737,10 +720,13 @@ edited before the work is done:
 
 1. **Decision 3** names "free-space reuse, updating an existing file, basket
    sizing, key ordering" as unspecified. Basket sizing stays; the other three go.
-2. **§2.8**'s last paragraph and **§2.9**'s table — a sixth and seventh procedure
-   document, and the split-branch and update entries.
+2. **§2.8**'s last paragraph and **§2.9**'s table — one more procedure document,
+   for the update, and the reuse and cycle sections of `WritingFiles.md`.
 3. **[Writing §4](spec/06-writing/index.md#4-what-is-not-specified)**, which is
-   the user-facing version of the same list and the one that matters most.
+   the user-facing version of the same list and the one that matters most. Its
+   **split-branch entry stays**, and gains the reasoning from the subsection after
+   W4 — a scope statement with reasons is worth more than the one sentence it
+   carries now.
 4. **§9.4**, where "two streamer infos for one class distinguished by checksum"
    and "a non-zero `fPidOffset`" are listed as gaps needing two sessions. W3 and
    W4 close the first; the second becomes reachable for the first time, since

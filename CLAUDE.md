@@ -11,7 +11,8 @@ describes **release 3.02.06** and is substantially wrong for current ROOT.
 
 `PLAN.md` holds the structure, scope decisions and phasing, and
 `PLAN-writing.md` is the live sub-plan extending the write side (updating a file,
-free-space reuse, key ordering, schema evolution, split branches).
+free-space reuse, key ordering, schema evolution; splitting stays read-only, and
+that file says why).
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read those before writing spec text; this file covers how to *work* here, not
 what to write.

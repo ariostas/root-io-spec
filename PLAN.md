@@ -1605,29 +1605,40 @@ with the rest.
 
 §8.5 closed the scope the writing layer was given: the current versions of the most
 common types, created from nothing. **[`PLAN-writing.md`](PLAN-writing.md) orders
-the extension**, which takes in the five things decision 3 and
-[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) currently exclude:
-
-1. **free-space reuse**, 2. **key ordering** — cycles, order and deletion,
-3. **updating an existing file**, 4. **schema evolution from the writing side**,
-and 5. **writing a split `TBranchElement`**.
+the extension**, which takes in four of the things decision 3 and
+[Writing §4](spec/06-writing/index.md#4-what-is-not-specified) currently exclude —
+**free-space reuse**, **key ordering** (cycles, order and deletion), **updating an
+existing file**, and **schema evolution from the writing side**. Those four are one
+feature seen from four angles: a writer that can reopen its own output.
 
 The same shape as `PLAN-ttree.md`, which this one deliberately imitates: measured
-rather than estimated, every claim cited, and deleted when discharged. Three things
-in it are worth knowing even before the work starts:
+rather than estimated, every claim cited, and deleted when discharged.
+
+**A fifth was drafted and cut: writing a split `TBranchElement`.** Reading one is
+finished — `TBranchElement.md`, `Splitting.md` and `TreeReader`, at 99.8% of
+branch-baskets over both corpora — and it stays that way, but the write side gets a
+scope statement instead of a procedure. The reasons are on the page because the
+asymmetry looks odd without them: jagged data does not need splitting (a flat
+branch with a counter leaf is what `Int_t n; Float_t x[n]` is, and
+`data/written/tree.root` already holds one); a split file is only fully usable by a
+reader that has the class, since `InitializeOffsets` reconstructs every member
+offset from the *branch name* plus a dictionary lookup; and an unsplit branch is
+never wrong, only slower to read. What `Writing §4` gains is that reasoning in
+place of its current one sentence.
+
+Three things in the sub-plan are worth knowing even before the work starts:
 
 - **The order within a name group is not a convention.** ROOT never compares cycles
   to pick a maximum — `Get`, `GetKey` and `FindKeyAny` all return the *first* match
   in key-list order — so a writer that appends a new cycle at the end makes
   `Get("h")` return the **oldest** copy, silently. Cycle order is **fixed**; the
   order of distinct names is free.
-- **For a split tree, the shape is policy and the names are format.**
-  `TBranchElement::InitializeOffsets` reconstructs each member's offset by string
-  surgery on the branch name and a dictionary lookup, with a `Fatal` on failure. A
-  writer may split less deeply than ROOT; it may not invent names.
+- **For a split tree, the shape is policy and the names are format.** A writer may
+  split less deeply than ROOT; it may not invent names. Which is also why the write
+  side declines to specify splitting rather than specifying it loosely.
 - **No file in 218 carries a class at two versions**, so the situation schema
   evolution exists for is unwitnessed in the corpora. Only a written file can
-  exercise it, and producing one needs the update mode item 3 adds.
+  exercise it, and producing one needs the update mode the third item adds.
 
 Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-not-specified)
 all still say these are out of scope, and **they stay that way until the work lands**
