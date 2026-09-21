@@ -10,9 +10,12 @@ format spec (RNTuple); its `TFile`/`TTree` documentation in `root/io/doc/TFile/`
 describes **release 3.02.06** and is substantially wrong for current ROOT.
 
 `PLAN.md` holds the structure, scope decisions and phasing, and
-`PLAN-writing.md` is the live sub-plan extending the write side (updating a file,
+Two live sub-plans: `PLAN-writing.md` extends the write side (updating a file,
 free-space reuse, key ordering, schema evolution; splitting stays read-only, and
-that file says why).
+that file says why), and `PLAN-review.md` answers the first outside review,
+GitHub issue #1 — which found a reader bug, a false invariant and an over-general
+erratum, so read it before trusting `StreamerDriven.md` 10.5 or
+`SchemaEvolution.md` §8.1.
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read those before writing spec text; this file covers how to *work* here, not
 what to write.

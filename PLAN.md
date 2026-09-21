@@ -1644,6 +1644,44 @@ Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-no
 all still say these are out of scope, and **they stay that way until the work lands**
 — `PLAN-writing.md` §9 lists exactly what each becomes.
 
+### 8.13 The first outside review (2026-09-21)
+
+[Issue #1](https://github.com/ariostas/root-io-spec/issues/1):
+[rootfilespec](https://github.com/nsmith-/rootfilespec), a pure-Python ROOT
+reader, vendored `spec/` as a submodule, checked its own bootstrap layer against
+it, and sent back ten findings and six corroborations.
+**[`PLAN-review.md`](PLAN-review.md) orders the response**, and every item in it
+was re-checked here before it was planned.
+
+**It is not six gaps and four RooFit items; it is three defects and the rest.**
+
+- **`tools/rootfile.py` mis-reads a version-1001 directory record.** Class version
+  and offset width are independent axes; the reader tests `version > 1` for the
+  UUID, so for 1001 it invents sixteen bytes from **past the end of the record**.
+  Measured on `uproot-from-geant4.root`: record ends at 202, UUID read from 204.
+- **`StreamerDriven.md` invariant 5 is false**, and is contradicted by
+  `data/classes/histogram.root` — `TH1F` names `TArrayF` as a `kBase` and no
+  `TArrayF` info exists in the file — by `data/written/histogram.root`, and by 36
+  elements in 27 corpus files. It has contradicted `ElementLists.md` §10 since
+  §8.11, and nothing noticed **because it was never added to
+  `check_invariants.py`**.
+- **`SchemaEvolution.md` §8.1 generalises from one file.** It says two duplicate
+  infos differ in `kIsCompiled`; in two of the three corpus files that carry the
+  duplicate, both entries have `kIsCompiled` and they differ in `kBuildOldUsed`
+  (`BIT(17)`).
+
+So **release criterion 1 of §8.1 — "no published claim is known to be wrong" — is
+not met as of today**, and the first three items of the sub-plan are what restores
+it. The most valuable item is the fourth: an audit of which of the 248 published
+`Invariants` entries are wired into `check_invariants.py` at all, since the false
+one turned out to be an unchecked one.
+
+RooFit (their items 7–10) is a scope decision against decision 8 and is left open;
+the sub-plan argues for a middle course — treat three of the four as
+**container-layer** questions about an extra frame, a doubled collection frame and
+the `extending` class list, which are in scope already, rather than as RooFit class
+layouts.
+
 ## 9. Known gaps
 
 Every gap the written documents record. **None is a hole in the prose**: in every
