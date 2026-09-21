@@ -9,6 +9,7 @@ fObjlen, which no file this project writes contains, and a free list mixing the
 
 import struct
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -315,6 +316,84 @@ class DirectoryVersionAndOffsetWidthAreIndependent(unittest.TestCase):
         self.assertEqual(directory.uuid_offset, directory.fields_offset + 44)
         self.assertEqual(directory.seek_keys, 900)
         self.assertEqual(rec.obj_len, 60)
+
+
+class PayloadLengthFollowsBothAxes(unittest.TestCase):
+    """Directory 9.15, and R4: the length is a function of version and width.
+
+    `directory_payload_length` is the arithmetic of Directory.md 7.1; these pin
+    every row of that table, including the four rows no file in either corpus
+    witnesses, and the corruption below shows which axis each invariant guards.
+    """
+
+    def length(self, version, file_version=64004):
+        return check_invariants.directory_payload_length(version, file_version)
+
+    def test_the_measured_rows(self):
+        self.assertEqual(self.length(1, 22400), 30)      # pippa.root, ROOT 2.24/00
+        self.assertEqual(self.length(3, 30402), 48)      # mlpHiggs.root
+        self.assertEqual(self.length(1001), 42)          # the two g4tools files
+        self.assertEqual(self.length(5), 60)             # everything modern
+        self.assertEqual(self.length(1005), 60)
+
+    def test_the_arithmetic_rows(self):
+        self.assertEqual(self.length(2, 30301), 46)
+        self.assertEqual(self.length(1002), 58)
+        self.assertEqual(self.length(1003), 60)
+        self.assertEqual(self.length(1, 64004), 42)      # no reserved bytes when wide
+
+    def test_the_reserved_bytes_are_never_in_the_wide_form(self):
+        """So the wide column does not depend on the file version at all."""
+        for version in (1001, 1002, 1003, 1005):
+            self.assertEqual(self.length(version, 30402),
+                             self.length(version, 64004), version)
+
+    def test_the_small_form_gains_twelve_bytes_from_root_4(self):
+        for version in (1, 2, 3, 5):
+            self.assertEqual(self.length(version, 64004) - self.length(version, 30402),
+                             12, version)
+
+
+class ConfusingTheAxesIsCaught(unittest.TestCase):
+    """The two axes fail two different invariants, which is worth knowing.
+
+    A record that lies about its **class version** is off by the UUID's 16 or 18
+    bytes and nothing else notices, so that needs invariant 15. A record that lies
+    about its **width** is caught earlier and harder: the offsets read at the wrong
+    width leave `fSeekDir` pointing somewhere other than the record, so it is not
+    recognised as a directory at all.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/container/directories.root"
+    FIELDS = 246                # the root directory's fields, at fBEGIN + fNbytesName
+
+    def failures(self, version):
+        buf = bytearray(self.PATH.read_bytes())
+        self.assertEqual(struct.unpack_from(">h", buf, self.FIELDS)[0], 5)
+        struct.pack_into(">h", buf, self.FIELDS, version)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(bytes(buf))
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return checker.failures
+
+    def test_the_fixture_itself_passes(self):
+        checker = check_invariants.Checker(self.PATH)
+        checker.run()
+        self.assertEqual(checker.failures, [])
+
+    def test_a_class_version_that_implies_no_uuid(self):
+        bad = self.failures(1)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("Directory 9.15", bad[0])
+        self.assertIn("writes 42", bad[0])
+
+    def test_a_width_lie_is_caught_before_9_15(self):
+        bad = self.failures(1005)
+        self.assertTrue(bad)
+        self.assertFalse([f for f in bad if "9.15" in f])
+        self.assertTrue(all("Record 8.6" in f for f in bad), bad)
 
 
 CORPUS = Path(__file__).resolve().parents[1] / "build"

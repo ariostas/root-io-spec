@@ -29,6 +29,8 @@ COUNTER_TYPES = {3, 6, 13}
 BLOCK_MAGICS = {b"ZL": 8, b"XZ": 0, b"L4": None, b"ZS": 1, b"CS": 8}
 KMAXZIPBUF = 0xFFFFFF
 KSTART_BIG_FILE = 2000000000
+#: The fVersion at which the 12 reserved bytes of a directory record appear.
+ROOT_4_FILE_VERSION = 40000
 
 APPENDIX = REPO / "spec/99-appendix"
 
@@ -96,6 +98,26 @@ def _dir_spelling(class_name: str | None) -> str | None:
     """
     return "TDirectory" if class_name in ("TDirectory", "TDirectoryFile") \
         else class_name
+
+
+def directory_payload_length(version: int, file_version: int) -> int:
+    """What a directory record's payload occupies. Directory.md 7.1.
+
+    Three inputs, because the version word carries two independent things and the
+    reserved bytes depend on a third: `version % 1000` is the class version, which
+    decides the UUID framing; `version > 1000` is the offset width; and the
+    **file header's** version decides whether the 12 reserved bytes were allocated
+    at all (`root/io/io/src/TDirectoryFile.cxx:1725-1735`, `:785-786`).
+    """
+    wide = version > 1000
+    class_version = version % 1000
+    #        version word + fNbytesKeys + fNbytesName + fDatimeC + fDatimeM
+    length = 2 + 4 + 4 + 4 + 4
+    length += 24 if wide else 12                    # the three offsets
+    length += 0 if class_version == 1 else (16 if class_version == 2 else 18)
+    if file_version >= ROOT_4_FILE_VERSION and not wide:
+        length += 12                                # reserved, small layout only
+    return length
 
 
 def counted_string_len(buf: bytes, offset: int) -> int:
@@ -1969,6 +1991,17 @@ class Checker:
                 self.bad("Directory 9.4", f"fNbytesName {d.nbytes_name} outside [10, 10000]")
             if not 1 <= d.version % 1000 <= 5:
                 self.bad("Directory 9.9", f"directory version {d.version}")
+            else:
+                # 9.15. The class version and the offset width are independent
+                # axes (Directory.md 3.1), so the payload length is a function of
+                # both -- and of the file version, for the reserved bytes.
+                want = directory_payload_length(d.version, self.header.version)
+                got = rec.obj_len - (d.nbytes_name - rec.key_len)
+                if got != want:
+                    self.bad("Directory 9.15",
+                             f"payload is {got} bytes, but version {d.version} in "
+                             f"a file at fVersion {self.header.version} writes "
+                             f"{want}")
             if d.datime_c > d.datime_m:
                 self.bad("Directory 9.10",
                          f"fDatimeC {d.datime_c} > fDatimeM {d.datime_m}")

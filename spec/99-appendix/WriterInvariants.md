@@ -1,6 +1,6 @@
 # A writer's invariants
 
-Every layer of this specification ends with an `Invariants` section — **257
+Every layer of this specification ends with an `Invariants` section — **258
 entries across 32 documents**, counted as the numbered items in every section
 titled `Invariants` — stating what a conforming file satisfies whatever wrote it. Those sections are organised for a reader, by layer. This one is the same
 material organised for a writer, by the order in which a file is produced, and it
@@ -59,6 +59,7 @@ From [File header](../01-container/FileHeader.md),
 | Each subdirectory appears in exactly one parent's key list, and its own list holds only what it contains | Directory 9.8, WritingFiles 5.4 | checked |
 | A directory record is never freed and never relocated, so subdirectories add no free entries to a create-only file | WritingFiles 5.3 | nothing — but ROOT refuses to free one itself (`TKey::Delete`) |
 | `fVersion >= 1000000` **iff** `fEND` exceeded 2000000000 at the last header write, and every key, directory offset and free entry uses the width its own flag selects | LargeFiles 8 | checked |
+| A directory record's payload is the length its **class version, offset width and the file's `fVersion`** imply — the version word is a sum of two independent things | Directory 9.15, 3.1 | checked |
 | `fBEGIN` is at least the header its own `fVersion` selects — 63 bytes small, **75** large | FileHeader 10.11, WritingFiles 14.17 | checked — and nothing on ROOT's side, which writes the header over the first record instead |
 
 ## 3. Each object

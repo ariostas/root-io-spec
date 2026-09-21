@@ -1,10 +1,10 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1, R2 and R3 done** the same
-day — the three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again. Every
-item below was re-checked against the corpora and against our own reference
-files *before* being planned, and the verification is recorded per item, because
-the point of a review is what it turns out to be right about.
+**Status: in progress.** Written 2026-09-21; **R1–R4 done** the same day — the
+three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus the first of
+§3's four gaps. Every item below was re-checked against the corpora and against
+our own reference files *before* being planned, and the verification is recorded
+per item, because the point of a review is what it turns out to be right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -102,8 +102,11 @@ Three things came out of doing it that the plan did not have:
    corpus tests skip when `build/foreign/` and `build/cern/` are not fetched;
    they are the pin the plan asked for, and they are not the only check.
 
-Still open from this item, deliberately: no invariant compares a directory's UUID
-with anything, and none bounds the payload against (version, width). That is R4.
+Left to R4, deliberately: nothing bounded the payload against (version, width),
+which is why a mis-framed UUID had no detector. R4 is now done and `Directory.md`
+invariant 15 is that bound — the UUID's bytes are still never compared with
+anything, but a record whose framing does not match its claimed version is now
+the wrong length and says so.
 
 ### R2 — `StreamerDriven.md` invariant 5 is false, and was never checked
 
@@ -266,6 +269,37 @@ be the right home. **Disagree, and the reason matters**: our reader gets it wron
 (R1), so this is a fact a reader needs, not a quirk to suppress. It belongs in the
 document, with the provenance stated.
 
+**Done 2026-09-21.** `Directory.md` gains §3.1 for the orthogonality and §7.1 for
+the payload length, and invariant 15 makes the length checkable. Three things
+turned out better than "one sentence and a table":
+
+1. **The source says *why* the axes are independent**, so it need not be asserted.
+   The version word is a **sum**: `version = TDirectoryFile::Class_Version()`, then
+   `version += 1000` (`TDirectoryFile.cxx:750`, `:759`). ROOT hides it by always
+   writing the class version it was compiled with — every wide record ROOT has ever
+   written is 1004 or 1005 — and g4tools' 1001 is what an *uncoupled* writer
+   produces. Stated that way, §7's history needs no correction: the wide form did
+   arrive with class version 4 **in ROOT**, and never did in the format.
+2. **ROOT gets 1001 right, and our reader did not.** Both of ROOT's readers take
+   the UUID from `version % 1000` (`TFile.cxx:808`, `:823`;
+   `TDirectoryFile.cxx:1792-1796`). So R1 was not a case of copying a ROOT bug —
+   the only ROOT defect near here is the version-2 one §7 already records, and
+   this reader had *both*. Worth saying plainly in the document, which now does.
+3. **The length depends on a third thing**, which the plan's arithmetic missed:
+   the 12 reserved bytes are allocated on the **file header's** `fVersion`, not the
+   record's (`TDirectoryFile.cxx:1725-1735`). That is why a version-3 record is 48
+   bytes rather than 60, and it makes the table a function of three inputs. Every
+   value that occurs in a real file is measured; the rest are arithmetic and
+   labelled as such.
+
+Invariant 15 holds on **all 471 directory records** of `data/` and both corpora.
+Confirming it by corruption showed the two axes are guarded by two different
+invariants, which is the useful half: `container/directories` with its version word
+changed 5 → 1 reports exactly invariant 15, while 5 → 1005 reports **five `Record`
+8.6 failures and no 9.15** — offsets read at the wrong width leave `fSeekDir`
+pointing elsewhere, so the record stops being recognisable as a directory at all.
+A width lie cannot hide; a class-version lie could, and now cannot.
+
 ### R5 — `fBEGIN` is whatever the header says
 
 `FileHeader.md` §8 ties `fBEGIN = 64` to ROOT ≤ 3.04, which is true of ROOT and
@@ -422,7 +456,8 @@ Per the repository's convention the reply opens with the AI-content marker.
    `WritingObjects.md` §8.2 (§2).
 4. **R7** — the unchecked-invariant audit, which R2 is the argument for. Expect it
    to find more.
-5. **R4**, **R5** — the two directory/header notes, and the attribution fix.
+5. **R4** ✅, **R5** — the two directory/header notes, and the attribution fix.
+   R4 landed as `Directory.md` §3.1, §7.1 and invariant 15 (§3).
 6. **Reply to the issue** (§7), including the corpus question.
 7. **R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
    ten-minute ROOT experiment and nothing else.

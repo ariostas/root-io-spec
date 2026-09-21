@@ -121,6 +121,34 @@ normally 100 — so the header flag being set tells you nothing about any given
 directory. The converse does hold: a directory offset beyond 2 GB implies
 `fEND` is too.
 
+### 3.1 The version word carries two independent things
+
+> **A directory record's class version and its offset width are separate axes,
+> and the version word is their sum.** `1000` is a flag added to whatever the
+> class version happens to be — `version = TDirectoryFile::Class_Version()`, then
+> `version += 1000` (`root/io/io/src/TDirectoryFile.cxx:750`, `:759`) — so
+> `version % 1000` is the class version and `version > 1000` is the width, and
+> neither implies anything about the other.
+
+ROOT hides this, because it always writes the class version it was compiled with:
+6.40.04 emits 5 or 1005 and nothing else, so **every** wide record ROOT has ever
+written is 1004 or 1005, and §7's history reads as though the wide form arrived
+*with* class version 4. It did, in ROOT. It did not in the format.
+
+A third-party writer using an older class version with the flag produces a
+combination ROOT never emits, and two files in the corpus do exactly that:
+`uproot-from-geant4.root` and `uproot-issue-250.root`, both written by g4tools,
+carry **1001** — class version 1, so no UUID, with three 8-byte offsets. A reader
+that tests `version > 1` for the UUID rather than `version % 1000 > 1` reads
+sixteen bytes from past the end of the record; this specification's own reader did
+exactly that until 2026-09-21. ROOT reads them correctly, because both of its
+readers take the UUID from `version % 1000`
+(`root/io/io/src/TFile.cxx:808`, `:823`;
+`root/io/io/src/TDirectoryFile.cxx:1792-1796`).
+
+So the payload length is a function of **both** axes, and of the file header's
+version besides: §7.1 tabulates it, and invariant 15 checks it.
+
 ## 4. Fields
 
 ### 4.1 `fNbytesKeys`
@@ -172,17 +200,21 @@ word** (§7).
 
 ## 5. The reserved bytes
 
-In the small layout, 12 zero bytes follow the UUID. They are slack, so that the
-record is 60 bytes whether or not the three offsets are 64-bit — which lets ROOT
-rewrite a directory header in place when a file grows past 2 GB
-(`root/io/io/src/TDirectoryFile.cxx:2177-2181`).
+In the small layout, 12 zero bytes follow the UUID. They are slack, so that at the
+current class version the record is 60 bytes whether or not the three offsets are
+64-bit — which lets ROOT rewrite a directory header in place when a file grows
+past 2 GB (`root/io/io/src/TDirectoryFile.cxx:2177-2181`).
 
 A reader MUST NOT assume they are present or zero:
 
 - in the **large** layout they are not padding at all, they are the high halves of
   the three offsets;
-- for a file written by ROOT 3 (`fVersion < 40000`), they are **absent entirely**
-  and the record is 48 bytes (`root/io/io/src/TDirectoryFile.cxx:785`).
+- they are allocated on the **file header's** version, not the record's: for a
+  file written by ROOT 3 (`fVersion < 40000`) they are **absent entirely**
+  (`root/io/io/src/TDirectoryFile.cxx:785`), which is why a version-3 record is 48
+  bytes and not 60;
+- the equal-length property is a property of class versions 4 and 5 only. At
+  version 1 the small and wide forms are 30 and 42 bytes, and §7.1 has the rest.
 
 The authoritative length is the record's `fObjlen`.
 
@@ -318,18 +350,18 @@ them together, and a reader looking for subdirectories must accept both (§8).
 
 ## 7. Version history
 
-| On-disk version | ROOT | Payload | Change |
-|---|---|---|---|
-| 1 | ≤ 3.02 | 30 B | **No UUID at all** |
-| 2 | 3.03/01 – 3.03/07 | 46 B | UUID as raw 16 bytes, **no version word** |
-| 3 | 3.03/09+ | 48 B | UUID gains its 2-byte version word |
-| 4 | 4.00+ | 60 B | The `> 1000` large layout, and the 12 reserved bytes |
-| 5 | 5.16+ | 60 B | `TDirectory` split into `TDirectory`/`TDirectoryFile`; **no layout change** |
+| Class version | ROOT | Change |
+|---|---|---|
+| 1 | ≤ 3.02 | **No UUID at all** |
+| 2 | 3.03/01 – 3.03/07 | UUID as raw 16 bytes, **no version word** |
+| 3 | 3.03/09+ | UUID gains its 2-byte version word |
+| 4 | 4.00+ | The `> 1000` large layout, and the 12 reserved bytes |
+| 5 | 5.16+ | `TDirectory` split into `TDirectory`/`TDirectoryFile`; **no layout change** |
 
 ROOT 6.40.04 writes 5, or 1005 in the large layout.
 
 Reading the UUID therefore depends on `version mod 1000`
-(`root/io/io/src/TDirectoryFile.cxx:1792-1797`):
+(`root/io/io/src/TDirectoryFile.cxx:1792-1796`):
 
 | `version mod 1000` | UUID |
 |---|---|
@@ -342,6 +374,49 @@ Reading the UUID therefore depends on `version mod 1000`
 > (`root/io/io/src/TFile.cxx:823`), so it would misparse a version-2 root
 > directory — while `TDirectoryFile::Streamer` handles it correctly. This affects
 > only files from ROOT 3.03/01 to 3.03/07.
+
+### 7.1 Payload length per version *and* width
+
+Because the two axes are independent (§3.1), the length is a function of both, and
+of one thing outside the record: the reserved bytes are allocated on the **file
+header's** version, not the directory's
+(`root/io/io/src/TDirectoryFile.cxx:1725-1735`, written at `:785-786`). The four
+contributions are:
+
+| Contribution | Bytes |
+|---|---|
+| version word, `fNbytesKeys`, `fNbytesName`, `fDatimeC`, `fDatimeM` | 18 |
+| the three offsets | 12 small, **24** wide |
+| UUID: `version mod 1000` of 1 / 2 / ≥ 3 | 0 / 16 / 18 |
+| reserved, only when `fVersion >= 40000` **and** the record is small | 12 |
+
+which gives:
+
+| `version mod 1000` | `fVersion` | Small | Wide |
+|---|---|---|---|
+| 1 | < 40000 | **30** | 42 |
+| 1 | ≥ 40000 | 42 | **42** |
+| 2 | < 40000 | 46 | 58 |
+| 3 | < 40000 | **48** | 60 |
+| 4, 5 | ≥ 40000 | **60** | **60** |
+
+Bold entries are measured on real files; the rest are arithmetic. The `fVersion`
+column pairs as shown because ROOT's class version and its file version advanced
+together — but only ROOT couples them, and g4tools is the counter-example that
+makes the second row necessary: class version 1 with `fVersion` 40000. The wide
+column does not depend on `fVersion` at all, because the reserved bytes are never
+written in the wide layout.
+
+The 60-and-60 row is the point of the reserved bytes (§5): at the current class
+version, and only there, the record is the same length either way, which is what
+lets ROOT rewrite a directory header in place when a file grows past 2 GB.
+
+> `pippa.root` (ROOT 2.24/00) supplies the 30, `mlpHiggs.root` and
+> `H1display.root` the 48 — both with `fVersion` below 40000, so no reserved bytes
+> — and the two g4tools files the **42**, which is the combination ROOT does not
+> write. 438 records in `data/` and the corpora supply the 60. Over all **471**
+> directory records in `data/` and both corpora the table predicts the payload
+> exactly, with no exceptions; that is invariant 15.
 
 ## 8. Walking the tree
 
@@ -410,6 +485,21 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
     `fCycle` at all, which is why none demonstrates the keep flag.
     A negative `fCycle` is the keep flag and counts as its magnitude (§3.8 of
     [Records](Record.md#38-fcycle)).
+15. The payload is exactly the length §7.1 gives for its **class version, its
+    offset width and the file header's version** — `fObjlen` less the
+    `fNbytesName - fKeylen` prefix. Measured on all 471 directory records of
+    `data/` and both corpora.
+
+    This is the invariant form of §3.1's *class version* axis: a record that
+    claims a version whose UUID framing does not match what was written is off by
+    16 or 18 bytes, and nothing else notices. The *width* axis needs no invariant,
+    because a record that lies about it fails invariant 1 first — reading the
+    offsets at the wrong width leaves `fSeekDir` pointing somewhere other than the
+    record itself, so it is not recognised as a directory at all. Confirmed by
+    corrupting `container/directories`: the version word changed from 5 to 1005
+    reports five keys whose `fSeekPdir` no longer names a directory
+    ([Records §8](Record.md#8-invariants)), and changed from 5 to 1 reports this
+    invariant.
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the
 12 reserved bytes are present or zero (§5), that the key-list payload contains
@@ -458,7 +548,7 @@ the name and title copy and no reserved bytes; five further files carry version 
 **Version 2 is witnessed nowhere** — only ROOT 3.03/01 through 3.03/07 wrote it —
 so its version-word-less UUID is the one row of §7 resting on the source alone.
 The two **version 1001** records in `gen/foreign/` are the other axis: class
-version 1 in the wide layout, 42 bytes, no UUID (§3).
+version 1 in the wide layout, 42 bytes, no UUID (§3.1).
 
 §6.5's mismatched image is absent for the same reason, and is demonstrated
 instead by `uproot-issue64.root` in the third-party corpus

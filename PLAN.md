@@ -231,7 +231,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 257 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 258 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -1721,7 +1721,7 @@ to be larger than the review could see from outside:
   is checked.
 
 The remaining item to expect the most from is the fourth: an audit of which of the
-257 published `Invariants` entries are wired into `check_invariants.py` at all,
+258 published `Invariants` entries are wired into `check_invariants.py` at all,
 since the false one turned out to be an unchecked one, and wiring it up caught a
 second claim within minutes.
 
