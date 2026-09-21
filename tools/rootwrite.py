@@ -283,9 +283,126 @@ class _Placed:
     key: Key
     payload: bytes
     listed: bool = True
+    #: Where the allocator put it, and how many bytes the chosen free span had
+    #: over -- 0 for an exact fit, -1 at the end of the file, otherwise the size
+    #: of the remainder this record has to mark (`WritingFiles.md` 2.3).
+    offset: int = 0
+    left: int = -1
 
     def to_bytes(self) -> bytes:
         return self.key.to_bytes() + self.payload
+
+
+class Deleted:
+    """A record released during the write, by name.
+
+    ROOT reaches this state in one session two ways: `TDirectoryFile::Delete`,
+    and the `"overwrite"` option to `TObject::Write`, which frees the old key
+    before allocating the new one
+    (`root/io/io/src/TDirectoryFile.cxx:1977-1985`). Either way the record's
+    bytes stay on disk and its span goes back on the free list
+    (`spec/06-writing/WritingFiles.md` 2.4).
+    """
+
+    def __init__(self, name: str):
+        self.name = name
+
+
+class FreeList:
+    """Where a record goes: `spec/06-writing/WritingFiles.md` 2.
+
+    The allocator's state, not a report about it. `entries` is kept sorted by
+    `fFirst` and every `fLast` is **inclusive**, so a span's length is
+    `fLast - fFirst + 1`.
+    """
+
+    #: ROOT grows the trailing entry by this much rather than jumping to a
+    #: multiple of 2 GB (`root/io/io/src/TKey.cxx:538`, `TFree.cxx:150`).
+    STEP = 1000000000
+
+    def __init__(self, begin: int = BEGIN, big: int = BIG):
+        self.entries: list[list[int]] = [[begin, big]]
+        #: fEND: the first byte of the trailing entry, never a length
+        #: (`root/io/io/src/TFile.cxx:2671-2672`).
+        self.end = begin
+
+    def place(self, n: int) -> tuple[int, int]:
+        """Choose an offset for a record of `n` bytes.
+
+        Returns `(offset, left)`, where `left` is the number of bytes the chosen
+        span has over -- 0 for an exact fit, and **-1** when the record went at
+        the end of the file, where no marker is written. `left` is never 1, 2 or
+        3: step 2 of 2.2 guarantees it.
+        """
+        if n <= 0:
+            raise WriteError("a record cannot be empty")
+        chosen = None
+        for e in self.entries:                    # 2.2 step 1: an exact match
+            if e[1] - e[0] + 1 == n:              # wins from anywhere
+                chosen = e
+                break
+        if chosen is None:                        # 2.2 step 2: first fit, but
+            for e in self.entries:                # with more than 3 to spare
+                if e[1] - e[0] + 1 > n + 3:
+                    chosen = e
+                    break
+        if chosen is None:                        # 2.2 step 3
+            self.entries[-1][1] += self.STEP
+            chosen = self.entries[-1]
+
+        first = chosen[0]
+        if first >= self.end:                     # 2.3, at the end of the file
+            self.end = first + n
+            chosen[0] = self.end
+            if self.end > chosen[1]:
+                chosen[1] += self.STEP
+            return first, -1
+        left = chosen[1] - first + 1 - n
+        if left == 0:                             # 2.3, exact fit
+            self.entries.remove(chosen)
+        else:                                     # 2.3, partial fit
+            chosen[0] = first + n
+        return first, left
+
+    def release(self, first: int, last: int) -> tuple[int, int]:
+        """Free the inclusive span `[first, last]`, merging with its neighbours.
+
+        Returns the **merged** span, which is where the marker goes -- it may
+        start before `first` (`spec/06-writing/WritingFiles.md` 2.4).
+        """
+        merged = None
+        for i, e in enumerate(self.entries):
+            if e[1] == first - 1:                 # extends this one on the right
+                e[1] = last
+                nxt = self.entries[i + 1] if i + 1 < len(self.entries) else None
+                if nxt is not None and nxt[0] <= last + 1:
+                    e[1] = nxt[1]
+                    self.entries.remove(nxt)
+                merged = e
+                break
+            if e[0] == last + 1:                  # extends this one on the left
+                e[0] = first
+                merged = e
+                break
+            if first < e[0]:                      # no neighbour: insert in order
+                merged = [first, last]
+                self.entries.insert(i, merged)
+                break
+        if merged is None:
+            merged = [first, last]
+            self.entries.append(merged)
+        if last == self.end - 1:                  # freeing the tail moves fEND
+            self.end = merged[0]
+        return merged[0], merged[1]
+
+    def marker(self, first: int, last: int) -> bytes:
+        """The four bytes that mark `[first, last]` free, clamped as ROOT does."""
+        return i32(-min(last - first + 1, BIG))
+
+    @property
+    def payload(self) -> bytes:
+        """The free-segment record's payload: every entry, in order."""
+        return b"".join(i16(1) + i32(e[0]) + i32(e[1]) for e in self.entries)
 
 
 class Directory:
@@ -348,6 +465,32 @@ class Directory:
 
     def add(self, obj: Obj) -> None:
         self.writer._sequence.append((self, obj))
+
+    def delete(self, name: str) -> None:
+        """Release the space of the last record added under `name`.
+
+        The record's bytes stay where they are -- nothing is moved or cleared --
+        and its span goes back on the free list with a marker over its first four
+        bytes (`spec/06-writing/WritingFiles.md` 2.4). Its key leaves this
+        directory's key list, so the record becomes unreachable by name while
+        remaining in the record chain as a gap.
+
+        This is ROOT's `TDirectoryFile::Delete`, and also the first half of the
+        `"overwrite"` option to `TObject::Write`, which frees before it allocates
+        (`root/io/io/src/TDirectoryFile.cxx:1977-1985`) -- which is what lets the
+        replacement land in the space the original released.
+        """
+        self.writer._sequence.append((self, Deleted(name)))
+
+    def overwrite(self, obj: Obj) -> None:
+        """`delete` the record of this name, then add this one.
+
+        ROOT's `"overwrite"` in one call. Because the space is released first,
+        a replacement of the same size lands at the same offset -- an exact fit
+        (`spec/06-writing/WritingFiles.md` 2.3).
+        """
+        self.delete(obj.name)
+        self.add(obj)
 
     def add_hist(self, hist) -> None:
         """Add a histogram, whose payload needs its own key's length."""
@@ -493,6 +636,14 @@ class FileWriter:
         """Add a graph to the root directory."""
         self.root.add_graph(graph)
 
+    def delete(self, name: str) -> None:
+        """Release the space of a record in the root directory."""
+        self.root.delete(name)
+
+    def overwrite(self, obj: Obj) -> None:
+        """Replace a record in the root directory, freeing the old one first."""
+        self.root.overwrite(obj)
+
     def mkdir(self, name: str, title: str | None = None, *,
               uuid: bytes = DEFAULT_UUID, saved: bool = True) -> Directory:
         """A subdirectory of the root directory."""
@@ -578,26 +729,63 @@ class FileWriter:
         return _Placed(key=key, payload=stored, listed=obj.in_key_list)
 
     def to_bytes(self) -> bytes:
+        free = FreeList()
+        #: Every write, in the order it happens. Records are placed by the
+        #: allocator rather than appended, so a record can land on the bytes of
+        #: one that was released -- which is legal, and which is why the file is
+        #: assembled chronologically and the overlap check tracks what is *live*
+        #: rather than what has been written
+        #: (`spec/06-writing/WritingFiles.md` 2).
+        ops: list[tuple[str, int, object, int]] = []
+
+        def emit(off: int, left: int, blob) -> None:
+            """A record, and the remainder marker if its span had bytes over."""
+            n = blob.key.nbytes if isinstance(blob, _Placed) else len(blob)
+            ops.append(("rec", off, blob, n))
+            if left > 0:
+                ops.append(("mark", off + n,
+                            free.marker(off + n, off + n + left - 1), 4))
+
+        def drop(first: int, last: int) -> None:
+            """Release a span and mark the merged result in place (2.4)."""
+            span = free.release(first, last)
+            ops.append(("free", span[0], free.marker(*span),
+                        span[1] - span[0] + 1))
+
         root = self.root
         root.seek_dir = BEGIN
         dir_key = root.record_key(BEGIN, root.obj_len)
+        pos, dir_left = free.place(dir_key.nbytes)
+        if pos != BEGIN:
+            raise WriteError("the root directory record goes at fBEGIN")
 
-        pos = BEGIN + dir_key.nbytes
         placed: list[_Placed] = []
         for home, item in self._sequence:
+            if isinstance(item, Deleted):
+                # The record stays on disk; its span goes back on the free list
+                # and its key leaves the directory (WritingFiles.md 2.4).
+                victim = next((p for p in reversed(home.listed)
+                               if p.key.name == item.name), None)
+                if victim is None:
+                    raise WriteError(f"nothing named {item.name!r} to delete")
+                home.listed.remove(victim)
+                drop(victim.offset, victim.offset + victim.key.nbytes - 1)
+                continue
             if isinstance(item, Directory):
                 # A subdirectory's record is placed where ROOT places it: at
                 # creation, before anything it holds, with fSeekKeys still 0
                 # (WritingFiles.md 5.1). Its payload is filled in at the end,
                 # once the key lists have addresses -- it is 60 bytes either way,
                 # which is what lets ROOT rewrite it in place.
+                key = item.record_key(0, DIR_RECORD_LEN)
+                pos, left = free.place(key.nbytes)
                 item.seek_dir = pos
                 key = item.record_key(pos, DIR_RECORD_LEN)
-                rec = _Placed(key=key, payload=b"")
+                rec = _Placed(key=key, payload=b"", offset=pos, left=left)
                 item.record = rec
                 placed.append(rec)
                 home.listed.append(rec)
-                pos += key.nbytes
+                emit(pos, left, rec)
                 continue
             obj = item
             if obj.builder is not None:
@@ -605,15 +793,17 @@ class FileWriter:
                 # landed. The TTree record is the only one: a branch stores its
                 # baskets' offsets (WritingTrees.md 4).
                 probe = Key(class_name=obj.class_name, name=obj.name,
-                            title=obj.title, obj_len=0, nbytes=0, seek_key=pos,
+                            title=obj.title, obj_len=0, nbytes=0, seek_key=0,
                             seek_pdir=home.seek_dir, version=obj.key_version,
                             extra=obj.key_extra)
                 obj.payload = obj.builder(probe.key_len, placed)
-            rec = self._record_of(obj, pos, home.seek_dir)
+            rec = self._record_of(obj, 0, home.seek_dir)
+            rec.offset, rec.left = free.place(rec.key.nbytes)
+            rec.key.seek_key = rec.offset
             placed.append(rec)
             if rec.listed:
                 home.listed.append(rec)
-            pos += rec.key.nbytes
+            emit(rec.offset, rec.left, rec)
 
         # The StreamerInfo record: a TList named "StreamerInfo", written before
         # the key lists because that is TFile::Close's order, and deliberately
@@ -623,46 +813,57 @@ class FileWriter:
         if self.infos:
             key_len = Key(class_name="TList", name="StreamerInfo",
                           title="Doubly linked list", obj_len=0, nbytes=0,
-                          seek_key=pos, seek_pdir=BEGIN).key_len
+                          seek_key=0, seek_pdir=BEGIN).key_len
             payload = Payload(key_len)
             payload.tlist("", [i.write for i in self.infos])
             info_record = self._record("TList", "StreamerInfo",
                                        "Doubly linked list",
-                                       bytes(payload.buf), pos)
-            seek_info, nbytes_info = pos, info_record.key.nbytes
-            pos += info_record.key.nbytes
+                                       bytes(payload.buf), 0)
+            info_record.offset, info_record.left = \
+                free.place(info_record.key.nbytes)
+            info_record.key.seek_key = info_record.offset
+            seek_info, nbytes_info = info_record.offset, info_record.key.nbytes
+            emit(info_record.offset, info_record.left, info_record)
 
         # One key list per saved directory: a count, then each record's key image
         # verbatim (Directory.md 6). The root directory's comes first, because
         # TDirectoryFile::Save writes itself before recursing
         # (root/io/io/src/TDirectoryFile.cxx:1575-1587).
-        key_lists: list[tuple[Key, bytes]] = []
+        key_lists: list[tuple[Key, bytes, int, int]] = []
         for d in [root] + self.subdirs:
             if not d.saved:
                 continue
             images = b"".join(p.key.to_bytes() for p in d.listed)
             payload = i32(len(d.listed)) + images
-            key = d.keys_key(pos, len(payload))
-            d.seek_keys, d.nbytes_keys = pos, key.nbytes
-            key_lists.append((key, payload))
-            pos += key.nbytes
+            key = d.keys_key(0, len(payload))
+            off, left = free.place(key.nbytes)
+            key = d.keys_key(off, len(payload))
+            d.seek_keys, d.nbytes_keys = off, key.nbytes
+            key_lists.append((key, payload, off, left))
+            emit(off, left, _Placed(key=key, payload=payload, offset=off,
+                                    left=left))
         if any(d.listed and not d.saved for d in self.subdirs):
             raise WriteError("an unsaved directory cannot hold anything: its "
                              "keys would be unreachable "
                              "(spec/01-container/Directory.md 6.4)")
 
-        # The free list: one entry, covering everything past the end of the
-        # file (FreeSegments.md 2). Its own record has to be placed before the
-        # entry can name the end, so the length is computed first. A directory
-        # record is never freed and never moves, so one entry is right however
-        # many directories the file has (WritingFiles.md 5.3).
-        seek_free = pos
-        free_key = self._self_key(seek_free, 10, seek_pdir=BEGIN)
-        end = seek_free + free_key.nbytes
+        # The free list (FreeSegments.md 2, WritingFiles.md 9). Its own record
+        # is placed before its entries can be serialized, and placing it can
+        # remove an entry -- so the payload is sized first and zero-padded to
+        # that size if the list came out shorter, exactly as ROOT does
+        # (`root/io/io/src/TFile.cxx:2649-2657`).
+        obj_len = 10 * len(free.entries)
+        free_key = self._self_key(0, obj_len, seek_pdir=BEGIN)
+        seek_free, free_left = free.place(free_key.nbytes)
+        free_key = self._self_key(seek_free, obj_len, seek_pdir=BEGIN)
+        free_payload = free.payload
+        if len(free_payload) > obj_len:
+            raise WriteError("the free list grew while being placed")
+        free_payload += b"\x00" * (obj_len - len(free_payload))
+        end = free.end
         if end > BIG:
             raise WriteError("this writer produces small-layout files only; "
                              "see spec/01-container/LargeFiles.md")
-        free_payload = i16(1) + i32(end) + i32(BIG)
 
         out = bytearray(BEGIN)
         out[0:4] = b"root"
@@ -671,7 +872,7 @@ class FileWriter:
         out[12:16] = i32(end)
         out[16:20] = i32(seek_free)
         out[20:24] = i32(free_key.nbytes)
-        out[24:28] = i32(1)                       # nfree
+        out[24:28] = i32(len(free.entries))       # nfree
         out[28:32] = i32(self.nbytes_name)
         out[32:33] = bytes([UNITS_SMALL])
         out[33:37] = i32(self.compress)
@@ -680,22 +881,45 @@ class FileWriter:
         out[45:47] = u16(1)                       # TUUID version
         out[47:63] = self.uuid
 
-        # Every directory record's payload is known only now, because it names
+        # Every directory record's payload is known only now, because each names
         # its own key list.
         for d in self.subdirs:
             d.record.payload = d.payload()
+        root_record = _Placed(key=dir_key, payload=root.payload(),
+                              offset=BEGIN, left=dir_left)
+        ops.insert(0, ("rec", BEGIN, root_record, dir_key.nbytes))
+        if dir_left > 0:
+            ops.insert(1, ("mark", BEGIN + dir_key.nbytes,
+                           free.marker(BEGIN + dir_key.nbytes,
+                                       BEGIN + dir_key.nbytes + dir_left - 1),
+                           4))
+        emit(seek_free, free_left,
+             _Placed(key=free_key, payload=free_payload, offset=seek_free,
+                     left=free_left))
 
-        out += dir_key.to_bytes() + root.payload()
-        for p in placed:
-            out += p.to_bytes()
-        if info_record is not None:
-            out += info_record.to_bytes()
-        for key, payload in key_lists:
-            out += key.to_bytes() + payload
-        out += free_key.to_bytes() + free_payload
-
-        if len(out) != end:
-            raise WriteError(f"placed {len(out)} bytes, header says {end}")
+        # Assemble, in the order the writes happen. A record placed in released
+        # space lands on the bytes of the record that used to be there, which is
+        # legal and is how ROOT reuses a gap -- so the check is that no two
+        # records are live over the same byte, not that nothing is written twice.
+        # The file can be longer than fEND: releasing the last record moves fEND
+        # back and ROOT does not truncate (WritingFiles.md 2.4), so the bytes of
+        # a released record may sit past it. A *live* record may not.
+        physical = max([end] + [off + n for _, off, _, n in ops])
+        out += bytearray(physical - len(out))
+        live = bytearray(physical)
+        for kind, off, item, n in ops:
+            blob = item.to_bytes() if isinstance(item, _Placed) else item
+            if kind == "rec" and off + len(blob) > end:
+                raise WriteError(f"a live record at {off} runs past fEND {end}")
+            if kind == "free":
+                live[off:off + n] = bytes(n)
+            elif kind == "rec":
+                for i in range(off, off + len(blob)):
+                    if live[i]:
+                        raise WriteError(
+                            f"two live records overlap at byte {i}")
+                    live[i] = 1
+            out[off:off + len(blob)] = blob
         return bytes(out)
 
     def write(self, path) -> bytes:

@@ -9,6 +9,29 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **[Writing a file §2](spec/06-writing/WritingFiles.md) now specifies the
+  allocator**, where it previously specified only the append-only case and said
+  gaps were avoided. Given a record of `n` bytes, ROOT takes an **exact** match
+  from anywhere in the free list, otherwise the **first** span strictly longer
+  than `n + 3`, and otherwise extends the last one. The `+ 3` is not a rounding:
+  it guarantees a partial fit leaves at least the four bytes the gap marker
+  needs, so a span one, two or three bytes too large is **skipped and stays
+  unused**. The remainder marker is written as part of the new record's own key,
+  not by a second seek; releasing a record merges with its neighbours and writes
+  the marker at the **merged** span's start, which rewrites an older gap's marker
+  rather than adding one. Freeing the last record moves `fEND` back and does not
+  truncate the file, so `fEND` is a position, not a length.
+- **New invariant, [Free segments §8](spec/01-container/FreeSegments.md) 10: no
+  interior free segment is one, two or three bytes long.** It follows from the
+  `+ 3` above, it is checked, and it holds over 142 interior segments in the
+  corpora and `data/`.
+- **Two new reference files.** `data/container/gap-reused.root`, written by ROOT,
+  shows an exact fit, a partial fit by an unrelated record, and the remainder;
+  `data/written/reused-space.root` is this project writing the same thing, and
+  the two are **the same 1747 bytes** bar each key's `fDatime`, the file's own
+  name and the UUID — including the stale payload left behind the marker, which
+  neither writer clears.
+
 - **New document: [Writing a graph](spec/06-writing/WritingGraphs.md)** — `TGraph`
   at class version 5 and `TGraphErrors` at 3, which completes the writing layer's
   stated scope. A graph is a `TNamed` and three attribute bases, then `fNpoints` and

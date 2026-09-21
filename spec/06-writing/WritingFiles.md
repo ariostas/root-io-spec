@@ -45,7 +45,19 @@ Three facts decide the order of everything else.
    one span, `[100, 2000000000]`, so "allocate" means "take `fFirst`, then add the
    record's length to it".
 
-## 2. Allocation, in the one case that matters
+## 2. Allocation
+
+Every record in the file — a data record, a directory record, the `StreamerInfo`
+record, each key list, and the free list itself — gets its offset from the same
+procedure. A writer that only ever appends can collapse it to "the next free byte"
+and §2.1 is that case; §2.2 is the general one, which a writer needs as soon as
+anything in the file is deleted or rewritten.
+
+**The free list is the allocator's state, not a report about it.** It is written
+to the file at the end ([§9](#9-the-free-list)), but it exists throughout, and
+every placement both reads and updates it.
+
+### 2.1 The append-only case
 
 A fresh file's free list holds a single entry from `fBEGIN` to `kStartBigFile`
 (`root/io/io/src/TFile.cxx:691`), and `kStartBigFile` is 2000000000
@@ -62,14 +74,104 @@ So for a writer that never deletes anything:
 | the single free entry at the end | `fFirst = fEND`, `fLast = 2000000000` |
 | `nfree` | 1 |
 
-**Gaps are the other case, and this layer avoids it.** ROOT's allocator prefers an
-exact-size free span, then the first span **whose whole length exceeds
-`nbytes + 3`** — that is, one with more than three bytes to spare — and only then
-extends the last one (`root/io/io/src/TFree.cxx:132-152`). Partially
-filling a span leaves a remainder that must be marked in place with a negative
-`fNbytes` — [Free segments §4](../01-container/FreeSegments.md#4-the-in-place-marker)
-— and getting that wrong corrupts the record chain for every reader. A writer that
-only appends never has to.
+### 2.2 Choosing an offset
+
+Given a record of `n` bytes — **the key and its payload together**, since the key
+is what is being placed (`root/io/io/src/TKey.cxx:516`) — walk the free list,
+which is kept sorted ascending by `fFirst`:
+
+1. If any entry's length is **exactly** `n`, take it and stop. An exact match
+   wins from anywhere in the list, even after a longer entry that would also have
+   served (`root/io/io/src/TFree.cxx:133-135`).
+2. Otherwise take the **first** entry whose length is **strictly greater than
+   `n + 3`** (`root/io/io/src/TFree.cxx:137`). The list is address-ordered, so
+   this is the lowest-addressed segment with room to spare.
+3. If neither matched, raise the last entry's `fLast` by 1000000000 and take that
+   entry (`root/io/io/src/TFree.cxx:148-152`). This is unreachable in an ordinary
+   file, because the last entry runs to `kStartBigFile` and step 2 has already
+   taken it.
+
+An entry's length is `fLast - fFirst + 1`: **`fLast` is inclusive**
+([Free segments §2](../01-container/FreeSegments.md#2-the-free-segment-record)).
+
+> **The `+ 3` is not a rounding.** It guarantees that a partial fit leaves at
+> least four bytes, which is exactly the width of the marker that has to go
+> there — so a segment one, two or three bytes larger than the record is
+> **skipped**, and stays unused. `container/gap-reused` was built around this
+> rule: a 122-byte record was offered a 123-byte segment and was appended at the
+> end of the file instead, three bytes short.
+
+The record always starts at the chosen entry's `fFirst`
+(`root/io/io/src/TKey.cxx:532`). There is no alignment and no offset within the
+segment.
+
+### 2.3 Updating the free list, and the three outcomes
+
+Let `left = fLast - fFirst + 1 - n` be what the chosen entry has over.
+
+| | What happens | What is written |
+|---|---|---|
+| **At the end of the file** — the chosen entry's `fFirst` is `fEND` | `fEND` becomes `fFirst + n`, and the entry's `fFirst` follows it. If `fEND` has passed `fLast`, raise `fLast` by 1000000000 (`root/io/io/src/TKey.cxx:534-539`) | nothing beyond the record |
+| **Exact fit** — `left == 0` | the entry is **removed** from the list (`root/io/io/src/TKey.cxx:551-552`), so `nfree` falls | nothing beyond the record |
+| **Partial fit** — `left >= 4` | the entry's `fFirst` becomes `fFirst + n`; `fLast` does not move | a **four-byte negative marker** at `fFirst + n`, holding `-left` |
+
+`left` is never 1, 2 or 3: §2.2 step 2 guarantees it.
+
+**The marker is part of the record's own write.** ROOT puts it in the key's buffer
+immediately after the payload (`root/io/io/src/TKey.cxx:559-561`) and extends the
+write by four bytes to carry it (`root/io/io/src/TKey.cxx:1501`); there is no
+second seek. A writer may of course write it separately, but it MUST write it: a
+reader walking the record chain
+([Records §1](../01-container/Record.md#1-the-record-chain)) has nothing else to
+tell it the gap is a gap, and will try to parse a key out of the stale bytes of
+whatever was deleted.
+
+> `container/gap-reused` shows all three: `exact` is restored into a segment of
+> exactly its own length, `lodger` takes the front of the 123 bytes `snug`
+> released, and the remaining 19 bytes at 696 carry `-19` and appear in the free
+> list as 696..714.
+
+### 2.4 Releasing a record
+
+The reverse operation, which a writer needs for anything it rewrites — including
+its own key lists and free list, which are freed and reallocated rather than
+edited in place.
+
+Freeing the span `[first, last]` **merges it with its neighbours**
+(`root/io/io/src/TFree.cxx:66-96`): if an existing entry ends at `first - 1` it is
+extended, and if the entry *after* that one then begins at `last + 1` the two are
+merged into one and the second is deleted; if an entry begins at `last + 1` its
+`fFirst` moves back instead; otherwise a new entry is inserted in address order.
+
+Then the marker is written at the **merged** segment's first byte, not at
+`first` — so freeing a record adjacent to an existing gap **rewrites the older
+gap's marker** and leaves none of its own
+(`root/io/io/src/TFile.cxx:1502-1518`). Two consequences a writer must get right:
+
+- the magnitude is the **whole merged length**, clamped to 2000000000
+  ([Free segments §4](../01-container/FreeSegments.md#4-the-in-place-marker));
+- if the freed span ends at `fEND - 1`, `fEND` moves back to the merged segment's
+  first byte (`root/io/io/src/TFile.cxx:1510`). **The file is not truncated** —
+  ROOT has no call that shortens it — so `fEND` is then below the physical size
+  and the bytes past it are stale.
+
+A directory record is the one thing that is never freed
+([§5.3](#53-the-record-never-moves-and-a-directory-key-is-never-freed)).
+
+### 2.5 How much of this a writer must copy
+
+The search in §2.2 is **ROOT's policy**, and a writer may allocate differently:
+nothing on ROOT's read path consults the free list at all, and `nfree` is parsed
+into a variable that is never used again (`root/io/io/src/TFile.cxx:681`, `:743`,
+`:753`). What is *not* free is the bookkeeping — §2.3's marker, §2.4's merge, and
+the trailing entry, whose `fLast` must exceed `fEND` because that is the condition
+`TFile::ReadFree` terminates its loop on (`root/io/io/src/TFile.cxx:1990-1995`).
+A writer that omits the trailing entry produces a file whose free list ROOT reads
+past the end of.
+
+Matching ROOT's search exactly is still worth doing for one reason: it makes a
+byte comparison against a ROOT-written file possible, and that comparison is what
+finds the errors.
 
 ## 3. The procedure
 
@@ -590,7 +692,10 @@ names.
 The reading documents' `Invariants` sections are the full list, and
 `tools/check_invariants.py` runs them. These are the ones a writer gets wrong:
 
-1. `fEND` equals the file's length, and equals the last free entry's `fFirst`.
+1. `fEND` equals the last free entry's `fFirst`, and does not exceed the file's
+   length. For a writer that only appends, the two are equal; they part company
+   when the last record is released, which moves `fEND` back without truncating
+   ([§2.4](#24-releasing-a-record)).
 2. The last free entry's `fLast` is strictly greater than `fEND` (§9).
 3. `fNbytesName` equals the root directory record's `fKeylen` plus the two counted
    strings that follow it, and equals the copy inside the record.
@@ -615,12 +720,28 @@ The reading documents' `Invariants` sections are the full list, and
 12. A key-list record's key carries the `fSeekDir` of the directory that **owns**
     the list, not of that directory's parent (§5.4). It is the only thing in the
     record that says which directory it belongs to.
+13. Every record placed in a span with bytes to spare is followed immediately by
+    a four-byte negative marker whose magnitude is the remainder
+    ([§2.3](#23-updating-the-free-list-and-the-three-outcomes)), and that
+    remainder appears in the free list as the same span.
+14. **No free segment is one, two or three bytes long.** A writer that takes a
+    span with fewer than four bytes to spare has nowhere to put the marker, and
+    produces a gap no reader can walk past
+    ([Free segments §8](../01-container/FreeSegments.md#8-invariants) 10).
+15. No two **live** records overlap. A record placed in released space lands on
+    the bytes of the record that used to be there, which is correct and is how a
+    gap is reused; two records both reachable from a key list sharing a byte is
+    not, and nothing downstream would notice, because ROOT reads every record by
+    its own offset.
 
-Items 1, 2, 5, 6, 7 and 9 to 12 are the ones with no detector on ROOT's side at
-all (§14), and all four of the new ones are checked by
+Items 1, 2, 5, 6, 7 and 9 to 15 are the ones with no detector on ROOT's side at
+all (§14), and all of the new ones are checked by
 `tools/check_invariants.py` — as
 [Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, and
-12 respectively. The remaining obligation in §5.4 is not a property of a file and
+12, and as [Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7
+and 10. Number 15 is the exception and is checked in the writer itself: it is a
+property of the *act* of writing rather than of the file, since a finished file
+cannot say which of two overlapping records was meant to be live. The remaining obligation in §5.4 is not a property of a file and
 so is not among them: a directory left with `fSeekKeys` 0 while it owns records
 produces keys nothing can reach, and `tools/rootwrite.py` refuses it rather than
 checking for it afterwards.
@@ -670,7 +791,9 @@ writing. The reading-side errata are in the documents named in each row.
 |---|---|
 | `data/written/objstring.root` | the whole of §3, in 656 bytes (§12) |
 | `data/container/file-minimal.root` | the same shape written by ROOT, with a `StreamerInfo` record |
-| `data/container/gap.root` | what §2 avoids: a partially filled free span, and the negative marker in it |
+| `data/container/gap.root` | a record deleted: an interior free entry and the negative marker in it |
+| `data/container/gap-reused.root` | §2 in full, written by ROOT: an exact fit, a partial fit by an unrelated record, and the remainder |
+| `data/written/reused-space.root` | §2 written by this project — **the same 1747 bytes**, bar each key's `fDatime`, the file's own name and the UUID |
 | `data/container/directories.root` | the subdirectory shape of §5, and the file `data/written/nested-subdir.root` is compared against record for record |
 | `data/written/nested-subdir.root` | §5 written: two nesting levels, three key lists, and ROOT writing into one of them (§5.3) |
 

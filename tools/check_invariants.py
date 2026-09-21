@@ -1938,6 +1938,14 @@ class Checker:
                 self.bad("FreeSegments 8.6",
                          f"marker at {f} is {marker}, expected {expected}")
 
+        for f, l in interior:
+            # 8.10: the allocator skips a span with one, two or three bytes to
+            # spare, so a remainder always has room for its own marker.
+            if l - f + 1 < 4:
+                self.bad("FreeSegments 8.10",
+                         f"interior entry ({f}, {l}) is {l - f + 1} bytes, "
+                         f"too short to hold its own marker")
+
         walked = {(r.offset, r.offset - r.nbytes - 1) for r in self.records if r.free}
         if set(interior) != walked:
             self.bad("FreeSegments 8.7",

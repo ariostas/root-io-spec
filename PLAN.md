@@ -19,7 +19,7 @@ Measured, 2026-09-21, by the checks in `tools/`:
 | Class versions checked against `ClassDef` | 55 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 85 files, 0 failures |
-| Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
+| Invariants over both corpora | 180 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
 | Unit tests | 334 |
 
@@ -231,7 +231,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 248 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 252 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -1672,7 +1672,7 @@ was re-checked here before it was planned.
 
 So **release criterion 1 of §8.1 — "no published claim is known to be wrong" — is
 not met as of today**, and the first three items of the sub-plan are what restores
-it. The most valuable item is the fourth: an audit of which of the 248 published
+it. The most valuable item is the fourth: an audit of which of the 252 published
 `Invariants` entries are wired into `check_invariants.py` at all, since the false
 one turned out to be an unchecked one.
 
@@ -1838,7 +1838,7 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 154 files
+26 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 154 files
 (4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's

@@ -1,0 +1,211 @@
+id   = "container/gap-reused"
+file = "data/container/gap-reused.root"
+size = 1747
+
+description = """
+Free space being **used again**, which is the half of the allocator that
+`container/gap` does not show. Three placements are visible in the finished
+file, and they are the three a writer has to implement:
+
+* **an exact fit.** `exact` is written at 290 with a 128-character payload,
+  overwritten with a short one, then overwritten again with the original string.
+  The second overwrite frees 125 bytes that coalesce with the 88 already free,
+  giving back exactly the 213 the record needs — so the `TFree` entry is removed
+  and `exact` ends up at **the very offset its first version had**, with nothing
+  left over;
+* **a partial fit by an unrelated record.** `snug` is written long and
+  overwritten short, releasing 123 bytes at 592. `lodger` is written next, is
+  104 bytes, and is placed **inside the span `snug` released**. Nothing connects
+  the two: the allocator matches on size and address, never on identity;
+* **the remainder, marked in place.** 123 − 104 leaves 19 bytes at 696, carrying
+  a negative `fNbytes` of −19 and appearing in the free list as 696..714.
+
+Two details of ROOT's rule are worth reading off this file.
+
+**The remainder is written by the new record's own key.** `TKey::Create` puts the
+marker into the key's buffer immediately after the payload
+(`root/io/io/src/TKey.cxx:559-561`) and `TKey::WriteFile` extends the write by
+four bytes to carry it (`root/io/io/src/TKey.cxx:1501`). There is no second seek,
+which is why the 19 bytes at 696 are correct even though nothing wrote them
+separately.
+
+**A segment one, two or three bytes too large is skipped.** The search takes an
+exact match from anywhere in the list, and otherwise the first segment whose
+length is **strictly greater than `nbytes + 3`** (`root/io/io/src/TFree.cxx:137`),
+so a partial fit always leaves at least the four bytes the marker needs. This
+case was built around that rule: an earlier draft of `lodger` was 122 bytes
+against a 123-byte segment and was **appended at the end of the file instead**,
+three bytes short of fitting.
+
+The `"overwrite"` option is what makes any of this controllable from a macro. It
+frees the old key *before* allocating the new one
+(`root/io/io/src/TDirectoryFile.cxx:1977-1985`), so the space is back on the free
+list in time for the allocation that follows; a plain `Write()` would append a
+second cycle and free nothing.
+"""
+
+spec = [
+  "spec/01-container/FreeSegments.md",
+  "spec/01-container/Record.md",
+  "spec/06-writing/WritingFiles.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 190
+class  = "TFile"
+name   = "data/container/gap-reused.root"
+cycle  = 1
+seek_pdir = 0
+
+[[records]]
+offset = 290
+nbytes = 213
+class  = "TObjString"
+name   = "exact"
+cycle  = 1
+seek_pdir = 100
+role   = "restored by an exact fit, at the offset its first version had"
+
+[[records]]
+offset = 503
+nbytes = 89
+class  = "TObjString"
+name   = "snug"
+cycle  = 1
+seek_pdir = 100
+role   = "overwritten short in place; released 123 bytes at 592"
+
+[[records]]
+offset = 592
+nbytes = 104
+class  = "TObjString"
+name   = "lodger"
+cycle  = 1
+seek_pdir = 100
+role   = "placed inside the span snug released"
+
+[[records]]
+offset = 696
+nbytes = -19
+role   = "the remainder of that span, 19 bytes"
+
+[[records]]
+offset = 715
+nbytes = 141
+class  = "TObjString"
+name   = "tail"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 856
+nbytes = 434
+class  = "TList"
+name   = "StreamerInfo"
+cycle  = 1
+seek_pdir = 100
+
+[[records]]
+offset = 1290
+nbytes = 356
+class  = "TFile"
+name   = "data/container/gap-reused.root"
+cycle  = 1
+seek_pdir = 100
+role   = "the key list"
+
+[[records]]
+offset = 1646
+nbytes = 101
+class  = "TFile"
+name   = "data/container/gap-reused.root"
+cycle  = 1
+seek_pdir = 100
+role   = "the free list"
+
+# --- The exact fit ------------------------------------------------------
+# 213 bytes at 290: the same offset and the same length as the record written
+# there first. An exact match is taken from anywhere in the free list, so the
+# entry is removed rather than shortened (root/io/io/src/TKey.cxx:551-552).
+[[bytes]]
+name = "exact: fNbytes"
+offset = 290
+type = "i32"
+value = 213
+
+[[bytes]]
+name = "exact: fSeekKey points at itself"
+offset = 308
+type = "i32"
+value = 290
+
+# --- The partial fit ----------------------------------------------------
+[[bytes]]
+name = "lodger: fNbytes"
+offset = 592
+type = "i32"
+value = 104
+
+[[bytes]]
+name = "lodger: fSeekKey, inside the span snug released"
+offset = 610
+type = "i32"
+value = 592
+
+# --- The remainder ------------------------------------------------------
+# 592 + 104 = 696, so the marker sits immediately after the record that took
+# the front of the segment. Its magnitude is what is left: 714 - 696 + 1 = 19.
+[[bytes]]
+name = "remainder: negative fNbytes"
+offset = 696
+type = "i32"
+value = -19
+
+# --- The free list agrees with the marker --------------------------------
+# Two entries at 1727: the interior remainder, then the trailing sentinel whose
+# fFirst is fEND. fLast is inclusive.
+[[bytes]]
+name = "free entry 0: version 1, small form"
+offset = 1727
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "free entry 0: fFirst"
+offset = 1729
+type = "i32"
+value = 696
+
+[[bytes]]
+name = "free entry 0: fLast, inclusive"
+offset = 1733
+type = "i32"
+value = 714
+
+[[bytes]]
+name = "free entry 1: fFirst is fEND"
+offset = 1739
+type = "i32"
+value = 1747
+
+[[bytes]]
+name = "nfree: the remainder and the sentinel"
+offset = 24
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1747
+
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 1646

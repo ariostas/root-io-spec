@@ -210,9 +210,15 @@ rule: whatever ROOT does with a remainder, it does not have a minimum.
 
 ## 3. What the corpora show
 
-Measured over `gen/foreign/` (154) and `gen/cern/` (72), of which
-`tools/rootfile.py` loads 225 — `uproot-issue261.root` has a zero-length record at
-10427 and is already in `gen/foreign/IGNORE.toml`.
+Measured over `gen/foreign/` (154) and `gen/cern/` (26) as their manifests list
+them, plus the 46 further `root.cern` files a previous session had fetched — 226
+in all, of which `tools/rootfile.py` loads 225. `uproot-issue261.root` has a
+zero-length record at 10427 and is already in `gen/foreign/IGNORE.toml`.
+
+> The **tracked** corpora are 180 files, which is the number the front pages
+> quote and what `check_invariants.py` runs over in CI. The wider set is used
+> here because a census is worth more the more files it sees; every count below
+> says which set it is over.
 
 | Measured | Value |
 |---|---|
@@ -261,7 +267,14 @@ Each item ends the way every item in `PLAN.md` §8.4 ended: with a file in
 fixture of the same shape exists — with a **byte comparison** against it, because
 that is what has found every error worth having in this layer.
 
-### W1 — Free space, and where a record goes
+### W1 — Free space, and where a record goes ✅ done 2026-09-21
+
+*Delivered: `WritingFiles.md` §2 in five subsections, an allocator in
+`tools/rootwrite.py`, `container/gap-reused` written by ROOT, and
+`written/reused-space` written by this project — **the same 1747 bytes**, bar
+each key's `fDatime`, the file's own name and the UUID, down to the stale bytes
+left behind the marker. One new invariant, `FreeSegments 8.10`, confirmed by
+corrupting a fixture and holding over 142 interior free segments.*
 
 **What it adds.** One section of `WritingFiles.md` §2, which today says
 "Allocation, in the one case that matters" and covers the case where there is no

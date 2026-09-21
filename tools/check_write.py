@@ -86,7 +86,14 @@ def read_back(buf: bytes, case: dict) -> list[str]:
         if rec.nbytes != want["nbytes"]:
             out.append(f"{case['id']}: record at {rec.offset} is {rec.nbytes} "
                        f"bytes, case.toml says {want['nbytes']}")
-        if rec.class_name != want["class"]:
+        # A free segment has no key to name a class with, so `class` is
+        # optional and its absence is the assertion that the record is a gap
+        # (spec/01-container/FreeSegments.md 4).
+        if "class" not in want:
+            if not rec.free:
+                out.append(f"{case['id']}: record at {rec.offset} is live, "
+                           f"case.toml lists it as a free segment")
+        elif rec.class_name != want["class"]:
             out.append(f"{case['id']}: record at {rec.offset} is "
                        f"{rec.class_name}, case.toml says {want['class']}")
     want_keys = case.get("keys", [])

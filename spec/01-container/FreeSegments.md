@@ -199,6 +199,11 @@ To read the list:
    the list.
 8. Live records and free spans partition `[fBEGIN, fEND)` exactly.
 9. `fEND <= physical file size`.
+10. Every interior entry is **at least four bytes** long. ROOT's allocator takes
+    a span only when it fits exactly or has more than three bytes to spare
+    (`root/io/io/src/TFree.cxx:137`), so a remainder is never 1, 2 or 3 — and
+    four is exactly what the §4 marker needs. Measured: 142 interior segments
+    across both corpora and `data/`, the smallest of them four bytes.
 
 Invariants 6 and 7 are the ones that can legitimately fail: a `MakeFree` write may
 have been lost (§4.2), and a recovered file's list is built by plain appends rather
@@ -236,6 +241,7 @@ verifying and, if real, reporting upstream.
 | Case | Exercises |
 |---|---|
 | `container/gap` | A deleted record: an interior entry and its in-place marker |
+| `container/gap-reused` | The space being used again: an exact fit, a partial fit, and the remainder marked at its start |
 | `container/file-minimal` | The trailing entry alone, `fFirst == fEND`, `fLast == 2000000000` |
 
 No fixture covers the large entry form or a `fLast` above 2000000000; both need a

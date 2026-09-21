@@ -1166,5 +1166,139 @@ class Determinism(unittest.TestCase):
             rw.pack_datime(1994, 1, 1, 0, 0, 0)
 
 
+
+class Allocation(unittest.TestCase):
+    """The free list, spec/06-writing/WritingFiles.md 2."""
+
+    def test_fresh_list_is_one_entry(self):
+        f = rw.FreeList()
+        self.assertEqual(f.entries, [[100, rw.BIG]])
+        self.assertEqual(f.end, 100)
+
+    def test_append_advances_end(self):
+        f = rw.FreeList()
+        self.assertEqual(f.place(50), (100, -1))
+        self.assertEqual(f.end, 150)
+        self.assertEqual(f.entries, [[150, rw.BIG]])
+
+    def test_exact_fit_removes_the_entry(self):
+        f = rw.FreeList()
+        f.place(100)                      # 100..199
+        f.place(100)                      # 200..299
+        f.release(100, 199)
+        self.assertEqual(len(f.entries), 2)
+        self.assertEqual(f.place(100), (100, 0))
+        self.assertEqual(len(f.entries), 1)
+
+    def test_partial_fit_leaves_a_remainder(self):
+        f = rw.FreeList()
+        f.place(200)
+        f.place(100)
+        f.release(100, 299)
+        off, left = f.place(150)
+        self.assertEqual((off, left), (100, 50))
+        self.assertEqual(f.entries[0], [250, 299])
+
+    def test_a_span_with_three_to_spare_is_skipped(self):
+        """2.2: the test is `> n + 3`, so a remainder is never 1, 2 or 3."""
+        f = rw.FreeList()
+        f.place(200)
+        f.place(100)
+        f.release(100, 299)               # a 200-byte hole
+        off, left = f.place(197)          # 197 + 3 == 200, not greater
+        self.assertEqual(off, 400)        # appended instead
+        self.assertEqual(left, -1)
+        self.assertEqual(f.entries[0], [100, 299])
+
+    def test_a_span_with_four_to_spare_is_taken(self):
+        f = rw.FreeList()
+        f.place(200)
+        f.place(100)
+        f.release(100, 299)
+        off, left = f.place(196)
+        self.assertEqual((off, left), (100, 4))
+
+    def test_release_merges_on_both_sides(self):
+        f = rw.FreeList()
+        for _ in range(4):
+            f.place(100)                  # 100, 200, 300, 400
+        f.place(100)                      # 500, so nothing is at the tail
+        f.release(100, 199)
+        f.release(300, 399)
+        self.assertEqual(f.entries[:2], [[100, 199], [300, 399]])
+        f.release(200, 299)               # bridges the two
+        self.assertEqual(f.entries[0], [100, 399])
+        self.assertEqual(len(f.entries), 2)
+
+    def test_releasing_the_tail_moves_end_back(self):
+        """2.4: fEND falls, and ROOT does not truncate the file."""
+        f = rw.FreeList()
+        f.place(100)
+        f.place(100)
+        self.assertEqual(f.end, 300)
+        f.release(200, 299)
+        self.assertEqual(f.end, 200)
+        self.assertEqual(f.entries, [[200, rw.BIG]])
+
+    def test_marker_is_the_negative_length(self):
+        f = rw.FreeList()
+        self.assertEqual(f.marker(696, 714), rw.i32(-19))
+
+    def test_marker_is_clamped(self):
+        f = rw.FreeList()
+        self.assertEqual(f.marker(100, 3_000_000_000), rw.i32(-rw.BIG))
+
+
+class ReusedSpace(unittest.TestCase):
+    """data/written/reused-space.root against data/container/gap-reused.root."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ours = (REPO / "data/written/reused-space.root").read_bytes()
+        cls.root = (REPO / "data/container/gap-reused.root").read_bytes()
+
+    def test_same_length(self):
+        self.assertEqual(len(self.ours), len(self.root))
+
+    def test_records_line_up(self):
+        mine = rootfile.read_records(self.ours, rootfile.read_header(self.ours))
+        theirs = rootfile.read_records(self.root, rootfile.read_header(self.root))
+        self.assertEqual([(r.offset, r.nbytes) for r in mine],
+                         [(r.offset, r.nbytes) for r in theirs])
+
+    def test_only_datime_name_and_uuid_differ(self):
+        """Every differing byte is a timestamp, the file's name, or the UUID."""
+        a, b = bytearray(self.root), bytearray(self.ours)
+        for buf in (a, b):
+            buf[47:63] = bytes(16)                      # the header UUID
+        for buf, name in ((a, b"data/container/gap-reused.root"),
+                          (b, b"data/written/reused-space.root")):
+            while name in buf:
+                i = buf.index(name)
+                buf[i:i + len(name)] = b"*" * len(name)
+        for buf in (a, b):
+            header = rootfile.read_header(bytes(buf))
+            blank = []
+            for r in rootfile.read_records(bytes(buf), header):
+                if r.free:
+                    continue
+                blank.append((r.offset + 10, 4))            # the key's fDatime
+                d = rootfile.read_directory(bytes(buf), r)
+                if d is not None:
+                    blank.append((d.datime_offset, 8))      # fDatimeC, fDatimeM
+                    blank.append((d.uuid_offset, 16))
+                    if d.seek_keys:
+                        for e in rootfile.read_key_list(bytes(buf), d):
+                            blank.append((e.datime_offset, 4))
+            for off, n in blank:
+                buf[off:off + n] = bytes(n)
+        self.assertEqual(bytes(a), bytes(b))
+
+    def test_the_stale_bytes_behind_the_marker_match(self):
+        """Releasing a record writes four bytes and clears nothing else."""
+        self.assertEqual(self.ours[696:715], self.root[696:715])
+        self.assertEqual(self.ours[700:715], b"123456789abcdef")
+
+
 if __name__ == "__main__":
     unittest.main()

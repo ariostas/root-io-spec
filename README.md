@@ -50,9 +50,9 @@ from scratch.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**76 reference files, 1981 byte-level assertions, and 1536 source citations
-checked against the pinned submodule across 48 documents**, plus 9 files this
-project wrote with 432 assertions of their own. The invariants also
+**77 reference files, 1993 byte-level assertions, and 1550 source citations
+checked against the pinned submodule across 48 documents**, plus 10 files this
+project wrote with 447 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where

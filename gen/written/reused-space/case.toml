@@ -1,0 +1,206 @@
+id   = "written/reused-space"
+file = "data/written/reused-space.root"
+size = 1747
+
+description = """
+Records placed into **released space** rather than appended, written by
+`tools/rootwrite.py` from [`WritingFiles.md` §2](../../../spec/06-writing/WritingFiles.md).
+
+**This file and `data/container/gap-reused.root` are the same 1747 bytes**, bar
+each key's `fDatime`, the file's own name and the UUID — 156 bytes across 31
+runs, and not one of them structural. ROOT wrote the other one from the same
+sequence of operations, which is what makes the comparison worth having: the
+allocator is the one part of a writer whose mistakes are invisible until
+somebody else's reader walks the record chain.
+
+The two names are deliberately the same length, 30 characters, because a key
+carries the file's name and a record carries its own offset; one byte more and
+every record would shift.
+
+Three placements, the three of §2.3, and all three are in the bytes:
+
+* `exact` at **290**, 213 bytes — written long, overwritten short, overwritten
+  long again. The last overwrite released 125 bytes that coalesced with the 88
+  already free, giving back exactly the 213 needed, so the free entry was
+  removed and the record landed at the offset its first version had;
+* `lodger` at **592**, 104 bytes — placed inside the 123 bytes `snug` released
+  when it was overwritten short. Nothing connects the two records;
+* the remainder at **696**, 19 bytes, carrying `-19` and listed as 696..714.
+
+What is *not* rewritten is as much of the point: bytes 700..714 are the tail of
+the long `snug` payload, still there behind the marker, because releasing a
+record writes four bytes and moves on.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/FreeSegments.md",
+  "spec/01-container/Record.md",
+]
+
+writer  = "tools/rootwrite.py"
+datime  = "2000-01-01 00:00:00, fixed; see tools/rootwrite.py DEFAULT_DATIME"
+
+[[records]]
+offset = 100
+nbytes = 190
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 290
+nbytes = 213
+class  = "TObjString"
+role   = "exact: restored by an exact fit, at its original offset"
+
+[[records]]
+offset = 503
+nbytes = 89
+class  = "TObjString"
+role   = "snug: overwritten short, releasing 123 bytes at 592"
+
+[[records]]
+offset = 592
+nbytes = 104
+class  = "TObjString"
+role   = "lodger: placed inside the span snug released"
+
+[[records]]
+offset = 696
+nbytes = -19
+role   = "the remainder of that span"
+
+[[records]]
+offset = 715
+nbytes = 141
+class  = "TObjString"
+role   = "tail"
+
+[[records]]
+offset = 856
+nbytes = 434
+class  = "TList"
+role   = "the StreamerInfo record: one info, TObjString"
+
+[[records]]
+offset = 1290
+nbytes = 356
+class  = "TFile"
+role   = "the key list"
+
+[[records]]
+offset = 1646
+nbytes = 101
+class  = "TFile"
+role   = "the free list, two entries"
+
+[[keys]]
+name = "tail"
+
+[[keys]]
+name = "exact"
+
+[[keys]]
+name = "snug"
+
+[[keys]]
+name = "lodger"
+
+# --- The exact fit, WritingFiles.md 2.3 ----------------------------------
+[[bytes]]
+name = "exact: fNbytes, the length that made the fit exact"
+offset = 290
+type = "i32"
+value = 213
+
+[[bytes]]
+name = "exact: fSeekKey, its original offset"
+offset = 308
+type = "i32"
+value = 290
+
+# --- The partial fit ------------------------------------------------------
+[[bytes]]
+name = "lodger: fNbytes"
+offset = 592
+type = "i32"
+value = 104
+
+[[bytes]]
+name = "lodger: fSeekKey, inside the span snug released"
+offset = 610
+type = "i32"
+value = 592
+
+# --- The remainder marker, FreeSegments.md 4 ------------------------------
+# 592 + 104 = 696: the marker goes immediately after the record that took the
+# front of the span, and its magnitude is what is left, 714 - 696 + 1.
+[[bytes]]
+name = "remainder: negative fNbytes"
+offset = 696
+type = "i32"
+value = -19
+
+# The bytes behind the marker are not cleared. 700 is where the long `snug`
+# payload still is -- releasing a record writes four bytes and nothing else.
+[[bytes]]
+name = "stale payload behind the marker"
+offset = 700
+type = "bytes"
+value = "12345678"
+
+# --- The free list agrees with it ----------------------------------------
+[[bytes]]
+name = "free entry 0: version 1, small form"
+offset = 1727
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "free entry 0: fFirst"
+offset = 1729
+type = "i32"
+value = 696
+
+[[bytes]]
+name = "free entry 0: fLast, inclusive"
+offset = 1733
+type = "i32"
+value = 714
+
+[[bytes]]
+name = "free entry 1: fFirst is fEND"
+offset = 1739
+type = "i32"
+value = 1747
+
+[[bytes]]
+name = "free entry 1: fLast"
+offset = 1743
+type = "i32"
+value = 2000000000
+
+# --- The header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1747
+
+[[bytes]]
+name = "fSeekFree"
+offset = 16
+type = "i32"
+value = 1646
+
+[[bytes]]
+name = "fNbytesFree"
+offset = 20
+type = "i32"
+value = 101
+
+[[bytes]]
+name = "nfree: the remainder and the trailing entry"
+offset = 24
+type = "i32"
+value = 2
