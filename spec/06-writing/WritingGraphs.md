@@ -326,7 +326,7 @@ values is enforced one layer down, by the byte count: an array of the wrong leng
 makes the record's decoding end somewhere other than where its byte count says, and
 that is [Streamer-driven reading §10](../02-serialization/StreamerDriven.md#10-invariants)
 invariant 1. Invariant 2 is checked directly, and 3 is the general rule of
-[Writing an object §9](WritingObjects.md#9-invariants), checked there.
+[Writing an object §10](WritingObjects.md#10-invariants), checked there.
 
 **Two things a writer should reproduce and no file is required to.** `fFunctions`
 is a pointer to an empty `TList` in every graph ROOT writes and a null is accepted
@@ -339,7 +339,7 @@ There is no diagnostic for a negative `fNpoints`, for `fMinimum` above `fMaximum
 or for an `fHistogram` whose axis range does not contain the points; the byte
 count is the only thing that has to add up, and it is checked by
 `TBufferFile::CheckByteCount` like any other object's
-([Writing an object §8](WritingObjects.md#8-what-root-checks-and-what-it-does-not)).
+([Writing an object §9](WritingObjects.md#9-what-root-checks-and-what-it-does-not)).
 
 ## 7. Class versions
 

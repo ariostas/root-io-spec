@@ -1,6 +1,6 @@
 id   = "written/th2-profile"
 file = "data/written/th2-profile.root"
-size = 15623
+size = 15838
 
 description = """
 A `TH2F`, a `TH2D` and two `TProfile`s written by `tools/rootwrite.py` from
@@ -8,11 +8,14 @@ A `TH2F`, a `TH2D` and two `TProfile`s written by `tools/rootwrite.py` from
 with the eighteen `TStreamerInfo` records the two chains need.
 
 **All four data records are byte-identical to the ones ROOT wrote in
-`data/classes/th2-profile.root`** -- 817, 887, 708 and 713 bytes -- and so is
-the `StreamerInfo` record bar its last entry, a `listOfRules` holding one read
-rule for `TProfile` versions 1 to 5 that a file written at version 7 cannot use
-(§8.5). `tools/test_write.py` asserts all five comparisons. Both files put their
-records at the same offsets, because the two paths are the same length.
+`data/classes/th2-profile.root`** -- 817, 887, 708 and 713 bytes -- **and so is
+the whole `StreamerInfo` record**, all 11853 bytes of it: eighteen infos and the
+`listOfRules` entry ROOT appends, holding one read rule for `TProfile` versions 1
+to 5 that a file written at version 7 can never use. This writer emits it anyway,
+for the reason
+[`WritingObjects.md` §8.6](../../../spec/06-writing/WritingObjects.md) gives.
+`tools/test_write.py` asserts all five comparisons. Both files put their records
+at the same offsets, because the two paths are the same length.
 
 What this case carries that `written/histogram` cannot:
 
@@ -77,18 +80,18 @@ role   = "a TProfile with a Y range, fErrorMode 1 and fBinSumw2, byte-identical"
 
 [[records]]
 offset = 3612
-nbytes = 11638
+nbytes = 11853
 class  = "TList"
 role   = "StreamerInfo: eighteen infos, identical to ROOT's first eighteen"
 
 [[records]]
-offset = 15250
+offset = 15465
 nbytes = 284
 class  = "TFile"
 role   = "keys list"
 
 [[records]]
-offset = 15534
+offset = 15749
 nbytes = 89
 class  = "TFile"
 role   = "free segments"
@@ -112,7 +115,7 @@ name = "p2"
 name = "fEND"
 offset = 12
 type = "i32"
-value = 15623
+value = 15838
 
 [[bytes]]
 name = "fCompress: uncompressed, so the records can be compared with ROOT's"
@@ -130,7 +133,7 @@ value = 3612
 name = "fNbytesInfo"
 offset = 41
 type = "i32"
-value = 11638
+value = 11853
 
 
 # --- The TH2F record: three nested frames, identical to ROOT's ---
@@ -532,7 +535,7 @@ type = "u16"
 value = 5
 
 [[bytes]]
-name = "the info count: ROOT's own list has nineteen, the extra a listOfRules"
+name = "the entry count: eighteen infos and the listOfRules, as ROOT writes"
 offset = 3693
 type = "i32"
-value = 18
+value = 19

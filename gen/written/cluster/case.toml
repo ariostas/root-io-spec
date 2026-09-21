@@ -1,6 +1,6 @@
 id   = "written/cluster"
 file = "data/written/cluster.root"
-size = 15526
+size = 15917
 
 description = """
 A `TTree` of **five baskets in one branch** and **two closed cluster ranges**,
@@ -91,18 +91,18 @@ role   = "the tree record, byte-identical to ROOT's"
 
 [[records]]
 offset = 1533
-nbytes = 13794
+nbytes = 14185
 class  = "TList"
 role   = "StreamerInfo: seventeen infos"
 
 [[records]]
-offset = 15327
+offset = 15718
 nbytes = 117
 class  = "TFile"
 role   = "keys list -- one key, because no basket is ever in it"
 
 [[records]]
-offset = 15444
+offset = 15835
 nbytes = 82
 class  = "TFile"
 role   = "free segments"

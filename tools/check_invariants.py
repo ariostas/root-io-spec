@@ -707,6 +707,11 @@ class Checker:
                         self.bad("StreamerInfo 13.7",
                                  f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} != "
                                  f"the base info's fCheckSum 0x{target.checksum:08x}")
+                    # There is deliberately no invariant on fBaseVersion.
+                    # It records the base version the *derived* class's info was
+                    # built against, which need not be the version of the base's
+                    # own info in the same file: five files in the two corpora
+                    # disagree, and all five are right (StreamerInfo.md 9.2).
                     # 13.6 of ElementTypes: -1 only for a suppressed TObject base
                     if e.ftype == -1 and e.name != "TObject":
                         self.bad("ElementTypes 11.6",

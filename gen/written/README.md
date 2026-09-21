@@ -47,6 +47,12 @@ Same discipline as `gen/cases/`: one case, one thing. Beyond that:
 - Assert the container fields ROOT recovers (`GetEND`, `GetSeekFree`, `GetNkeys`,
   the key's `fSeekKey` and `fObjlen`) as well as the object's values. A file can
   hold the right object and still be wrong about itself.
+- A diagnostic ROOT cannot avoid goes in `expected_diagnostics`, a list of
+  substrings in `case.toml`, with the reason in the description. It must be about
+  the **session** rather than the file — the only one so far is
+  `no dictionary for class X is available`, which any class a writer invented
+  produces. A declared line that ROOT stops printing fails the case, so the list
+  cannot rot, and nothing else is forgiven.
 
 ## A case that updates a file
 

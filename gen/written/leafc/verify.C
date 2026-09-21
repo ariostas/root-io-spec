@@ -15,7 +15,7 @@ void verify(const char *path)
       return;
    }
 
-   if (f->GetEND() != 16487) printf("FAIL fEND %lld\n", (long long)f->GetEND());
+   if (f->GetEND() != 16878) printf("FAIL fEND %lld\n", (long long)f->GetEND());
    if (f->GetSeekInfo() != 2039)
       printf("FAIL fSeekInfo %lld\n", (long long)f->GetSeekInfo());
    // The baskets are deliberately not in the key list.

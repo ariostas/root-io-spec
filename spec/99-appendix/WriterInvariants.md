@@ -67,7 +67,7 @@ From [Buffer framing](../02-serialization/Buffer.md),
 [Streamer information](../02-serialization/StreamerInfo.md),
 [Element types](../02-serialization/ElementTypes.md),
 [Compression](../01-container/Compression.md),
-[Writing an object §9](../06-writing/WritingObjects.md#9-invariants) and
+[Writing an object §10](../06-writing/WritingObjects.md#10-invariants) and
 [Element lists §13](../06-writing/ElementLists.md#13-invariants).
 
 | Invariant | Where | Who notices |
@@ -81,7 +81,11 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | A version word is the class's own `ClassDef` version, or 0 followed by a checksum for a class with none | Buffer 3, 4 | ROOT — for a version it cannot resolve |
 | An info's `fCheckSum` is what the algorithm produces for the class it describes | StreamerInfo 11 | ROOT — `BuildCheck` warns at equal version |
 | Every `TList` entry in the `StreamerInfo` record is followed by one option byte; `TObjArray` entries by none | StreamerInfo 4, 5 | nothing |
-| Every class whose version word is above 0 has an info in the file, or is one a reader knows out of band | WritingObjects 9.5 | nothing for ROOT; everything for every other reader |
+| Every class whose version word is above 0 has an info in the file, or is one a reader knows out of band | WritingObjects 10.5 | nothing for ROOT; everything for every other reader |
+| **The transitive closure**: every base class and every contained class has an info too, unless its `Streamer` is hand-written or forwarding | WritingObjects 8.2 | ROOT — loudly, and only for a reader without the base compiled in: `BuildOld` skips the base, `CheckByteCount` reports the short read, and the class comes out the wrong size |
+| A `TStreamerBase` element's `fBaseCheckSum` is the base info's `fCheckSum`, or 0 | StreamerInfo 13.7 | checked |
+| `fBaseVersion` is the base version the derived class was **built against** — not necessarily the version of the base info beside it | StreamerInfo 9.2 | nothing, and it is not an invariant: five corpus files disagree with their own base infos and all five are correct |
+| A writer whose info for a class disagrees with an existing file's **at the same version** bumps the version or refuses; it does not write anyway | WritingObjects 8.5 | ROOT warns at open and then silently truncates the object it writes |
 | A `TStreamerBase` element's `fMaxIndex[1]` is the base class's own checksum, at the version its `fBaseVersion` gives | ElementLists 10.2 | nothing — it is folded into the derived class's checksum, which ROOT checks instead |
 | A `TStreamerBasicPointer`'s counter exists in the class `fCountClass` names, and that member's `fType` is 6 `kCounter` | ElementLists 10.3 | nothing |
 | Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 11.1 | ROOT — `CompareContent` compares type names when a checksum mismatches |

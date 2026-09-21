@@ -65,8 +65,8 @@ with a plain `sha256`.
 
 | Document | Covers |
 |---|---|
-| [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, subdirectories, keys, the key lists, the free list, and where the end of the file is |
-| [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, and the `StreamerInfo` record |
+| [Writing a file](WritingFiles.md) | The container: the header, the root directory record and its second write, subdirectories, keys, the key lists, the free list, where the end of the file is, and **reopening a file to add to it** |
+| [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, the `StreamerInfo` record, and **what has to be in it for a reader at another version of a class** |
 | [Writing histograms](WritingHistograms.md) | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`, member by member, at the current class version |
 | [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf — fixed-width or a `TLeafC` string — its baskets, and flushing: more than one basket per branch, and the cluster ranges that come with it |
 | [Element lists](ElementLists.md) | The streamer info of each of the thirty-five classes the other four documents need: every element, with every field |
@@ -149,6 +149,14 @@ word.
   file that already exists **is** specified, as of 2026-09-21
   ([Writing a file §13](WritingFiles.md#13-updating-an-existing-file)); doing it
   concurrently is not.
+- **Resolving a *collision* between a writer's class and a file's.** When an
+  update's info for a class disagrees with the file's at the same version, ROOT
+  keeps the file's and silently truncates what it writes
+  ([Writing an object §8.5](WritingObjects.md#85-when-the-versions-collide-the-file-wins-and-members-are-lost)).
+  This document specifies the two honest responses — bump the version, or refuse —
+  and declines to specify the third. Everything else about **writing for a reader
+  at another version** is specified
+  ([Writing an object §8](WritingObjects.md#8-writing-for-a-reader-that-is-not-you)).
 - **Writing a split `TBranchElement`.** Reading one is specified
   ([Split branches](../04-ttree/TBranchElement.md)); producing one means
   reimplementing ROOT's splitting decisions, which

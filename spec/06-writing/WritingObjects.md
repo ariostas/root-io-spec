@@ -303,7 +303,252 @@ in `data/container/file-minimal.root` — including the class tags, the option b
 §7 is right, and it is why the `TObjArray`-as-a-slot error in §1 is recorded rather
 than quietly fixed.
 
-## 8. What ROOT checks, and what it does not
+## 8. Writing for a reader that is not you
+
+§7 says to write a `StreamerInfo` record. This section answers the question that
+makes it worth writing: **what has to be in the file so that a reader whose
+version of a class is not the writer's can still read it?**
+
+That is the whole of schema evolution from this side. It is deliberately *not*
+"how to write an earlier version of a class" — ROOT has no mechanism for that
+([§3.1](index.md#31-what-the-current-version-means)) and neither does this
+document. A writer emits the layout it has, and describes it well enough that a
+reader with a different one can cope.
+
+The reader's engine is `TStreamerInfo::BuildOld`, and knowing one thing about it
+collapses the problem: it walks the **on-disk** element list and matches each
+element to a member of the in-memory class **by name and nothing else**
+(`root/io/io/src/TStreamerInfo.cxx:2287`). Not by type, not by position, not by
+size. So a writer's obligations are a short list, and most of what looks
+load-bearing in a streamer info is not.
+
+### 8.1 The obligations
+
+| Obligation | Why it is one |
+|---|---|
+| An info for every class actually serialized, **plus the transitive closure** of its bases and the classes it contains | [§8.2](#82-the-closure-and-what-an-incomplete-one-costs) |
+| `fClassVersion` written as an **absolute value**, between 0 and 65000 | a class version of `-1` in memory reaches disk as 1; [Schema evolution §1.1](../02-serialization/SchemaEvolution.md#11-the-version-is-written-as-an-absolute-value) |
+| `fCheckSum` agreeing with the element list shipped beside it | it is the key a reader's rules and its version-0 lookups are selected by ([§7.3](#73-the-checksum)) |
+| Element `fName` strings equal to the in-memory member names | the only thing evolution matches on |
+| For every `TStreamerBase`: the base's checksum in `fMaxIndex[1]`, and `fBaseVersion` as the version actually built against | [Streamer information §9](../02-serialization/StreamerInfo.md#9-tstreamerbase-and-a-checksum-hidden-in-fmaxindex). The checksum is invariant 7 there; `fBaseVersion` is **not** an invariant, because it may legitimately name a version the file has no info for ([§9.2](../02-serialization/StreamerInfo.md#92-fbaseversion-may-name-a-version-the-file-does-not-contain)) |
+| The object's **version word** matching one of the infos for its class | it is the only thing in a record that says which layout applies ([§1](#1-the-two-framings)) |
+
+The last is what `data/written/two-versions.root` exists to show: one class, two
+infos, two records, and nothing but the version word to tell them apart.
+
+### 8.2 The closure, and what an incomplete one costs
+
+**An info for a derived class without one for its base is the mistake worth
+naming.** ROOT's reader builds the derived class's layout by recursing into the
+base, and with no info and no dictionary for it there is nothing to recurse into.
+Measured, on a file this project wrote with `Bottom`'s info removed and nothing
+else changed:
+
+```
+Warning in <TStreamerInfo::BuildOld>: Missing base class: Bottom skipped
+Error in <TClass::GetBaseClassOffsetRecurse>: Can not determine alignment for base class Bottom (got 0)
+Error in <TStreamerInfo::BuildOld>: Cannot determine alignment for base class Bottom for element Top
+Error in <TBufferFile::CheckByteCount>: object of class Bottom read too few bytes: 2 instead of 6
+```
+
+The class comes out 16 bytes instead of 24 — the base is simply absent from the
+layout (`root/io/io/src/TStreamerInfo.cxx:2054`). Two things about the failure are
+worth knowing:
+
+- **it is loud**, and that is not luck. The base's bytes carry **their own byte
+  count**, so `CheckByteCount` catches the short read and resynchronises from it;
+  the members after the base still read correctly, and the record that follows in
+  the file is untouched. A base whose bytes carry no byte count — `TObject`'s do
+  not ([§3](#3-strings-and-the-tobject-base)) — would desynchronise silently
+  instead;
+- **it is diagnosable only by a reader with a dictionary for the derived class**
+  or none at all. A reader that has the base compiled in will not notice, because
+  it does not need the info.
+
+**The closure has one exemption, and it is published rather than derivable.** A
+class whose `Streamer` is hand-written gets no info, because nothing marks it
+([§7.2](#72-which-classes-need-an-info)) — so `TObject`, `TArrayF`, `TArrayD` and
+`TArrayL64` are missing as bases from every ROOT-written file in either corpus,
+and that is correct. The two lists a reader has to know out of band are
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md) and
+[Forwarding streamers](../99-appendix/ForwardingStreamers.md), both generated from
+the pinned submodule and CI-checked. Over the 90 files here that carry infos, the
+bases with no info of their own are exactly six classes, all of them on one of
+those lists or version 0: `TObject`, `TArrayD`, `TArrayF`, `TArrayL64`, `TAtt3D`
+and `TQObject`.
+
+Because the exemption is a property of ROOT's source and not of the file, the
+closure is **not** in `tools/check_invariants.py`. What is local to the file is
+invariant 7 of
+[Streamer information §13](../02-serialization/StreamerInfo.md#13-invariants):
+when a base *does* have an info, the element's `fBaseCheckSum` is either that
+info's `fCheckSum` or 0. That holds over 787 base elements in those 90 files.
+
+**Its companion does not, and the attempt is worth recording.** This document first
+claimed the same of `fBaseVersion` and made it an invariant; five files in the two
+corpora failed it within a minute, and all five are right —
+[§9.2](../02-serialization/StreamerInfo.md#92-fbaseversion-may-name-a-version-the-file-does-not-contain)
+has them. A writer should still emit the version it actually built against; a
+*reader* must not rely on it.
+
+### 8.3 Three things a writer does not have to get right
+
+Each of these looks like it must matter and does not, for a reader that has the
+class compiled in. Only an **emulated** class uses them, and then only to lay out
+memory that nothing else sees.
+
+- **`fSize` is discarded.** `BuildOld` recomputes it from the in-memory type and
+  the on-disk `fArrayLength` (`root/io/io/src/TStreamerInfo.cxx:2337`). This is
+  also why `tools/normalize.py` can mask it, and why it has to: `sizeof` differs
+  between standard libraries for `std::string` and `std::map`.
+- **`fArrayDim` and `fMaxIndex` are never compared** against the in-memory
+  member. A disagreement is silent.
+- **Artificial and cache elements cannot reach disk at all.** The write path does
+  not stream `fElements`; it builds a filtered copy, dropping every
+  `TStreamerArtificial`, every element with `kRepeat`, and every read-only
+  `kCache` (`root/io/io/src/TStreamerInfo.cxx:5694-5707`). So an info that came
+  *off* a file, went through `BuildOld`, and is written back out is stripped
+  automatically — which is what makes
+  [Element types §11](../02-serialization/ElementTypes.md#11-invariants)'s ban on
+  those codes a property of files rather than a rule a writer has to follow.
+
+### 8.4 One class, two versions in one file
+
+**Legitimate, and a writer that evolves its own classes will produce it.** A
+`TStreamerInfo`'s identity is per *instance*, not per class, so two infos for one
+class occupy two slots and both are written. Four things produce it: a fast clone
+carrying a source file's infos across, the dependency closure, writing an object
+at a version the session had to rebuild, and **reopening a file** with a class
+that has since changed
+([Writing a file §13](WritingFiles.md#13-updating-an-existing-file)).
+
+No single ROOT session can produce such a file, because a session has one
+definition of a class. Two sessions can, and ROOT needs no persuading. Measured:
+a file written with `Merged` at `ClassDef(Merged, 2)` — members `fA`, `fB` — then
+reopened by a session whose `Merged` is at version 3 with a third member, and one
+more object written. The result:
+
+| | version | elements |
+|---|---|---|
+| info 1 | 2 | `fA`, `fB` |
+| info 2 | 3 | `fA`, `fB`, `fC` |
+
+and the two records are 54 and 58 bytes, each carrying the members its own
+version has. **ROOT keeps both**, silently and correctly. `fSeekInfo` moved and
+the record grew; nothing was discarded.
+
+A reader picks between them by the object's version word
+([Schema evolution §4](../02-serialization/SchemaEvolution.md#4-choosing-a-streamer-info)).
+`data/written/two-versions.root` is that file written in one pass, and ROOT reads
+its version-1 record through the version-2 layout — `fA` off the file, the member
+version 1 does not have left at its default.
+
+### 8.5 When the versions collide, the file wins and members are lost
+
+The other half of the same experiment, and the destructive one. Same base file at
+`Merged` version 2; the second session's `Merged` has three members but **still
+says `ClassDef(Merged, 2)`**. ROOT warns at open, clearly:
+
+```
+Warning in <TStreamerInfo::BuildCheck>:
+   The StreamerInfo of class Merged read from file .../collide.root
+   has the same version (=2) as the active class but a different checksum.
+   You should update the version to ClassDef(Merged,3).
+   Do not try to write objects with the current class definition,
+   the files will not be readable.
+```
+
+and then does exactly what it warned about, without a second word: the object
+written after that is **54 bytes, not 58**. The session's info was discarded, the
+file's was kept, and `fC` was dropped on the way to disk. The info list still has
+one entry.
+
+So the merge rule, stated for a writer: **on a version collision the incumbent
+wins.** The consequences are worth separating, because only one of them is
+recoverable:
+
+- the objects already in the file are untouched and still readable;
+- the object written *during* the colliding session is silently short, and no
+  later reader can tell that anything is missing.
+
+A writer following this document therefore has two honest choices when its own
+info for a class disagrees with the file's at the same version: **bump the version
+and write both infos** (§8.4), or **refuse the update**. `tools/rootwrite.py`
+takes the second — it requires the caller to supply the complete list, so a
+collision is the caller's to resolve — and reproducing ROOT's silent truncation is
+not an option this document offers.
+
+### 8.6 `listOfRules` is optional, and this is what it costs
+
+`TFile::WriteStreamerInfo` appends one extra entry to the outer list when any
+class being written has I/O rules: a nested `TList` named `listOfRules` whose
+members are `TObjString`s, one per rule
+(`root/io/io/src/TFile.cxx:3527-3549`; the shape is
+[Schema evolution §6.1](../02-serialization/SchemaEvolution.md#61-the-shape-on-disk)).
+Two facts make it optional:
+
+- **ROOT never reads it back**
+  ([§6.2](../02-serialization/SchemaEvolution.md#62-root-ignores-it)) — rules come
+  from the reading session's dictionary, never from the file;
+- **ROOT collects the rules of the *class*, with no reference to the version being
+  written.** So a file written at `TTree` 20 ships two rules for source versions
+  `[-16]` and `[-18]`, and a `TProfile` 7 file ships one for versions `[1-5]` —
+  rules that can never match their own data.
+
+A writer emitting only current versions may therefore omit the entry with **no
+loss of information**. What emitting it buys is a byte comparison: with the entry,
+the `StreamerInfo` record of every tree and profile file this project writes is
+**byte-identical** to ROOT's — 14584, 14580, 14121 and 11789 bytes — where without
+it the two differed by that one entry. `tools/rootwrite.py` emits it for the same
+reason it reproduces `kIsCompiled`, and `FileWriter(emit_rules=False)` turns it
+off.
+
+One detail is only visible in a byte comparison: the rules list's own `fBits`
+carries `kIsOwner`, `BIT(14)`
+(`root/core/cont/inc/TCollection.h:144`), because ROOT builds an owning list and
+`fBits` reaches disk through the `TObject` base. Nothing reads it.
+
+### 8.7 Do not derive your own classes from `TObject`
+
+This is a recommendation about the *class*, not the bytes, and it exists because
+of a silent failure in ROOT.
+
+`TKey::ReadObj` splits on whether the key's class is `TObject`-derived. If it is
+not, the read goes through `ReadObjectAny` (`root/io/io/src/TKey.cxx:811-812`) and
+thence through the class's streamer info — so an **emulated** class reads
+correctly. If it is, ROOT allocates the object and streams it with
+`tobj->Streamer(bufferRef)` (`root/io/io/src/TKey.cxx:883`). For a class ROOT has
+no dictionary for there is no compiled `Streamer` to dispatch to, so that call
+resolves to `TObject::Streamer`, which reads a version word, `fUniqueID` and
+`fBits`, and stops.
+
+**The result is a default-constructed object and no diagnostic about the data.**
+Measured on a file ROOT wrote itself: a class `Marked : public TObject` with
+`Int_t fA = 77` and `Double_t fB = 1.25`, read back in a session without the
+dictionary, gives `fA = 0` and `fB = 0`. The only message is
+`Warning in <TClass::Init>: no dictionary for class Marked is available`, which
+says nothing about the members being dropped. This project's reader, driven by the
+file's own streamer info, recovers 77 and 1.25 from the same bytes.
+
+ROOT's source knows about the problem: four lines above that call, the
+compressed-payload branch says *"Even-though we have a TObject, if the class is
+emulated the virtual table may not be 'right', so let's go via the TClass"*
+(`root/io/io/src/TKey.cxx:877-878`) — but only takes that branch when the unzip
+fails.
+
+Three consequences:
+
+- **for a writer**: a class of your own that derives from `TObject` is readable by
+  ROOT only when ROOT has its dictionary. A class that does not is readable from
+  the file alone. `data/written/two-versions.root` is built on that;
+- **it does not apply to members.** The same class nested inside another object
+  reads correctly, because that path goes through
+  `TStreamerInfo::ReadBuffer` rather than through `TKey`;
+- **for a reader**: this is one of the cases where a third-party implementation is
+  strictly better than ROOT, and it is recorded as an erratum against
+  [Emulated classes](../02-serialization/SchemaEvolution.md#7-emulated-classes).
+
+## 9. What ROOT checks, and what it does not
 
 | Mistake | What ROOT says |
 |---|---|
@@ -333,7 +578,7 @@ The asymmetry is worth stating plainly: **a missing streamer info warns less tha
 wrong one.** Emitting nothing is quieter than emitting something inconsistent, and
 neither is as good as emitting the truth.
 
-## 9. Invariants
+## 10. Invariants
 
 1. Every byte count equals the number of bytes that follow it up to the end of the
    object it frames, excluding its own four bytes.
@@ -357,7 +602,7 @@ Items 1 to 4 are checked for every written file by `tools/check_write.py` throug
 `tools/rootfile.py`; item 6 is checked for every streamer info in `data/` by
 `tools/test_write.py`.
 
-## 10. Reference files
+## 11. Reference files
 
 | File | What it demonstrates |
 |---|---|
@@ -365,3 +610,5 @@ Items 1 to 4 are checked for every written file by `tools/check_write.py` throug
 | `data/container/file-minimal.root` | ROOT's own `StreamerInfo` record for the same class, the target of §7.4's byte comparison |
 | `data/serialization/object-tags.root` | the class and object back-references of §4, from the reading side |
 | `data/container/compress-zlib.root` | ROOT's block header, against which §5 is checked |
+| `data/written/two-versions.root` | §8.4: one class at two versions, an object at each, and the version word as the only thing that selects between them — the only file in `data/` that carries a class twice |
+| `data/written/tree.root` | §8.6: with the `listOfRules` entry, its `StreamerInfo` record is **byte-identical** to ROOT's in `data/ttree/basket.root`, all 14584 bytes |

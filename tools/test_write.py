@@ -18,6 +18,7 @@ Two of these are unusual and are the reason the file exists:
 from __future__ import annotations
 
 import pathlib
+import tempfile
 import sys
 import unittest
 
@@ -340,10 +341,10 @@ class Derived(unittest.TestCase):
     """`TH2F`, `TH2D` and `TProfile` against the ones ROOT wrote.
 
     `data/classes/th2-profile.root` and `data/written/th2-profile.root` hold the
-    same four objects. All four data records are byte-identical; the
-    `StreamerInfo` record is identical up to the `listOfRules` ROOT appends for
-    `TProfile` (`WritingHistograms.md` 8.6), which is the one entry a file
-    written at version 7 cannot use.
+    same four objects. All four data records are byte-identical, and so is the
+    **whole** `StreamerInfo` record -- eighteen infos and the `listOfRules` entry
+    ROOT appends for `TProfile`, which this writer now emits
+    (`WritingObjects.md` 8.6).
     """
 
     #: The axes and arrays of each object, built the way the case builds them.
@@ -375,20 +376,34 @@ class Derived(unittest.TestCase):
                 self.assertEqual(self.payload(mine_buf, mine_recs[name]),
                                  self.payload(root_buf, root_recs[name]))
 
-    def test_streamer_info_record_matches_up_to_the_rules(self):
+    def test_the_whole_streamer_info_record_is_roots(self):
+        """Eighteen infos and the `listOfRules`, all 11789 bytes.
+
+        This was "identical bar one entry" until the writer learned to emit the
+        rules (`WritingObjects.md` 8.6). The entry is a `TList`, not an info, so
+        `read_streamer_infos` still reports eighteen on both sides.
+        """
         root_data, root_rec, theirs = streamer_infos(
             REPO / "data/classes/th2-profile.root")
         mine_data, mine_rec, ours = streamer_infos(
             REPO / "data/written/th2-profile.root")
-        # Eighteen infos against eighteen; ROOT's record holds a nineteenth
-        # entry that is not an info.
         self.assertEqual([i.name for i in ours], [i.name for i in theirs])
         self.assertEqual(len(ours), 18)
         mine = self.payload(mine_data, mine_rec)
         theirs_bytes = self.payload(root_data, root_rec)
-        self.assertLess(len(mine), len(theirs_bytes))
-        # The first 21 bytes carry the entry count, which differs by one.
-        self.assertEqual(mine[21:], theirs_bytes[21:len(mine)])
+        self.assertEqual(mine, theirs_bytes)
+
+    def test_the_profile_rule_is_the_one_root_writes(self):
+        """One read rule for TProfile versions 1 to 5, which version 7 cannot
+        use -- emitted verbatim so the record can be compared (8.6)."""
+        buf, _, records = rootfile.load(REPO / "data/written/th2-profile.root")
+        header = rootfile.read_header(buf)
+        rec = [r for r in records if r.offset == header.seek_info][0]
+        slots = rootfile.read_tlist(buf, rec)
+        self.assertEqual(len(slots), 19)
+        name, rules = rootfile.read_rule_list(buf, rec, slots[-1])
+        self.assertEqual(name, "listOfRules")
+        self.assertEqual(rules, rw.KNOWN_RULES["TProfile"])
 
     def test_infos_match_roots_element_by_element(self):
         _, _, infos = streamer_infos(REPO / "data/classes/th2-profile.root")
@@ -600,14 +615,31 @@ class Trees(unittest.TestCase):
         rec = [r for r in root_recs if r.offset == header.seek_info][0]
         data = rootfile.object_data(root_buf, rec)
         theirs = bytes(data[rec.offset + rec.key_len:rec.offset + rec.nbytes])
+        infos = rw.tree_infos(("I", "F"))
+        payload = rw.Payload(rec.key_len)
+        payload.tlist("", [i.write for i in infos] + rw.rules_for(infos))
+        mine = bytes(payload.buf)
+        # Every byte, listOfRules included (WritingObjects.md 8.6).
+        self.assertEqual(mine, theirs)
+        self.assertEqual(rw.i32(19), mine[17:21])
+
+    def test_without_the_rules_it_differs_by_exactly_one_entry(self):
+        """The rules are optional, and this is the whole of what they cost.
+
+        `FileWriter(emit_rules=False)` drops the entry; the record is then
+        shorter and its entry count is 18, and nothing else changes.
+        """
+        root_buf, _, root_recs = rootfile.load(REPO / "data/ttree/basket.root")
+        header = rootfile.read_header(root_buf)
+        rec = [r for r in root_recs if r.offset == header.seek_info][0]
+        data = rootfile.object_data(root_buf, rec)
+        theirs = bytes(data[rec.offset + rec.key_len:rec.offset + rec.nbytes])
         payload = rw.Payload(rec.key_len)
         payload.tlist("", [i.write for i in rw.tree_infos(("I", "F"))])
         mine = bytes(payload.buf)
-        # The TList's own header differs in two fields and nothing else: its
-        # byte count, and 18 entries against 19.
+        self.assertLess(len(mine), len(theirs))
         self.assertEqual(mine[21:], theirs[21:len(mine)])
         self.assertEqual(rw.i32(18), mine[17:21])
-        self.assertEqual(rw.i32(19), theirs[17:21])
 
     def test_root_appends_two_obsolete_io_rules(self):
         """The one difference between the two StreamerInfo records.
@@ -627,6 +659,9 @@ class Trees(unittest.TestCase):
         self.assertEqual(len(rules), 2)
         for rule in rules:
             self.assertIn('sourceClass="TTree"', rule)
+        # And they are the two this writer emits, character for character --
+        # including the trailing space TSchemaRule::AsString leaves.
+        self.assertEqual(rules, rw.KNOWN_RULES["TTree"])
 
 
 class Clusters(unittest.TestCase):
@@ -759,9 +794,9 @@ class Graphs(unittest.TestCase):
 
     `data/written/graph.root` and `data/classes/graph.root` hold the same two
     objects under the same names, and both records are byte-identical -- as is the
-    **whole** `StreamerInfo` record, all 12169 bytes of nineteen infos, which no
-    other written case can say: the tree and profile files differ by the
-    `listOfRules` entry ROOT appends and this one has none.
+    **whole** `StreamerInfo` record, all 12169 bytes of nineteen infos. `TGraph`
+    and `TGraphErrors` have no I/O rules, so there is no `listOfRules` entry here
+    to get right.
     """
 
     ROOTS = "data/classes/graph.root"
@@ -926,10 +961,7 @@ class LeafC(unittest.TestCase):
                                       r.offset + r.nbytes])
         mine, theirs_bytes = payload(mine_data, mine_rec), payload(root_data,
                                                                   root_rec)
-        self.assertLess(len(mine), len(theirs_bytes))
-        # The first 21 bytes carry the byte count and the entry count, which
-        # differs by the one listOfRules entry ROOT appends.
-        self.assertEqual(mine[21:], theirs_bytes[21:len(mine)])
+        self.assertEqual(mine, theirs_bytes)
 
     def test_tleafc_checksum_is_roots(self):
         _, _, infos = streamer_infos(REPO / self.ROOTS)
@@ -1315,6 +1347,136 @@ class ReusedSpace(unittest.TestCase):
         self.assertEqual(self.ours[696:715], self.root[696:715])
         self.assertEqual(self.ours[700:715], b"123456789abcdef")
 
+
+
+class Evolution(unittest.TestCase):
+    """Schema evolution from the writing side, WritingObjects.md 8."""
+
+    PATH = "data/written/two-versions.root"
+
+    def infos(self):
+        buf, _, records = rootfile.load(REPO / self.PATH)
+        header = rootfile.read_header(buf)
+        rec = [r for r in records if r.offset == header.seek_info][0]
+        return buf, rec, rootfile.read_streamer_infos(buf, rec)
+
+    def test_one_class_appears_twice_at_two_versions(self):
+        _, _, infos = self.infos()
+        self.assertEqual([(i.name, i.class_version) for i in infos],
+                         [("Grown", 1), ("Grown", 2)])
+        self.assertNotEqual(infos[0].checksum, infos[1].checksum)
+        self.assertEqual([len(i.elements) for i in infos], [1, 2])
+
+    def test_each_record_decodes_through_its_own_version(self):
+        """The version word is the only thing that chooses (8.1)."""
+        buf, _, infos = self.infos()
+        header = rootfile.read_header(buf)
+        records = rootfile.read_records(buf, header)
+        got = {}
+        for rec in records:
+            if rec.class_name != "Grown":
+                continue
+            value = rootfile.decode_record(buf, rec, infos)
+            got[rec.name] = [m.name for m in value.members]
+        self.assertEqual(got, {"first": ["fA"], "second": ["fA", "fB"]})
+
+    def test_the_written_values_come_back(self):
+        buf, _, infos = self.infos()
+        header = rootfile.read_header(buf)
+        records = rootfile.read_records(buf, header)
+        seen = {}
+        for rec in records:
+            if rec.class_name != "Grown":
+                continue
+            value = rootfile.decode_record(buf, rec, infos)
+            for m in value.members:
+                seen[(rec.name, m.name)] = buf[m.start:m.end]
+        self.assertEqual(seen[("first", "fA")], rw.i32(11))
+        self.assertEqual(seen[("second", "fA")], rw.i32(22))
+        self.assertEqual(seen[("second", "fB")], rw.f64(3.5))
+
+    def test_the_class_is_not_tobject_derived(self):
+        """8.7: ROOT reads nothing for a top-level TObject-derived class it has
+        no dictionary for, so a writer's own classes must not be one."""
+        _, _, infos = self.infos()
+        for info in infos:
+            self.assertNotIn("TObject", [e.name for e in info.elements])
+
+    # -- the obligations, by breaking them -------------------------------
+
+    def grown(self, version, a, b=None):
+        body = rw.i32(a)
+        if b is not None:
+            body += rw.f64(b)
+        return rw.Obj(class_name="Grown", name="x", title="",
+                      payload=rw.framed(version, body))
+
+    def base_pair(self, base_version=1):
+        """`Bottom`, and a `Top` whose base element points at it."""
+        bottom = rw.Info("Bottom", 1, [
+            rw.Element("TStreamerBasicType", "fBase", "in the base",
+                       3, 4, "Int_t")])
+        bottom.checksum = rw.checksum(bottom)
+        top = rw.Info("Top", 1, [
+            rw.Element("TStreamerBase", "Bottom", "", 0, 0, "BASE",
+                       base_version=base_version,
+                       base_checksum=bottom.checksum),
+            rw.Element("TStreamerBasicType", "fOwn", "in the derived class",
+                       3, 4, "Int_t")])
+        top.checksum = rw.checksum(top)
+        return bottom, top
+
+    def file_with(self, infos):
+        f = rw.FileWriter("x.root", "t")
+        f.add(rw.Obj(class_name="Top", name="t", title="",
+                     payload=rw.framed(1, rw.framed(1, rw.i32(7))
+                                       + rw.i32(8))))
+        for info in infos:
+            f.add_info(info)
+        return f.to_bytes()
+
+    def test_a_base_elements_checksum_comes_from_the_base_info(self):
+        """StreamerInfo 13.7, which is obligation five of 8.1."""
+        bottom, top = self.base_pair()
+        base = top.elements[0]
+        self.assertEqual(base.base_checksum, bottom.checksum)
+        self.assertEqual(base.base_version, bottom.class_version)
+
+    def test_a_wrong_base_checksum_is_a_checkable_error(self):
+        import check_invariants
+        bottom, _ = self.base_pair()
+        for checksum, expected in ((bottom.checksum, 0), (0xdeadbeef, 1)):
+            _, top = self.base_pair()
+            top.elements[0].base_checksum = checksum
+            top.checksum = rw.checksum(top)
+            data = self.file_with([bottom, top])
+            with tempfile.TemporaryDirectory() as tmp:
+                path = pathlib.Path(tmp) / "base-checksum.root"
+                path.write_bytes(data)
+                checker = check_invariants.Checker(path)
+                checker.run()
+            hits = [f for f in checker.failures if "13.7" in f]
+            self.assertEqual(len(hits), expected, (checksum, checker.failures))
+
+    def test_a_disagreeing_base_version_is_not_an_error(self):
+        """StreamerInfo 9.2: it names the version built against, not the one in
+        the file beside it. Five corpus files rely on that being allowed."""
+        import check_invariants
+        bottom, _ = self.base_pair()
+        _, top = self.base_pair(base_version=4)
+        data = self.file_with([bottom, top])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "base-version.root"
+            path.write_bytes(data)
+            checker = check_invariants.Checker(path)
+            checker.run()
+        self.assertEqual(checker.failures, [])
+
+    def test_a_writer_may_omit_the_rules(self):
+        """8.6: the entry is optional, and dropping it changes one count."""
+        infos = rw.tree_infos(("I",))
+        self.assertEqual(len(rw.rules_for(infos)), 1)
+        self.assertEqual(rw.rules_for([rw.objstring_info()]), [])
 
 
 class Updates(unittest.TestCase):

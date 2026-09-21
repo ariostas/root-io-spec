@@ -1,6 +1,6 @@
 id   = "written/leafc"
 file = "data/written/leafc.root"
-size = 16487
+size = 16878
 
 description = """
 A TLeafC branch written by tools/rootwrite.py, from WritingTrees.md 4.5, holding
@@ -45,18 +45,18 @@ name   = "t"
 
 [[records]]
 offset = 2039
-nbytes = 14253
+nbytes = 14644
 class  = "TList"
 name   = "StreamerInfo"
 
 [[records]]
-offset = 16292
+offset = 16683
 nbytes = 115
 class  = "TFile"
 name   = "data/written/leafc.root"
 
 [[records]]
-offset = 16407
+offset = 16798
 nbytes = 80
 class  = "TFile"
 name   = "data/written/leafc.root"
@@ -69,7 +69,7 @@ name = "t"
 name = "fEND"
 offset = 12
 type = "i32"
-value = 16487
+value = 16878
 [[bytes]]
 name = "fSeekInfo"
 offset = 37

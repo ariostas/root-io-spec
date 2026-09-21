@@ -280,6 +280,43 @@ before ROOT 3 (`file version < 30000`), where `BuildEmulated` demotes `kLong` an
 reader can decline to implement, but it should decline explicitly rather than
 produce wrong numbers.
 
+### 7.1 ROOT cannot read an emulated class that derives from `TObject`
+
+A reader implementing this document is in a position ROOT is not: it reads every
+class the same way. ROOT has a second path, and on it emulation **fails
+silently**.
+
+`TKey::ReadObj` splits on `cl->IsTObject()`. A class that is not `TObject`-derived
+goes through `ReadObjectAny` (`root/io/io/src/TKey.cxx:811-812`) and thence through
+the streamer info, so emulation works. A class that *is* gets
+`tobj->Streamer(bufferRef)` (`root/io/io/src/TKey.cxx:883`) — and with no compiled
+class there is no override to dispatch to, so that resolves to
+`TObject::Streamer`, which reads a version word, `fUniqueID` and `fBits`, and
+stops.
+
+**Measured, on a file ROOT wrote itself.** A class `Marked : public TObject` with
+`Int_t fA = 77` and `Double_t fB = 1.25`, written by a session with the
+dictionary and read back by one without it: `TFile::Get` returns a
+default-constructed object, `fA` and `fB` both 0. The only message is
+`Warning in <TClass::Init>: no dictionary for class Marked is available`, which
+says nothing about the members. `tools/rootfile.py`, reading the same bytes
+through the same streamer info, recovers 77 and 1.25.
+
+Three qualifications:
+
+- **it applies only to a top-level record.** The same class as a *member* of
+  another object reads correctly, because that path goes through
+  `TStreamerInfo::ReadBuffer`;
+- **ROOT's source knows.** The compressed-payload branch four lines above says
+  *"Even-though we have a TObject, if the class is emulated the virtual table may
+  not be 'right', so let's go via the TClass"*
+  (`root/io/io/src/TKey.cxx:877-878`) — but only takes that branch when the unzip
+  fails;
+- **it is a reason not to derive persistent classes of your own from `TObject`**,
+  which is where
+  [Writing an object §8.7](../06-writing/WritingObjects.md#87-do-not-derive-your-own-classes-from-tobject)
+  says it from the writing side.
+
 ## 8. Reading
 
 For each entry of the `StreamerInfo` record's `TList`:
@@ -358,8 +395,13 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/basic-types` | A foreign class: version word 0 followed by a checksum, with `fClassVersion` 1 in the streamer info |
 | `serialization/version-zero` | A class that declares version 0: version word 0 with no checksum, and a full payload because it has base classes |
 
-No fixture covers two infos for one class distinguished by checksum, a
-`type=readraw` rule, a negative in-memory class version reaching disk as 1, or a
-file old enough to take the `BuildEmulated` path. The first three need two ROOT
-sessions with different definitions of the same class; the last needs a ROOT
-older than any that can still be built here.
+| `written/two-versions` | Two infos for one class at **different versions**, with an object at each, which §4 chooses between by the version word. Written by this project: no single ROOT session can produce such a file, though two can — [Writing an object §8.4](../06-writing/WritingObjects.md#84-one-class-two-versions-in-one-file) |
+
+No fixture covers two infos for one class distinguished by **checksum** at the
+same version, a `type=readraw` rule, a negative in-memory class version reaching
+disk as 1, or a file old enough to take the `BuildEmulated` path. The first three
+need two ROOT sessions with different definitions of the same class — measured for
+this document and reported in
+[Writing an object §8.5](../06-writing/WritingObjects.md#85-when-the-versions-collide-the-file-wins-and-members-are-lost),
+where the collision turns out to cost data; the last needs a ROOT older than any
+that can still be built here.

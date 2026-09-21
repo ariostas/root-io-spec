@@ -793,7 +793,8 @@ class FileWriter:
 
     def __init__(self, file_name: str, title: str = "", *,
                  version: int = 64004, datime: int = DEFAULT_DATIME,
-                 uuid: bytes = DEFAULT_UUID, compress: int = 0):
+                 uuid: bytes = DEFAULT_UUID, compress: int = 0,
+                 emit_rules: bool = True):
         if len(uuid) != 16:
             raise WriteError("a TUUID is 16 bytes")
         # fCompress is algorithm * 100 + level (FileHeader.md 5.8). Only ZLIB
@@ -808,6 +809,14 @@ class FileWriter:
                              "directory record; see Directory.md 5")
         self.file_name = file_name
         self.title = title
+        #: Whether to append the `listOfRules` entry ROOT appends. Optional --
+        #: ROOT never reads it back
+        #: (`spec/02-serialization/SchemaEvolution.md` 6.2) and the rules it
+        #: ships apply to versions this writer does not emit. Left on by
+        #: default for the same reason `kIsCompiled` is reproduced: it is what
+        #: makes a record comparable byte for byte with a ROOT-written one
+        #: (`spec/06-writing/WritingObjects.md` 8.6).
+        self.emit_rules = emit_rules
         self.version = version
         self.datime = datime
         self.uuid = uuid
@@ -1130,7 +1139,10 @@ class FileWriter:
                           title="Doubly linked list", obj_len=0, nbytes=0,
                           seek_key=0, seek_pdir=BEGIN).key_len
             payload = Payload(key_len)
-            payload.tlist("", [i.write for i in self.infos])
+            entries = [i.write for i in self.infos]
+            if self.emit_rules:
+                entries += rules_for(self.infos)
+            payload.tlist("", entries)
             info_record = self._record("TList", "StreamerInfo",
                                        "Doubly linked list",
                                        bytes(payload.buf), 0)
@@ -1546,6 +1558,71 @@ PRIMITIVE_TYPE_NAMES = {
     "Bool_t", "Char_t", "UChar_t", "Short_t", "UShort_t", "Int_t", "UInt_t",
     "Long_t", "ULong_t", "Long64_t", "ULong64_t", "Float_t", "Double_t",
 }
+
+
+#: `TCollection::kIsOwner`, BIT(14), which ROOT leaves set in the rules list.
+K_IS_OWNER = 1 << 14
+
+#: The `listOfRules` ROOT appends for the classes this writer emits, read out of
+#: the fixtures it is compared against. Each applies to a source version this
+#: writer never produces, which is why emitting them is optional and why
+#: `spec/06-writing/WritingObjects.md` 8.6 says a writer may leave them out.
+#: Note the trailing space: `TSchemaRule::AsString` ends every field with one.
+KNOWN_RULES = {
+    "TTree": [
+        'type=read sourceClass="TTree" targetClass="TTree" version="[-16]" '
+        'source="" target="fDefaultEntryOffsetLen" '
+        'code="{ fDefaultEntryOffsetLen = 1000; }" ',
+        'type=read sourceClass="TTree" targetClass="TTree" version="[-18]" '
+        'source="" target="fNClusterRange" code="{ fNClusterRange = 0; }" ',
+    ],
+    "TProfile": [
+        'type=read sourceClass="TProfile" targetClass="TProfile" '
+        'version="[1-5]" source="" target="fBinSumw2" '
+        'code="{ fBinSumw2.Reset(); }" ',
+    ],
+}
+
+
+def rule_list(rules):
+    """A `listOfRules` entry for the `StreamerInfo` record's `TList`.
+
+    A nested `TList` whose `fName` is `listOfRules` and whose members are
+    `TObjString`s, one per rule, each rendered by `TSchemaRule::AsString`
+    (`spec/02-serialization/SchemaEvolution.md` 6.1). ROOT appends it last and
+    unconditionally, from the *class's* rule set with no reference to the
+    version being written -- so the rules it ships may apply to no data in the
+    file. Returns a callable of the same shape as `Info.write`, so it goes in
+    the list beside the infos.
+    """
+    def write(p: "Payload") -> None:
+        def body(q: "Payload") -> None:
+            # kIsOwner, BIT(14): the list ROOT builds owns its TObjStrings, and
+            # TCollection's fBits reaches disk through the TObject base
+            # (`root/core/cont/inc/TCollection.h`). Nothing reads it back.
+            q.tobject(bits=K_IS_OWNER)
+            q.raw(counted_string("listOfRules") + i32(len(rules)))
+            for text in rules:
+                def one(r: "Payload", t=text) -> None:
+                    r.tobject()
+                    r.raw(counted_string(t))
+                q.slot("TObjString", 1, one)
+                q.raw(b"\x00")          # the list entry's option string
+        p.slot("TList", 5, body)
+    return write
+
+
+def rules_for(infos) -> list:
+    """The `listOfRules` entries ROOT would append for these infos, if any.
+
+    ROOT collects the rules of every class being written, so a file whose
+    classes have none gets no entry at all
+    (`root/io/io/src/TFile.cxx:3527-3549`).
+    """
+    out = []
+    for info in infos:
+        out.extend(KNOWN_RULES.get(info.name, ()))
+    return [rule_list(out)] if out else []
 
 
 def looks_like_enum(ftype: int, type_name: str) -> bool:

@@ -9,7 +9,9 @@ Three gates, in increasing strength (`spec/06-writing/index.md` 2):
    -- this project's reader and the specification's own invariants, applied to
    bytes this project wrote rather than bytes ROOT wrote;
 3. with `--root`, ROOT opens the file, its `verify.C` finds the values that went
-   in, and **nothing** on either stream looks like a ROOT diagnostic.
+   in, and **nothing** on either stream looks like a ROOT diagnostic -- except
+   the lines a case declares in `expected_diagnostics`, which must then actually
+   appear.
 
   tools/check_write.py                 gates 1 and 2 over every case
   tools/check_write.py --root          all three
@@ -104,8 +106,15 @@ def read_back(buf: bytes, case: dict) -> list[str]:
     return out
 
 
-def verify_with_root(case_dir: Path, path: Path) -> list[str]:
-    """Gate 3: ROOT opens it, agrees about the values, and says nothing."""
+def verify_with_root(case_dir: Path, path: Path, case: dict) -> list[str]:
+    """Gate 3: ROOT opens it, agrees about the values, and says nothing.
+
+    A case may declare `expected_diagnostics`: lines ROOT is *supposed* to print,
+    because they are about the session and not about the file. The only one so
+    far is the `no dictionary` warning every class a writer invented produces.
+    A declared line is required to appear -- a stale declaration fails the case
+    the same way an undeclared warning does -- and nothing else is forgiven.
+    """
     macro = case_dir / "verify.C"
     if not macro.exists():
         return [f"{case_dir.name}: no verify.C"]
@@ -118,11 +127,23 @@ def verify_with_root(case_dir: Path, path: Path) -> list[str]:
     out = []
     if result.returncode != 0:
         out.append(f"{case_dir.name}: ROOT exited {result.returncode}")
+    expected = list(case.get("expected_diagnostics", []))
+    seen = set()
     for line in stream.splitlines():
         if line.startswith("FAIL"):
             out.append(f"{case_dir.name}: {line}")
-        elif any(d in line for d in ROOT_DIAGNOSTICS):
+            continue
+        if not any(d in line for d in ROOT_DIAGNOSTICS):
+            continue
+        match = next((e for e in expected if e in line), None)
+        if match is None:
             out.append(f"{case_dir.name}: ROOT said: {line.strip()}")
+        else:
+            seen.add(match)
+    for e in expected:
+        if e not in seen:
+            out.append(f"{case_dir.name}: expected_diagnostics declares "
+                       f"{e!r}, which ROOT did not print")
     if "VERIFY OK" not in stream:
         out.append(f"{case_dir.name}: verify.C did not reach VERIFY OK")
     return out
@@ -184,7 +205,7 @@ def main(argv: list[str]) -> int:
 
         # Gate 3.
         if with_root:
-            failures += verify_with_root(case_dir, out)
+            failures += verify_with_root(case_dir, out, case)
 
     if accept:
         MANIFEST.parent.mkdir(parents=True, exist_ok=True)

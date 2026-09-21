@@ -392,9 +392,12 @@ version that would store `fBaseCheckSum` directly
 checksum with its top bit set reads back negative** and must be reinterpreted as
 unsigned. `TObject`'s checksum, `0x901bc02d`, is exactly such a value.
 
-> Verified across the fixtures: every `TStreamerBase` whose base class also has an
-> info in the same file has `fMaxIndex[1]` equal to that info's `fCheckSum` — 12
-> such pairs, no exceptions. `tools/check_invariants.py` asserts it.
+> Verified across the fixtures and both corpora: every `TStreamerBase` whose base
+> class also has an info in the same file has `fMaxIndex[1]` equal to that info's
+> `fCheckSum`, or 0 — **787 such pairs**, no exceptions.
+> `tools/check_invariants.py` asserts it. The companion claim about
+> `fBaseVersion` does **not** hold, and §9.2 is what happened when this project
+> tried to assert it.
 
 ### 9.1 It is 0 on a file written by ROOT 5
 
@@ -403,7 +406,8 @@ unsigned. `TObject`'s checksum, `0x901bc02d`, is exactly such a value.
 released in 6.00/00. Before that the slot was never filled, so every
 `TStreamerBase` on a ROOT 5 file carries `fMaxIndex[1] == 0` — at the same
 `TStreamerBase` class version 3, with no other difference. A reader MUST accept
-0 and fall back to `fBaseVersion`.
+0 and fall back to `fBaseVersion` — **and must be prepared for that to fail too**,
+which §9.2 measures on four ROOT-published files.
 
 > Measured across the version sweep in the foreign corpus of `PLAN.md` §9.8, which
 > brackets the change exactly: `uproot-sample-5.23.02` through `5.30.00` have 23
@@ -429,6 +433,47 @@ Two more `TStreamerBase` peculiarities:
 
 `fBaseVersion` is `-1` when the base class declares no version
 (`root/core/meta/src/TStreamerElement.cxx:672-674`).
+
+### 9.2 `fBaseVersion` may name a version the file does not contain
+
+`fBaseCheckSum` identifies a layout. **`fBaseVersion` identifies a moment**: it is
+set from the base class as it stood when the *derived* class's info was built
+(`root/core/meta/src/TStreamerElement.cxx:672-674`), and an info can outlive that
+moment — carried into a later file by a fast clone, or read off an older file and
+written back out. So a record may hold a base element saying version *n* beside an
+info for that class at version *n + 1*, and both are correct.
+
+This project asserted the opposite as an invariant and five files disproved it
+immediately. They split into the two cases, and only one of them is benign:
+
+| File | ROOT | Element | `fBaseVersion` | The base info in the file | `fBaseCheckSum` |
+|---|---|---|---|---|---|
+| `uproot-mc10events.root` | 6.08/04 | `TTree`'s `TAttLine` | 1 | version 2 | `0x94074549` — **the version-2 info's checksum** |
+| `uproot-mc10events.root` | 6.08/04 | `TTree`'s and `TBranch`'s `TAttFill` | 1 | version 2 | `0xffd92a92`, likewise |
+| `aleph.root`, `atlas.root`, `cms.root` | 5.17/09 | `TGeoVolumeMulti`'s `TGeoVolume` | 4 | version 5 | **0** |
+| `hades.root` | 5.17/09 | `TGeoMixture`'s `TGeoMaterial` | 4 | version 5 | **0** |
+
+In the first case the checksum resolves it: it points at the version-2 info, which
+is the only one there, so a reader that prefers the checksum is right and the
+version is simply stale.
+
+**The second case is the one that matters, because it breaks the fallback §9.1
+states.** These are ROOT 5 files, so `fBaseCheckSum` is 0 and §9.1 says to fall
+back to `fBaseVersion` — and `fBaseVersion` is 4 where the file's only
+`TGeoVolume` info is version 5. There is nothing for the fallback to land on. So
+§9.1's instruction needs a third step:
+
+1. `fBaseCheckSum`, when it is non-zero;
+2. otherwise `fBaseVersion`, when the file has an info for the base at that
+   version;
+3. **otherwise the info the file does have for that class** — which is the only
+   description of the base available, and is what these four files require.
+
+A reader that stops after step 2 finds no layout for `TGeoVolume` and cannot
+decode a `TGeoVolumeMulti`, on four files published by the ROOT team.
+`tools/rootfile.py` reaches step 3 by never consulting `fBaseVersion` at all,
+which is why the corpora decode; that is an accident of its design rather than a
+recommendation, and step 3 is the rule.
 
 ## 10. `TStreamerSTL` stores a type code it does not mean
 
@@ -678,6 +723,10 @@ a rewritten member — and not from the element list about to be emitted. See
     entries of `fMaxIndex` are all positive and their product equals
     `fArrayLength`.
 12. The bytes consumed by the outer list equal `fObjlen` exactly.
+
+**There is deliberately no invariant on `fBaseVersion`**, and §9.2 says why: it
+may legitimately name a version the file has no info for, which is the one thing
+invariant 7's `fBaseCheckSum` does not.
 
 Invariant 11 is the one that legitimately fails: an STL element's `fArrayDim` was
 not written at all before ROOT 6.24/02 (§10).

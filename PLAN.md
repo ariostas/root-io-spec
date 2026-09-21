@@ -1640,15 +1640,24 @@ Three things in the sub-plan are worth knowing even before the work starts:
   evolution exists for is unwitnessed in the corpora. Only a written file can
   exercise it, and producing one needs the update mode the third item adds.
 
-**Three of the four have landed** (2026-09-21): W1 free-space reuse, W2 key
-ordering, and W3 updating an existing file, each with a file in `data/written/`
-that matches a ROOT-written one for **every byte** bar the timestamps, the name
-and the UUIDs — 1747, 1361, 1657 and 1928. Two new invariants came out of them
-(`FreeSegments 8.10`, `Directory 9.14`) and one out of W3
-(`FileHeader 10.11`), which is a **defect report** as much as an invariant: the
-large file header is 75 bytes, `TFile::WriteHeader` allocates `fBEGIN` of them,
-and four corpus files have `fBEGIN` of 64. W4, schema evolution from the writing
-side, is what remains.
+**All four have landed** (2026-09-21): W1 free-space reuse, W2 key ordering, W3
+updating an existing file, and W4 schema evolution from the writing side. The
+first three each ended with a file in `data/written/` that matches a ROOT-written
+one for **every byte** bar the timestamps, the name and the UUIDs — 1747, 1361,
+1657 and 1928 — and W4 with a file **ROOT cannot produce**: one class at two
+versions, `written/two-versions`.
+
+Three new invariants came out of them: `FreeSegments 8.10`, `Directory 9.14` and
+`FileHeader 10.11`. A fourth was withdrawn the day it was written — W4 claimed a
+`TStreamerBase`'s `fBaseVersion` matches the base info beside it, and five corpus
+files disproved it, which is how `StreamerInfo.md` §9.2 and the correction to §9.1
+were found. Two of the three that stand are **defect reports** as much as
+invariants. The large file header is 75 bytes, `TFile::WriteHeader` allocates
+`fBEGIN` of them, and four corpus files have `fBEGIN` of 64. And `TKey::ReadObj`
+streams a `TObject`-derived object with `tobj->Streamer()`, which for a class ROOT
+has no dictionary for reads ten bytes and stops — so ROOT returns a
+default-constructed object where this project's reader recovers the data, on a file
+ROOT wrote itself. Both are for M10.
 
 Decision 3, §2.8, §2.9 and [Writing §4](spec/06-writing/index.md#4-what-is-not-specified)
 are updated as each item lands — `PLAN-writing.md` §9 lists exactly what each
@@ -1752,12 +1761,19 @@ generator. Remaining: a member-wise collection whose value class has a `ClassDef
 | Gap | Document |
 |---|---|
 | A non-zero `pidf`, a non-zero `fPidOffset`, and a `fUniqueID` whose top byte survives to disk | `References.md` |
-| Two streamer infos for one class distinguished by checksum | `SchemaEvolution.md` |
+| Two streamer infos for one class distinguished by **checksum at the same version** | `SchemaEvolution.md` |
 | A negative in-memory class version reaching disk as 1 | `SchemaEvolution.md` |
 | A branch with a non-empty `fFileName`, naming the file its baskets went to | `TBranch.md` §14 |
 
 `fPidOffset` arises when a key is copied between files, so one `TTreeCloner` or
 `TFile::Cp` case would produce several of these at once.
+
+**Two infos for one class at *different* versions is closed** (2026-09-21):
+`written/two-versions` is that file, written by this project, and W4 measured what
+ROOT does with both cases. The **same-version** collision stays here, and is worse
+than a gap in coverage — ROOT keeps the file's info and silently truncates the
+object it writes ([Writing an object §8.5](spec/06-writing/WritingObjects.md)), so
+a fixture for it would be a fixture of data loss.
 
 ### 9.5 Reachable now, just not written — ✅ closed 2026-09-16
 

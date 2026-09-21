@@ -1,0 +1,153 @@
+id   = "written/two-versions"
+file = "data/written/two-versions.root"
+size = 1546
+
+description = """
+**One class at two versions in one file**, with an object written at each —
+written by `tools/rootwrite.py` from
+[`WritingObjects.md` §8.4](../../../spec/06-writing/WritingObjects.md).
+
+No file in either corpus carries a class at two versions, and **no single ROOT
+session can produce one**: a session has exactly one definition of a class. Two
+sessions can, and ROOT does it without being asked — reopen a file with a class
+that has since gained a member and `TFile::WriteStreamerInfo` writes both infos,
+which §8.4 measures. This file is that shape, produced in one pass, and it is the
+only fixture here that exercises schema evolution on data rather than describing
+it.
+
+`Grown` is at version 1 with `Int_t fA` and at version 2 with `fA` and
+`Double_t fB`. `first` carries a version word of 1 and four bytes of payload;
+`second` carries 2 and twelve. The **version word in the object is what selects
+the layout** — nothing else in the record says which of the two infos applies.
+
+ROOT, which has no dictionary for `Grown`, builds the class from the newest info
+and reads `first` through the evolution path: `fA` off the file, `fB` left at its
+default. `verify.C` asserts both.
+
+**`Grown` is deliberately not derived from `TObject`.** For a `TObject`-derived
+class ROOT has no dictionary for, `TKey::ReadObj` streams through
+`tobj->Streamer()`, which resolves to `TObject::Streamer`, reads ten bytes and
+stops — so ROOT hands back a default-constructed object and reports nothing.
+That is measured in
+[§8.7](../../../spec/06-writing/WritingObjects.md), against a file ROOT wrote
+itself, and it is why the `no dictionary` warning in `expected_diagnostics` is
+the *only* diagnostic this case tolerates.
+
+The file is built by **reopening**: the base describes `Grown` at version 1, and
+the update supplies both infos, because the `StreamerInfo` record is replaced
+rather than appended to
+([`WritingFiles.md` §13.7](../../../spec/06-writing/WritingFiles.md)). The
+263-byte gap at 624 is what that rewrite released.
+"""
+
+spec = [
+  "spec/06-writing/WritingObjects.md",
+  "spec/02-serialization/SchemaEvolution.md",
+  "spec/06-writing/WritingFiles.md",
+]
+
+writer  = "tools/rootwrite.py"
+datime  = "2000-01-01 00:00:00, fixed; see tools/rootwrite.py DEFAULT_DATIME"
+
+# ROOT cannot avoid this one: it is about the session having no dictionary for a
+# class this project invented, not about the file. Nothing else is tolerated.
+expected_diagnostics = [
+  "no dictionary for class Grown is available",
+]
+
+[[records]]
+offset = 100
+nbytes = 200
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 300
+nbytes = 49
+class  = "Grown"
+role   = "first: version 1, four bytes of payload"
+
+[[records]]
+offset = 349
+nbytes = 169
+class  = "TFile"
+role   = "the key list, in the span the base's released"
+
+[[records]]
+offset = 518
+nbytes = 106
+class  = "TFile"
+role   = "the free list"
+
+[[records]]
+offset = 624
+nbytes = -263
+role   = "what rewriting the StreamerInfo record released"
+
+[[records]]
+offset = 887
+nbytes = 58
+class  = "Grown"
+role   = "second: version 2, twelve bytes of payload"
+
+[[records]]
+offset = 945
+nbytes = 601
+class  = "TList"
+role   = "StreamerInfo: two infos for one class"
+
+[[keys]]
+name = "first"
+
+[[keys]]
+name = "second"
+
+# --- The header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1546
+
+[[bytes]]
+name = "fSeekInfo: the rewritten record, at the end"
+offset = 37
+type = "i32"
+value = 945
+
+# --- The version word is the only thing that selects a layout -------------
+[[bytes]]
+name = "first: fObjlen is four bytes of payload plus the six of framing"
+offset = 306
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "first: the object's version word"
+offset = 343
+type = "u16"
+value = 1
+
+[[bytes]]
+name = "first: fA"
+offset = 345
+type = "i32"
+value = 11
+
+[[bytes]]
+name = "second: fObjlen"
+offset = 893
+type = "i32"
+value = 18
+
+[[bytes]]
+name = "second: the object's version word"
+offset = 931
+type = "u16"
+value = 2
+
+[[bytes]]
+name = "second: fA"
+offset = 933
+type = "i32"
+value = 22

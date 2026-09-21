@@ -496,9 +496,12 @@ customisation rule that resets `fBinSumw2` for `TProfile` versions 1 to 5
 (`root/hist/hist/inc/LinkDef.h:362-364`). `TFile::WriteStreamerInfo` collects the
 rules of every class in the list and appends that entry when there are any.
 
-A file written at version 7 cannot use the rule, so a writer may omit it — and
-`data/written/th2-profile.root` does, which is the one place its `StreamerInfo`
-record stops matching ROOT's. The same situation arises for `TTree`
+A file written at version 7 cannot use the rule, so a writer **may** omit it with
+no loss of information — ROOT never reads the list back. `tools/rootwrite.py`
+emits it anyway, which is what makes `data/written/th2-profile.root`'s
+`StreamerInfo` record byte-identical to ROOT's, all 11853 bytes;
+[Writing an object §8.6](WritingObjects.md#86-listofrules-is-optional-and-this-is-what-it-costs)
+is the general treatment. The same situation arises for `TTree`
 ([Writing trees §8.1](WritingTrees.md#81-root-appends-two-rules-that-a-new-file-cannot-use)),
 and a reader must tolerate the entry: it is a `TList`, not a `TStreamerInfo`, and
 a reader that assumes every element of the record is an info will mis-decode it

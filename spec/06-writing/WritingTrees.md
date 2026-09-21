@@ -620,11 +620,15 @@ type=read sourceClass="TTree" version="[-16]" target="fDefaultEntryOffsetLen" �
 type=read sourceClass="TTree" version="[-18]" target="fNClusterRange" …
 ```
 
-Both apply to `TTree` versions at or below 18. A file written at version 20 can
-never trigger them, so this writer omits the entry — and that is the **only**
-difference between `data/written/tree.root` and `data/ttree/basket.root`. The
-record's `TList` header therefore differs in two fields, its byte count and 18
-entries against 19, and every byte after them is the same.
+Both apply to `TTree` versions at or below 18, so a file written at version 20 can
+never trigger them and **may** omit the entry with no loss — ROOT never reads the
+list back. This writer emits it, and with it the `StreamerInfo` record of
+`data/written/tree.root` is byte-identical to the one in
+`data/ttree/basket.root`, **all 14584 bytes**; without it the two differ in
+exactly two fields, the `TList`'s byte count and 18 entries against 19.
+`FileWriter(emit_rules=False)` is the switch, and
+[Writing an object §8.6](WritingObjects.md#86-listofrules-is-optional-and-this-is-what-it-costs)
+says why the choice exists.
 
 That equality is recent: until `tools/element_lists.py` compared an element's
 **subclass tail** against ROOT's, `TRefTable::fProcessGUIDs` carried the wrong

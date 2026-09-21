@@ -1,6 +1,6 @@
 id   = "written/tree"
 file = "data/written/tree.root"
-size = 16213
+size = 16604
 
 description = """
 A flat `TTree` written by `tools/rootwrite.py` from
@@ -62,18 +62,18 @@ role   = "the tree record, byte-identical to ROOT's"
 
 [[records]]
 offset = 1761
-nbytes = 14257
+nbytes = 14648
 class  = "TList"
 role   = "StreamerInfo: eighteen infos"
 
 [[records]]
-offset = 16018
+offset = 16409
 nbytes = 115
 class  = "TFile"
 role   = "keys list -- one key, because a basket is never in it"
 
 [[records]]
-offset = 16133
+offset = 16524
 nbytes = 80
 class  = "TFile"
 role   = "free segments"
@@ -88,7 +88,7 @@ name = "t"
 name = "fEND"
 offset = 12
 type = "i32"
-value = 16213
+value = 16604
 
 [[bytes]]
 name = "fNbytesName"

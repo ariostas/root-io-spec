@@ -137,12 +137,19 @@ void verify(const char *path)
          printf("FAIL p2 error %.17g\n", p2->GetBinError(1));
    }
 
-   // And the streamer infos: eighteen, every checksum agreeing with ROOT's own
-   // or BuildCheck warns -- which fails the case.
+   // And the streamer infos: eighteen plus the listOfRules ROOT appends, every
+   // checksum agreeing with ROOT's own or BuildCheck warns -- which fails the
+   // case. The nineteenth entry is the rule list, and its name is the check
+   // that this writer put a TList there and not a nineteenth info.
    TList *infos = f->GetStreamerInfoList();
-   if (!infos || infos->GetSize() != 18)
+   if (!infos || infos->GetSize() != 19) {
       printf("FAIL streamer info list has %d entries\n",
              infos ? infos->GetSize() : -1);
+   } else {
+      TObject *last = infos->Last();
+      if (strcmp(last->GetName(), "listOfRules") != 0)
+         printf("FAIL the last entry is '%s'\n", last->GetName());
+   }
    if (infos) infos->Delete();
 
    f->Close();

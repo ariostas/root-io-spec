@@ -9,6 +9,71 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **[Writing an object §8](spec/06-writing/WritingObjects.md) specifies schema
+  evolution from the writing side**: what has to be in a file so that a reader
+  whose version of a class is not the writer's can still read it. It is smaller
+  than it looks, because `TStreamerInfo::BuildOld` matches each on-disk element to
+  a member **by name and nothing else** — so `fSize`, `fArrayDim` and `fMaxIndex`
+  are never compared, and artificial and cache elements cannot reach disk at all.
+  Six obligations remain, and §8.1 tabulates them.
+- **The mistake worth naming is an incomplete closure**: an info for a derived
+  class without one for its base. Measured — `BuildOld` skips the base, the class
+  comes out 16 bytes instead of 24, and `CheckByteCount` reports the short read.
+  It is **loud** rather than silent, and only because the base's bytes carry their
+  own byte count; a base whose bytes carry none, like `TObject`'s, would
+  desynchronise quietly. The closure has one exemption — a class whose `Streamer`
+  is hand-written or forwarding gets no info — and over the 90 files here that
+  carry infos, the bases with no info are exactly six classes, all on one of the
+  two published lists.
+- **One class may appear at two versions in one file, and ROOT produces such
+  files itself.** Measured with two sessions: a file written at `ClassDef(C, 2)`
+  and reopened by a session whose `C` is at version 3 comes out with **both**
+  infos and two records of different lengths, silently and correctly. The plan for
+  this work expected ROOT to discard one; it does not.
+- **When the versions *collide*, the file wins and data is lost.** Same
+  experiment, but the second session's class has a third member and still says
+  `ClassDef(C, 2)`. ROOT warns at open — "Do not try to write objects with the
+  current class definition" — and then does exactly that: the object it writes is
+  54 bytes, not 58, and the third member never reaches the file. No later reader
+  can tell. A writer's two honest responses are to bump the version or to refuse.
+- **ROOT cannot read an emulated class that derives from `TObject`**
+  ([Schema evolution §7.1](spec/02-serialization/SchemaEvolution.md)), and this is
+  a **silent data-loss path in ROOT**, found here. `TKey::ReadObj` streams a
+  `TObject`-derived object with `tobj->Streamer()`, which with no dictionary
+  resolves to `TObject::Streamer` and reads ten bytes and stops. Measured on a
+  file ROOT wrote itself: a class with `fA = 77` and `fB = 1.25` reads back as
+  0 and 0, the only message being `no dictionary for class …`. This project's
+  reader recovers both values from the same bytes. It affects only a top-level
+  record — the same class as a *member* reads correctly — and it is why a writer
+  should not derive its own persistent classes from `TObject`.
+- **`listOfRules` is specified for writing, and emitting it closes the last gap
+  in the `StreamerInfo` comparison.** ROOT appends the rules of every class being
+  written with no reference to the version, so a `TTree` 20 file ships two rules
+  for versions ≤ 16 and ≤ 18 that can never match its own data — and ROOT never
+  reads the list back, so a writer may omit it. This one emits it, and **seven
+  whole `StreamerInfo` records are now byte-identical** to ROOT's — 370, 9628,
+  11789, 12169, 14121, 14580 and 14584 bytes — where four used to differ by that
+  one entry. `FileWriter(emit_rules=False)` turns it off.
+- **`fBaseVersion` may name a version the file has no info for**, and the
+  fallback [Streamer information §9.1](spec/02-serialization/StreamerInfo.md)
+  tells a reader to use is therefore not enough. Found by asserting the opposite
+  as an invariant, which five files in the two corpora disproved at once. On
+  `uproot-mc10events.root` (ROOT 6.08/04) `TTree`'s `TAttLine` base says version 1
+  beside a version-2 info, and its `fBaseCheckSum` points at that version-2 info,
+  so the checksum resolves it. On `aleph.root`, `atlas.root`, `cms.root` and
+  `hades.root` (ROOT 5.17/09) the checksum is 0 and `fBaseVersion` is 4 where the
+  file's only info for the base is version 5 — **so there is nothing for §9.1's
+  fallback to land on**. §9.2 adds the third step a reader needs: take the info the
+  file does have for that class. A reader that stops earlier cannot decode a
+  `TGeoVolumeMulti` on four files the ROOT team publishes.
+- **New reference file** `data/written/two-versions.root`: one class at two
+  versions with an object written at each, the only file in `data/` that carries a
+  class twice. A single ROOT session cannot produce it.
+- A case may now declare `expected_diagnostics` in its `case.toml`. Gate 3 still
+  fails on every other ROOT diagnostic, and it also fails if a declared one stops
+  appearing. The only use so far is the `no dictionary` warning that any class a
+  writer invented produces — a fact about the session, not about the file.
+
 - **[Writing a file §13](spec/06-writing/WritingFiles.md) specifies updating a
   file that already exists**, which was out of scope until now. It needs no new
   allocation rule — §2 is the whole allocator, and an update inherits the free

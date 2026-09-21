@@ -547,7 +547,72 @@ directory's key list matches the records that name it as parent. Most of these a
 worth checking on *every* file, not only updated ones, which is the usual sign
 that an invariant is the right one.
 
-### W4 — Schema evolution, from the writing side
+### W4 — Schema evolution, from the writing side ✅ done 2026-09-21
+
+*Delivered: `WritingObjects.md` §8 in seven subsections, `listOfRules` support in
+`tools/rootwrite.py`, `written/two-versions` — one class at two versions, which no
+single ROOT session can produce — and a correction to `StreamerInfo.md` §9.1 that
+came out of an invariant this item got wrong.*
+
+**The merge rule, which was the one thing left to establish, has two answers and
+the plan guessed the wrong one.** It expected ROOT to discard one of the two infos;
+measured with two ACLiC sessions over one file, it does not:
+
+- **different class versions** → ROOT keeps **both**, writes two records of
+  different lengths, and says nothing. So the file this item was going to have to
+  construct by hand is one ROOT produces itself, on any update by a session whose
+  class has evolved;
+- **the same version, different checksum** → ROOT warns at open
+  (`BuildCheck`, `CompareContent`) and then keeps **the file's** info and
+  truncates the object it writes. The third member of a three-member class never
+  reaches disk: 54 bytes where 58 were due, with no further word. That is the
+  destructive case, and §8.5 records it. This project's writer refuses instead.
+
+**Two findings the plan did not have.**
+
+*ROOT cannot read an emulated class that derives from `TObject`* — a silent
+data-loss path in ROOT, found here and witnessed on a file **ROOT wrote itself**.
+`TKey::ReadObj` streams a `TObject`-derived object with `tobj->Streamer()`, which
+with no dictionary resolves to `TObject::Streamer`: ten bytes and stop. A class
+with `fA = 77` and `fB = 1.25` reads back as 0 and 0. `tools/rootfile.py` recovers
+both from the same bytes. It is why `written/two-versions` uses a non-`TObject`
+class, and it is in `SchemaEvolution.md` §7.1 and §8.7 of the new section. One for
+`PLAN.md` M10.
+
+*The incomplete closure is loud, not silent.* The plan said a missing base info
+gives "a `Warning` and then a desynchronised buffer... surfacing later as a
+`CheckByteCount` complaint about an unrelated object". Measured, it complains about
+**the base itself** and recovers, because the base's bytes carry their own byte
+count — the members after it still read correctly and the next record is untouched.
+The silent version needs a base whose bytes have no byte count, which `TObject`'s
+do not.
+
+**`listOfRules` paid off more than expected.** The plan said specifying it "buys a
+byte-identical comparison where today two of the nine are identical bar one
+entry". It was four, not two, and emitting it makes **seven whole `StreamerInfo`
+records** byte-identical to ROOT's: 370, 9628, 11789, 12169, 14121, 14580 and
+14584 bytes. Four `case.toml`s and four fixtures moved to pay for it.
+
+**The invariant that was not.** `StreamerInfo 13.13` was written, checked in, and
+withdrawn within the hour: it claimed a `TStreamerBase`'s `fBaseVersion` equals the
+base info's `fClassVersion`, and the two corpora produced five counterexamples on
+the first run. All five are correct — `fBaseVersion` records the base version the
+*derived* class's info was built against, which an info carried into a later file
+outlives. The return is better than the invariant would have been: four
+ROOT-published files (`aleph`, `atlas`, `cms`, `hades`) have `fBaseCheckSum` 0
+*and* an `fBaseVersion` naming a version the file has no info for, so **the
+fallback `StreamerInfo.md` §9.1 instructs a reader to use has nothing to land on**.
+§9.2 is new and adds the third step. This is the third time a wrong claim of this
+project's has been caught by running the invariants over files it did not write,
+and the first time the wrong claim was one it had just written.
+
+The *closure* is deliberately not an invariant either: its exemption is a property
+of ROOT's source rather than of the file, and the two lists that carry it are
+already CI-checked.
+
+---
+
+*The original plan for this item follows.*
 
 **What it adds.** A section of `WritingObjects.md`, or a document of its own, that
 answers one question: **what must be in the file so that a reader whose class is

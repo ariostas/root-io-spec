@@ -29,16 +29,19 @@ A **writing** layer now covers the other direction:
 order — the container, an object and its streamer info, `TH1F`/`TH1D`,
 `TH2F`/`TH2D`/`TProfile`, and a flat `TTree` of as many baskets per branch as the
 writer flushes — at the current version of each class, and, since 2026-09-21,
-how to **reopen a file that already exists** and add to it. `tools/rootwrite.py` is its
+how to **reopen a file that already exists** and add to it, and what has to be in
+a file so that a reader whose classes are **not** the writer's can still read it. `tools/rootwrite.py` is its
 executable form, and the conformance test is that ROOT opens what it wrote, finds
 the values that went in, and says nothing.
 
 The result is stronger than that test needed to be: **every object-bearing record
 in `data/written/` is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`,
-a `TH2F`, a `TH2D`, two `TProfile`s, three `TTree`s, nine `TBasket`s, and a
-`StreamerInfo` record of fifteen class descriptions with their checksums computed
-from scratch — and **five of the thirteen files match ROOT's for every byte**, bar
-each key's timestamp, the file's own name and the UUIDs.
+a `TH2F`, a `TH2D`, two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s,
+nine `TBasket`s, and **seven whole `StreamerInfo` records** — up to nineteen class
+descriptions each, every checksum computed from scratch and, where ROOT appends
+one, the `listOfRules` entry reproduced verbatim. **Five of the fourteen files
+match ROOT's for every byte of the file**, bar each key's timestamp, the file's own
+name and the UUIDs.
 
 | Layer | State |
 |---|---|
@@ -48,13 +51,13 @@ each key's timestamp, the file's own name and the UUIDs.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file | written |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file, writing for a reader at another class version | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**79 reference files, 2021 byte-level assertions, and 1570 source citations
-checked against the pinned submodule across 48 documents**, plus 13 files this
-project wrote with 485 assertions of their own. The invariants also
+**79 reference files, 2021 byte-level assertions, and 1583 source citations
+checked against the pinned submodule across 48 documents**, plus 14 files this
+project wrote with 493 assertions of their own. The invariants also
 run over 180 files this project did not write — 154 from uproot's regression
 corpus and 26 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
 with **0 failures**, and 95% of the records in them decode. Those files are where

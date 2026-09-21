@@ -10,10 +10,10 @@ format spec (RNTuple); its `TFile`/`TTree` documentation in `root/io/doc/TFile/`
 describes **release 3.02.06** and is substantially wrong for current ROOT.
 
 `PLAN.md` holds the structure, scope decisions and phasing, and
-Two live sub-plans: `PLAN-writing.md` extends the write side — free-space reuse,
-key ordering and **updating an existing file** have landed, schema evolution from
-the writing side is what remains, and splitting stays read-only with that file
-saying why, and `PLAN-review.md` answers the first outside review,
+Two live sub-plans: `PLAN-writing.md` extended the write side and is now
+**discharged** — free-space reuse, key ordering, updating an existing file and
+schema evolution from the writing side have all landed, and splitting stays
+read-only with that file saying why, and `PLAN-review.md` answers the first outside review,
 GitHub issue #1 — which found a reader bug, a false invariant and an over-general
 erratum, so read it before trusting `StreamerDriven.md` 10.5 or
 `SchemaEvolution.md` §8.1.
@@ -186,7 +186,11 @@ tools/check_write.py --accept         # re-record data/written/ after a delibera
 3. ROOT opens it, `verify.C` finds the values that went in, and **nothing on
    either stream looks like a ROOT diagnostic** — a `BuildCheck` warning or a
    `CheckByteCount` complaint fails the case, which is what makes gate 3 an
-   assertion about checksums and byte counts rather than about values.
+   assertion about checksums and byte counts rather than about values. A case may
+   declare `expected_diagnostics` for lines that are about the *session* rather
+   than the file; a declared line must then actually appear, so the escape hatch
+   cannot rot. The only one is the `no dictionary` warning any class a writer
+   invented produces.
 
 `data/written/` is **byte-reproducible**, unlike the rest of `data/`: a writer has
 no reason to consult a clock, so `rootwrite.py` takes the timestamp and UUID as
@@ -215,9 +219,13 @@ ROOT's answer from it. Their agreement extends to the dead keys buried behind a
 gap marker, which neither writer clears: `tools/test_write.py` names those two
 offsets per file rather than blanking them, because a dead key cannot be parsed
 out of a file.
-Two more are identical bar a single entry: the `StreamerInfo` record of a tree
-file and of a profile file, where ROOT appends a `listOfRules` that a file written
-at `TTree` 20 or `TProfile` 7 cannot use.
+**Seven whole `StreamerInfo` records** are byte-identical to ROOT's — 370, 9628,
+11789, 12169, 14121, 14580 and 14584 bytes — including the `listOfRules` entry
+ROOT appends, which four of them used to differ by. That entry is optional (ROOT
+never reads it back) and carries rules for versions this writer never emits;
+`rootwrite.KNOWN_RULES` holds the strings verbatim and `FileWriter(emit_rules=False)`
+drops it. If a fixture's `StreamerInfo` record is ever one entry short, that is
+the first thing to check.
 The tree and subdirectory comparisons are the strictest, because a branch stores
 its baskets' *offsets* and a directory record stores three of its own, so in both
 cases the two file names are deliberately the same length. When a

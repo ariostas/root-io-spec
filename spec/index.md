@@ -35,30 +35,37 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Serialization — collections, schema evolution, references | written |
 | Standard classes — the divergent set, bar ten narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
-| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file | [written](06-writing/index.md) |
+| Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file, schema evolution | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **79 reference files with 2021 byte-level assertions, 1570 source
+Behind it: **79 reference files with 2021 byte-level assertions, 1582 source
 citations checked against the pinned ROOT tree across 48 documents**, and the
 invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
-The writing layer adds thirteen files this project *did* write, with 485
+The writing layer adds fourteen files this project *did* write, with 493
 assertions of their own. Twelve of them are the strongest check here: **every object-bearing
 record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
 `TH2F`, a `TH2D`, two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s,
-**nine** `TBasket`s, and two whole `StreamerInfo` records, of fifteen and nineteen
-class descriptions, plus the eighteen each of a tree file and a profile file bar the
-one entry a file written today cannot use.
+**nine** `TBasket`s, and **seven whole `StreamerInfo` records** — of one, fifteen,
+seventeen, eighteen and nineteen class descriptions, every checksum computed from
+scratch and, where ROOT appends one, the `listOfRules` entry reproduced verbatim.
 
-**Five of the thirteen match a ROOT-written file for every byte of the file**, not
+**Five of the fourteen match a ROOT-written file for every byte of the file**, not
 only its object records — bar each key's timestamp, the file's own name and the
 UUIDs, which no writer can be expected to reproduce: nested subdirectories at
 1854 bytes, records placed into **released space** at 1747, three cycles of one
 key name at 1361, and, newest, the two that **reopen a file and add to it** — at
 1657 and 1928 bytes, down to the dead keys still buried behind a gap marker,
 which neither writer clears.
+
+The fourteenth is the odd one out and the point of it is that ROOT cannot produce
+it: **one class at two versions in one file**, with an object written at each, so
+the version word is the only thing that says which layout applies. A single ROOT
+session has one definition of a class; two sessions make this file, and
+[Writing an object §8](06-writing/WritingObjects.md#8-writing-for-a-reader-that-is-not-you)
+says what has to be in it.
 
 ## How to read it
 
