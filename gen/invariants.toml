@@ -1,0 +1,402 @@
+# Published `Invariants` entries that `tools/check_coverage.py` cannot match to a
+# label in the tools, and what accounts for each.
+#
+# `CLAUDE.md` requires every entry to be checked. That rule was unenforced until
+# 2026-09-21, and `PLAN-review.md` R2 is why it mattered: the one entry found to
+# be *false* was also one nobody had wired up. This file is the other half of the
+# enforcement -- `tools/check_coverage.py --check` fails on an unchecked entry
+# that is not listed here, and on a listing that no longer applies.
+#
+# `by` says what accounts for it:
+#
+#   alias         the same claim is checked under another document's label, named
+#                 in `reason`. Common where two documents state one fact.
+#   structural    enforced by the reader rather than by a comparison: a wrong
+#                 value makes the parse fail, and the failure is reported under
+#                 the label in `reason`. Consumption checks are the usual case.
+#   write-gate    a spec/06-writing/ entry, checked by tools/check_write.py on
+#                 every written file -- gate 1's byte identity with a ROOT-written
+#                 file, gate 2's run of check_invariants.py over our own output,
+#                 or a WriteError in rootwrite.py. Each write document's
+#                 Invariants section says which, and `reason` quotes it.
+#   not-checkable no file we can produce or hold exhibits it; why, in `reason`.
+#   unchecked     honestly not checked, and could be. This is the worklist, and
+#                 it should stay short.
+#
+# An entry here is not an excuse: `alias` and `structural` claims were each
+# verified by finding the check, and `unchecked` is a to-do, not a dismissal.
+
+# ---------------------------------------------------------------- container --
+
+[invariant."Compression 9.1"]
+by = "structural"
+reason = """
+The compressed/raw decision itself: `fObjlen > fNbytes - fKeylen` and nothing
+else. Every reader path takes the branch from it, so there is no separate value to
+compare. Its compressed half is checked as Compression 9.2 to 9.6 and its raw half
+by the new 9.7.
+"""
+
+[invariant."Directory 9.1"]
+by = "structural"
+reason = """
+`rootfile.read_directory` accepts a record as a directory only when `fSeekDir`
+equals the record's own offset -- the self-check ROOT itself relies on. A record
+that fails it is not reported as a bad directory, it is not a directory, so the
+failure surfaces as Record 8.6 (keys whose fSeekPdir names no directory) and as
+the root directory going missing. Provoked in tools/test_container.py by changing
+a version word to 1005.
+"""
+
+[invariant."FreeSegments 8.3"]
+by = "alias"
+reason = "Checked as FileHeader 10.7, which compares `nfree` with the entry count and knows ROOT 4 wrote 0."
+
+[invariant."FreeSegments 8.4"]
+by = "alias"
+reason = """
+Two halves, both checked elsewhere: `fNbytesFree` against the record's `fNbytes`
+as FileHeader 10.6, and `fSeekKey` against the record's own offset as Record 8.3,
+which applies to every key including this one.
+"""
+
+[invariant."FreeSegments 8.8"]
+by = "alias"
+reason = "The partition of [fBEGIN, fEND) is Record 8.8's walk, which is checked over every file."
+
+[invariant."LargeFiles 8.1"]
+by = "alias"
+reason = "Restates FileHeader 10.9 for the large case; checked there, including the stricter iff the checker applies."
+
+[invariant."LargeFiles 8.2"]
+by = "alias"
+reason = "Restates FreeSegments 8.3, checked as FileHeader 10.7."
+
+[invariant."LargeFiles 8.3"]
+by = "alias"
+reason = "Restates FreeSegments 8.2's trailing-entry rule, checked there."
+
+[invariant."LargeFiles 8.4"]
+by = "structural"
+reason = """
+A free entry's width comes from its own version word, so a wrong flag makes the
+parse of the entry after it desynchronise; the garbage that follows fails
+FreeSegments 8.5 or 8.1. No value is compared directly because the only way to
+know the intended width is to trust the word being checked.
+"""
+
+[invariant."LargeFiles 8.5"]
+by = "alias"
+reason = "Restates FreeSegments 8.5, checked there."
+
+[invariant."LargeFiles 8.6"]
+by = "not-checkable"
+reason = """
+The free record's own key is wide only in a file past 2 GB, and no fixture is that
+large. `gen/cern/LARGE.toml` records the measured header and free-list facts for
+eight files from 1.3 GB to 5.3 GB, fetched by range request rather than held, and
+that is the only evidence for this layout anywhere in the project.
+"""
+
+[invariant."Record 8.9"]
+by = "alias"
+reason = """
+Checked as Directory 9.14, which folds the keep flag away with `abs(fCycle)` and so
+compares magnitudes exactly as this entry asks.
+"""
+
+# ------------------------------------------------------------ serialization --
+
+[invariant."Collections 14.5"]
+by = "structural"
+reason = """
+StreamerDriven 10.2 applied inside a collection, as the document says: a
+collection whose decoding does not land on its byte count fails that check, which
+`decode_record` reports for every record of every file.
+"""
+
+[invariant."Collections 14.8"]
+by = "structural"
+reason = """
+Stated in the document as a consumption check rather than a direct one, and that is
+how it runs: reading a TClonesArray body with the wrong fBits interpretation
+desynchronises and the byte count catches it, reported as StreamerDriven 10.1.
+"""
+
+[invariant."References 8.1"]
+by = "structural"
+reason = """
+The TObject base's width is what the streamer-driven read consumes; a wrong choice
+between 10 and 12 bytes shifts every member after it and fails StreamerDriven 10.1
+or 10.2. `data/serialization/ref-variants` is the fixture that exercises both.
+"""
+
+[invariant."StreamerDriven 10.2"]
+by = "structural"
+reason = """
+`decode_record` recurses into every nested object and compares what it consumed
+with the byte count as it returns; a mismatch is raised and reported under
+StreamerDriven 10.1, which is why that label carries both.
+"""
+
+[invariant."StreamerInfo 13.6"]
+by = "alias"
+reason = "The same claim as ElementTypes 11.1, checked there for every element of every info."
+
+# ----------------------------------------------------------------- classes --
+
+[invariant."TArray 5.2"]
+by = "structural"
+reason = """
+A TArray's extent is checked by consumption: `4 + fN x width` is what the reader
+advances, and a disagreement ends the enclosing object somewhere other than its
+byte count, failing StreamerDriven 10.1. TArray.md 5.1, which is the fN bound, is
+checked directly.
+"""
+
+# ------------------------------------------------------------------- ttree --
+
+[invariant."Auxiliary 8.4"]
+by = "unchecked"
+reason = """
+A TFriendElement's fTreeName is read only as part of the TTree record's
+streamer-driven decode, which checks framing rather than values, and nothing walks
+the decoded tree to reach the string. `ttree/tree-friend` is the fixture it would
+run on. Cheap to add once a decoded-value accessor exists; on the worklist.
+"""
+
+[invariant."ReadingEntries 8.2"]
+by = "alias"
+reason = "Checked as Splitting 8.2, which the document says is the same invariant seen from the branch side."
+
+[invariant."ReadingEntries 8.6"]
+by = "structural"
+reason = """
+A partial bitset entry would not consume the bytes its span allows, so it fails
+ReadingEntries 8.5. The three branch-baskets of `ttree/split-bitset` are all
+decoded and checked, so the case is reached rather than skipped.
+"""
+
+[invariant."TBasket 9.8"]
+by = "structural"
+reason = """
+`rootfile.read_basket` refuses a basket whose fIOBits is zero after the negative
+marker, or sets bit 7, or sets anything outside kSupported -- the same three tests
+ROOT makes before marking the basket a zombie. The refusal is reported as
+TBasket 9.1.
+"""
+
+# ------------------------------------------------------- the write side, 46 --
+#
+# Every `spec/06-writing/` document's Invariants section already names what
+# checks it, and each reason below quotes that document. The mechanism is one of
+# three: gate 2 of `tools/check_write.py` runs `check_invariants.py` over our own
+# output, so every reading invariant applies to it under the reading label; gate 1
+# compares the bytes with a ROOT-written file; or `tools/rootwrite.py` raises a
+# WriteError as it writes. A write-side entry therefore carries no label of its
+# own by design -- it is the same fact, addressed to the writer.
+
+[invariant."WritingFiles 14.1"]
+by = "write-gate"
+reason = "§14: checked by check_invariants.py as FreeSegments 8.7, the header/free-list agreement."
+
+[invariant."WritingFiles 14.2"]
+by = "write-gate"
+reason = "§14: the record walk, checked as Record 8.8 on every written file through gate 2."
+
+[invariant."WritingFiles 14.3"]
+by = "write-gate"
+reason = "§14, as Directories 9.3 -- a subdirectory's fNbytesName is its own fKeylen."
+
+[invariant."WritingFiles 14.4"]
+by = "write-gate"
+reason = "§14, as Directories 9.11: every key image agrees with the key of the record it points at."
+
+[invariant."WritingFiles 14.5"]
+by = "write-gate"
+reason = "§14, as Directories 9.13: an image occupies exactly its own fKeylen."
+
+[invariant."WritingFiles 14.6"]
+by = "write-gate"
+reason = "§14, as Directories 9.8: each subdirectory appears in exactly one parent's list."
+
+[invariant."WritingFiles 14.7"]
+by = "write-gate"
+reason = "§14, as Directories 9.12: a key-list record's key carries the owning directory's fSeekDir."
+
+[invariant."WritingFiles 14.8"]
+by = "write-gate"
+reason = "§14, as Directories 9.14: cycles within a name are distinct and descending."
+
+[invariant."WritingFiles 14.9"]
+by = "write-gate"
+reason = "§14, as FreeSegments 8.6: a record placed in a larger span leaves a marker."
+
+[invariant."WritingFiles 14.10"]
+by = "write-gate"
+reason = "§14, as FreeSegments 8.7."
+
+[invariant."WritingFiles 14.11"]
+by = "write-gate"
+reason = "§14, as FreeSegments 8.10: no free segment is 1, 2 or 3 bytes long."
+
+[invariant."WritingFiles 14.12"]
+by = "write-gate"
+reason = "§14, as Directories 9.12."
+
+[invariant."WritingFiles 14.13"]
+by = "write-gate"
+reason = "§14, as FreeSegments 8.6; WriterInvariants.md pairs the two explicitly."
+
+[invariant."WritingFiles 14.14"]
+by = "write-gate"
+reason = "§14, as FreeSegments 8.10; WriterInvariants.md pairs the two explicitly."
+
+[invariant."WritingFiles 14.15"]
+by = "write-gate"
+reason = "§14, as Directories 9.14; WriterInvariants.md pairs the two explicitly."
+
+[invariant."WritingFiles 14.16"]
+by = "write-gate"
+reason = """
+§14 says this one is the exception: it is a property of the *act* of writing, since
+a finished file cannot say which of two overlapping records was meant to be live.
+`tools/rootwrite.py` checks it as it places each record, raising a WriteError.
+"""
+
+[invariant."WritingFiles 14.17"]
+by = "write-gate"
+reason = "§14, as FileHeader 10.11; WriterInvariants.md pairs the two explicitly."
+
+[invariant."WritingObjects 10.1"]
+by = "write-gate"
+reason = "§10: items 1 to 4 are checked for every written file by check_write.py through rootfile.py. This one is Buffer 9.1."
+
+[invariant."WritingObjects 10.2"]
+by = "write-gate"
+reason = "§10, as Buffer 9.2 -- one full class name per record, then back-references."
+
+[invariant."WritingObjects 10.3"]
+by = "write-gate"
+reason = "§10, as Buffer 9.3 -- the object map's positions."
+
+[invariant."WritingObjects 10.4"]
+by = "write-gate"
+reason = "§10, as Compression 9.1 and 9.4."
+
+[invariant."WritingObjects 10.5"]
+by = "write-gate"
+reason = """
+The writer's form of StreamerDriven 10.5, which R2 restated and wired up: gate 2
+runs that check over every written file, so a written file missing an info for a
+class it uses inline fails there.
+"""
+
+[invariant."WritingObjects 10.6"]
+by = "write-gate"
+reason = "§10: checked for every streamer info in data/ by tools/test_write.py, which recomputes each checksum from the element list."
+
+[invariant."WritingObjects 10.7"]
+by = "write-gate"
+reason = "As StreamerInfo 13.4 and 13.5's option bytes, checked through gate 2; and byte-identical to ROOT's record in seven files (index.md §2)."
+
+[invariant."WritingTrees 9.1"]
+by = "write-gate"
+reason = "§9: 1 to 6, 8 and 10 to 13 are checked for the written files by check_write.py through rootfile.py."
+
+[invariant."WritingTrees 9.2"]
+by = "write-gate"
+reason = "§9, as above; the basket-entry bookkeeping is TBranch's own invariants under gate 2."
+
+[invariant."WritingTrees 9.3"]
+by = "write-gate"
+reason = "§9, as above: fBasketSeek against the record at that offset."
+
+[invariant."WritingTrees 9.4"]
+by = "write-gate"
+reason = "§9, as above: the three counted arrays against fMaxBaskets."
+
+[invariant."WritingTrees 9.5"]
+by = "write-gate"
+reason = "§9, as above: fEntryOffsetLen against whether the baskets carry an offset array."
+
+[invariant."WritingTrees 9.6"]
+by = "write-gate"
+reason = "§9, as above: fLast and the offset array's first element, which TBasket's invariants check."
+
+[invariant."WritingTrees 9.7"]
+by = "write-gate"
+reason = "§9, as above: a leaf's fLeafCount names an earlier leaf, which TLeaf's invariants check."
+
+[invariant."WritingTrees 9.8"]
+by = "write-gate"
+reason = "§9, as above: no TBasket key in the directory's key list, which Directories 9.7 and the key-list walk cover."
+
+[invariant."WritingTrees 9.9"]
+by = "write-gate"
+reason = "§9, as above."
+
+[invariant."WritingTrees 9.10"]
+by = "write-gate"
+reason = "§9: checked as TTree invariant 3."
+
+[invariant."WritingTrees 9.11"]
+by = "write-gate"
+reason = "§9: checked as TTree invariant 2."
+
+[invariant."WritingTrees 9.12"]
+by = "write-gate"
+reason = "§9: checked as TBranch invariant 6."
+
+[invariant."WritingTrees 9.13"]
+by = "write-gate"
+reason = """
+§9: checked as TLeaf invariants 9 to 11, which state `fLen <= fMaximum` where this
+entry states the equality -- a reader has to accept both and only a writer owes the
+stronger claim.
+"""
+
+[invariant."WritingTrees 9.14"]
+by = "not-checkable"
+reason = """
+§9 says so itself: not checkable over a finished file, because `rootwrite.py`
+enforces it by construction -- it gives a branch exactly one TLeafC and no way to
+add a second -- so no file exists that could violate it.
+"""
+
+[invariant."WritingHistograms 10.5"]
+by = "unchecked"
+reason = """
+§10 lists 1, 2, 3, 4, 6, 8 and 9 as checked and leaves 5 out. `fEntries >= 0` is
+trivial to add; the second half, `fTsumw <= fEntries` when every weight is 1, needs
+the writer's intent, since a file cannot say whether its weights were all 1.
+On the worklist for the first half.
+"""
+
+[invariant."WritingHistograms 10.7"]
+by = "write-gate"
+reason = "§10: checked against ClassDef for every class in §11's table by tools/check_versions.py."
+
+[invariant."WritingGraphs 6.3"]
+by = "write-gate"
+reason = "§6: the general rule of WritingObjects §10, checked there -- and for a TGraph specifically by the closure check of StreamerDriven 10.5 under gate 2."
+
+[invariant."ElementLists 13.1"]
+by = "write-gate"
+reason = "§13: 1 to 4 are checked by tools/element_lists.py over the seven reference files."
+
+[invariant."ElementLists 13.2"]
+by = "write-gate"
+reason = "§13, as above."
+
+[invariant."ElementLists 13.3"]
+by = "write-gate"
+reason = "§13, as above."
+
+[invariant."ElementLists 13.4"]
+by = "write-gate"
+reason = "§13, as above, and for every info in every reference file by tools/test_write.py."
+
+[invariant."ElementLists 13.5"]
+by = "write-gate"
+reason = "§13: checked by tools/check_versions.py."

@@ -20,6 +20,11 @@ jobs:
         run: tools/generate.py --check
       - name: Verify the spec's Invariants sections hold for every fixture
         run: tools/check_invariants.py
+      # CLAUDE.md requires every published Invariants entry to be checked. This
+      # is what enforces it: an entry with no check and no reason in
+      # gen/invariants.toml fails here. PLAN-review.md R7.
+      - name: Every published invariant is checked or accounted for
+        run: tools/check_coverage.py --check
       # Gates 1 and 2 of spec/06-writing/index.md 2: tools/rootwrite.py still
       # reproduces data/written/ byte for byte, and tools/rootfile.py plus the
       # invariants accept what it wrote. Gate 3 needs ROOT and runs below.

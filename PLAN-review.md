@@ -1,12 +1,11 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1–R6 done** the same day — the
-three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus three of §3's
-four gaps and the item-3 attribution. R7, the reply and R8 remain; §4.1 is a new
-corpus question for the user. Every item below was re-checked against the corpora
-and against our own reference files *before* being planned, and the verification
-is recorded per item, because the point of a review is what it turns out to be
-right about.
+**Status: in progress.** Written 2026-09-21; **R1–R7 done** the same day — the
+three defects of §2, all four gaps of §3, and the item-3 attribution. The reply
+and R8 remain; §4.1 is a new corpus question for the user. Every item below was
+re-checked against the corpora and against our own reference files *before* being
+planned, and the verification is recorded per item, because the point of a review
+is what it turns out to be right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -447,6 +446,62 @@ deletion.
 
 **This is the item most likely to find more of what R2 was.**
 
+**Done 2026-09-21, and it was right about that.** `tools/check_coverage.py` reads
+every numbered entry under every `Invariants` heading, matches it against the
+labels the tools report, and requires the remainder to be accounted for in
+`gen/invariants.toml`. It runs in CI between `check_invariants.py` and
+`check_write.py`.
+
+**The count: 259 published entries across 32 documents, 183 with a check.** So 76
+were unmatched when the tool first ran — and the important half of that number is
+not 76, it is what wiring some of them up did.
+
+**Two more published invariants were wrong**, both in `ElementTypes.md`, both
+found the moment a check existed:
+
+- **invariant 4 was false.** It said `fArrayLength` is "positive for any code in
+  `[20, 59]`", and 211 elements in `data/` alone say otherwise: it is positive for
+  a `kOffsetL` code (20–39), the fixed extent, and **0 for a `kOffsetP` code
+  (40–59)**, whose length is its counter's value at read time. Measured over `data/`
+  and both corpora: 651 `kOffsetL` all positive, **2229 `kOffsetP` all zero**. The
+  restatement also had to name the one scalar-looking exception — an object-pointer
+  code spells a fixed array with `fArrayLength` and no `kOffsetL` — which this
+  project's own `element-types` fixture was built to demonstrate and whose element
+  title says so;
+- **invariant 3 was incomplete and over-general at once.** It allowed `fType` 500
+  or 501 on "an element whose class carries a custom streamer" and did not mention
+  `TStreamerLoop`, which is the only class that ever carries 501. Measured: 500 is
+  a `TStreamerSTL` (1137) or a `TStreamerSTLstring` (213), 501 is a `TStreamerLoop`
+  (13), the legacy 300 is a `TStreamerSTL` (18), and no other class carries any of
+  them. The escape clause described nothing.
+
+**And a document claimed a check it did not have.** `ReadingEntries.md` §8 said
+"all six are checked over every fixture and both corpora" while two of the six had
+no check of their own — 2 is checked under `Splitting` 8.2 and 6 only through
+invariant 5's consumption. Both are true, but the sentence could not be verified by
+anything, and that is the class of statement this tool exists to stop.
+
+Eight entries gained a check: `ElementTypes` 11.3, 11.4, 11.5 and 11.7,
+`FileHeader` 10.3 (ROOT's own open-time test, which we had never made),
+`StreamerInfo` 13.2 with `SchemaEvolution` 9.2 and 9.3 — the outer list holds infos
+and at most one `listOfRules` — and `Compression` 9.7, that a raw payload never
+looks like a compression block.
+
+The remaining 68 are accounted for, each with the check that covers it:
+
+| `by` | Count | What it means |
+|---|---|---|
+| `write-gate` | 44 | a `spec/06-writing/` entry, checked by `check_write.py` on our own output — gate 2 runs the reading invariants over it, gate 1 compares bytes with ROOT's, or `rootwrite.py` raises |
+| `alias` | 10 | the same claim under another document's label, named |
+| `structural` | 10 | enforced by the reader: a wrong value fails the parse, reported under the label given |
+| `not-checkable` | 2 | `LargeFiles` 8.6 needs a file past 2 GB; `WritingTrees` 9.14 cannot be violated by construction |
+| `unchecked` | 2 | the honest worklist: `Auxiliary` 8.4 and half of `WritingHistograms` 10.5 |
+
+Every `alias` and `structural` claim was verified by finding the check, not
+asserted. `tools/test_coverage.py` drives the three ways the tool must fail: a new
+unchecked entry, a reason for something checked after all, and a label a tool
+reports that no document publishes.
+
 ## 4. The corpus question
 
 Two findings rest on files we do not have: `uproot-issue283.root` (R6's
@@ -586,8 +641,9 @@ Per the repository's convention the reply opens with the AI-content marker.
    half of the invariant was wrong too, the pointer/inline split is the real rule,
    and it caught a claim W4 had published the same morning in
    `WritingObjects.md` §8.2 (§2).
-4. **R7** — the unchecked-invariant audit, which R2 is the argument for. Expect it
-   to find more.
+4. ~~**R7** — the unchecked-invariant audit, which R2 is the argument for. Expect
+   it to find more.~~ **Done**: `tools/check_coverage.py`, in CI. It found two more
+   false invariants and a document claiming a check it did not have (§3).
 5. ~~**R4**, **R5** — the two directory/header notes, and the attribution fix.~~
    **Done**: `Directory.md` §3.1, §7.1 and invariant 15; `FileHeader.md` §8.1 with
    §4 and invariant 11 corrected; and the groot attribution, with the evidence

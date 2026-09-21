@@ -1734,6 +1734,23 @@ numbered `set` 5 and `multimap` 6 until 5.34/13, `Collections.md` §1 already sa
 so, and `rootfile.py` did not do it. That is the third time in this review that the
 documents were right and the tooling was not, which is the argument for R7.
 
+**R7 is done and it earned its billing.** `tools/check_coverage.py` reads every
+numbered entry under every `Invariants` heading, matches it against the labels the
+tools report, and requires the rest to be accounted for in `gen/invariants.toml`;
+it runs in CI. **259 entries, 183 with a check when it first ran** — and wiring up
+part of the remainder found **two more false invariants**, both in
+`ElementTypes.md`: invariant 4 said `fArrayLength` is positive for all of
+`[20, 59]` where 2229 `kOffsetP` elements carry 0, and invariant 3 omitted
+`TStreamerLoop` while allowing a case no file contains. It also caught
+`ReadingEntries.md` §8 claiming "all six are checked" when two had no check of
+their own. Eight entries gained one; the other 68 are accounted for, 44 of them
+write-side entries that `check_write.py` enforces on our own output. Two remain
+genuinely unchecked and say so.
+
+So the tally for the review is **five false or incomplete published claims**, and
+every one of them was in the population nothing was checking. That is the durable
+lesson and it is now enforced rather than remembered.
+
 **A corpus discrepancy came out of R6 and is `PLAN-review.md` §4.1**, unresolved
 and the user's call: `build/cern/` holds 72 files where `gen/cern/MANIFEST.sha256`
 lists 26, and the 46 extras — the `TGeoManager` demo sweep — are already evidence

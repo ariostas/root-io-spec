@@ -907,6 +907,51 @@ class Checker:
                     self.bad("ElementTypes 11.8",
                              f"{where}: kHasRange set on fType {e.ftype}")
 
+                # 11.3. 500 is the two STL element classes; 501 is TStreamerLoop.
+                # The published entry omitted TStreamerLoop, which is the only
+                # class that ever carries 501.
+                if e.ftype in (500, 300, 365) and e.cls not in (
+                        "TStreamerSTL", "TStreamerSTLstring"):
+                    self.bad("ElementTypes 11.3",
+                             f"{where}: fType {e.ftype} on a {e.cls}")
+                elif e.ftype == 501 and e.cls != "TStreamerLoop":
+                    self.bad("ElementTypes 11.3",
+                             f"{where}: fType 501 on a {e.cls}, not a TStreamerLoop")
+                # 11.4. fArrayLength is the FIXED extent: positive for a
+                # kOffsetL code, and 0 for a kOffsetP one, whose length is its
+                # counter's. The published invariant claimed positive for all of
+                # [20, 59] and 2229 elements say otherwise. The one scalar-looking
+                # exception is an object pointer, which spells a fixed array with
+                # fArrayLength and no kOffsetL (ElementTypes.md 7).
+                if 20 <= e.ftype <= 39 and e.array_length <= 0:
+                    self.bad("ElementTypes 11.4",
+                             f"{where}: kOffsetL fType {e.ftype} with fArrayLength "
+                             f"{e.array_length}")
+                elif 40 <= e.ftype <= 59 and e.array_length != 0:
+                    self.bad("ElementTypes 11.4",
+                             f"{where}: kOffsetP fType {e.ftype} carries "
+                             f"fArrayLength {e.array_length}; the counter supplies "
+                             f"the length")
+                elif (1 <= e.ftype <= 19 or e.ftype in (61, 62, 65, 66, 67)) \
+                        and e.array_length != 0:
+                    self.bad("ElementTypes 11.4",
+                             f"{where}: scalar fType {e.ftype} with fArrayLength "
+                             f"{e.array_length}")
+                # 11.5
+                if 40 <= e.ftype <= 59:
+                    if e.cls != "TStreamerBasicPointer":
+                        self.bad("ElementTypes 11.5",
+                                 f"{where}: fType {e.ftype} on a {e.cls}")
+                    elif not e.tail.get("fCountName"):
+                        self.bad("ElementTypes 11.5",
+                                 f"{where}: fType {e.ftype} names no counter")
+                # 11.7
+                if e.ftype in (66, 67) and e.cls != "TStreamerBase" \
+                        and rootfile._bare_class(e.type_name) not in ("TObject", "TNamed"):
+                    self.bad("ElementTypes 11.7",
+                             f"{where}: fType {e.ftype} on a {e.cls} of type "
+                             f"{e.type_name!r}")
+
     # -- Compression.md 9 ---------------------------------------------------
     def check_streamer_driven(self) -> None:
         """StreamerDriven.md invariants 1-6: applying the streamer info to a
@@ -1116,6 +1161,31 @@ class Checker:
 
         for where, message in info_list_failures(infos):
             self.bad(where, message)
+
+        # StreamerInfo 13.2 and SchemaEvolution 9.2 are the same claim in two
+        # documents: the outer list holds infos and at most one listOfRules.
+        data, rec, _ = self.streamer_infos()
+        try:
+            entries = rootfile.read_streamer_info_entries(data, rec)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError):
+            entries = []
+        rules = 0
+        for cls, slot in entries:
+            if cls == "TStreamerInfo":
+                continue
+            if cls == "TList":
+                name = rootfile.read_rule_list(data, rec, slot)[0]
+                if name != "listOfRules":
+                    for label in ("StreamerInfo 13.2", "SchemaEvolution 9.2"):
+                        self.bad(label, f"a TList entry named {name!r}, not "
+                                        f"'listOfRules'")
+                else:
+                    rules += 1
+                continue
+            for label in ("StreamerInfo 13.2", "SchemaEvolution 9.2"):
+                self.bad(label, f"an entry of class {cls}")
+        if rules > 1:
+            self.bad("SchemaEvolution 9.3", f"{rules} listOfRules entries")
 
     def check_collections(self) -> None:
         """Collections.md invariants 1, 2, 3, 4 and 6.
@@ -1937,13 +2007,36 @@ class Checker:
                              f"{start}..{end}, outside {basket.data_start}.."
                              f"{basket.data_end}")
 
+    def check_raw_is_not_a_block(self, rec, data) -> None:
+        """Compression 9.7: a raw payload never looks like a compression block.
+
+        The compressed/raw decision is `fObjlen > fNbytes - fKeylen` and nothing
+        else (9.1), so a raw payload that happened to begin with a plausible block
+        header would make the two readings of the same record disagree. It does
+        not happen, and this is what says so.
+        """
+        start, end = rootfile.payload_range(rec)
+        head = data[rec.offset + start:rec.offset + start + 9]
+        if len(head) < 9 or head[:2] not in BLOCK_MAGICS:
+            return
+        # A block header is magic, method, then two 3-byte little-endian sizes.
+        stored = head[3] | head[4] << 8 | head[5] << 16
+        raw = head[6] | head[7] << 8 | head[8] << 16
+        if stored and raw and stored <= rec.payload_nbytes:
+            self.bad("Compression 9.7",
+                     f"the raw payload at {rec.offset} begins with {head[:2]!r} "
+                     f"and sizes {stored}/{raw}, which a reader taking the magic "
+                     f"as authoritative would decompress")
+
     def check_compression(self) -> None:
         for rec in self.records:
             if rec.free:
                 continue
             payload, end = rec.payload_offset, rec.offset + rec.nbytes
             if rec.obj_len <= rec.payload_nbytes:
-                continue           # stored raw, 9.1 -- Compression.md 1.1
+                # Stored raw, which is 9.1's first branch -- Compression.md 1.1.
+                self.check_raw_is_not_a_block(rec, self.buf)
+                continue
 
             produced, o, blocks = 0, payload, 0
             while o < end:
@@ -2005,6 +2098,16 @@ class Checker:
                          f"!= fKeylen {rec.key_len}")
             if not 10 <= d.nbytes_name <= 10000:
                 self.bad("Directory 9.4", f"fNbytesName {d.nbytes_name} outside [10, 10000]")
+            if rec.offset == self.header.begin:
+                # FileHeader 10.3, which is ROOT's own open-time check
+                # (root/io/io/src/TFile.cxx:781-788): the root directory's fields
+                # must fit before fEND, or nothing can be read at all.
+                after = d.fields_offset + directory_payload_length(
+                    d.version, self.header.version)
+                if after > self.header.end:
+                    self.bad("FileHeader 10.3",
+                             f"the root directory record ends at {after}, past "
+                             f"fEND {self.header.end}")
             if not 1 <= d.version % 1000 <= 5:
                 self.bad("Directory 9.9", f"directory version {d.version}")
             else:

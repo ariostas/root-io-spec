@@ -30,6 +30,8 @@ The full check suite, in the order CI runs it:
 ```sh
 tools/generate.py --check      # byte assertions in every case.toml (no ROOT needed)
 tools/check_invariants.py      # the Invariants sections of spec/01-container/
+tools/check_coverage.py --check # every published invariant is checked, or has a
+                              #   reason in gen/invariants.toml
 tools/check_write.py           # gates 1 and 2 of spec/06-writing/ (--root adds gate 3)
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists, and the front
@@ -272,6 +274,18 @@ without editing it.
 tools/sync_rntuple.py          # re-copy after a submodule bump, then audit the diff
 tools/sync_rntuple.py --check  # what CI runs
 ```
+
+`check_coverage.py` is the same idea applied to this project rather than to ROOT:
+**which of our own published claims is nothing checking?** It reads every numbered
+entry under every `Invariants` heading in `spec/`, matches it against the labels
+the tools actually report, and requires anything left over to be accounted for in
+`gen/invariants.toml` with one of five reasons — `alias`, `structural`,
+`write-gate`, `not-checkable` or `unchecked`. It exists because the one invariant
+this project has published that was outright **false** was also one nobody had
+wired up (`PLAN-review.md` R2), and wiring up the rest found two more wrong
+(`ElementTypes` 11.3 and 11.4) within the hour. 259 entries, 191 with a check.
+
+The `unchecked` reason is a worklist, not an excuse, and it should stay short.
 
 `inventory.py` answers the one question a reader cannot put to a file: **which
 classes is the streamer info lying about?** It reads every

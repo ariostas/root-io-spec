@@ -642,9 +642,22 @@ two as separate skip and convert paths, but they change no bytes.
 Invariants 1 and 2 hold on a file written by ROOT 5 or later. **ROOT 4 wrote 300
 and 365**, the real STL codes, where later releases write 500
 ([Streamer information §10.1](StreamerInfo.md#101-root-4-wrote-the-real-code)).
-3. An element with `fType` 500 or 501 is either a `TStreamerSTL`,
-   a `TStreamerSTLstring`, or an element whose class carries a custom streamer.
-4. `fArrayLength` is 0 for a scalar and positive for any code in `[20, 59]`.
+3. `fType` **500** belongs to a `TStreamerSTL` or a `TStreamerSTLstring`, and
+   **501** to a `TStreamerLoop` — the counted pointer to objects of §8. Measured
+   over `data/` and both corpora: 1137, 213 and 13 elements, with no other element
+   class carrying either code, and the 18 that carry the legacy 300 are all
+   `TStreamerSTL`. The published form of this entry omitted `TStreamerLoop` and
+   allowed any element "whose class carries a custom streamer", a case no file in
+   either corpus contains.
+4. `fArrayLength` is the **fixed** extent and nothing else, so it is positive for
+   a `kOffsetL` code in `[20, 39]` and **0** for a `kOffsetP` code in `[40, 59]`,
+   whose length is its counter's value at read time. It is 0 for a scalar, with
+   one exception: an object-pointer code — 63, 64, 68 or 69 — spells a fixed array
+   as `fArrayLength > 1` with **no** `kOffsetL` added (§7), so those carry an
+   extent while looking scalar. Measured over `data/` and both corpora: 651
+   `kOffsetL` elements all positive, **2229 `kOffsetP` elements all 0**, and of
+   28 856 remaining exactly one — `ElementZoo.fPtrArr`, an `EPoint*[2]` in
+   `serialization/element-types` — with an extent.
 5. An element with `fType` in `[40, 59]` is a `TStreamerBasicPointer` and names a
    counter in `fCountName`.
 6. An element with `fType` -1 is a `TStreamerBase` named `TObject`.

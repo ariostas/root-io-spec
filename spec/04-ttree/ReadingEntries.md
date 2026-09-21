@@ -377,13 +377,19 @@ Normative, for one entry of one branch.
 6. A `std::bitset` member's entry is either empty or a complete object-wise
    collection; there is no partial form.
 
-All six are checked over every fixture and both corpora. Invariant 2 is
-[Splitting invariant 2](Splitting.md#8-invariants) seen from the entry side.
+All six are checked over every fixture and both corpora, but only four carry a
+label of their own: invariant 2 is checked as
+[Splitting invariant 2](Splitting.md#8-invariants), the same fact seen from the
+branch side, and invariant 6 through invariant 5, since a partial bitset entry
+would not consume the bytes its span allows. `gen/invariants.toml` records both,
+and `tools/check_coverage.py` is what keeps such a claim honest — this sentence
+said "all six are checked" while meaning it of two of them only indirectly, and
+nothing could tell.
 
 Invariant 5 is the general statement of the others and is the one a third-party
 reader should test itself against. It cannot be checked by a rule — only by
 decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
-reason that reader exists. Over the fixtures and both corpora it holds on **27 969
+reason that reader exists. Over the fixtures and both corpora it holds on **28 059
 branch-baskets, 99.8% of them**, with the remaining 67 named individually in the
 checker's `SKIPPED` report with a count and a reason each. Every one of those 67 is
 something **no reader could decode from the file**: a collection whose value class
