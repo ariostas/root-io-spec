@@ -1,0 +1,155 @@
+id   = "written/cycles"
+file = "data/written/cycles-3.root"
+size = 1361
+
+description = """
+Three cycles of one key name, written by `tools/rootwrite.py` from
+[`WritingFiles.md` §8.1](../../../spec/06-writing/WritingFiles.md).
+
+**This file and `data/container/cycles.root` are the same 1361 bytes**, bar each
+key's `fDatime`, the file's own name and the UUID — 132 bytes across 29 runs. The
+two names are both 26 characters and the two titles both 17, because a key
+carries each of them.
+
+Writing a name that already exists adds a record; it replaces nothing. The new
+key goes **in front of** the keys already under that name and takes the first
+one's cycle plus one, so the list reads `str;3`, `str;2`, `str;1` while the
+records themselves are in the order they were written, at 282, 375 and 468.
+
+**The descending order is load-bearing.** ROOT never compares cycles to find the
+highest: `Get`, `GetKey` and `FindKeyAny` all return the first match in list
+order. Reversing these three images and changing nothing else makes `Get("str")`
+return `revision 1`, with no diagnostic — the measurement is in §8.1, and
+`Directory 9.14` is the invariant that catches it.
+"""
+
+spec = [
+  "spec/06-writing/WritingFiles.md",
+  "spec/01-container/Record.md",
+  "spec/01-container/Directory.md",
+]
+
+writer  = "tools/rootwrite.py"
+datime  = "2000-01-01 00:00:00, fixed; see tools/rootwrite.py DEFAULT_DATIME"
+
+[[records]]
+offset = 100
+nbytes = 182
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 282
+nbytes = 93
+class  = "TObjString"
+role   = "cycle 1, written first and still reachable as str;1"
+
+[[records]]
+offset = 375
+nbytes = 93
+class  = "TObjString"
+role   = "cycle 2"
+
+[[records]]
+offset = 468
+nbytes = 93
+class  = "TObjString"
+role   = "cycle 3, the one an unqualified lookup resolves to"
+
+[[records]]
+offset = 561
+nbytes = 434
+class  = "TList"
+role   = "the StreamerInfo record: one info, TObjString"
+
+[[records]]
+offset = 995
+nbytes = 279
+class  = "TFile"
+role   = "the key list: three images of one name"
+
+[[records]]
+offset = 1274
+nbytes = 87
+class  = "TFile"
+role   = "the free list"
+
+[[keys]]
+name = "str"
+
+[[keys]]
+name = "str"
+
+[[keys]]
+name = "str"
+
+# --- The records keep the order they were written in ----------------------
+[[bytes]]
+name = "record 1: fCycle"
+offset = 298
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "record 2: fCycle"
+offset = 391
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "record 3: fCycle"
+offset = 484
+type = "i16"
+value = 3
+
+# --- The key list does not, WritingFiles.md 8.1 ---------------------------
+# Three images of 66 bytes each, newest first. A reader taking the first match
+# gets cycle 3; a writer that appended instead would hand it cycle 1.
+[[bytes]]
+name = "key list: three entries"
+offset = 1072
+type = "i32"
+value = 3
+
+[[bytes]]
+name = "image 0: fCycle is 3, the newest"
+offset = 1092
+type = "i16"
+value = 3
+
+[[bytes]]
+name = "image 0: fSeekKey, the record written last"
+offset = 1094
+type = "i32"
+value = 468
+
+[[bytes]]
+name = "image 1: fCycle is 2"
+offset = 1158
+type = "i16"
+value = 2
+
+[[bytes]]
+name = "image 2: fCycle is 1, the oldest, listed last"
+offset = 1224
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "image 2: fSeekKey, the record written first"
+offset = 1226
+type = "i32"
+value = 282
+
+# --- The header -----------------------------------------------------------
+[[bytes]]
+name = "fEND"
+offset = 12
+type = "i32"
+value = 1361
+
+[[bytes]]
+name = "nfree: one entry, nothing was released"
+offset = 24
+type = "i32"
+value = 1

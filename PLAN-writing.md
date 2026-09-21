@@ -345,7 +345,14 @@ the last entry begins at `fEND`. The first of those is checkable over all 225
 corpus files today, which is the standard `check_invariants.py` entries are held
 to.
 
-### W2 — Keys: cycles, order, and deletion
+### W2 — Keys: cycles, order, and deletion ✅ done 2026-09-21
+
+*Delivered: `WritingFiles.md` §8.1 and §8.2, `AppendKey`'s rule in
+`tools/rootwrite.py`, and `written/cycles` — **the same 1361 bytes** as
+`data/container/cycles.root`. One new invariant, `Directory 9.14`. The ordering
+claim is no longer a reading of the source: reversing three key images in a file
+and changing nothing else makes `Get("str")` return the **oldest** copy, silently,
+and that measurement is in §8.1.*
 
 **What it adds.** A short document section, and it is short because §2.3 is the
 whole rule. A writer has to know: where a new key goes in the list, what cycle it

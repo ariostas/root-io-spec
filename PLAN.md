@@ -231,7 +231,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 252 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 254 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -1672,7 +1672,7 @@ was re-checked here before it was planned.
 
 So **release criterion 1 of §8.1 — "no published claim is known to be wrong" — is
 not met as of today**, and the first three items of the sub-plan are what restores
-it. The most valuable item is the fourth: an audit of which of the 252 published
+it. The most valuable item is the fourth: an audit of which of the 254 published
 `Invariants` entries are wired into `check_invariants.py` at all, since the false
 one turned out to be an unchecked one.
 

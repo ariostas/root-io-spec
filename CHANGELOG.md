@@ -9,6 +9,24 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **[Writing a file §8.1](spec/06-writing/WritingFiles.md) specifies where a key
+  goes in the key list, and what cycle it gets.** A name not already present is
+  appended with cycle 1; a name that is present is inserted **before the first
+  key of that name** and takes that key's cycle plus one. So a key run is in
+  **descending** cycle order — and that is not decoration: ROOT never compares
+  cycles to find the highest, it returns the **first** match. Measured by
+  reversing three key images in a file and changing nothing else: `Get("str")`
+  returns `revision 1` instead of `revision 3`, `GetKey("str", 2)` returns cycle
+  1 instead of 2, and nothing is printed. §8.2 adds what deletion leaves behind —
+  cycles are never renumbered or compacted, so they can be sparse — and that a
+  **negative** `fCycle` is the keep flag and must not be normalised away.
+- **New invariant, [Directories §9](spec/01-container/Directory.md) 14: keys
+  sharing a name have distinct cycles in descending order, and none is 0.**
+  Checked, and it fires on a fixture whose key images were reversed.
+- **New reference file** `data/written/cycles-3.root`: three cycles of one name,
+  **the same 1361 bytes** as `data/container/cycles.root` bar each key's
+  `fDatime`, the file's own name and the UUID.
+
 - **[Writing a file §2](spec/06-writing/WritingFiles.md) now specifies the
   allocator**, where it previously specified only the append-only case and said
   gaps were avoided. Given a record of `n` bytes, ROOT takes an **exact** match

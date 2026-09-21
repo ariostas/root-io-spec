@@ -466,6 +466,29 @@ class Directory:
     def add(self, obj: Obj) -> None:
         self.writer._sequence.append((self, obj))
 
+    def append_key(self, rec: "_Placed") -> int:
+        """Put a record's key in this directory's list, and return its cycle.
+
+        `TDirectoryFile::AppendKey` (`root/io/io/src/TDirectoryFile.cxx:225-256`),
+        which is four lines and decides both questions a writer has about a key
+        list -- where the entry goes and what number it carries:
+
+        * a name not already present is **appended at the end**, with cycle 1;
+        * a name that is present is inserted **before the first key of that
+          name**, and takes that key's cycle plus one.
+
+        Because every insertion goes to the front of its name's run, the first
+        match is always the highest cycle -- which is what makes ROOT's lookups
+        work, since they take the first match and never compare cycles
+        (`spec/06-writing/WritingFiles.md` 8.1).
+        """
+        for i, other in enumerate(self.listed):
+            if other.key.name == rec.key.name:
+                self.listed.insert(i, rec)
+                return other.key.cycle + 1
+        self.listed.append(rec)
+        return 1
+
     def delete(self, name: str) -> None:
         """Release the space of the last record added under `name`.
 
@@ -784,7 +807,7 @@ class FileWriter:
                 rec = _Placed(key=key, payload=b"", offset=pos, left=left)
                 item.record = rec
                 placed.append(rec)
-                home.listed.append(rec)
+                key.cycle = home.append_key(rec)
                 emit(pos, left, rec)
                 continue
             obj = item
@@ -802,7 +825,12 @@ class FileWriter:
             rec.key.seek_key = rec.offset
             placed.append(rec)
             if rec.listed:
-                home.listed.append(rec)
+                # The cycle is decided by the list, not by the caller: it is
+                # whatever AppendKey returns (WritingFiles.md 8.1). An object
+                # that asked for one explicitly keeps it -- a TBasket does.
+                cycle = home.append_key(rec)
+                if obj.cycle == CYCLE:
+                    rec.key.cycle = cycle
             emit(rec.offset, rec.left, rec)
 
         # The StreamerInfo record: a TList named "StreamerInfo", written before

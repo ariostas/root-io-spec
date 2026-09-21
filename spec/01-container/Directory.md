@@ -395,6 +395,16 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
     `TDirectoryFile` and occupies exactly 4 bytes more (§6.5). No other
     difference is legitimate, and a reader that adds `fKeylen` rather than
     parsing gets no warning about either.
+14. Images sharing a name have **distinct cycles, in descending order**, and no
+    cycle is 0. `TDirectoryFile::AppendKey` puts each new key in front of the
+    first of its name (`root/io/io/src/TDirectoryFile.cxx:225-256`), and ROOT's
+    lookups rely on it: `Get`, `GetKey` and `FindKeyAny` return the **first**
+    match rather than the highest cycle (`:1002`, `:1167`, `:829`). A list in
+    ascending order resolves every unqualified name to the *oldest* copy, with no
+    diagnostic — measured in
+    [Writing a file §8.1](../06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets).
+    A **negative** `fCycle` is the keep flag and counts as its magnitude (§3.8 of
+    [Records](Record.md#38-fcycle)).
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the
 12 reserved bytes are present or zero (§5), that the key-list payload contains
@@ -429,7 +439,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/file-minimal` | The root directory record, its fields at `fBEGIN + fNbytesName` |
 | `container/directories` | Two nesting levels, per-directory key lists, distinct UUIDs, `fSeekParent` |
 | `container/empty-directory` | A saved empty directory versus an unsaved one |
-| `container/cycles` | Several entries in one key list sharing a name |
+| `container/cycles` | Several entries in one key list sharing a name, newest first (invariant 14) |
 
 No fixture yet covers a version 1, 2 or 3 directory record; those need files from
 ROOT 3, and belong with the legacy corpus. Nor does one cover §6.5's mismatched

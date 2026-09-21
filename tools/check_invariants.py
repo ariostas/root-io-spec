@@ -1900,6 +1900,27 @@ class Checker:
                                  f"subdirectory at {e.seek_key} listed in two parents")
                     seen_subdirs[e.seek_key] = d.seek_dir
 
+            # 9.14: within a name, cycles descend and are distinct. ROOT's
+            # lookups take the first match rather than the highest cycle, so the
+            # order *is* the resolution rule (WritingFiles.md 8.1).
+            runs: dict[str, list[int]] = {}
+            for e in entries:
+                if e.cycle == 0:
+                    self.bad("Directory 9.14",
+                             f"key {e.name!r} has cycle 0")
+                runs.setdefault(e.name, []).append(abs(e.cycle or 0))
+            for name, cycles in runs.items():
+                if len(cycles) < 2:
+                    continue
+                if len(set(cycles)) != len(cycles):
+                    self.bad("Directory 9.14",
+                             f"key {name!r} has repeated cycles {cycles}")
+                elif cycles != sorted(cycles, reverse=True):
+                    self.bad("Directory 9.14",
+                             f"key {name!r} has cycles {cycles}, not descending: "
+                             f"an unqualified lookup resolves to cycle "
+                             f"{cycles[0]}, not {max(cycles)}")
+
     # -- FreeSegments.md 8 --------------------------------------------------
     def check_free_list(self) -> None:
         if not self.header.seek_free:

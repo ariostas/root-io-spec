@@ -572,6 +572,72 @@ is inside the file (`root/io/io/src/TDirectoryFile.cxx:1453-1465`), so an image 
 disagrees with the record it points at is read from the image — silently. Copy the
 bytes; do not re-derive them.
 
+### 8.1 Where a key goes in the list, and what cycle it gets
+
+Both questions have one answer, `TDirectoryFile::AppendKey`
+(`root/io/io/src/TDirectoryFile.cxx:225-256`), and it is four lines:
+
+```cpp
+TKey *oldkey = (TKey*)fKeys->FindObject(key->GetName());
+if (!oldkey) { fKeys->Add(key); return 1; }   // a new name: append, cycle 1
+...                                            // else find the first of that name
+fKeys->AddBefore(lnk, key);                    // and go in front of it
+return oldkey->GetCycle() + 1;
+```
+
+| | |
+|---|---|
+| a name not already in the list | **appended at the end**, cycle **1** |
+| a name already in the list | inserted **before the first key of that name**, cycle **that key's plus one** |
+
+Writing a name that already exists therefore **adds** a record rather than
+replacing one ([Records §4](../01-container/Record.md#4-cycles)); the earlier
+record and its key both stay. Because every insertion goes to the front of its
+name's run, the run is in **descending** cycle order and the first match is always
+the highest.
+
+> **That ordering is not decoration, and this is the invariant a writer is most
+> likely to violate.** ROOT never compares cycles to find the highest one. `Get`,
+> `GetKey` and `FindKeyAny` all return the **first** match in list order
+> (`root/io/io/src/TDirectoryFile.cxx:1002`, `:1167`, `:829`). The "highest cycle"
+> behaviour that [Records §4](../01-container/Record.md#4-cycles) describes is
+> *produced by the order*, not by the lookup.
+
+Measured, on `data/written/cycles-3.root` with its three key images reversed and
+nothing else changed:
+
+| Request | Correct order | Ascending order |
+|---|---|---|
+| `Get("str")` | `revision 3` | **`revision 1`** |
+| `GetKey("str")` | cycle 3 | **cycle 1** |
+| `GetKey("str", 2)` | cycle 2 | **cycle 1** |
+| `Get("str;2")` | `revision 2` | `revision 2` |
+
+No error, no warning, and `Get("str;2")` still works — it wants an exact cycle, so
+it scans past the wrong first match. A writer that appends new cycles at the end
+of the key list produces a file in which every unqualified lookup returns the
+**oldest** copy.
+
+So, for a writer: the order of **distinct names** is free, and the order **within
+one name** is fixed. `TDirectoryFile::Purge` depends on the same ordering
+(`root/io/io/src/TDirectoryFile.cxx:1316-1327`) and would delete the newest copy
+of a mis-ordered run rather than the oldest.
+
+### 8.2 Deleting, and what a key list does not say
+
+Releasing a record ([§2.4](#24-releasing-a-record)) also removes its image from
+the list. Nothing else changes: cycles are **not** renumbered and **not**
+compacted, so deleting cycle 2 of three leaves 3 and 1, and the next write of that
+name takes `3 + 1 = 4`. Cycles never decrease and can be sparse. Deleting every
+cycle of a name and writing it again starts at 1 once more, and the key is
+appended at the end, because the list no longer holds the name.
+
+**A negative `fCycle` is legitimate and a writer should preserve it.** It marks
+the key as "keep", exempting it from purging, and the cycle is its magnitude
+([Records §3.8](../01-container/Record.md#38-fcycle)). Nothing in this procedure
+produces one; a writer that copies keys from another file must not normalise the
+sign away.
+
 ## 9. The free list
 
 One record, located from the header, holding the spans that are not live data
@@ -728,18 +794,23 @@ The reading documents' `Invariants` sections are the full list, and
     span with fewer than four bytes to spare has nowhere to put the marker, and
     produces a gap no reader can walk past
     ([Free segments §8](../01-container/FreeSegments.md#8-invariants) 10).
-15. No two **live** records overlap. A record placed in released space lands on
+15. Within one directory, keys sharing a name have **distinct cycles in
+    descending order**, and no cycle is 0 ([§8.1](#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets)).
+    ROOT resolves an unqualified name to the first match, so a run in the wrong
+    order silently returns the oldest copy.
+16. No two **live** records overlap. A record placed in released space lands on
     the bytes of the record that used to be there, which is correct and is how a
     gap is reused; two records both reachable from a key list sharing a byte is
     not, and nothing downstream would notice, because ROOT reads every record by
     its own offset.
 
-Items 1, 2, 5, 6, 7 and 9 to 15 are the ones with no detector on ROOT's side at
+Items 1, 2, 5, 6, 7 and 9 to 16 are the ones with no detector on ROOT's side at
 all (§14), and all of the new ones are checked by
 `tools/check_invariants.py` — as
-[Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, and
-12, and as [Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7
-and 10. Number 15 is the exception and is checked in the writer itself: it is a
+[Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, 12
+and 14, and as
+[Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7 and 10.
+Number 16 is the exception and is checked in the writer itself: it is a
 property of the *act* of writing rather than of the file, since a finished file
 cannot say which of two overlapping records was meant to be live. The remaining obligation in §5.4 is not a property of a file and
 so is not among them: a directory left with `fSeekKeys` 0 while it owns records
@@ -794,6 +865,8 @@ writing. The reading-side errata are in the documents named in each row.
 | `data/container/gap.root` | a record deleted: an interior free entry and the negative marker in it |
 | `data/container/gap-reused.root` | §2 in full, written by ROOT: an exact fit, a partial fit by an unrelated record, and the remainder |
 | `data/written/reused-space.root` | §2 written by this project — **the same 1747 bytes**, bar each key's `fDatime`, the file's own name and the UUID |
+| `data/container/cycles.root` | §8.1 written by ROOT: three cycles of one name, newest first in the list |
+| `data/written/cycles-3.root` | §8.1 written here — **the same 1361 bytes** on the same terms |
 | `data/container/directories.root` | the subdirectory shape of §5, and the file `data/written/nested-subdir.root` is compared against record for record |
 | `data/written/nested-subdir.root` | §5 written: two nesting levels, three key lists, and ROOT writing into one of them (§5.3) |
 

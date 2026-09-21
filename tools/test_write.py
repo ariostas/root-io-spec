@@ -1167,6 +1167,37 @@ class Determinism(unittest.TestCase):
 
 
 
+
+def free_fields_blanked(data: bytes, name: bytes) -> bytes:
+    """`data` with every field a writer is free to choose blanked out.
+
+    The timestamps, the UUIDs and the file's own name -- which is why two files
+    compared this way must have names of the same length, or nothing after the
+    first one would line up. Every span but the header UUID comes from parsing
+    the file, so a record that moved would be compared at its new place and fail.
+    """
+    buf = bytearray(data)
+    buf[47:63] = bytes(16)                              # the header UUID
+    while name in buf:
+        i = buf.index(name)
+        buf[i:i + len(name)] = b"*" * len(name)
+    header = rootfile.read_header(bytes(buf))
+    blank = []
+    for r in rootfile.read_records(bytes(buf), header):
+        if r.free:
+            continue
+        blank.append((r.offset + 10, 4))                # the key's fDatime
+        d = rootfile.read_directory(bytes(buf), r)
+        if d is not None:
+            blank.append((d.datime_offset, 8))          # fDatimeC, fDatimeM
+            blank.append((d.uuid_offset, 16))
+            if d.seek_keys:
+                for e in rootfile.read_key_list(bytes(buf), d):
+                    blank.append((e.datime_offset, 4))
+    for off, n in blank:
+        buf[off:off + n] = bytes(n)
+    return bytes(buf)
+
 class Allocation(unittest.TestCase):
     """The free list, spec/06-writing/WritingFiles.md 2."""
 
@@ -1268,36 +1299,71 @@ class ReusedSpace(unittest.TestCase):
 
     def test_only_datime_name_and_uuid_differ(self):
         """Every differing byte is a timestamp, the file's name, or the UUID."""
-        a, b = bytearray(self.root), bytearray(self.ours)
-        for buf in (a, b):
-            buf[47:63] = bytes(16)                      # the header UUID
-        for buf, name in ((a, b"data/container/gap-reused.root"),
-                          (b, b"data/written/reused-space.root")):
-            while name in buf:
-                i = buf.index(name)
-                buf[i:i + len(name)] = b"*" * len(name)
-        for buf in (a, b):
-            header = rootfile.read_header(bytes(buf))
-            blank = []
-            for r in rootfile.read_records(bytes(buf), header):
-                if r.free:
-                    continue
-                blank.append((r.offset + 10, 4))            # the key's fDatime
-                d = rootfile.read_directory(bytes(buf), r)
-                if d is not None:
-                    blank.append((d.datime_offset, 8))      # fDatimeC, fDatimeM
-                    blank.append((d.uuid_offset, 16))
-                    if d.seek_keys:
-                        for e in rootfile.read_key_list(bytes(buf), d):
-                            blank.append((e.datime_offset, 4))
-            for off, n in blank:
-                buf[off:off + n] = bytes(n)
-        self.assertEqual(bytes(a), bytes(b))
+        self.assertEqual(
+            free_fields_blanked(self.root, b"data/container/gap-reused.root"),
+            free_fields_blanked(self.ours, b"data/written/reused-space.root"))
 
     def test_the_stale_bytes_behind_the_marker_match(self):
         """Releasing a record writes four bytes and clears nothing else."""
         self.assertEqual(self.ours[696:715], self.root[696:715])
         self.assertEqual(self.ours[700:715], b"123456789abcdef")
+
+
+
+class Cycles(unittest.TestCase):
+    """data/written/cycles-3.root against data/container/cycles.root."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ours = (REPO / "data/written/cycles-3.root").read_bytes()
+        cls.root = (REPO / "data/container/cycles.root").read_bytes()
+
+    def test_only_datime_name_and_uuid_differ(self):
+        self.assertEqual(
+            free_fields_blanked(self.root, b"data/container/cycles.root"),
+            free_fields_blanked(self.ours, b"data/written/cycles-3.root"))
+
+    def test_records_are_in_write_order(self):
+        recs = rootfile.read_records(self.ours,
+                                     rootfile.read_header(self.ours))
+        strs = [r for r in recs if r.class_name == "TObjString"]
+        self.assertEqual([r.cycle for r in strs], [1, 2, 3])
+
+    def test_the_key_list_is_the_other_way_round(self):
+        """AppendKey puts each new key in front of the first of its name."""
+        header = rootfile.read_header(self.ours)
+        recs = rootfile.read_records(self.ours, header)
+        d = rootfile.read_directory(self.ours, recs[0])
+        keys = rootfile.read_key_list(self.ours, d)
+        self.assertEqual([k.name for k in keys], ["str"] * 3)
+        self.assertEqual([k.cycle for k in keys], [3, 2, 1])
+
+    def test_each_image_points_at_its_own_record(self):
+        header = rootfile.read_header(self.ours)
+        recs = rootfile.read_records(self.ours, header)
+        d = rootfile.read_directory(self.ours, recs[0])
+        by_cycle = {r.cycle: r.offset for r in recs
+                    if r.class_name == "TObjString"}
+        for k in rootfile.read_key_list(self.ours, d):
+            self.assertEqual(k.seek_key, by_cycle[k.cycle])
+
+    def test_append_key_matches_roots_rule(self):
+        """The writer's own implementation, against a hand-worked example."""
+        w = rw.FileWriter("x.root", "t")
+        d = w.root
+        def add(name):
+            rec = rw._Placed(key=rw.Key(class_name="TObjString", name=name,
+                                        title="", obj_len=0, nbytes=0,
+                                        seek_key=0, seek_pdir=100),
+                             payload=b"")
+            rec.key.cycle = d.append_key(rec)
+            return rec.key.cycle
+        self.assertEqual(add("a"), 1)
+        self.assertEqual(add("b"), 1)
+        self.assertEqual(add("a"), 2)
+        self.assertEqual(add("a"), 3)
+        self.assertEqual([(p.key.name, p.key.cycle) for p in d.listed],
+                         [("a", 3), ("a", 2), ("a", 1), ("b", 1)])
 
 
 if __name__ == "__main__":

@@ -39,13 +39,13 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **77 reference files with 1993 byte-level assertions, 1550 source
+Behind it: **77 reference files with 1993 byte-level assertions, 1554 source
 citations checked against the pinned ROOT tree across 48 documents**, and the
 invariants of every layer run over 180 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
-The writing layer adds ten files this project *did* write, with 447 assertions of
-their own. Nine of them are the strongest check here: **every object-bearing
+The writing layer adds eleven files this project *did* write, with 458 assertions
+of their own. Ten of them are the strongest check here: **every object-bearing
 record in them is byte-identical to the one ROOT wrote** — a `TH1F`, a `TH1D`, a
 `TH2F`, a `TH2D`, two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s,
 **nine** `TBasket`s, and two whole `StreamerInfo` records, of fifteen and nineteen
@@ -56,7 +56,8 @@ ROOT-written one **for all 1854 bytes** bar each key's timestamp, three UUIDs an
 the file's own name, and a file whose records were placed into **released space**
 rather than appended — an exact fit, a partial fit and the remainder marker —
 matching ROOT's **for all 1747 bytes** on the same terms, down to the stale bytes
-left behind the marker.
+left behind the marker, and a third of three cycles of one key name matching **for
+all 1361**.
 
 ## How to read it
 

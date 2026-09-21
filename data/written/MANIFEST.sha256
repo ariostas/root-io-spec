@@ -2,6 +2,7 @@
 # Not normalized: a writer fixes its own timestamp and UUID, so
 # these files are byte-reproducible. See tools/check_write.py.
 3076edaf6bc7062068c1d0b2dcaf6d344ea608ec5fc136f9a9154229c0df24c7  data/written/cluster.root
+365aed09a9797c88e90041aa21ba30b5bae8544304b847793f998ece547cdc17  data/written/cycles-3.root
 880460172f3a4142967379ac06eff336c0d184b08d4994037304f4ddb3c006c6  data/written/graph.root
 e7e9aa9a0b9ef840373a40148a8eedb06b776db87b5172746606ac6f562a2588  data/written/histogram.root
 6be7fe4c707f8a323219fb232b49880bd4b1c45ef024ea3ec89e3b6ec602957b  data/written/leafc.root
