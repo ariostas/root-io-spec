@@ -106,3 +106,31 @@ custom_streamer = [
   "KM3NETDAQ::JDAQSummaryFrame",
   "KM3NETDAQ::JDAQSuperFrame",
 ]
+
+["uproot-from-geant4.root"]
+reason = """
+Written by g4tools, Geant4's own ROOT writer, not by ROOT: fVersion 40000 with a
+2018-2020 fDatime, a zeroed header UUID, and a directory record at version 1001
+(Directory.md 7, and the reader bug it exposed in PLAN-review.md R1).
+
+Its TH3 info declares a TAtt3D base and the file carries no TAtt3D info, which is
+StreamerDriven.md 10.5. The diagnosis is that the writer is at fault, and it is
+not a judgement call: TAtt3D is `ClassDef(TAtt3D,1)`, on neither the hand-written
+nor the forwarding list, and 48 files written by ROOT across the two corpora do
+carry a TAtt3D info -- an entry with no elements and fCheckSum 0x757a. The
+control is tighter than that: six files in the corpora describe a TH3 at all, and
+the only two without a TAtt3D info are this one and uproot-issue-250.root. ROOT
+records it; g4tools does not.
+
+Nothing else in the file fails, TH3 included: TAtt3D adds no bytes, so the
+absence costs a reader nothing here. It would cost one on any class whose
+undescribed base is not empty.
+"""
+skip = ["StreamerDriven 10.5"]
+
+["uproot-issue-250.root"]
+reason = """
+The same writer and the same single failure as uproot-from-geant4.root; see that
+entry for the diagnosis.
+"""
+skip = ["StreamerDriven 10.5"]

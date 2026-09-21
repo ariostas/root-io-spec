@@ -372,17 +372,26 @@ class whose `Streamer` is hand-written gets no info, because nothing marks it
 and that is correct. The two lists a reader has to know out of band are
 [Hand-written streamers](../99-appendix/HandWrittenStreamers.md) and
 [Forwarding streamers](../99-appendix/ForwardingStreamers.md), both generated from
-the pinned submodule and CI-checked. Over the 90 files here that carry infos, the
-bases with no info of their own are exactly six classes, all of them on one of
-those lists or version 0: `TObject`, `TArrayD`, `TArrayF`, `TArrayL64`, `TAtt3D`
-and `TQObject`.
+the pinned submodule and CI-checked. Over the 89 files here that carry an info,
+the bases with no info of their own are exactly five classes, every one of them on
+the first list: `TObject`, `TArrayD`, `TArrayF`, `TArrayL64` and `TQObject`.
 
-Because the exemption is a property of ROOT's source and not of the file, the
-closure is **not** in `tools/check_invariants.py`. What is local to the file is
-invariant 7 of
+**The exemption is a property of ROOT's source, but it is a *published* property,
+so the closure is checkable after all** — which is how it is now checked. It is
+[Streamer-driven reading §10.5](../02-serialization/StreamerDriven.md#10-invariants),
+and `tools/check_invariants.py` reads the exempt set out of those two appendix
+documents rather than out of the submodule, so it runs without one. Over `data/`
+and both corpora it holds on every file but two, and the two are g4tools' rather
+than ROOT's — the earlier draft of this paragraph named `TAtt3D` as a sixth
+legitimately-absent base on the strength of them, and that was wrong: `TAtt3D` is
+`ClassDef(TAtt3D,1)`, on neither list, and 48 ROOT-written files in the corpora do
+carry its info — including four of the six that describe a `TH3` at all. A file that is not ROOT's is a lead, not evidence.
+
+The file-local companion is invariant 7 of
 [Streamer information §13](../02-serialization/StreamerInfo.md#13-invariants):
 when a base *does* have an info, the element's `fBaseCheckSum` is either that
-info's `fCheckSum` or 0. That holds over 787 base elements in those 90 files.
+info's `fCheckSum` or 0. That holds over the 731 base elements here whose base has
+an info, all 731 of which record a non-zero checksum.
 
 **Its companion does not, and the attempt is worth recording.** This document first
 claimed the same of `fBaseVersion` and made it an invariant; five files in the two

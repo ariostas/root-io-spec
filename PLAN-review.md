@@ -1,10 +1,10 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1 done** the same day, its
-outcome recorded in §2. Every item below was re-checked against the corpora and
-against our own reference files *before* being planned, and the verification is
-recorded per item, because the point of a review is what it turns out to be
-right about.
+**Status: in progress.** Written 2026-09-21; **R1 and R2 done** the same day,
+their outcomes recorded in §2. Every item below was re-checked against the
+corpora and against our own reference files *before* being planned, and the
+verification is recorded per item, because the point of a review is what it
+turns out to be right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -144,6 +144,55 @@ named by a `TStreamerBase` element has an info in the same file unless its
 [`ForwardingStreamers.md`](spec/99-appendix/ForwardingStreamers.md) already
 enumerate from the submodule. That version is checkable, and the 36 cases are the
 test of whether it is right.
+
+**Done 2026-09-21.** The restatement is
+[`StreamerDriven.md` §6.1](spec/02-serialization/StreamerDriven.md) with invariant
+5 rewritten against it, and `check_invariants.undescribed_classes` is the check —
+wired in, provoked by corrupting a fixture, and run over both corpora.
+
+The base clause came out as planned. **The member clause did not, and that half of
+the invariant was wrong in a way the review did not reach**: it required an info
+for every class named by an object-valued member, and over the two corpora *778*
+such members name a class the file does not describe. The dividing line turns out
+to be sharp and worth having:
+
+| Code | Requirement |
+|---|---|
+| `kBase`, `kObject` (61), `kAny` (62), and `kObjectp`/`kAnyp` (63, 68) | **must** be described — the bytes are written inline and the declared type is the only thing that says what they are |
+| `kObjectP` (64), `kAnyP` (69) | **need not** be — the member may be null in every object in the file, and a non-null one names its class in the bytes |
+
+So the second half is not a weakening, it is a different statement: a reader must
+take a nullable pointer's class from the bytes and must never require its declared
+type to be described. 289 pointer members in the corpora depend on it, `TTree`'s
+`fTreeIndex` alone in 145 files, and the five declared types that account for them
+are abstract classes with no info anywhere.
+
+A third exemption appeared that neither list covers: an **STL container** used as
+an inline member. `vector<double> twovectors[2]` reaches disk as code 82, and the
+`StreamerInfo` record of the ROOT 6.24/06 file holding one has a single entry.
+`Collections.md` describes it from its type name, so nothing is lost.
+
+**Measured, over `data/` and both corpora — 306 files carrying an info:** 92
+`kBase` elements in 65 files and 489 inline members name a class with no info, and
+every one is exempt **except two**. Both are `TAtt3D` as a base of `TH3` in the two
+g4tools files, and the diagnosis is the writer: `TAtt3D` is `ClassDef(TAtt3D,1)`,
+on neither published list, and 48 ROOT-written corpus files carry its info —
+including four of the six that describe a `TH3` at all.
+`gen/foreign/IGNORE.toml` records that per file, per invariant, with the reason.
+
+**And it corrected a claim made the same day.** `WritingObjects.md` §8.2, written
+for W4 that morning, named `TAtt3D` as one of six bases legitimately absent from
+files — resting on exactly those two g4tools files. Five of the six were right. The same paragraph
+also said the closure was *not* checkable because the exemption is a property of
+ROOT's source; it is, because the property is **published**, and the checker reads
+the exempt set out of `spec/99-appendix/` rather than out of the submodule. Both
+statements are now fixed, and its two population counts were re-measured while
+there (89 files, 731 base elements with an info).
+
+**The process point the review made is the one that held.** The old invariant had
+never been wired in, and everything above — the member clause, the pointer rule,
+the STL exemption, the `TAtt3D` correction — surfaced within minutes of wiring it.
+That is the argument for R7, which should now be expected to find more than one.
 
 ### R3 — `SchemaEvolution.md` §8.1 generalises from one file
 
@@ -330,8 +379,11 @@ Per the repository's convention the reply opens with the AI-content marker.
    the version-2 framing was wrong on the same line, and §7's payload table is
    now measured on ROOT-written files for every version but 2 (§2).
 2. **R3** — the `fBits` correction, measurable on files in hand.
-3. **R2** — restate invariant 5, wire it into `check_invariants.py`, confirm it
-   catches a corruption, and check it over both corpora.
+3. ~~**R2** — restate invariant 5, wire it into `check_invariants.py`, confirm it
+   catches a corruption, and check it over both corpora.~~ **Done**: the member
+   half of the invariant was wrong too, the pointer/inline split is the real rule,
+   and it caught a claim W4 had published the same morning in
+   `WritingObjects.md` §8.2 (§2).
 4. **R7** — the unchecked-invariant audit, which R2 is the argument for. Expect it
    to find more.
 5. **R4**, **R5** — the two directory/header notes, and the attribution fix.

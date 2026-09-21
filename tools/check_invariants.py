@@ -13,6 +13,7 @@ packages; the one exception is noted where it arises.
 from __future__ import annotations
 
 import dataclasses
+import re
 import struct
 import sys
 from pathlib import Path
@@ -28,6 +29,56 @@ COUNTER_TYPES = {3, 6, 13}
 BLOCK_MAGICS = {b"ZL": 8, b"XZ": 0, b"L4": None, b"ZS": 1, b"CS": 8}
 KMAXZIPBUF = 0xFFFFFF
 KSTART_BIG_FILE = 2000000000
+
+APPENDIX = REPO / "spec/99-appendix"
+
+
+def _generated_classes(doc: Path, tag: str) -> set[str]:
+    """Class names out of one `<!-- BEGIN GENERATED: tag -->` block in spec/.
+
+    Those blocks are written by `tools/inventory.py` from the pinned submodule
+    and checked in CI, so they are a current extraction of ROOT's source. They
+    are read from the published documents rather than re-extracted, because this
+    checker must run without the submodule; `tools/inventory.py --check` is what
+    keeps them honest.
+    """
+    text = doc.read_text()
+    start = text.index(f"<!-- BEGIN GENERATED: {tag} -->")
+    body = text[start:text.index("<!-- END GENERATED -->", start)]
+    if tag == "forwarding":
+        # A definition list grouped by module rather than a table. The module
+        # headers are backticked too, and those are the ones with a slash.
+        return {name for name in re.findall(r"`([^`]+)`", body) if "/" not in name}
+    # A table. Only the first column is a class name: the others carry a
+    # backticked path, and a `Where` note may quote another class entirely.
+    return {line.split("|")[1].strip().strip("`")
+            for line in body.splitlines() if line.startswith("| `")}
+
+
+#: Classes that record **no streamer info of their own**, so a `kBase` element or
+#: an inline member naming one is not a file failing to describe itself.
+#: StreamerDriven.md 10.5. Two published sets, for one reason each:
+#:
+#:   * `custom` -- the hand-written `Streamer` never calls `WriteClassBuffer`,
+#:     and that call is what tags a class's info to be written
+#:     (spec/06-writing/WritingObjects.md 8.2), so nothing records one;
+#:   * forwarding -- the generated `Streamer` writes only the base classes.
+#:
+#: The `guarded`, `extending` and `delegating` classes are deliberately **not**
+#: exempt: all three do call `WriteClassBuffer`, so a file that holds one holds
+#: its info too, and exempting them would weaken the invariant by 124 classes.
+NO_INFO_OF_ITS_OWN = (
+    _generated_classes(APPENDIX / "HandWrittenStreamers.md", "custom")
+    | _generated_classes(APPENDIX / "ForwardingStreamers.md", "forwarding"))
+
+#: Element codes whose bytes are an object written **inline**, with no class
+#: record in front of it to name the class: `kObject` (61), `kAny` (62) and the
+#: two `->` pointer forms `kObjectp` (63) and `kAnyp` (68), which cannot be null.
+#: `kOffsetL` is added to the first two only (ElementTypes.md 7), giving 81 and
+#: 82. For these the declared type IS what was written, so the file must describe
+#: it; for `kObjectP` (64) and `kAnyP` (69) it need not, and StreamerDriven.md
+#: 6.1 says why.
+INLINE_OBJECT_TYPES = {61, 62, 63, 68, 81, 82}
 
 #: sizeof("TDirectoryFile") - sizeof("TDirectory"). A key list written before
 #: ROOT 5.34 can hold a directory image this much longer than the fKeylen it
@@ -54,6 +105,9 @@ def counted_string_len(buf: bytes, offset: int) -> int:
 
 def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
     """StreamerDriven.md invariants 3, 4 and 6, over one streamer info.
+
+    Invariant 5 is `undescribed_classes`, separately: it needs the whole file's
+    set of described classes rather than one element list.
 
     `by_name` maps a class name to its info, so that a counter declared in a base
     class can be found -- TArrayD's fArray names fN in TArray. Without it, only
@@ -106,6 +160,53 @@ def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
                 "StreamerDriven 10.6",
                 f"{info.name}.{el.name} has fType -1 but is a {el.cls}, not a "
                 f"TStreamerBase"))
+    return failures
+
+
+def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
+    """StreamerDriven.md invariant 5, over one streamer info.
+
+    `described` is every class name the file's `StreamerInfo` record carries. The
+    invariant is about the classes whose bytes are written **inline**, where the
+    declared type is the only thing that says what they are: a `kBase` element,
+    and a member with one of `INLINE_OBJECT_TYPES`. A `kObjectP` or `kAnyP`
+    member is excluded, because it may be null in every object the file holds and
+    because a non-null one names its concrete class in the bytes.
+
+    Separate from Checker so that it can be exercised on element lists no file
+    contains, which is how the exemptions are tested: the published lists are
+    large and a file cannot demonstrate the boundary between them.
+    """
+    failures: list[tuple[str, str]] = []
+
+    def is_described(name: str) -> bool:
+        if not name or name in described or name in NO_INFO_OF_ITS_OWN:
+            return True
+        # A hand-written layout is recorded under the template name, as ClassDef
+        # spells it, while a file names the specialization: TMatrixTSym against
+        # TMatrixTSym<double>. Matrix.md 2.2.
+        bare = name.split("<", 1)[0]
+        if bare in described or bare in NO_INFO_OF_ITS_OWN:
+            return True
+        # An STL container is described by its type name and Collections.md, not
+        # by an info, and ROOT records none for one used as an inline member --
+        # `vector<double> twovectors[2]` in uproot-issue-586.root, written by
+        # 6.24/06, whose StreamerInfo record holds exactly one entry.
+        return (name.startswith(rootfile.COLLECTION_PREFIXES)
+                or name in ("string", "std::string"))
+
+    for el in info.elements:
+        if el.cls == "TStreamerBase":
+            name, what = el.name, "base class"
+        elif el.ftype in INLINE_OBJECT_TYPES:
+            name, what = rootfile._bare_class(el.type_name), \
+                f"member {el.name}, of inline type"
+        else:
+            continue
+        if not is_described(name):
+            failures.append((
+                "StreamerDriven 10.5",
+                f"{info.name}: {what} {name} has no streamer info in this file"))
     return failures
 
 
@@ -763,7 +864,7 @@ class Checker:
 
     # -- Compression.md 9 ---------------------------------------------------
     def check_streamer_driven(self) -> None:
-        """StreamerDriven.md invariants 1-4: applying the streamer info to a
+        """StreamerDriven.md invariants 1-6: applying the streamer info to a
         record's object data consumes exactly its length, and to a nested object
         exactly its byte count.
 
@@ -775,9 +876,12 @@ class Checker:
         if infos is None:
             return
         by_info = {i.name: i for i in infos}
+        described = set(by_info)
 
         for info in infos:
             for where, message in element_list_failures(info, by_info):
+                self.bad(where, message)
+            for where, message in undescribed_classes(info, described):
                 self.bad(where, message)
 
         for target in self.records:

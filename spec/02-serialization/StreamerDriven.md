@@ -301,10 +301,10 @@ promised non-null, so there is no null form to test for.
 
 A reader can find itself without a member list in three ways.
 
-**The class is absent from the file's `StreamerInfo` record.** This is a broken
-file for every class except the bootstrap set and the classes written without a
-streamer info at all (`TFile`, `TDirectory`, the free list). A reader SHOULD
-report it rather than guess.
+**The class is absent from the file's `StreamerInfo` record.** For a class whose
+bytes are written inline this is a broken file, and a reader SHOULD report it
+rather than guess — but the absence is legitimate for more classes than the
+bootstrap set and the container's own records, and §6.1 is the boundary.
 
 **The version on disk is not among the infos for that class.** ROOT reports an
 error and skips the object using its byte count
@@ -320,6 +320,76 @@ the silent skip is only the fallback when no info was found.
 In all three cases the recovery is the same and it is the reason every object
 carries a byte count: **seek to the end of the byte count and continue**. Objects
 nest, so an unreadable object costs exactly itself.
+
+### 6.1 Which classes the file must describe
+
+A missing info is not always a missing info. Only a class whose bytes are written
+**inline** has to be described, because there the declared type is the only thing
+that says what the bytes are; where the bytes carry their own class
+identification, or may not exist at all, the declared type is not a promise.
+
+| Where a class is named | Must the file describe it? |
+|---|---|
+| a `TStreamerBase` element | **yes** |
+| a member of code `kObject` (61) or `kAny` (62), with or without `kOffsetL` | **yes** |
+| a member of code `kObjectp` (63) or `kAnyp` (68) — the `->` forms, which cannot be null | **yes** |
+| a member of code `kObjectP` (64) or `kAnyP` (69) | **no** — see below |
+| `kTString` (65), `kTObject` (66), `kTNamed` (67) | no; read by hardcoded rules |
+| a `TStreamerSTL` (500) | no; [Collections](Collections.md) describes it from the type name |
+
+Three exemptions apply to the **yes** rows. The first two are properties of
+ROOT's source rather than of the file, which is why they have to be published as
+lists; the third is a property of the type:
+
+- a class whose `Streamer` is **hand-written** records no info for itself. Writing
+  an object marks its class so that the info is written
+  ([Writing an object §7.2](../06-writing/WritingObjects.md#72-which-classes-need-an-info)),
+  and a `Streamer` that never calls `WriteClassBuffer` never marks anything —
+  which is why `TObject`, `TObjArray`, `TList` and the `TArray` family are absent
+  as bases and as members from files that are perfectly well formed.
+  [Hand-written streamers](../99-appendix/HandWrittenStreamers.md) is the list,
+  and only its `custom` classes are exempt: a `guarded`, `extending` or
+  `delegating` one does call `WriteClassBuffer`, so its info is there;
+- a class whose generated `Streamer` **forwards** to its bases, for the same
+  reason — [Forwarding streamers](../99-appendix/ForwardingStreamers.md);
+- an **STL container** used as an inline member. `vector<double> twovectors[2]`
+  reaches disk as a `TStreamerObjectAny` of code 82 rather than as a
+  `TStreamerSTL`, and the `StreamerInfo` record of the ROOT 6.24/06 file that
+  holds one has exactly one entry — the enclosing class. A reader loses nothing:
+  [Collections](Collections.md) describes the bytes from the type name.
+
+**Why a nullable pointer is different**, and this is the half worth carrying: a
+`kObjectP` or `kAnyP` member is written as a class record and an object, or as
+four zero bytes
+([Element types §7](ElementTypes.md#7-object-valued-codes-61-to-71)), so the class
+that was actually written names itself in the bytes
+([Buffer framing §5](Buffer.md#5-class-records)). The declared type need not
+appear in the file at all, and for an abstract one it usually does not: ROOT
+records the info chain of a pointee's declared class where it can — an empty
+`TGraph`'s null `TH1F*` still drags in `TH1F`, `TArrayF` and `TArray`
+([Element lists §10](../06-writing/ElementLists.md)) — but an abstract class has
+no layout to record. A reader MUST take such a member's class from the bytes and
+MUST NOT require its declared type to be described.
+
+> Measured over `data/` and both corpora — **306 files** carrying at least one
+> streamer info, ROOT 2.24/00 to 6.36/02:
+>
+> - **92 `kBase` elements in 65 files** name a class with no info in the same
+>   file, and every one is exempt except two: `TAtt3D` as a base of `TH3` in the
+>   two files g4tools wrote. 48 files written by ROOT in the same corpora *do*
+>   carry a `TAtt3D` info — `ClassDef(TAtt3D,1)`, an entry with no elements — and
+>   of the six files that describe a `TH3` at all, those two are the only ones
+>   without it. So the pair is the writer, not the rule, and
+>   `gen/foreign/IGNORE.toml` says so;
+> - **489 inline members** name a class with no info, every one exempt;
+> - **289 nullable-pointer members** name a class with no info, which is why the
+>   last row of the table is *no*. Five declared types account for them —
+>   `TVirtualIndex` (`TTree::fTreeIndex`, 145 files), `TArray`,
+>   `TGeoPatternFinder`, `TF1AbsComposition` and one user class — and the four of
+>   ROOT's own are abstract (`root/tree/tree/inc/TVirtualIndex.h:38`,
+>   `root/core/cont/inc/TArray.h:48`,
+>   `root/geom/geom/inc/TGeoPatternFinder.h:67`,
+>   `root/hist/hist/inc/TF1AbsComposition.h:21`).
 
 ## 7. When the streamer info does not describe the bytes
 
@@ -463,9 +533,12 @@ implemented for any class the reader claims to support.
    streamer info — except that a base which is an **STL container** is written as
    a `TStreamerSTL` and may precede it (§4.3).
 5. Every class named by a `TStreamerBase` element, and every class named in the
-   `fTypeName` of an element with an object-valued code, has a streamer info in
-   the same file — unless it is `TObject`, `TNamed` or `TString`, which are read
-   by hardcoded rules.
+   `fTypeName` of a member whose bytes are written **inline** — codes 61, 62, 63
+   and 68, with `kOffsetL` where it applies — has a streamer info in the same
+   file, unless its `Streamer` is hand-written or forwarding, or it is an STL
+   container (§6.1, which has the three lists and the measurement). A member of
+   code 64 or 69 carries **no** such requirement: it may be null in every object
+   the file holds, and a non-null one names its class in the bytes.
 6. An element with `fType` of -1 is a `TStreamerBase` whose info carries
    `kIgnoreTObjectStreamer`.
 
@@ -496,4 +569,5 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `container/file-minimal` | The top-level entry point, and invariant 1 on a whole record |
 
 `tools/rootfile.py` implements this procedure and `tools/check_invariants.py`
-applies invariants 1 and 2 to every record of every reference file.
+applies invariants 1 and 2 to every record of every reference file, and 3 to 6 to
+every streamer info in it.

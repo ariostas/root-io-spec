@@ -8,6 +8,7 @@ lists that no file ROOT wrote would contain.
 """
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,11 +18,12 @@ import check_invariants  # noqa: E402
 import rootfile  # noqa: E402
 
 
-def element(name, cls="TStreamerBasicType", ftype=3, title="", count_name=""):
+def element(name, cls="TStreamerBasicType", ftype=3, title="", count_name="",
+            type_name="int"):
     tail = {"fCountName": count_name} if count_name else {}
     return rootfile.Element(cls=cls, version=4, name=name, title=title, bits=0,
                             ftype=ftype, fsize=4, array_length=0, array_dim=0,
-                            max_index=[0] * 5, type_name="int", tail=tail)
+                            max_index=[0] * 5, type_name=type_name, tail=tail)
 
 
 def info(*elements, name="C"):
@@ -334,6 +336,177 @@ class PairInfoLookup(unittest.TestCase):
         self.assertEqual(d.pair_info("pair<int,string>").name, "pair<int,string>")
         self.assertEqual(d.pair_info("pair<int,vector<short>>").name,
                          "pair<int,vector<short> >")
+
+
+class WhichClassesMustBeDescribed(unittest.TestCase):
+    """StreamerDriven.md invariant 5, restated.
+
+    The published invariant used to say that every class named by a base element
+    or by any object-valued member has an info in the same file, exempting only
+    `TObject`, `TNamed` and `TString`. It was false in both directions and had
+    never been wired into the checker: `data/classes/histogram.root`, which ROOT
+    wrote, names `TArrayF` as a base of `TH1F` and carries no `TArrayF` info, and
+    over the corpora 92 base elements and 489 inline members do the same. See
+    §6.1; PLAN-review.md R2.
+    """
+
+    def failures(self, si, described=()):
+        return [where for where, _ in
+                check_invariants.undescribed_classes(si, set(described))]
+
+    def test_a_described_base_passes(self):
+        si = info(element("TAttLine", cls="TStreamerBase", ftype=0))
+        self.assertEqual(self.failures(si, {"TAttLine"}), [])
+
+    def test_an_undescribed_base_is_caught(self):
+        si = info(element("TAttLine", cls="TStreamerBase", ftype=0))
+        self.assertEqual(self.failures(si), ["StreamerDriven 10.5"])
+
+    def test_a_hand_written_base_is_exempt(self):
+        # The four the review's counterexamples were: every histogram file ROOT
+        # writes names them and describes none of them.
+        for name in ("TObject", "TArrayF", "TArrayD", "TArrayL64"):
+            si = info(element(name, cls="TStreamerBase", ftype=0))
+            self.assertEqual(self.failures(si), [], name)
+
+    def test_a_forwarding_base_is_exempt(self):
+        # TSeqCollection is a kBase of TList and TObjArray in 168 corpus files
+        # and has an info in none of them.
+        si = info(element("TSeqCollection", cls="TStreamerBase", ftype=0))
+        self.assertEqual(self.failures(si), [])
+
+    def test_a_delegating_or_extending_class_is_not_exempt(self):
+        # The exemption is the `custom` list, not all of HandWrittenStreamers.md:
+        # these three do call WriteClassBuffer, so their info is in the file.
+        for name in ("TMatrixTSym", "RooWorkspace", "TAxis"):
+            si = info(element(name, cls="TStreamerBase", ftype=0))
+            self.assertEqual(self.failures(si), ["StreamerDriven 10.5"], name)
+
+    def test_an_undescribed_inline_member_is_caught(self):
+        for ftype in (61, 62, 81, 82):
+            si = info(element("fThing", cls="TStreamerObjectAny", ftype=ftype,
+                              type_name="Thing"))
+            self.assertEqual(self.failures(si), ["StreamerDriven 10.5"],
+                             f"fType {ftype}")
+
+    def test_an_undescribed_arrow_pointer_is_caught(self):
+        # kObjectp and kAnyp cannot be null and carry no class record, so the
+        # declared type is what was written. ElementTypes.md 7.
+        for ftype in (63, 68):
+            si = info(element("fThing", cls="TStreamerObjectPointer",
+                              ftype=ftype, type_name="Thing*"))
+            self.assertEqual(self.failures(si), ["StreamerDriven 10.5"],
+                             f"fType {ftype}")
+
+    def test_an_undescribed_nullable_pointer_is_allowed(self):
+        # TTree::fTreeIndex is a TVirtualIndex* and 145 corpus files carry no
+        # TVirtualIndex info: the class is abstract, and a null pointer writes
+        # four zero bytes naming nothing.
+        for ftype in (64, 69):
+            si = info(element("fTreeIndex", cls="TStreamerObjectPointer",
+                              ftype=ftype, type_name="TVirtualIndex*"))
+            self.assertEqual(self.failures(si), [], f"fType {ftype}")
+
+    def test_the_hardcoded_codes_are_not_checked(self):
+        # kTString, kTObject and kTNamed are read by rule, not by an info.
+        for ftype in (65, 66, 67):
+            si = info(element("fName", ftype=ftype, type_name="TString"))
+            self.assertEqual(self.failures(si), [], f"fType {ftype}")
+
+    def test_an_stl_member_is_exempt(self):
+        # `vector<double> twovectors[2]` reaches disk as code 82 and ROOT writes
+        # no info for vector<double>: uproot-issue-586.root, 6.24/06.
+        si = info(element("twovectors", cls="TStreamerObjectAny", ftype=82,
+                          type_name="vector<double>"))
+        self.assertEqual(self.failures(si), [])
+
+    def test_a_specialization_matches_a_template_entry(self):
+        si = info(element("fM", cls="TStreamerObjectAny", ftype=62,
+                          type_name="TMatrixTSym<double>"))
+        self.assertEqual(self.failures(si, {"TMatrixTSym"}), [])
+
+
+class PublishedExemptionLists(unittest.TestCase):
+    """The two lists invariant 5 exempts, as `check_invariants` reads them.
+
+    They are parsed out of the generated blocks of spec/99-appendix/ rather than
+    extracted from the submodule, so that the checker runs without it. These
+    tests are what stops the parse from silently widening or emptying -- an empty
+    exemption set would make invariant 5 fire everywhere, and a set that
+    swallowed the `guarded` and `delegating` tables would make it fire nowhere.
+    """
+
+    def test_the_custom_classes_are_exempt(self):
+        for name in ("TObject", "TArrayD", "TObjArray", "TList", "TQObject",
+                     "TStringLong", "TDatime"):
+            self.assertIn(name, check_invariants.NO_INFO_OF_ITS_OWN, name)
+
+    def test_the_forwarding_classes_are_exempt(self):
+        for name in ("TSeqCollection", "THashList", "TVirtualPerfStats"):
+            self.assertIn(name, check_invariants.NO_INFO_OF_ITS_OWN, name)
+
+    def test_the_other_three_tables_are_not_read(self):
+        # extending, delegating and guarded, one each. TStreamerInfo would be a
+        # bad example: its ReadClassBuffer call is commented out and replaced, so
+        # inventory.py classifies it `custom` and it belongs in the set.
+        for name in ("TMatrixTSym", "RooWorkspace", "TAxis"):
+            self.assertNotIn(name, check_invariants.NO_INFO_OF_ITS_OWN, name)
+
+    def test_an_ordinary_class_is_not_exempt(self):
+        for name in ("TTree", "TH1", "TAttLine", "TH1F"):
+            self.assertNotIn(name, check_invariants.NO_INFO_OF_ITS_OWN, name)
+
+    def test_the_lists_are_the_published_sizes(self):
+        # 63 custom + 534 forwarding, as the summary tables in those two
+        # documents state. A submodule bump changes these, and the documents and
+        # this number then move together.
+        self.assertEqual(len(check_invariants.NO_INFO_OF_ITS_OWN), 597)
+
+
+class RemovingAnInfoIsCaught(unittest.TestCase):
+    """Invariant 5 against a real file, by taking an info out of one.
+
+    `data/serialization/version-zero.root` has an uncompressed `StreamerInfo`
+    record, so renaming a class inside it is a byte patch. Both halves of the
+    same break are provoked: the info entry disappearing under a base element
+    that still names it, and the base element naming a class that was never
+    there.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/serialization/version-zero.root"
+    NAME = b"\x08TAttLine"
+
+    def patched(self, which):
+        """The fixture with one of the two `TAttLine` strings misspelt."""
+        buf = bytearray(self.PATH.read_bytes())
+        offsets = [i for i in range(len(buf))
+                   if buf[i:i + len(self.NAME)] == self.NAME]
+        self.assertEqual(len(offsets), 2)       # the element, then the info
+        buf[offsets[which] + 8] = ord("f")      # TAttLine -> TAttLinf
+        return bytes(buf)
+
+    def failures(self, data):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(data)
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return checker.failures
+
+    def test_the_fixture_itself_passes(self):
+        self.assertEqual(self.failures(self.PATH.read_bytes()), [])
+
+    def test_a_base_naming_a_class_that_is_not_there(self):
+        bad = self.failures(self.patched(0))
+        self.assertEqual(len(bad), 1)
+        self.assertIn("StreamerDriven 10.5", bad[0])
+        self.assertIn("TAttLinf", bad[0])
+
+    def test_an_info_renamed_out_from_under_its_base_element(self):
+        bad = self.failures(self.patched(1))
+        self.assertEqual(len(bad), 1)
+        self.assertIn("StreamerDriven 10.5", bad[0])
+        self.assertIn("TH1: base class TAttLine", bad[0])
 
 
 if __name__ == "__main__":
