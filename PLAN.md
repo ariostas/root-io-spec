@@ -1,25 +1,27 @@
 # PLAN — ROOT I/O Specification
 
 **Status: the reading side is specified end to end for files written by ROOT 4
-and later, 0.1.0 is released, and the writing side now covers the container, an
-object, histograms and a flat `TTree`.** Everything is cited against the pinned
+and later, 0.1.0 is released, and the writing side covers the container with
+subdirectories, an object, histograms and profiles, graphs, and a flat `TTree`
+with many baskets and with a `TLeafC`.** Everything is cited against the pinned
 submodule and checked against bytes; RNTuple tracks ROOT's own specification plus
 ten errata. §2.9 and §8.4 are the write support, which extends the project past
 the reading side it was scoped to.
 
-Measured, 2026-09-18, by the checks in `tools/`:
+Measured, 2026-09-21, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 46, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 72 / 1826, 0 failures |
-| Files **this project wrote** / assertions | 4 / 198, 0 failures |
-| Source citations checked | 1321, 0 failures |
-| Class versions checked against `ClassDef` | 40 |
-| Invariants over the fixtures and the written files | 76 files, 0 failures |
-| Invariants over both corpora | 180 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
+| Specification documents | 48, plus the tracked RNTuple copy |
+| Reference files / byte assertions | 76 / 1981, 0 failures |
+| Files **this project wrote** / assertions | 9 / 432, 0 failures |
+| Source citations checked | 1536, 0 failures |
+| Class versions checked against `ClassDef` | 55 |
+| Element lists published / elements / sources | 35 / 194 / 7 |
+| Invariants over the fixtures and the written files | 85 files, 0 failures |
+| Invariants over both corpora | 226 files, ROOT 2.24/00 – 6.36/02, **0 failures** |
 | Entries decoded and checked | 27969 of 28036 branch-baskets, 99.8% |
-| Unit tests | 289 |
+| Unit tests | 334 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register — every gap the written documents record, so they can be picked up
@@ -143,7 +145,7 @@ classes whose recorded streamer info does not describe their bytes.**
 The original plan was generated version matrices and member tables for ~440
 persistable classes. That aims at the wrong target: a generated table restates
 what the streamer info in the file already says, and `tools/rootfile.py` decodes
-**99.7% of branch-baskets across both corpora** from the file's own infos with no
+**99.8% of branch-baskets across both corpora** from the file's own infos with no
 per-class knowledge beyond the bootstrap set. `tools/gen_tables.py` is therefore
 not planned.
 
@@ -206,15 +208,19 @@ RNTuple already has a real specification and we do not fork it.
   `root/tree/ntuple/doc/BinaryFormatSpecification.md` at the pinned commit.
   `tools/sync_rntuple.py --check` fails on drift, in CI, on every push, and also
   asserts that the commit `UPSTREAM.md` records is the pin. **Never edit it.**
-- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (six entries);
+- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (ten entries);
   ✅ `NOTES.md` implementation notes, including the audit state table.
 - ✅ The envelope audit, through every envelope, and a fixture of our own
   (`rntuple/anchor`, `rntuple/fundamental-types`), plus an independent reader in
   `tools/rootfile.py`.
-- ◐ The **type mapping** — which columns a given C++ type produces — advances one
-  fixture at a time and is the largest remaining piece here (§8 item M9).
+- ✅ The **type mapping** — which columns a given C++ type produces — audited one
+  fixture at a time across eight of them, with four errata (§8 item M9). **One
+  form is left**: a class with an associated collection proxy, which needs a
+  compiled `TCollectionProxyInfo` rather than a runtime attribute, and whose
+  associative half ROOT does not implement at all. `NOTES.md` §4 records it as
+  the only unaudited form.
 
-### 2.7 `spec/99-appendix/` ◐
+### 2.7 `spec/99-appendix/` ✅
 
 | File | State |
 |---|---|
@@ -223,9 +229,9 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `HandWrittenStreamers.md` | Generated from the submodule by `inventory.py`; §2.4 |
 | ✅ `ForwardingStreamers.md` | The other half of the same question, from the same tool: the classes whose *generated* `Streamer` writes only their bases |
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
-| ✅ `Pitfalls.md` | Forty-five things that are true, unobvious and have cost somebody time, each linked to the section that specifies it |
+| ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 223 `Invariants` entries of the whole specification, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §6 is the nine cases where nothing does |
+| ✅ `WriterInvariants.md` | The 248 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with the column the reading side does not need: **who notices a violation** — `tools/check_invariants.py`, ROOT, or nothing. §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -247,7 +253,7 @@ emit, and a reader-shaped document leaves a writer to infer the order of
 operations — which is where ROOT's own writing code has rules that no file
 records. §2.9 is the other half.
 
-### 2.9 `spec/06-writing/` — write support, part two: procedures ◐
+### 2.9 `spec/06-writing/` — write support, part two: procedures ✅
 
 Added 2026-09-18, extending decision 3. The reading documents answer "what do
 these bytes mean"; these answer "which bytes do I emit, in what order". Scoped by
@@ -256,10 +262,12 @@ what a writer actually needs rather than by symmetry with the reading side:
 | File | State |
 |---|---|
 | ✅ `index.md` | What a writing procedure is here, the conformance test, and what is deliberately not specified |
-| ✅ `WritingFiles.md` | The container in write order, and §13's ten mistakes ROOT reads without complaint |
+| ✅ `WritingFiles.md` | The container in write order, **subdirectories** (§8.9), and §14's ten mistakes ROOT reads without complaint |
 | ✅ `WritingObjects.md` | Framing, the version word, the object map, compression, and the `StreamerInfo` record down to each element subclass |
 | ✅ `WritingHistograms.md` | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile` member by member (§8.8) |
-| ✅ `WritingTrees.md` | A flat `TTree`: the tree record, branches, leaves, baskets, and the fields that must agree with one another |
+| ✅ `WritingTrees.md` | A flat `TTree`: the tree record, branches, leaves, baskets, the multi-basket and cluster-range case (§8.7), and a **`TLeafC`** branch (§8.10) |
+| ✅ `WritingGraphs.md` | `TGraph` and `TGraphErrors`, and why a null `fHistogram` costs eighteen streamer infos (§8.11) |
+| ✅ `ElementLists.md` | Not a procedure but the table every procedure needs: the element list of each of the thirty-five classes, read out of the fixtures rather than out of the writer (§8.6) |
 
 **Only the current version of each class.** A writer chooses what it emits, so
 there is never a reason to write an old layout; the legacy layouts stay on the
@@ -408,11 +416,11 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Serialization | ✅ all seven documents |
 | Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
-| RNTuple | ◐ upstream tracked, envelopes and the type mapping audited, ten errata; one form left (collection proxy) |
+| RNTuple | ◐ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; one form left (collection proxy) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
 | Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
-| Writing (`spec/06-writing/`) | ✅ container, object, histograms, flat `TTree` — every object-bearing record in `data/written/` byte-identical to ROOT's (§8.4) |
+| Writing (`spec/06-writing/`) | ✅ container and subdirectories, object, histograms and profiles, graphs, flat `TTree` with many baskets and with a `TLeafC`, plus the element lists — every object-bearing record in `data/written/` byte-identical to ROOT's (§8.4) |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
