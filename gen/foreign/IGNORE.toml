@@ -25,12 +25,17 @@
 
 ["uproot-issue413.root"]
 reason = """
-Written by a third party, not ROOT: the tree's branch names (I32, F64, Str,
-ArrF64, SliF64) and the file name "struct.root" are uproot's writing-test
-fixtures. ROOT opens it and reads all five entries without complaint, so it is
-not corrupt -- it is just not written the way ROOT writes.
+Written by a third party, not ROOT. Most likely groot, go-hep's ROOT
+implementation, which is what rootfilespec's author reports (GitHub issue #1,
+item 3) and what the file itself suggests: the branch names are Go type
+spellings -- I32, F64, Str, ArrF64 for [N]float64 and SliF64 for a *slice* of
+float64 -- and nothing in the bytes names a writer, so this is corroboration
+rather than proof. It is certainly not ROOT: every basket key here carries
+fVersion 4 where ROOT adds 1000 unconditionally (see below). ROOT opens it and
+reads all five entries without complaint, so it is not corrupt -- it is just not
+written the way ROOT writes.
 
-Two departures, both diagnosed:
+Three departures, all diagnosed:
 
   - Its basket keys use fVersion 4, the small-key form. ROOT adds 1000 to a
     basket's key version unconditionally (TBasket.md 1), which is why every

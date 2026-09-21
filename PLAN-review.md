@@ -1,10 +1,11 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1–R4 done** the same day — the
-three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus the first of
-§3's four gaps. Every item below was re-checked against the corpora and against
-our own reference files *before* being planned, and the verification is recorded
-per item, because the point of a review is what it turns out to be right about.
+**Status: in progress.** Written 2026-09-21; **R1–R5 done** the same day — the
+three defects of §2, so `PLAN.md` §8.1 criterion 1 holds again, plus two of §3's
+four gaps and the item-3 attribution. Every item below was re-checked against the
+corpora and against our own reference files *before* being planned, and the
+verification is recorded per item, because the point of a review is what it turns
+out to be right about.
 
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
@@ -312,6 +313,45 @@ so updating such a file past 2 GB would write over its own first record — whic
 makes these two g4tools files the live examples of that hazard rather than
 curiosities.
 
+**Done 2026-09-21**, as `FileHeader.md` §8.1, with §4's MUST strengthened to say
+`fBEGIN` must not be derived from `fVersion` either, and invariant 11's evidence
+sentence corrected: it said "four files, from ROOT 2.24/00 to 4.00", which reads
+as four old files and is only true of two.
+
+The four `fBEGIN = 64` files in `data/` and both corpora, measured:
+
+| File | `fVersion` | Header UUID |
+|---|---|---|
+| `pippa.root` | 22400 | none — bytes 45-63 unwritten, as §8 predicts for ≤ 3.02 |
+| `mlpHiggs.root` | 30402 | present, as §8 predicts for 3.03–3.04 |
+| `uproot-from-geant4.root` | **40000** | 16 zero bytes |
+| `uproot-issue-250.root` | **40000** | 16 zero bytes |
+
+Two things came out of measuring rather than asserting:
+
+1. **ROOT gives a reader no help at all here.** Its only check on the field is
+   `fBEGIN < 0 || fBEGIN > fEND` (`TFile.cxx:760-766`) — never against 100, never
+   against the length of the header it is about to write. So "ROOT opens it" is not
+   evidence that `fBEGIN` is sane, which is worth saying in a document whose
+   invariant 11 exists precisely because ROOT does not check it.
+2. **Neither g4tools file carries a UUID anywhere.** Zeroes in the header, and
+   their directory records are version 1001, which has no UUID field at all (R4).
+   Harmless, and only because §6 already establishes that ROOT never reads the
+   header's — but it is the third thing these two files do that the version-history
+   table does not predict, after `fBEGIN` and the 1001.
+
+Their `fDatimeC` values are 2018-10-03 and 2021-01-20, so the plan's "2018–2020"
+was a guess at the range; the document gives the two dates.
+
+**Their item 3, the attribution, is done in the same pass** and is no longer only
+credited. `gen/foreign/IGNORE.toml` and `Buffer.md` §6.1 now say groot rather than
+uproot, with the evidence separated from the claim: the branch names are Go type
+spellings — `SliF64` is a *slice* of float64 — and nothing in the bytes names a
+writer, so the review's report is corroborated, not proven. What *is* proven is
+the negative: every basket key carries `fVersion` 4 where ROOT adds 1000
+unconditionally, so it is not ROOT's. The entry also said "two departures" above
+three bullets; fixed.
+
 ### R6 — `fCheckSum == 0`, and `TTime`
 
 Two separate small things the specification does not mention.
@@ -456,8 +496,10 @@ Per the repository's convention the reply opens with the AI-content marker.
    `WritingObjects.md` §8.2 (§2).
 4. **R7** — the unchecked-invariant audit, which R2 is the argument for. Expect it
    to find more.
-5. **R4** ✅, **R5** — the two directory/header notes, and the attribution fix.
-   R4 landed as `Directory.md` §3.1, §7.1 and invariant 15 (§3).
+5. ~~**R4**, **R5** — the two directory/header notes, and the attribution fix.~~
+   **Done**: `Directory.md` §3.1, §7.1 and invariant 15; `FileHeader.md` §8.1 with
+   §4 and invariant 11 corrected; and the groot attribution, with the evidence
+   separated from the claim (§3).
 6. **Reply to the issue** (§7), including the corpus question.
 7. **R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
    ten-minute ROOT experiment and nothing else.

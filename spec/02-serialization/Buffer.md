@@ -380,8 +380,10 @@ back-reference — rejects a file ROOT reads without complaint.
 
 > Found in `uproot-issue413.root` from the foreign corpus of `PLAN.md` §9.8: a
 > `TTree`'s `fLeaves` of six entries, each `40 00 00 04` and a tag, 48 bytes where
-> 24 would do. The file was probably not written by ROOT — the shape of the names
-> suggests a third-party writer — but ROOT reads it, so a reader of other people's
+> 24 would do. The file was not written by ROOT — its basket keys use the small
+> form, which ROOT never writes ([TBasket §1](../04-ttree/TBasket.md)), and the
+> branch names are Go type spellings, so most likely groot
+> (`gen/foreign/IGNORE.toml`) — but ROOT reads it, so a reader of other people's
 > files should too.
 
 ### 6.2 Positions 0 and 1, and why `kMapOffset` is 2

@@ -140,8 +140,10 @@ and `root/io/io/src/TFile.cxx:68-72` records that the value is fixed at 100 and 
 **bytes 96-99 are reserved and MUST be zero**, a constraint from the file's
 registered media type.
 
-A reader MUST nevertheless take `fBEGIN` from the header rather than assume 100:
-ROOT releases up to and including the 3.04 series used `fBEGIN = 64`. See §8.
+A reader MUST nevertheless take `fBEGIN` from the header rather than assume 100,
+and MUST NOT derive it from `fVersion` either. ROOT releases up to and including
+the 3.04 series used `fBEGIN = 64`, and two files in the corpora pair that same 64
+with an `fVersion` of 40000, where ROOT would have written 100. See §8.1.
 
 ## 5. Fields
 
@@ -370,6 +372,43 @@ Field order, offsets, widths and byte order have been stable since 3.05. The
 large-file layout cannot occur in a file older than 3.05, since the flag did not
 exist.
 
+### 8.1 `fBEGIN` is not derivable from `fVersion`
+
+> The table above says what **ROOT** wrote. It is not a lookup table for
+> `fBEGIN`: a reader MUST take that from the header (§4), because a third-party
+> writer pairs the two however it likes.
+
+Measured across `data/` and both corpora, **four** files carry `fBEGIN = 64` and
+only two of them are old ROOT:
+
+| File | `fBEGIN` | `fVersion` | Header UUID |
+|---|---|---|---|
+| `pippa.root` | 64 | 22400 (2.24/00) | none — bytes 45-63 unwritten |
+| `mlpHiggs.root` | 64 | 30402 (3.04/02) | present |
+| `uproot-from-geant4.root` | 64 | **40000** | 16 zero bytes |
+| `uproot-issue-250.root` | 64 | **40000** | 16 zero bytes |
+
+The first two are exactly what the table predicts. The last two are g4tools,
+Geant4's own writer — their directory records are `fDatimeC` 2018-10-03 and
+2021-01-20 — and they claim `fVersion` 40000, where the table says `fBEGIN` should
+be 100. A reader that computes `fBEGIN` from `fVersion` reads their first record
+36 bytes late.
+
+**ROOT accepts them, and gives a reader no help here.** Its only check on the field
+is `fBEGIN < 0 || fBEGIN > fEND` (`root/io/io/src/TFile.cxx:760-766`); it never
+compares `fBEGIN` with 100, nor with the length of the header it is about to write.
+Both files open and read normally.
+
+They are also the live example of invariant 11's hazard rather than a curiosity: 64
+leaves exactly one byte of slack over the 63-byte small header and is **eleven
+bytes short** of the 75-byte large one, so pushing either past 2 GB would write the
+header over its own first record
+([Writing a file §13.8](../06-writing/WritingFiles.md#138-crossing-2-gb-during-an-update)).
+And **neither file carries a UUID anywhere** — zeroes in the header, and their
+directory records are version 1001, which has no UUID field at all
+([Directories §3.1](Directory.md#31-the-version-word-carries-two-independent-things)).
+That costs nothing, because ROOT never reads the header's (§6).
+
 ## 9. Reading
 
 A conforming reader performs the following steps.
@@ -426,8 +465,10 @@ make the data ambiguous.
     **63** bytes for the small layout, **75** for the large one. The header is
     rewritten in place at every close, so a file whose first record began sooner
     would be overwritten by it. The margin is not theoretical: four files in the
-    corpora have `fBEGIN` of 64, from ROOT 2.24/00 to 4.00, and would violate
-    this the moment they were pushed past 2 GB — see
+    corpora have `fBEGIN` of 64 — two from ROOT 2.24/00 and 3.04/02, and two that
+    g4tools wrote with an `fVersion` of 40000 (§8.1) — and all four would violate
+    this the moment they were pushed past 2 GB, since 64 is one byte over the
+    small header and eleven short of the large one. See
     [Writing a file §13.8](../06-writing/WritingFiles.md#138-crossing-2-gb-during-an-update).
 
 Not validated by ROOT, and therefore not safe to assume: `fCompress` is in range,
