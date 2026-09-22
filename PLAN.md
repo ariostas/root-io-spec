@@ -81,7 +81,7 @@ explicitly; the pinned submodule is what the checkers in `tools/` run against.
 
 ```
 root-io-spec/
-├── README.md, PLAN.md, CLAUDE.md
+├── README.md, PLAN.md, AGENTS.md
 ├── root/                         ← submodule, pinned to v6-40-04
 ├── spec/                         ← the specification; also the site (docs_dir)
 │   ├── 00-conventions.md
@@ -370,7 +370,7 @@ the pair arrives because `RooAbsReal::_specIntegratorConfig` reaches
 graph. So the portability of a fixture is a property of that graph, not of what
 the case writes.
 
-**Every new case must go through the container loop in `CLAUDE.md` before a
+**Every new case must go through the container loop in `AGENTS.md` before a
 push**, not after a red build. The drift is libc++ against libstdc++, not
 architecture, so an arm64 container reproduces the x86_64 CI digests byte for
 byte.
@@ -559,7 +559,7 @@ reported** (§8 item M10).
     writer are built without complaint. Reproducer in
     `spec/05-rntuple/NOTES.md` §5. **Report with the caveat attached**: only the
     interpreted path was tested, because ACLiC cannot compile on this machine
-    (`CLAUDE.md`), so a compiled comparison is the first thing to ask for.
+    (`AGENTS.md`), so a compiled comparison is the first thing to ask for.
 
 11. **Writing an object of an emulated class does not complete.** `WriteObjectAny`
     with a `TClass` in the `kEmulated` state — `Head` read from

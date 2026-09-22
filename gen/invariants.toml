@@ -1,7 +1,7 @@
 # Published `Invariants` entries that `tools/check_coverage.py` cannot match to a
 # label in the tools, and what accounts for each.
 #
-# `CLAUDE.md` requires every entry to be checked. That rule was unenforced until
+# `AGENTS.md` requires every entry to be checked. That rule was unenforced until
 # 2026-09-21, and `PLAN.md` §8.13 is why it mattered: the one entry found to
 # be *false* was also one nobody had wired up. This file is the other half of the
 # enforcement -- `tools/check_coverage.py --check` fails on an unchecked entry

@@ -3124,7 +3124,7 @@ class Checker:
             # A leafless branch that *does* have baskets must still be counted.
             # Returning silently once put a TBranchSTL's baskets in neither the
             # numerator nor the denominator of the ENTRIES line, which is the
-            # same mistake the embedded baskets taught (CLAUDE.md): a ratio that
+            # same mistake the embedded baskets taught (AGENTS.md): a ratio that
             # cannot see what it skipped is worth less than a lower one that can.
             for i in range(min(br.write_basket + 1, len(br.basket_seek))):
                 if not br.basket_seek[i]:
@@ -3234,7 +3234,7 @@ class Checker:
             # A leafless branch that *does* have baskets must still be counted.
             # Returning silently once put a TBranchSTL's baskets in neither the
             # numerator nor the denominator of the ENTRIES line, which is the
-            # same mistake the embedded baskets taught (CLAUDE.md): a ratio that
+            # same mistake the embedded baskets taught (AGENTS.md): a ratio that
             # cannot see what it skipped is worth less than a lower one that can.
             for i in range(min(br.write_basket + 1, len(br.basket_seek))):
                 if not br.basket_seek[i]:

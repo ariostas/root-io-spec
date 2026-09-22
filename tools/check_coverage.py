@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which published `Invariants` entries are actually checked, and by what.
 
-`CLAUDE.md` requires every numbered entry under an `Invariants` heading to be
+`AGENTS.md` requires every numbered entry under an `Invariants` heading to be
 added to `tools/check_invariants.py` and confirmed against a corrupted fixture.
 Nothing enforced that, and `PLAN.md` §8.13 is why it matters: the one entry
 found to be **false** was also one that had never been wired up. An invariant
@@ -41,7 +41,7 @@ TOOLS = ("check_invariants.py", "check_write.py", "rootfile.py", "rootwrite.py",
          "test_bootstrap.py", "test_rntuple.py")
 
 #: `spec/05-rntuple/BinaryFormatSpecification.md` is upstream's copy and not ours
-#: to annotate (`CLAUDE.md`), so its numbered lists are not our invariants.
+#: to annotate (`AGENTS.md`), so its numbered lists are not our invariants.
 NOT_OURS = {SPEC / "05-rntuple/BinaryFormatSpecification.md"}
 
 HEADING = re.compile(r"^#+\s+(\d+)\.\s+Invariants\b.*$", re.M)

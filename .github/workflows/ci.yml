@@ -20,7 +20,7 @@ jobs:
         run: tools/generate.py --check
       - name: Verify the spec's Invariants sections hold for every fixture
         run: tools/check_invariants.py
-      # CLAUDE.md requires every published Invariants entry to be checked. This
+      # AGENTS.md requires every published Invariants entry to be checked. This
       # is what enforces it: an entry with no check and no reason in
       # gen/invariants.toml fails here. PLAN.md 8.13.
       - name: Every published invariant is checked or accounted for

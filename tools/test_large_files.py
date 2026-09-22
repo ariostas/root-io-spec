@@ -3,7 +3,7 @@
 
 They are checked over the network by `fetch_cern.py --headers`, against eight
 files this repository cannot commit. These tests do the other half of the
-discipline `CLAUDE.md` asks for: each invariant is shown to **catch** a
+discipline `AGENTS.md` asks for: each invariant is shown to **catch** a
 violation, using the measured reading of `volume.root` as the good case and one
 mutation per invariant.
 """

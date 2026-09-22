@@ -7,7 +7,7 @@
 #
 # The list is a selection, not all of scikit-hep-testdata. One file was added
 # afterwards for a named reason, which is the bar for any further addition
-# (CLAUDE.md): uproot-issue283.root is the only witness in either corpus to a
+# (AGENTS.md): uproot-issue283.root is the only witness in either corpus to a
 # TStreamerInfo with fCheckSum 0, without which SchemaEvolution.md 3.1 could not
 # be written. It also turned out to be the only file carrying a `set` with the
 # pre-5.34/13 fSTLtype, which caught a reader bug (Collections.md 1, invariant 10).

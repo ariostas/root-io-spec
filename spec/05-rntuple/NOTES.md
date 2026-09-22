@@ -269,7 +269,7 @@ Two things this is **not**. It is not a format question: the document's `std::ma
 paragraph is a collection parent over a `std::pair<K, V>` child named `_0`, which
 is `std::vector<std::pair<K,V>>`'s shape and is consistent with everything else
 audited. And it is not necessarily a bug in RNTuple — the path taken here is the
-interpreted one, and ACLiC on this machine cannot compile a comparison (`CLAUDE.md`
+interpreted one, and ACLiC on this machine cannot compile a comparison (`AGENTS.md`
 records why). What it is, is a reason the `std::map` row above says *source only*,
 and a candidate worth reporting with that caveat attached: `PLAN.md` §7.1 item 10.
 

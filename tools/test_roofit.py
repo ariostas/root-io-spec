@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for spec/03-classes/RooFit.md, against `data/classes/roofit.root`.
 
-Every invariant of §7 is confirmed the way `CLAUDE.md` requires: by corrupting a
+Every invariant of §7 is confirmed the way `AGENTS.md` requires: by corrupting a
 copy of the fixture and checking that the corruption is caught, and under the
 right label. The fixture is written with compression off, so each corruption is
 a byte patch.
