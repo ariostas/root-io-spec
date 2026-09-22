@@ -59,8 +59,10 @@ baskets. ROOT then truncates the value and says nothing; a reader that trusts th
 counted string in the entry gets it right.
 [TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)
 
-**A basket key always uses the large-file layout**, whatever the file's size,
-because `TBasket` adds 1000 to `fVersion` unconditionally.
+**A basket key written by ROOT 4.02 or later always uses the large-file
+layout**, whatever the file's size, because `TBasket` adds 1000 to `fVersion`
+unconditionally — and **one written before 4.02 never does**. Take the width
+from the key's own `fVersion`, as for any other key.
 [TBasket §1](../04-ttree/TBasket.md#1-a-basket-is-a-key-with-extra-fields)
 
 ## 2. Framing

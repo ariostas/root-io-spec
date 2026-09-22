@@ -1435,6 +1435,17 @@ class Decoder:
             _, end = _counted_string(self.buf, offset)
             return Value(name="TString", ftype=65, start=offset, end=end,
                          type_name="TString")
+        if cls == "TObject":
+            # A TObject stored as an object in its own right -- a record, or a
+            # slot whose class is TObject -- is exactly the base of Buffer.md 7:
+            # a bare version word, fUniqueID, fBits and a pidf when referenced.
+            # TObject::Streamer writes no byte count and there is no separate
+            # base inside it; taking the generic path read a version word here
+            # and then a TObject base after it, two bytes past the end.
+            # Buffer.md 2.3, found by serialization/unframed-records.
+            base = read_tobject(self.buf, offset)
+            return Value(name="TObject", ftype=66, start=offset, end=base.end,
+                         type_name="TObject", tobject=base)
         if cls == "TQObject":
             # Reads nothing and writes nothing, in either direction
             # (root/core/base/src/TQObject.cxx:1033-1040). A kBase element for it

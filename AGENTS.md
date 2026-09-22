@@ -67,7 +67,7 @@ designed around to get a ranked list of what is still missing, rather than guess
 from `PLAN.md`:
 
 ```sh
-tools/fetch_foreign.py                      # 155 third-party files, 22 MB, to build/foreign/
+tools/fetch_foreign.py                      # 156 third-party files, 22 MB, to build/foreign/
 tools/coverage_probe.py --summary build/foreign/*.root
 ```
 

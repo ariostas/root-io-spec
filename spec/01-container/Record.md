@@ -232,6 +232,36 @@ rejects a value below 64 or beyond the file size
 > top-level keys have 100; keys inside `alpha` have 401, which is `alpha`'s own
 > record offset; keys inside `alpha/beta` have 610.
 
+**One historical exception: an RNTuple blob key written into a caller's file
+before ROOT 6.36 names itself.** RNTuple writes its payload records itself rather
+than through `TKey` ([RNTuple notes §1](../05-rntuple/NOTES.md)), by one of two
+writers. The one that owns the whole file always passed `fBEGIN`. The one that
+writes into a `TFile` the caller opened — `RNTupleWriter::Append` — passed the
+key's **own offset** as its directory, so that every `RBlob` key it wrote has
+`fSeekPdir == fSeekKey`: at tag `v6-34-00`,
+`tree/ntuple/v7/src/RMiniFile.cxx` line 1025 reads
+`RTFKey keyHeader(offset, offset, ...)` in `RFileProper::WriteKey`, against
+`WriteKey(..., 100, kBlobClassName)` for the other writer at lines 1178 and
+1254. ROOT fixed it in commit `5fe8a99942` (2024-11-29, *"fSeekKey and fSeekPdir
+were set to the same offset"*), first released in **6.36.00** and never
+backported; the pinned release writes `RTFHeader::kBEGIN`
+(`root/tree/ntuple/src/RMiniFile.cxx:963`).
+
+So a reader of files from ROOT 6.34, or from a 6.35 development build before that
+commit, meets `RBlob` keys whose `fSeekPdir` is their own offset. Nothing reads it:
+ROOT locates every RNTuple byte through the anchor and the page list, never
+through a blob key's directory, which is why the files open without complaint. A
+reader MUST NOT reject them, and MUST NOT follow the pointer.
+
+> Witnessed by `Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root` of
+> the foreign corpus (`gen/foreign/MANIFEST.sha256`), ROOT 6.35/01: all four
+> `RBlob` keys, at 322, 801, 26533 and 26712, have `fSeekPdir` equal to their own
+> offset, while the anchor and every other key in the same file have 100. No
+> fixture can carry it — the pinned ROOT no longer writes it — and none of the 23
+> RNTuple files in `root/roottest/` does either: they come from the other writer
+> or from after the fix. `RNTuple.root` of the CERN corpus is also 6.35/01 and
+> points at 100, which is the same split.
+
 ### 3.7 `fDatime`
 
 Local wall-clock time when the key was created, packed into 32 bits
@@ -439,7 +469,8 @@ Apart from the large layout, the fixed part of the key has not changed since
 5. `fObjlen >= 0` and `fKeylen <= INT_MAX - fObjlen`
    (`root/io/io/src/TKey.cxx:84-93`).
 6. `fSeekPdir`, after masking, is either 0 — only for the top-level record — or
-   the offset of a record that parses as a directory.
+   the offset of a record that parses as a directory, **or**, for an `RBlob` key
+   in a file written before ROOT 6.36, the key's own offset (§3.6).
 7. `fVersion` is one of 1, 2, 3, 4, 1002, 1003, 1004.
 8. Consecutive records and free spans tile `[fBEGIN, fEND)` exactly, with no
    overlap and no unaccounted bytes.

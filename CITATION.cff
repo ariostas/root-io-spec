@@ -17,7 +17,7 @@ abstract: >-
   ROOT's source under human direction, which is tractable only because every claim
   is verified twice by machine: against a pinned ROOT release with a path:line
   citation, and against real bytes in a committed reference file. The invariants
-  of each layer run over 227 ROOT files this project did not write.
+  of each layer run over 228 ROOT files this project did not write.
 keywords:
   - ROOT
   - TFile

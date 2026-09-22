@@ -30,8 +30,8 @@ Of the `custom` and `extending` classes, which are the ones a reader must know:
 
 | Status | Count |
 |---|---|
-| `specified` | 40 |
-| `gap` | 15 |
+| `specified` | 43 |
+| `gap` | 12 |
 | `not-persisted` | 5 |
 | `out-of-scope` | 6 |
 <!-- END GENERATED -->
@@ -122,9 +122,9 @@ fails on one that is not. `gap` is the worklist.
 | `TFile` | `root/io/io/src/TFile.cxx:2458` | specified | [File header](../01-container/FileHeader.md) |
 | `TGenCollectionProxy` | `root/io/io/src/TGenCollectionProxy.cxx:1431` | not-persisted | [Collections](../02-serialization/Collections.md) |
 | `TGenCollectionStreamer` | `root/io/io/src/TGenCollectionStreamer.cxx:1389` | not-persisted | [Collections](../02-serialization/Collections.md) |
-| `TGraphEdge` | `root/graf2d/gviz/src/TGraphEdge.cxx:215` | gap | graf2d/gviz |
-| `TGraphNode` | `root/graf2d/gviz/src/TGraphNode.cxx:163` | gap | graf2d/gviz |
-| `TGraphStruct` | `root/graf2d/gviz/src/TGraphStruct.cxx:307` | gap | graf2d/gviz |
+| `TGraphEdge` | `root/graf2d/gviz/src/TGraphEdge.cxx:215` | specified | [Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one) |
+| `TGraphNode` | `root/graf2d/gviz/src/TGraphNode.cxx:163` | specified | [Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one) |
+| `TGraphStruct` | `root/graf2d/gviz/src/TGraphStruct.cxx:307` | specified | [Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one) |
 | `TKey` | `root/io/io/src/TKey.cxx:1387` | specified | [Records and keys](../01-container/Record.md) |
 | `TList` | `root/core/cont/src/TList.cxx:1323` | specified | [Streamer information §4](../02-serialization/StreamerInfo.md#4-tlist) |
 | `TMap` | `root/core/cont/src/TMap.cxx:360` | specified | [TMap, TExMap and TBtree](../03-classes/Containers.md) |

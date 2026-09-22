@@ -29,6 +29,10 @@ KNOWN_KEY_VERSIONS = {1, 2, 3, 4, 1002, 1003, 1004}
 #: of sealed pages rather than one object.
 RBLOB_CLASS = "RBlob"
 
+#: Record.md 3.6: the first release whose RNTuple writer stopped pointing an
+#: RBlob key's fSeekPdir at the key itself (commit 5fe8a99942).
+RBLOB_PDIR_FIXED = (6, 36, 0)
+
 #: kNBytesPageChecksum, root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74.
 RN_PAGE_CHECKSUM = 8
 
@@ -528,6 +532,14 @@ class Checker:
             if rec.seek_pdir == 0:
                 if rec.offset != self.header.begin:
                     self.bad("Record 8.6", f"fSeekPdir 0 on a record at {rec.offset}")
+            elif (rec.class_name == RBLOB_CLASS and rec.seek_pdir == rec.offset
+                    and self.header.root_version < RBLOB_PDIR_FIXED):
+                # Record.md 3.6: RNTuple's RFileProper writer passed the key's
+                # own offset as its directory until ROOT commit 5fe8a99942,
+                # first released in 6.36.00. Scoped to that class, that value
+                # and those releases -- a self-pointing key anywhere else, or
+                # from a later ROOT, still fails.
+                pass
             else:
                 parent = self.at(rec.seek_pdir)
                 if parent is None or rootfile.read_directory(self.buf, parent) is None:
@@ -552,7 +564,18 @@ class Checker:
     UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket",
                  # RooLinkedList::Streamer calls WriteVersion with no byte
                  # count and then writes a whole object. Buffer.md 2.3.
-                 "RooLinkedList"}
+                 "RooLinkedList",
+                 # The rest of Buffer.md 2.3's list, which until 2026-09-22 this
+                 # set did not follow: TDatime was "described by hand" below and
+                 # yet made to open with a byte count here, and a TDatime record
+                 # in a ROOT-written file (go-hep's tdatime.root) failed 9.2 for
+                 # it. TStringLong and TQObject were in the same position and
+                 # would have failed the same way. Each one's payload is still
+                 # checked -- StreamerDriven 10.1 requires the hand-written shape
+                 # rootfile.Decoder.read_object gives it to consume the payload
+                 # exactly -- so this exempts them from a count, not from a check.
+                 # serialization/unframed-records writes all five as records.
+                 "TDatime", "TString", "TStringLong", "TObject", "TQObject"}
                 | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
     # Classes whose records this reader cannot decode, each with the reason,

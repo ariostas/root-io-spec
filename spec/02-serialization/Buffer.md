@@ -90,32 +90,61 @@ not distinguish the two cases.
 ### 2.3 A record's object data does not always begin with one
 
 Most record payloads open with a byte count, because most classes are written
-through `WriteClassBuffer`, which asks for one. Two kinds do not:
+through `WriteClassBuffer`, which asks for one. These do not, and **for ROOT
+6.40.04 the list is complete**: every hand-written `Streamer` of a class ROOT
+persists — the 55 that `spec/99-appendix/streamers.toml` marks `specified` or
+`gap` — was read for what its write branch emits first, and these are all of
+the ones that emit something other than a byte count.
 
-- the container's own bookkeeping — the root directory record, the key lists,
-  the free list — which is not a streamed object at all
-  ([Record](../01-container/Record.md));
-- a class whose hand-written streamer calls `WriteVersion` without requesting a
-  byte count. `TObject` does this for its base
-  (`root/core/base/src/TObject.cxx:1022`), and `TRef` writes **nothing else**,
-  so a `TRef` stored as a record of its own has a 12-byte payload whose first
-  word is a version. `RooLinkedList` is the same choice around a whole object —
-  a version word, a `TObject` base, a count, that many object slots and a
-  `TString`, with nothing delimiting any of it
-  (`root/roofit/roofitcore/src/RooLinkedList.cxx:913`);
-- a class whose hand-written streamer writes no version word either. A `TArray`
-  payload begins with its element **count**
-  ([TArray §1](../03-classes/TArray.md#1-layout));
-- a `TBasket`, whose payload is not a serialized object at all. It is the
+- **The container's own bookkeeping** — the root directory record, the key
+  lists, the free list — which is not a streamed object at all
+  ([Record](../01-container/Record.md)).
+- **A version word and no byte count.** `TObject` writes its version this way
+  (`root/core/base/src/TObject.cxx:1022`), so a `TObject` stored as a record of
+  its own is **the 10-byte base of §7 and nothing else** — one version word, not
+  a version word for the class and another for its base. `TRef` adds only a
+  `pidf`, so its record is 12 bytes whose first word is a version.
+  `RooLinkedList` is the same choice around a whole object — a version word, a
+  `TObject` base, a count, that many object slots and a `TString`, with nothing
+  delimiting any of it (`root/roofit/roofitcore/src/RooLinkedList.cxx:913`).
+  `TClassTree` too: a bare version word, then a framed `TNamed` and its own
+  members (`root/graf2d/gpad/src/TClassTree.cxx:1143-1144`).
+- **No version word either.** A `TArray` payload begins with its element
+  **count** ([TArray §1](../03-classes/TArray.md#1-layout)). A `TDatime` is its
+  packed `fDatime` and nothing else — **four bytes**
+  (`root/core/base/src/TDatime.cxx:415-422`, layout in
+  [Record §3.7](../01-container/Record.md#37-fdatime)). A `TString` is a bare
+  counted string ([Conventions §5.1](../00-conventions.md#51-counted-string)),
+  and a `TStringLong` an `i32` length and that many bytes
+  (`root/core/base/src/TStringLong.cxx:131-147`). A `TKey` stored as an object
+  is a key header written raw (`root/io/io/src/TKey.cxx:1387`); no fixture here
+  has one.
+- **Nothing at all.** `TQObject::Streamer` writes nothing in either direction
+  (`root/core/base/src/TQObject.cxx:1033-1040`), so a `TQObject` stored as a
+  record is a key whose `fObjlen` is **0** over an empty payload. The three
+  graph-visualisation classes `TGraphEdge`, `TGraphNode` and `TGraphStruct` are
+  the same (`root/graf2d/gviz/src/TGraphStruct.cxx:307`).
+- **A `TBasket`**, whose payload is not a serialized object at all. It is the
   concatenated entry data of one branch, and what frames each entry — if
   anything — is decided by that branch. See [TBasket](../04-ttree/TBasket.md).
+
+> **`TDatime` was missing from this list until 2026-09-22**, although
+> [Record §3.7](../01-container/Record.md#37-fdatime) described its bytes and this
+> project's reader already decoded it: a `TDatime` stored as a record in a
+> ROOT-written file of go-hep's test corpus was rejected by the framing check for
+> having no byte count. Reading every hand-written `Streamer` once, rather than
+> adding the one name, found `TStringLong` and `TQObject` in the same position
+> and `TObject` misread by the reader itself (`PLAN-corpus.md` C3).
 
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
 > `fObjlen` 12 and its payload begins `00 01` — the `TObject` version word —
 > where every other object record in that file begins `40 00`. And by
 > `classes/tarray`, whose eight records begin with an `i32` count. And by
 > `classes/roofit`, whose `RooLinkedList` record at 977 begins `00 03` and runs
-> 93 bytes with no byte count anywhere in it.
+> 93 bytes with no byte count anywhere in it. And by
+> `serialization/unframed-records`, which writes five of the others as records of
+> their own: a `TDatime` of 4 bytes, a `TString` of 6, a `TStringLong` of 17, a
+> `TObject` of 10 beginning `00 01`, and a `TQObject` of **0**.
 
 **And on a file older than ROOT 5, an ordinary class's payload may have no byte
 count either.** The leading byte count that `WriteClassBuffer` requests today was
@@ -406,8 +435,9 @@ back-reference — rejects a file ROOT reads without complaint.
 > Found in `uproot-issue413.root` from the foreign corpus of `PLAN.md` §9.8: a
 > `TTree`'s `fLeaves` of six entries, each `40 00 00 04` and a tag, 48 bytes where
 > 24 would do. The file was not written by ROOT — its basket keys use the small
-> form, which ROOT never writes ([TBasket §1](../04-ttree/TBasket.md)), and the
-> branch names are Go type spellings, so most likely groot
+> form, which ROOT has not written since 4.02 while the file's header names
+> 6.18/04 ([TBasket §1](../04-ttree/TBasket.md)), and the branch names are Go
+> type spellings, so most likely groot
 > (`gen/foreign/IGNORE.toml`) — but ROOT reads it, so a reader of other people's
 > files should too.
 

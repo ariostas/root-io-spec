@@ -11,6 +11,15 @@
 # TStreamerInfo with fCheckSum 0, without which SchemaEvolution.md 3.1 could not
 # be written. It also turned out to be the only file carrying a `set` with the
 # pre-5.34/13 fSTLtype, which caught a reader bug (Collections.md 1, invariant 10).
+#
+# A second was added on 2026-09-22 for the same kind of reason:
+# Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root is the only
+# witness anywhere to Record.md 3.6's historical exception -- RBlob keys whose
+# fSeekPdir is their own offset, written by RNTuple's RFileProper writer before
+# ROOT 6.36. The pinned ROOT cannot write it, and none of root/roottest/'s 23
+# RNTuple files carries it (PLAN-corpus.md C4). It is the first RNTuple file in
+# this manifest; the rest of scikit-hep-testdata's RNTuple tier is C13.
+6a71d6ca866b76c8d89689dfce2cc402aecd2aea0ff03a650db9fe78e60b8385      27643  6.35/01     Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root
 f37250be474fcd8d3c4e51883a3bb25990e5508a619e0c962f416245870e20c7      30847  6.18/04     issue367b.root
 c14a29b25b15b837226f396e920b5d9fb134f3558bef5b0a9db5d6d9606c5f3a     377623  6.22/08     nanoAOD_2015_CMS_Open_Data_ttbar.root
 89f570c50531955ec3555e95a7a48f0c070fd1e7808aab0cb2533ba96ef2f3d2       5266  6.30/02     string-example.root

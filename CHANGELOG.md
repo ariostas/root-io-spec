@@ -11,6 +11,30 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction: the list of records that do not open with a byte count was
+  incomplete, and is now complete.**
+  [`Buffer.md` §2.3](spec/02-serialization/Buffer.md) listed the container's
+  bookkeeping, `TRef`, `RooLinkedList`, `TArray` and `TBasket`. It left out a
+  `TDatime` stored as a record -- four bytes, the packed date and nothing else --
+  which a ROOT-written file in go-hep's test corpus does, and which a reader
+  following §2.3 rejects. Rather than add the one name, every hand-written
+  `Streamer` of a class ROOT persists was read for what it writes first, and the
+  list is now all of them, by shape: a version word with no count (`TObject`,
+  `TClassTree` as well as those already listed), no version word either
+  (`TDatime`, `TString`, `TStringLong`, `TKey`), or **nothing at all** --
+  `TQObject` and the three `graf2d/gviz` classes, whose record is a key with
+  `fObjlen` 0. A `TObject` stored as a record is the 10-byte base alone, one
+  version word, not one for the class and another for a base.
+
+- **Correction, for a reader of files from ROOT 6.34: an RNTuple blob key's
+  `fSeekPdir` may name the key itself.**
+  [`Record.md` §3.6](spec/01-container/Record.md) said `fSeekPdir` is 0 or a
+  directory. RNTuple's writer for appending into an already-open `TFile` passed
+  the key's own offset instead, until ROOT commit `5fe8a99942`, first released in
+  6.36.00. A reader must accept such a key and must not follow the pointer --
+  ROOT never does; it reaches RNTuple's bytes through the anchor and the page
+  list. Files RNTuple wrote on its own were never affected.
+
 - **Correction, and it changes what a correct reader does: a basket does not
   always use the large key layout.**
   [`TBasket.md` §1](spec/04-ttree/TBasket.md) said it always does, on the strength

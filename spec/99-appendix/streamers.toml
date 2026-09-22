@@ -194,16 +194,19 @@ status = "gap"
 note = "graf2d/gpad"
 
 [class.TGraphEdge]
-status = "gap"
-note = "graf2d/gviz"
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
 
 [class.TGraphNode]
-status = "gap"
-note = "graf2d/gviz"
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
 
 [class.TGraphStruct]
-status = "gap"
-note = "graf2d/gviz"
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
 
 # ---------------------------------------------------------- not persistable --
 

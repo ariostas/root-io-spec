@@ -1,0 +1,177 @@
+id   = "serialization/unframed-records"
+file = "data/serialization/unframed-records.root"
+size = 1042
+
+description = """
+**Five records whose payload does not open with a byte count**, each written as a
+record of its own by the pinned ROOT: the rest of
+[Buffer §2.3](../../../spec/02-serialization/Buffer.md)'s list, which no fixture had
+written this way. `WriteClassBuffer` asks for a byte count, so a class with a
+generated streamer always has one; these five have hand-written streamers that
+do not, and each record is exactly what its source line writes:
+
+| Record | Payload | Streamer |
+|---|---|---|
+| `TDatime` at 276 | **4** bytes, `7e 6c c0 00` -- the packed date | `root/core/base/src/TDatime.cxx:415` |
+| `TString` at 322 | **6** bytes, a bare counted string | `root/core/base/src/TString.cxx:1418` |
+| `TStringLong` at 371 | **17** bytes, an `i32` 13 and 13 characters | `root/core/base/src/TStringLong.cxx:131` |
+| `TObject` at 439 | **10** bytes, `00 01` then `fUniqueID` and `fBits` | `root/core/base/src/TObject.cxx:994` |
+| `TQObject` at 509 | **0** bytes -- a key over nothing | `root/core/base/src/TQObject.cxx:1033` |
+
+**Why the case exists.** A ROOT-written file in go-hep's corpus, `tdatime.root`,
+stores a `TDatime` as a record, and `check_invariants.py` rejected it with
+`Buffer 9.2: payload of 4 bytes ... is too short for a byte count and a version`.
+§2.3 left `TDatime` out, and the checker agreed with §2.3 rather than with the
+reader, which already decoded the class by hand. Rather than add one name, every
+hand-written `Streamer` of a persisted class was read once for what its write
+branch emits first; that is what §2.3's list is now, and it found two more
+classes in the same position (`TStringLong`, `TQObject`) and one this project's
+reader got wrong.
+
+**The reader bug is the `TObject` record.** `rootfile.Decoder.read_object` sent
+`TObject` down the generic path, which reads a version word for the class and
+then a `TObject` base after it -- two version words -- and so consumed 12 bytes
+of this 10-byte payload. But `TObject` is the base: §7's
+`version fUniqueID fBits [pidf]` is the whole record.
+
+**The `TDatime` value is deterministic** because the macro gives it a literal
+date. `0x7E6CC000` is `(2026-1995)<<26 | 9<<22 | 22<<17 | 12<<12`, 2026-09-22
+12:00:00, by [Record §3.7](../../../spec/01-container/Record.md)'s packing.
+
+**`TQObject` is the one to test a reader's edge cases against.** Its key has
+`fObjlen` 0 and `fNbytes == fKeylen`, so the payload is empty. §1's
+compression test (`fObjlen > fNbytes - fKeylen`, i.e. `0 > 0`) correctly calls
+it raw; a reader that divides by `fObjlen` or reads one byte to sniff a magic does
+not survive it.
+
+None of the five has a streamer info: the `StreamerInfo` record at 554 is an
+empty `TList`. Compression is off so every payload is readable in place.
+"""
+
+spec = [
+  "spec/02-serialization/Buffer.md",
+  "spec/01-container/Record.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 276
+nbytes = 46
+class  = "TDatime"
+role   = "fDatime and nothing else"
+[[records]]
+offset = 322
+nbytes = 49
+class  = "TString"
+role   = "a bare counted string"
+[[records]]
+offset = 371
+nbytes = 68
+class  = "TStringLong"
+role   = "an i32 length and the characters"
+[[records]]
+offset = 439
+nbytes = 70
+class  = "TObject"
+role   = "the 10-byte base of Buffer 7, and nothing else"
+[[records]]
+offset = 509
+nbytes = 45
+class  = "TQObject"
+role   = "fObjlen 0: a key over an empty payload"
+
+# -- TDatime. Buffer.md 2.3, Record.md 3.7 -----------------------------------
+
+[[bytes]]
+name = "TDatime: fObjlen 4 -- no byte count, no version word"
+offset = 282
+type = "i32"
+value = 4
+
+[[bytes]]
+name = "TDatime: the whole payload is fDatime, 2026-09-22 12:00:00 packed"
+offset = 318
+type = "u32"
+value = 0x7E6CC000
+
+# -- TString. Buffer.md 2.3, Conventions 5.1 ---------------------------------
+
+[[bytes]]
+name = "TString: fObjlen 6 -- a length byte and five characters"
+offset = 328
+type = "i32"
+value = 6
+
+[[bytes]]
+name = "TString: the payload is a counted string and nothing else"
+offset = 365
+type = "string"
+value = "hello"
+
+# -- TStringLong. Buffer.md 2.3 ----------------------------------------------
+
+[[bytes]]
+name = "TStringLong: fObjlen 17 -- a 4-byte length and 13 characters"
+offset = 377
+type = "i32"
+value = 17
+
+[[bytes]]
+name = "TStringLong: an i32 length, not TString's length byte"
+offset = 422
+type = "i32"
+value = 13
+
+[[bytes]]
+name = "TStringLong: and the characters, bare"
+offset = 426
+type = "bytes"
+value = "a long string"
+
+# -- TObject. Buffer.md 2.3 and 7 --------------------------------------------
+
+[[bytes]]
+name = "TObject: fObjlen 10 -- one version word, not one for the class and one for a base"
+offset = 445
+type = "i32"
+value = 10
+
+[[bytes]]
+name = "TObject: the version word, with no byte count before it"
+offset = 499
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "TObject: fUniqueID"
+offset = 501
+type = "u32"
+value = 0
+
+[[bytes]]
+name = "TObject: fBits, with kIsOnHeap and kNotDeleted masked off and kIsReferenced clear, so no pidf follows"
+offset = 505
+type = "u32"
+value = 0
+
+# -- TQObject. Buffer.md 2.3 -------------------------------------------------
+
+[[bytes]]
+name = "TQObject: fNbytes 45"
+offset = 509
+type = "i32"
+value = 45
+
+[[bytes]]
+name = "TQObject: fObjlen 0 -- its Streamer writes nothing"
+offset = 515
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "TQObject: fKeylen 45, equal to fNbytes, so the payload is empty"
+offset = 523
+type = "i16"
+value = 45

@@ -1,7 +1,10 @@
 # PLAN-corpus — six external resources, surveyed 2026-09-22
 
-**Status: open. C1 and C2 discharged 2026-09-22**, both with a fixture and a
-source citation; C5–C7, C3–C4 and the rest stand. The survey is done; this plan
+**Status: open. C1–C4 discharged 2026-09-22** — the four defects in published
+prose, so `PLAN.md` §8.1 criterion 1 is met again. Every one has a source
+citation; the bytes are a new fixture for C1 and C3, 12 385 basket keys in
+`root/roottest/` for C2, and for C4 the only witness there is, now a
+`gen/foreign/` file. C5–C7 and the rest stand. The survey is done; this plan
 orders what to do about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
@@ -49,8 +52,8 @@ the first task of such an item is to reproduce it.
 |---|---|---|---|
 | C1 | A compressed RNTuple page's block chain does **not** fill the record payload | `check_invariants.py` on 4 files → exit 1, 6 failures; gap exactly 8 bytes in each `9.2` case (488/496, 3686/3694) | **✅ discharged**, and cited: `RPageStorage.hxx:74`, `RPageStorage.cxx:751` |
 | C2 | A basket does **not** always use the large key layout | census of every `TBasket` key in `root/roottest/`, 62 ROOT releases | **✅ discharged**; the boundary is ROOT 4.02, and the commit that moved it is `3970c0bead` |
-| C3 | `Buffer.md` §2.3's unframed-class list omits `TDatime` | one file, `tdatime.root`, in go-hep's corpus | **Reported** — reproduce before acting |
-| C4 | `Record.md` §8.6 is false for ROOT 6.34/6.35 RNTuple blob keys | one file; agent traced the fix to `RMiniFile.cxx:963` in the pinned release | **Reported** — reproduce before acting |
+| C3 | `Buffer.md` §2.3's unframed-class list omits `TDatime` | reproduced (`Buffer 9.2`, exit 1), then a census of every persisted hand-written `Streamer` | **✅ discharged** — and the census found two more classes and a reader bug |
+| C4 | `Record.md` §8.6 is false for ROOT 6.34/6.35 RNTuple blob keys | reproduced (4 × `Record 8.6`), and the fix found by `git log -S`: `5fe8a99942`, first in 6.36.00 | **✅ discharged** — scoped to one writer, not to all RNTuple files |
 | C5 | `check_invariants.py` resolves a base class by name, not `fBaseVersion` | read at `check_invariants.py:846`; symptom is 34 failures on one file | **Reported** — the line is real, the consequence is not reproduced |
 | C8 | `skim.root` is the only file anywhere with version-3 `TStreamerElement` | census over 273 files: v4 28 844, v2 7 377, **v3 426, all in one file** | **Reported** — file confirmed present in the submodule |
 | C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here** |
@@ -179,7 +182,53 @@ rests its diagnosis on "ROOT adds 1000 unconditionally" — the conclusion is
 probably still right, since that file claims a modern release, but the stated
 ground needs the version qualifier or the entry is unsound.
 
-### C3. `Buffer.md` §2.3 omits `TDatime` — reported, reproduce first
+### C3. `Buffer.md` §2.3 omits `TDatime` — ✅ discharged 2026-09-22
+
+**Done**: `Buffer.md` §2.3 is now a **complete** list for 6.40.04, organised by
+what each class writes first; `check_invariants.py`'s `UNFRAMED` agrees with it;
+`rootfile.py` reads a `TObject` record correctly; `serialization/unframed-records`
+writes five of the classes as records, 14 assertions, portable (the arm64
+libstdc++ container reproduces the digest).
+
+**Reproduced first**, as §1 required: `Buffer 9.2: payload of 4 bytes at 244`,
+exit 1, on go-hep's `tdatime.root`. Then the question was asked once rather than
+answered one name at a time: every hand-written `Streamer` of the 55 persisted
+classes in `streamers.toml`, read with `inventory.py`'s own scanner for what its
+write branch emits first. The heuristic flagged `TRef` and `TVirtualStreamerInfo`
+falsely — both delegate to a streamer that frames — so every unframed row was
+then read by hand. What that found:
+
+- **The actual bug was an inconsistency, not a missing name.** The checker
+  declared `TDatime` *described by hand* — so the framing check ran on it — and
+  did not exempt it from needing a byte count. `TStringLong` and `TQObject` were
+  in exactly the same position and would have failed the first time either
+  appeared as a record.
+- **`rootfile.py` misread a `TObject` record** — found by the fixture, not the
+  survey. It took the generic path, reading a version word for the class and then
+  a `TObject` base after it, and consumed 12 bytes of a 10-byte payload. It
+  changes nothing over either corpus (checked by re-running the probe with the
+  previous reader), so no `TObject` record had occurred in one.
+- **Three `gap` classes were never gaps.** `TGraphEdge`, `TGraphNode` and
+  `TGraphStruct` have `Streamer`s with empty bodies, so their specification is
+  "nothing", which §2.3 now states. `streamers.toml` 15 gaps → 12, and "ten
+  narrow classes" → seven wherever the front pages and `PLAN.md` said it.
+- **`TQObject` as a record is a key with `fObjlen` 0** — an edge case worth
+  having in a fixture: §1's compression test calls it raw, correctly, and a
+  reader that sniffs one byte for a magic does not survive it.
+- **Two C2 leftovers were still in the text**: `Buffer.md` §6.1 called
+  small-form basket keys something "ROOT never writes", and `Pitfalls.md` said
+  "a basket key always uses the large-file layout". Both are scoped now. C2's
+  sweep had looked for the claim in `TBasket.md` and missed the restatements.
+
+Each exempted class is still **checked**: `StreamerDriven 10.1` requires the
+hand-written shape to consume the payload exactly, and corrupting the fixture's
+`TString` length, `TStringLong` length or `TObject` `fBits` (setting
+`kIsReferenced`) each fails. `TDatime` (always 4 bytes) and `TQObject` (always 0)
+have no internal length to corrupt; only their key can be wrong, and the
+container invariants own that.
+
+---
+
 
 `tdatime.root` (go-hep, 7 209 B, ROOT 6.24/06, generated by a committed ROOT
 macro) is the only invariant failure in that corpus from a ROOT-written file:
@@ -201,7 +250,43 @@ any other class in `inventory.py`'s 187 hand-written Streamers has the same shap
 and is likewise absent — the census exists, so this should be asked once and
 answered for all of them rather than one class at a time.
 
-### C4. `Record.md` §8.6 needs a ROOT 6.34/6.35 exception — reported
+### C4. `Record.md` §8.6 needs a ROOT 6.34/6.35 exception — ✅ discharged 2026-09-22
+
+**Done**: `Record.md` §3.6 states the exception with its history and invariant 6
+is scoped to it; `check_invariants.py` accepts exactly that shape; the witness is
+in `gen/foreign/`.
+
+**The scope is one writer, not RNTuple.** `git log -S` on the submodule finds the
+fix, `5fe8a99942` (2024-11-29, *"fSeekKey and fSeekPdir were set to the same
+offset"*), first released in **6.36.00** and never backported. Its title names
+`RFileProper` — the writer that appends into a `TFile` the caller opened — and
+6.34's source confirms the other writer, `RFileSimple`, always passed 100
+(`v6-34-00` `RMiniFile.cxx` lines 1178 and 1254, against 1025). That is why
+`RNTuple.root` in the CERN corpus, also 6.35/01, was never flagged. The checker's
+exception is scoped to all three facts at once — class `RBlob`, `fSeekPdir` equal
+to the key's own offset, writing release below 6.36 — and each was corrupted
+separately: the witness claiming 6.36/00 fails all four keys, and an anchor made
+to point at itself fails.
+
+**The witness is outside, and there is no way round that.** The pinned ROOT can no
+longer write the shape, and none of the 23 RNTuple files in `root/roottest/`
+carries it — they come from the other writer or from after the fix. So
+`Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root`, 27 643 bytes from
+scikit-hep-testdata (upstream bytes matched), joins `gen/foreign/MANIFEST.sha256`
+with its reason in the header, as `uproot-issue283.root` did. It fails nothing
+else, so the corpus stays at 0 failures over **156** files — and it is the first
+RNTuple file there, so C13 has begun.
+
+**Adding it exposed two stale things, both now fixed.** `coverage_probe.py` wrote
+the whole file off as not walkable because one multi-page `RBlob` could not be
+decompressed; a record that cannot be decompressed is now one blocked record.
+And `PLAN.md` §9.8's probe figures were stale since this morning's RooFit commit
+`5d6a95b`, which decoded two records on the foreign side too — re-running the
+probe with the tools as they were before that commit reproduces the old figures
+exactly, which is how the two moves were told apart rather than lumped together.
+
+---
+
 
 §8.6 says `fSeekPdir` names a directory record. In one 27 KB RNTuple file every
 `RBlob` key has **`fSeekPdir` equal to its own offset**. Reported diagnosis:
@@ -421,8 +506,7 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 ## 11. Order
 
-~~C1–C4 first, and C1 and C2 before C3 and C4~~ — **C1 and C2 are done**. C3 and
-C4 are next, and each begins by reproducing what one survey reported. C5–C7 fall
+~~C1–C4 first, and C1 and C2 before C3 and C4~~ — **C1–C4 are done**. C5–C7 fall
 out of C1 and are **not** closed by it: the checker now handles the shapes, but
 `rootfile.read_rntuple_anchor()` still cannot read a compressed anchor and
 `payload_range()` still overruns. `gen/cases/rntuple/compressed` is a witness for

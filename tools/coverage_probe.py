@@ -109,6 +109,20 @@ def probe(path: Path, quiet: bool = False
             reasons[f"codec: {exc}"] += 1
             show(f"{label} NO CODEC  {exc}")
             continue
+        except (rootfile.FormatError, IndexError, ValueError, struct.error) as exc:
+            # One record whose payload cannot be decompressed is one blocked
+            # record, not an unreadable file. Until 2026-09-22 this escaped to
+            # the per-file handler, so an RNTuple file with one multi-page RBlob
+            # (Compression.md 9.1) was written off whole and its other records
+            # were never measured.
+            outcome["blocked"] += 1
+            why = f"{rec.class_name}: payload not decompressible: {exc}"
+            if rec.class_name == "RBlob":
+                why = ("RBlob: more than one sealed page, which only the page "
+                       "list can place (Compression.md 9.1)")
+            reasons[why] += 1
+            show(f"{label} BLOCKED   {why}")
+            continue
         start, end = rootfile.payload_range(rec)
         decoder = rootfile.Decoder(data, rec.offset, infos, tolerant=True)
         try:

@@ -12,7 +12,8 @@ the reading side it was scoped to.
 resources found **four published claims that a ROOT-written file contradicts** —
 `Compression.md` §9 for an RNTuple page, `TBasket.md` §1's "always", `Buffer.md`
 §2.3's unframed list, `Record.md` §8.6 — so §8.1 release criterion 1, *no
-published claim is known to be wrong*, is **not met** until C1–C4 are discharged.
+published claim is known to be wrong*, was **not met** until C1–C4 were
+discharged, which they were the same day.
 It also found a witness for four open §9.1 rows, three of them in
 `root/roottest/`, which the pinned submodule has shipped since ROOT merged
 roottest in April 2025.
@@ -175,13 +176,17 @@ does:
 | `custom` | 63 | know the layout; the streamer info describes the bytes at no version |
 
 Of the 66 `custom` and `extending` — the two kinds a reader must know —
-**40 specified**, 5 never objects in a file, 6 outside scope (EVE, SOFIE, the
-SQL backend), **15 gaps**. Four of those moved from out-of-scope to specified on
+**43 specified**, 5 never objects in a file, 6 outside scope (EVE, SOFIE, the
+SQL backend), **12 gaps**. Four of those moved from out-of-scope to specified on
 2026-09-21, when RooFit came into scope (decision 8, §8.13): `RooRealVar`,
 `RooLinkedList`, `RooAbsBinning` and `RooRefArray`, in
-[`spec/03-classes/RooFit.md`](spec/03-classes/RooFit.md). The gaps are
+[`spec/03-classes/RooFit.md`](spec/03-classes/RooFit.md). Three more moved from
+gap to specified on 2026-09-22 without any new layout to write: the
+`graf2d/gviz` wrappers `TGraphEdge`, `TGraphNode` and `TGraphStruct` have
+`Streamer`s with **empty bodies**, so the whole specification of each is "nothing",
+and `Buffer.md` §2.3 says so (`PLAN-corpus.md` C3). The gaps are
 `TASImage`, `TClassTree`, `TMaterial`, `TMixture`, `TPolyLine3D`,
-`TPolyMarker3D`, `TPointSet3D`, the three `graf2d/gviz` wrappers, and five RooFit
+`TPolyMarker3D`, `TPointSet3D`, and five RooFit
 classes nothing in either corpus reaches bar one — `RooWorkspace::CodeRepo`,
 which blocks the two `RooWorkspace` records of `stressRooFit_v534_ref.root`, and
 the four `RooCFunctionNRef`. All of narrow reach; none but `CodeRepo` is
@@ -392,7 +397,7 @@ something no fixture and no other listed file does.
 | | Files | Reach | Provenance |
 |---|---|---|---|
 | `gen/cern/` | 72 — 24 core, 46 geometry, 2 physics (+8 more by range request) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
-| `gen/foreign/` | 155 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
+| `gen/foreign/` | 156 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
 
 A lead must be diagnosed against the pinned source and resolved to one of four
 things — a spec error, a missing format fact, a reader gap, or a file at fault.
@@ -447,7 +452,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Conventions | ✅ |
 | Container | ✅ all six documents |
 | Serialization | ✅ all seven documents |
-| Standard classes | ✅ the divergent set, bar ten narrow classes (§2.4) |
+| Standard classes | ✅ the divergent set, bar seven narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
 | RNTuple | ◐ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; one form left (collection proxy) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
@@ -457,7 +462,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
-is retired: phases 0–3 and 5 are complete, 4 is complete bar the ten narrow
+is retired: phases 0–3 and 5 are complete, 4 is complete bar the seven narrow
 classes, and what is left of 6 and 7 is listed in §8 by value rather than by
 phase.
 
@@ -625,7 +630,8 @@ what satisfied it:
    `PLAN-corpus.md`, with four more — and the lesson is the same one in a new
    place: all four are in populations nothing was checking, because no fixture and
    no corpus file had a compressed RNTuple page, a basket written before ROOT 4.02,
-   a `TDatime` stored as a record, or an RNTuple blob key from 6.34/6.35.
+   a `TDatime` stored as a record, or an RNTuple blob key from 6.34/6.35. All
+   four fixed the same day, two with a new fixture.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -791,7 +797,7 @@ asserting it, and the measurement moved decision 7:
   **do** carry them and do decode. Decision 7's "older files carry no streamer
   infos at all" was true of one file and wrong as a rule; the claim is now
   "specified for 4.00 and later, works in practice back to 3.04/02".
-- **`TBranch` is the only class in 227 files below a hand-written threshold.**
+- **`TBranch` is the only class in 228 files below a hand-written threshold.**
   Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
   `TLeafObject` that occurs anywhere in either corpus is above the version at
   which that class becomes streamer-info driven. That is what makes §9.1's
@@ -799,6 +805,8 @@ asserting it, and the measurement moved decision 7:
   on the front page.
 - **Of the ten `gap` classes, exactly one occurs in either corpus**: `TASImage`,
   8 records in `galaxy.root` and `gallery.root`. The other nine are named but
+  unwitnessed. *Seven since 2026-09-22*: the three `graf2d/gviz` wrappers write
+  nothing at all and are specified as such (`Buffer.md` §2.3), so six remain
   unwitnessed.
 - **GUI classes are not an out-of-scope group.** Decision 8 listed them; the M2
   extraction shows why it did not need to — `gui/gui` alone contributes 197
@@ -1088,7 +1096,7 @@ specifies, ROOT does not implement and JSROOT does, so two readers in one
 repository disagree about the type set. Deferred to the end by standing decision,
 and the natural opening for open item 1.
 
-**Not in the MVP, deliberately**: the ten narrow `custom`/`extending` classes (§2.4);
+**Not in the MVP, deliberately**: the seven narrow `custom`/`extending` classes (§2.4);
 `TGeo*` hand-review; `gen/legacy/`; the pre-ROOT-4 object layouts (decision 7);
 semantic `case.toml` assertions; `TBranchSTL` entry decoding and `kStreamLoop`
 values (§9.11). `WriterInvariants.md` is no longer on this list — it has become
@@ -2038,9 +2046,20 @@ what close that, and their coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-155 files, **0 failures**. The probe: 28485 decoded, 710 container, 7 partial,
-19 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
-locally. Re-measured 2026-09-21 after R6 added `uproot-issue283.root` and fixed
+156 files, **0 failures**. The probe: 28488 decoded, 713 container, 6 partial,
+23 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
+locally. **Re-measured 2026-09-22**, and the move is two things, measured apart:
+`5d6a95b`'s RooFit readers decoded two records here as well as in `gen/cern/`
+(+2 decoded, −1 partial, −1 blocked — the tools as they were before that commit
+reproduce the old figures exactly), which nobody had re-measured on this side;
+and `PLAN-corpus.md` C4 added a first RNTuple file, the only witness to
+`Record.md` §3.6's self-parented `RBlob` keys, whose nine records are 3 container,
+1 decoded and 5 blocked — three `RBlob`s with no streamer info, one holding
+several sealed pages (`Compression.md` §9.1), and the anchor's checksum.
+Adding it also fixed `coverage_probe.py`, which had written the whole file off as
+not walkable because one record could not be decompressed.
+
+Previously re-measured 2026-09-21 after R6 added `uproot-issue283.root` and fixed
 the `set`/`multimap` `fSTLtype` repair in `rootfile.py`: the added file accounts
 for the extra decoded records, and the repair for **five** that were partial or
 blocked before it. The triage that got there turned **10 047 failures into 0** and found
@@ -2094,7 +2113,7 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 155 files
+72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 156 files
 (4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
