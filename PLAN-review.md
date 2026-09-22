@@ -626,6 +626,36 @@ and are worth having whatever happens to the rest:
 The cost decision 8 named is accepted: RooFit in `gen/` is a new build dependency.
 Items 1 and 2 need none of it — they need bytes, which the reply asks for.
 
+**The cost turned out to be nothing.** conda-forge `root` 6.40.04, the pinned
+release, reports `root-config --has-roofit` = yes, so `gen/` can build a RooFit
+fixture with the toolchain already in use. That is what R8 does.
+
+**R8 item 1 done 2026-09-21** — and it is a **misreading, not a gap**. There is no
+doubled collection frame. The frame whose version word is 1 is
+`RooVectorDataStore::RealVector`'s own **class** frame — `ClassDef(RealVector, 1)`,
+`root/roofit/roofitcore/inc/RooVectorDataStore.h:336` — reached through the
+pointer content of `vector<RooVectorDataStore::RealVector*>`, `fCtype` 63. Both
+layers were already specified: `Collections.md` §3's table row ("a full object
+slot, class record and all") and `Buffer.md` §6. Measured on a file ROOT 6.40.04
+wrote from a three-row `RooDataSet`: the outer collection frame at record-relative
+1551 (byte count 157, version 10, count 2), the object slot at 1561, the
+`RealVector` class frame at 1600 (byte count 48, **version 1**), and `_vec`'s
+collection frame at 1606 (byte count 30, version 10, count 3) holding 0.0, 1.0,
+2.0 — the three `x` values that went in.
+
+**What was actually missing was the witness.** No file in `data/` wrote an
+object-wise collection of pointers: the only other `vector<T*>` is
+`ttree/split-ptr-collection`, where the collection is split into branches and
+never appears whole, so `Collections.md` §3's pointer row rested on the source
+alone. `serialization/pointer-collection` is that witness, and it reproduces the
+RooFit shape deliberately — `vector<PtrItem*>`, `PtrItem` at `ClassDef` version 1
+holding a `vector<double>` — so the three nested frames stand at 381, 391, 407 and
+413 of a 1375-byte file. It also pins something the review did not raise and no
+fixture showed: **the elements of a pointer collection are not of uniform length.**
+One collection of three holds a `kNewClassTag` slot, a null pointer that is four
+zero bytes with no frame at all, and a class back-reference — and nothing in the
+collection frame says which is which.
+
 The trade as it was stated when the decision was open:
 
 | | For specifying RooFit | Against |

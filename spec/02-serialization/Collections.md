@@ -124,7 +124,7 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 | `Double32_t` or `Float16_t` | **not** its natural width: 4 bytes and 3 bytes respectively — see the note below | `root/io/io/src/TGenCollectionStreamer.cxx:931-933`, `:952-953` |
 | a class | a **full framed object**: byte count, version, and a checksum if foreign | `root/io/io/src/TGenCollectionStreamer.cxx:976` |
 | `std::string` | a bare counted string | `root/io/io/src/TGenCollectionStreamer.cxx:979` |
-| pointer to a class | a full object slot, class record and all | `root/io/io/src/TGenCollectionStreamer.cxx:982` |
+| pointer to a class | a full object slot, class record and all — §3.1 | `root/io/io/src/TGenCollectionStreamer.cxx:982` |
 | a nested collection | a bare `count` and its elements — **no byte count, no version word** | §5 |
 | a map entry | key then value, **interleaved** | `root/io/io/src/TGenCollectionStreamer.cxx:1024-1110` |
 
@@ -147,6 +147,54 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 > **No reference file exercises this**, and nothing in either corpus contains such
 > a collection, so the claim rests on the source alone — recorded as a gap in
 > `PLAN.md` §9.
+
+### 3.1 Pointer content puts two frames in a row
+
+The pointer row above is the one that does not look like the others, because an
+object slot is not a member: it is byte count, class record, and *then* the
+object — and the object carries the byte count and version word every
+streamer-info-driven class carries. So a collection of pointers to a class whose
+own members include a collection reads as three frames nested inside each other:
+
+```
+bc  ver=0x000A  count        the collection frame (§2)
+  bc  tag                    the object slot (Buffer framing §6)
+    bc  ver=0x0001           the content class's own frame
+      bc  ver=0x000A  count  a collection *inside* the content class
+```
+
+**Only the outer and the innermost frames are collection frames.** The one
+between them is a class frame, and its version word is the content class's
+`ClassDef` version rather than `TStreamerInfo`'s 10. Telling them apart by the
+version word alone fails as soon as a content class is at class version 10, so
+read the nesting instead: a collection frame is the one a `TStreamerSTL` element
+sent you to, and a class frame is the one an object slot sent you to.
+
+> Demonstrated by `serialization/pointer-collection`: `fPtrs` is a
+> `vector<PtrItem*>`, `PtrItem` holds a `vector<double>`, and the four frames
+> above stand at 381, 391, 407 and 413.
+
+**The elements of a pointer collection are not of uniform length**, and the same
+three-element collection shows all three ways one can end:
+
+| Slot | First `u32` | What follows |
+|---|---|---|
+| `fPtrs[0]` | `0x4000002C`, a byte count | `kNewClassTag`, the class name, then the object |
+| `fPtrs[1]` | `0x00000000` | **nothing** — a null pointer is four bytes with no frame at all |
+| `fPtrs[2]` | `0x4000001C`, a byte count | `0x80000045`, a class back-reference, then the object |
+
+Nothing in the collection frame says which of the three any element is; only the
+first `u32` of the element does, by [Buffer framing §6](Buffer.md#6-object-slots).
+
+> This is the shape the first outside review of this specification read as a
+> **doubled collection frame** — a frame whose version word is 1 followed by an
+> ordinary collection frame, seen on `RooVectorDataStore::RealVector::_vec`
+> ([issue #1](https://github.com/ariostas/root-io-spec/issues/1) item 10). It is
+> not a second collection frame, and 1 is not a collection version: `RealVector`
+> is `ClassDef(RealVector, 1)`
+> (`root/roofit/roofitcore/inc/RooVectorDataStore.h:336`), reached through the
+> pointer content of `vector<RooVectorDataStore::RealVector*>`.
+
 
 ## 4. Member-wise
 
@@ -683,6 +731,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 | `serialization/pairs` | The six shapes a `pair<K,V>` member takes (§8.1), the empty member-wise collection (§4.3), and three distinct pairs sharing one checksum (§8.2) |
 | `serialization/collection-forms` | `std::array` of a scalar and of a class (§11), a fixed array of collections (§11.1), and a member-wise collection whose value class has a `ClassDef` (§4) |
+| `serialization/pointer-collection` | Pointer content (§3.1): the three frames in a row, and all three object-slot forms — a class name, a null pointer, and a class back-reference — in one collection |
 
 Two more are covered from the `TTree` side: `ttree/split-bitset` has a
 `std::bitset` as a member of a split branch, which is an ordinary object-wise

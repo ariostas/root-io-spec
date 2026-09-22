@@ -101,7 +101,8 @@ per-class.*
 Fixtures, roughly in the order they become useful: `serialization/basic-types`,
 `serialization/objects`, `serialization/arrays`, `serialization/pointer-forms`,
 `serialization/element-types`, `serialization/collections`,
-`serialization/collection-forms`, `serialization/pairs`,
+`serialization/collection-forms`, `serialization/pointer-collection`,
+`serialization/pairs`,
 `serialization/clones-array`, `serialization/version-zero`,
 `serialization/schema-rules`, `serialization/references`,
 `serialization/ref-variants`, `serialization/double32`.

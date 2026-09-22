@@ -655,6 +655,78 @@ class RemovingAnInfoIsCaught(unittest.TestCase):
         self.assertIn("TH1: base class TAttLine", bad[0])
 
 
+class PointerContentIsNotADoubledFrame(unittest.TestCase):
+    """Collections.md 3.1, against `data/serialization/pointer-collection.root`.
+
+    The first outside review of this specification read the two frames that
+    stand in a row before a pointer content's members as a *doubled collection
+    frame* (issue #1 item 10). They are a collection frame and a class frame,
+    and this pins both, plus the three object-slot forms one collection holds.
+    """
+
+    PATH = (Path(__file__).resolve().parents[1]
+            / "data/serialization/pointer-collection.root")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.buf, _, records = rootfile.load(cls.PATH)
+        cls.rec = next(r for r in records
+                       if not r.free and r.class_name == "PointerCollection")
+        info_rec = next(r for r in records
+                        if not r.free and r.name == "StreamerInfo")
+        cls.infos = rootfile.read_streamer_infos(
+            rootfile.object_data(cls.buf, info_rec), info_rec)
+
+    def decoder(self):
+        return rootfile.Decoder(self.buf, self.rec.offset, self.infos)
+
+    def element(self, name):
+        info = next(i for i in self.infos if i.name == "PointerCollection")
+        return next(e for e in info.elements if e.name == name)
+
+    def test_the_three_frames_nest(self):
+        # 381 the collection frame, 391 the object slot, 407 the class frame,
+        # 413 a second collection frame -- inside the content class, not beside
+        # the first one.
+        outer = rootfile.read_frame(self.buf, 381)
+        self.assertEqual((outer.version, outer.end), (10, 475))
+        inner = rootfile.read_frame(self.buf, 407)
+        self.assertEqual((inner.version, inner.end), (1, 439))
+        innermost = rootfile.read_frame(self.buf, 413)
+        self.assertEqual((innermost.version, innermost.end), (10, 439))
+        # The class frame's version word is PtrItem's ClassDef version. Telling
+        # the two kinds apart by the version word alone is what fails here.
+        self.assertNotEqual(inner.version, innermost.version)
+
+    def test_the_collection_consumes_exactly_its_byte_count(self):
+        el = self.element("fPtrs")
+        self.assertEqual(self.decoder().read_collection(el, 381), 475)
+        self.assertEqual(struct.unpack_from(">i", self.buf, 475)[0],
+                         0x7E7E7E7E)
+
+    def test_the_three_slots_end_three_different_ways(self):
+        # kNewClassTag, a null pointer, and a class back-reference, in one
+        # collection: nothing in the collection frame says which is which.
+        self.assertEqual(struct.unpack_from(">I", self.buf, 395)[0], 0xFFFFFFFF)
+        self.assertEqual(struct.unpack_from(">I", self.buf, 439)[0], 0)
+        self.assertEqual(struct.unpack_from(">I", self.buf, 447)[0], 0x80000045)
+
+    def test_a_null_element_is_four_bytes_with_no_frame(self):
+        # The slot at 439 is followed immediately by the third slot's byte
+        # count, so the null occupied four bytes and nothing else.
+        self.assertEqual(struct.unpack_from(">I", self.buf, 443)[0],
+                         0x40000000 | 28)
+
+    def test_taking_the_class_frame_for_a_collection_frame_is_caught(self):
+        # What the misreading does: treat the frame at 407 as the collection's
+        # own and read a count where PtrItem's members begin. `read_collection`
+        # is pointed at 407 rather than 381, and the byte count no longer
+        # delimits what it consumes.
+        el = self.element("fPtrs")
+        with self.assertRaises((rootfile.FormatError, struct.error)):
+            self.decoder().read_collection(el, 407)
+
+
 if __name__ == "__main__":
     unittest.main()
 

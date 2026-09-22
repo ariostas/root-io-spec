@@ -55,7 +55,7 @@ name and the UUIDs.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**79 reference files, 2021 byte-level assertions, and 1599 source citations
+**80 reference files, 2047 byte-level assertions, and 1600 source citations
 checked against the pinned submodule across 48 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also
 run over 227 files this project did not write — 155 from uproot's regression
