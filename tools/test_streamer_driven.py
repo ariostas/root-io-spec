@@ -374,7 +374,7 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
     never been wired into the checker: `data/classes/histogram.root`, which ROOT
     wrote, names `TArrayF` as a base of `TH1F` and carries no `TArrayF` info, and
     over the corpora 92 base elements and 489 inline members do the same. See
-    §6.1; PLAN-review.md R2.
+    §6.1; PLAN.md 8.13.
     """
 
     def failures(self, si, described=()):

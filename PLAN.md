@@ -1710,8 +1710,11 @@ Decision 3, §2.8, §2.9, §9.4 and Writing §4 are all updated.
 [rootfilespec](https://github.com/nsmith-/rootfilespec), a pure-Python ROOT
 reader, vendored `spec/` as a submodule, checked its own bootstrap layer against
 it, and sent back ten findings and six corroborations.
-**[`PLAN-review.md`](PLAN-review.md) orders the response**, and every item in it
-was re-checked here before it was planned.
+Every item was re-checked here — against the corpora and against our own
+reference files — **before** it was planned, which is what made three of them
+turn out to be defects rather than gaps. The response was ordered by a sub-plan,
+`PLAN-review.md`, discharged and deleted on 2026-09-22; this section is what it
+left behind.
 
 **It is not six gaps and four RooFit items; it is three defects and the rest** —
 and **all three are fixed**, on 2026-09-21, which is what puts release criterion 1
@@ -1736,7 +1739,13 @@ to be larger than the review could see from outside:
   (`kBase`, 61, 62, 63, 68) must be described, nullable pointers (64, 69) need
   not, since the pointer may be null everywhere and a non-null one names its
   class in the bytes. Restated as §6.1, wired in, and the two remaining failures
-  over 227 files are g4tools', not ROOT's.
+  over 227 files are g4tools', not ROOT's. **Wiring it up corrected a claim
+  published the same morning**: `WritingObjects.md` §8.2, written for W4, named
+  `TAtt3D` as one of six bases legitimately absent from files, resting on those
+  same two g4tools files — five of the six were right — and said the closure was
+  not checkable because the exemption is a property of ROOT's source. It is
+  checkable, because that property is *published*: the checker reads the exempt
+  set out of `spec/99-appendix/` rather than out of the submodule.
 - **`SchemaEvolution.md` §8.1 generalised from one file.** It said two duplicate
   infos differ in `kIsCompiled`; in two of the three corpus files carrying the
   duplicate, both entries have `kIsCompiled` and they differ in `kBuildOldUsed`
@@ -1772,11 +1781,13 @@ their own. Eight entries gained one; the other 68 are accounted for, 44 of them
 write-side entries that `check_write.py` enforces on our own output. Two remain
 genuinely unchecked and say so.
 
-So the tally for the review is **five false or incomplete published claims**, and
+At that point the tally was **five false or incomplete published claims**, and
 every one of them was in the population nothing was checking. That is the durable
-lesson and it is now enforced rather than remembered.
+lesson and it is now enforced rather than remembered. The final count is below;
+it went up by three, and the way each of those three was found is the interesting
+part.
 
-**A corpus discrepancy came out of R6 and is resolved as `PLAN-review.md` §4.1.**
+**A corpus discrepancy came out of R6, and was resolved the same day.**
 `build/cern/` held 72 files where `gen/cern/MANIFEST.sha256` listed 26, and the 46
 extras — the `TGeoManager` demo sweep — were already evidence in
 `StreamerInfo.md` §9.2. They are now a `geometry` tier, every row verified against
@@ -1824,7 +1835,76 @@ And two classes the review did not mention had to be specified with them, becaus
 every `RooAbsArg` reaches both: `RooAbsBinning` and `RooRefArray` (`RooFit.md`
 §4). `spec/03-classes/RooFit.md`, `gen/cases/classes/roofit` and
 `tools/test_roofit.py` are the result; 272 of the 274 RooFit records in the two
-corpora now decode.
+corpora now decode. The reader gained **six** classes it could not decode —
+`RooRealVar`, `RooLinkedList`, `RooAbsBinning`, `RooRefArray`, `RooCategory`
+below version 3, and `TRefArray` as a *member*, which had no reader here and
+blocked 392 objects on its own.
+
+**Three findings came out of building that fixture, and none of them is
+RooFit's.** All three are the same shape: an exception list one entry short.
+
+- `StreamerInfo.md` §11.2's "a member ROOT rewrote for I/O" named `TF1` and
+  `CollectionForms`; `RooAbsReal` is a third, folding
+  `unique_ptr<RooNumIntConfig,default_delete<RooNumIntConfig> >` where the info
+  records `RooNumIntConfig*`.
+- The same section's pair row said three instances in one fixture shared
+  `0x0b5fb752`. `classes/roofit`'s `pair<string,vector<int> >` carries it too —
+  a different file, a different program, a fourth layout — so the value is a
+  constant ROOT produces rather than one fixture's accident, and a global
+  checksum → info table collides on it across unrelated files.
+- A synthesised pair's element **titles** have three forms, not two:
+  libstdc++'s doc comments, libc++'s absence of them, and `Emulation` on both
+  members when the pair has no dictionary at all (`Collections.md` §8.1). That
+  is a *length* difference, which is why `classes/roofit` joined
+  `serialization/pairs` in having no portable digest — see §3.3, and §9.6 for
+  what skipping the container loop cost.
+
+**The corroborations all landed.** `uproot-issue-222.root` is `Buffer.md` §4's
+field witness — five `TAttBBox2D` bases, each a byte count of 2 over a version
+word of 0 with no checksum, on a class that genuinely declares version 0.
+`0x00D7BED2` is in `Collections.md` §8.2 and turned out to be the *opposite*
+witness to the one expected: it recomputes exactly, so it is evidence that the
+usual pair is sound, which is what makes the rule necessary rather than
+optional. `uproot-issue-407.root` had already landed with R6. On the
+`ROOT::TIOFeatures` count, the review finds four files and this project measured
+three, and both are right: their fourth is not in `gen/foreign/` and does not
+earn a place, which §8.1 now says.
+
+**One correction was found by neither a check nor the review.** `Buffer.md`
+§2.3 said the nineteen unframed ROOT 4 records all "begin `00 01 00 03 40 00`".
+Re-measuring before quoting the number back at the reviewer showed that only the
+14 `TH1D` do; the 5 `TH2D` begin `00 03 00 03 00 03`, three bare version words
+with no byte count among them. The count and the shape were right and the bytes
+were one instance quoted as if it were all of them. **The sharper fact it
+replaced is worth more than the correction**: the depth at which framing resumes
+follows the class chain, so a reader that matches one prefix has hard-coded a
+class rather than implemented the rule.
+
+**The final tally**, from an issue that offered six gaps and four observations:
+**eight false or incomplete published claims of our own, two reader bugs, six
+classes the reader could not decode, and three of the review's own four RooFit
+claims corrected.** How each of the eight was found is the part worth keeping:
+
+| Found by | Count | Which |
+|---|---|---|
+| the review itself | 3 | `Directory.md` §7's history row, `SchemaEvolution.md` §8.1's over-generalisation, `StreamerDriven.md` invariant 5 |
+| wiring up an invariant nothing checked | 2 | `ElementTypes.md` invariants 3 and 4 — plus `ReadingEntries.md` §8, which claimed a check it did not have |
+| re-measuring a number before quoting it back | 1 | `Buffer.md` §2.3's nineteen records |
+| a test failing on a new fixture | 2 | both of `StreamerInfo.md` §11.2's exception lists, each one entry short |
+
+Only the first row is what a reviewer can give you. The second is what
+`tools/check_coverage.py` now prevents; the third and fourth are habits, and the
+fourth is the argument for building a fixture even when the corpora already
+witness the thing.
+
+Two replies on the issue:
+[the first](https://github.com/ariostas/root-io-spec/issues/1#issuecomment-5767722107)
+covering items 1–6 and the RooFit scope decision, and
+[the follow-up](https://github.com/ariostas/root-io-spec/issues/1#issuecomment-5779518620)
+covering items 7–10, the two classes the review did not raise, and the three
+findings above. The second exists because the first predates the RooFit work and
+told them item 10 would come first; in the event none of the bytes it asked for
+were needed.
 
 ## 9. Known gaps
 

@@ -116,7 +116,7 @@ custom_streamer = [
 reason = """
 Written by g4tools, Geant4's own ROOT writer, not by ROOT: fVersion 40000 with a
 2018-2020 fDatime, a zeroed header UUID, and a directory record at version 1001
-(Directory.md 7, and the reader bug it exposed in PLAN-review.md R1).
+(Directory.md 7, and the reader bug it exposed -- PLAN.md 8.13).
 
 Its TH3 info declares a TAtt3D base and the file carries no TAtt3D info, which is
 StreamerDriven.md 10.5. The diagnosis is that the writer is at fault, and it is

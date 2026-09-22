@@ -12,11 +12,10 @@ describes **release 3.02.06** and is substantially wrong for current ROOT.
 `PLAN.md` holds the structure, scope decisions and phasing; its §8.12 is the write
 side's second half — free-space reuse, key ordering, updating a file and schema
 evolution, all landed 2026-09-21 — and carries the six findings that came out of
-it. One live sub-plan: `PLAN-review.md` answers the first outside review, GitHub
-issue #1, which found a reader bug, a false invariant and an over-general erratum.
-All three are fixed (R1-R3, 2026-09-21); what is still open there is the audit of
-which published `Invariants` entries are checked at all, two documentation notes,
-the reply to the issue, and a scope decision on RooFit.
+it. Its §8.13 is the first outside review, GitHub issue #1, answered in full over
+2026-09-21/22 and worth reading before adding a claim: eight published claims of
+ours turned out false or incomplete, six of them in the population nothing was
+checking. There is no open sub-plan.
 A sub-plan is deleted once discharged, with anything durable moved into `PLAN.md`
 or `spec/` first.
 `spec/00-conventions.md` holds the conventions every specification document depends
@@ -109,7 +108,7 @@ near-identical `TGeoManager` demos used to be excluded for being near-identical;
 they are the `geometry` tier since 2026-09-21, because four of them turned out to
 carry `StreamerInfo.md` §9.2's whole `fBaseVersion` table and nothing recorded that
 the corpus the measurements used was bigger than the corpus the manifest defined
-(`PLAN-review.md` §4.1). **A file the specification cites is in the corpus whether
+(`PLAN.md` §8.13). **A file the specification cites is in the corpus whether
 the manifest says so or not**, which is now a check: `check_citations.py` fails on a
 cited `.root` that no fixture and no manifest accounts for.
 
@@ -290,7 +289,7 @@ the tools actually report, and requires anything left over to be accounted for i
 `gen/invariants.toml` with one of five reasons — `alias`, `structural`,
 `write-gate`, `not-checkable` or `unchecked`. It exists because the one invariant
 this project has published that was outright **false** was also one nobody had
-wired up (`PLAN-review.md` R2), and wiring up the rest found two more wrong
+wired up (`PLAN.md` §8.13), and wiring up the rest found two more wrong
 (`ElementTypes` 11.3 and 11.4) within the hour. 259 entries, 191 with a check.
 
 The `unchecked` reason is a worklist, not an excuse, and it should stay short.

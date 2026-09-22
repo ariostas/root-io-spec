@@ -22,7 +22,7 @@ jobs:
         run: tools/check_invariants.py
       # CLAUDE.md requires every published Invariants entry to be checked. This
       # is what enforces it: an entry with no check and no reason in
-      # gen/invariants.toml fails here. PLAN-review.md R7.
+      # gen/invariants.toml fails here. PLAN.md 8.13.
       - name: Every published invariant is checked or accounted for
         run: tools/check_coverage.py --check
       # Gates 1 and 2 of spec/06-writing/index.md 2: tools/rootwrite.py still

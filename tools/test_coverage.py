@@ -112,7 +112,7 @@ class TheToolFails(unittest.TestCase):
 
 
 class EveryCitedFileIsFetchable(unittest.TestCase):
-    """check_citations.check_cited_files, added after PLAN-review.md 4.1."""
+    """check_citations.check_cited_files, added after PLAN.md 8.13's corpus gap."""
 
     SPEC = REPO / "spec"
 

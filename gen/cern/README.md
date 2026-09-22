@@ -98,7 +98,7 @@ the detector — and on that ground they were deliberately left out, with
 **That was wrong, and the way it went wrong is the point.** Somebody fetched the
 sweep by hand while chasing a question, four of the files became published evidence,
 and nothing recorded that the corpus the measurements used was larger than the
-corpus the manifest defined. `PLAN-review.md` §4.1 found the gap: `build/cern/`
+corpus the manifest defined. `PLAN.md` §8.13 records the gap: `build/cern/`
 held 72 files where this manifest listed 26. What rested on the unlisted 46:
 
 | Where | What |

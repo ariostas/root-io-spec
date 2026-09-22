@@ -13,7 +13,7 @@ noticed: a **file** the specification names as evidence must be a fixture in
 `fetch_cern.py` can fetch it and the measurement can be reproduced. On 2026-09-18
 `aod_flushed.root` and `gallery.root` were cited and in no manifest; on 2026-09-21
 so were the four `TGeoManager` files carrying `StreamerInfo.md` §9.2's whole
-`fBaseVersion` table (`PLAN-review.md` §4.1). Both were fixed by hand. This is what
+`fBaseVersion` table (`PLAN.md` §8.13). Both were fixed by hand. This is what
 stops a third.
 
 Requires the submodule to be checked out. Needs no third-party packages.

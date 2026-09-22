@@ -3,7 +3,7 @@
 
 `CLAUDE.md` requires every numbered entry under an `Invariants` heading to be
 added to `tools/check_invariants.py` and confirmed against a corrupted fixture.
-Nothing enforced that, and `PLAN-review.md` R2 is why it matters: the one entry
+Nothing enforced that, and `PLAN.md` §8.13 is why it matters: the one entry
 found to be **false** was also one that had never been wired up. An invariant
 nobody checks is a claim, and this project's whole method is that claims are
 checked twice.
