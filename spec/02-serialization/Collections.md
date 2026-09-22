@@ -234,7 +234,7 @@ occupies one contiguous column.
 | Member kind | Framing inside the column |
 |---|---|
 | fundamental | none: the values are concatenated |
-| a base class | none: the base's streamer runs once per element, back to back |
+| a base class | none, and **one column per member of the base** — the base's own info is read over the same *n* elements, not the base once per element |
 | `TString` (65) | none: *n* counted strings, back to back |
 | an object member (61, 62) | **each element gets its own** byte count and version word |
 | a pointer member (64, 69) | each element is an [object slot](Buffer.md#6-object-slots) |
@@ -264,6 +264,25 @@ in a comment at the point where it happens:
 
 A `TObject` base is therefore exactly 10 or 12 bytes per element with nothing
 around it ([References §1](References.md#1-the-extra-word-on-a-referenced-tobject)).
+
+**Any other base is its members' columns.** The line after that comment reads the
+base's info over the whole array in the same array mode
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1409-1410`), so a base with members
+`a` and `b` is all *n* values of `a`, then all *n* of `b`. That differs from "the
+base, once per element" as soon as the base has two members. Which info is read
+is the one `TStreamerBase` selects: by `fBaseVersion`, or by `fBaseCheckSum`
+when the version is negative and the checksum is not 0
+(`root/core/meta/src/TStreamerElement.cxx:762-765`). That is how a base whose class
+declares no version, `fBaseVersion` −1, is found at all.
+
+> Witnessed by `uproot-physlite-rntuple_v1-0-0-0.root` of the foreign corpus, an
+> ATLAS file written by ROOT 6.34/04. `vector<ElementLink<…>>` is written
+> member-wise, and `ElementLink`'s one element is the base `ElementLinkBase`
+> (`fBaseVersion` −1) with two `unsigned int` members. Four links read
+> `40 00 00 2c | 40 09 | 00 00 69 77 75 53 | 00 00 00 04 | 00 00 00 00 ×4 | ff ff ff ff ×4`:
+> every `m_persKey`, then every `m_persIndex`. Until 2026-09-22 the table above
+> said "once per element", and a reader following it failed on 1 005 branch-baskets of
+> that file.
 
 ### 4.3 An empty member-wise collection writes no columns at all
 

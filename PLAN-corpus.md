@@ -9,8 +9,11 @@ that was not, whose audit found a vacuous invariant instead. **C8–C11 discharg
 the same day**, and C12 with them in its cheapest form: every witness was
 re-measured here, two of the four reported claims turned out narrower than
 reported, and checking them found **three more wrong release boundaries** in
-published prose and one reader gap, which is the new C18. C13 onward stands. The
-survey is done; this plan orders what to do about it.
+published prose and one reader gap, which is the new C18. **C13 and C14
+discharged the same day**, and C13 was not only manifest lines: its largest file
+contradicted two more published claims and hit three reader gaps. The new C19 is
+what is left of it. C15 onward stands. The survey is done; this plan orders what to
+do about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
 read-only and all of them made to probe with this project's own tools rather than
@@ -65,6 +68,8 @@ the first task of such an item is to reproduce it.
 | C10 | `MC_uds_reco-1.root` witnesses a buffer written with no byte counts | "one outer byte count, then `TNamed` and `TObject` with none" | **✅ discharged, narrower** — bare version words in bases, which `pippa.root` already showed; every class tag has a byte count, so `Buffer.md` §6.4 is still unwitnessed |
 | C11 | Two roottest files are the cheapest directory-version witnesses | header and directory versions | **✅ discharged** — versions 3 and 4, not 1; version 1's cheapest is `Event.3.2.0.root`, which refuted `Directory.md` §7 |
 | C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here**; adopted as a list in `gen/cern/README.md` that `check_citations.py` reads |
+| C13 | 25 RNTuple files in scikit-hep-testdata, "manifest lines only" | fetched, `check_invariants.py`, `coverage_probe.py`, `read_rntuple` on each | **✅ discharged**, 23 added — and not manifest lines only: `check_invariants.py` crashed on one, which contradicted two published claims |
+| C14 | Three Open Data files serve range requests | `fetch_range` and `large_file_problems` unmodified, then `fetch_cern.py --headers` | **✅ discharged** — every survey figure reproduced; 11 rows, 0 failures |
 | C18 | `skim.root`'s `HoldMuo` has no byte count and no version word | `check_invariants.py` → 2 × `ReadingEntries 8.5`; ROOT 6.40.04 reads the same entries correctly | **Confirmed here**, found while doing C8. Open |
 | — | Open Data serves HTTP range requests | agent ran this project's own `fetch_range`, `read_header`, `parse_free_entries`, `large_file_problems` → 0 problems | **Reported**, with our tools unmodified |
 
@@ -514,7 +519,7 @@ would be a third corpus with a third set of conventions. Decide whether it is th
 or a tier of `gen/cern/`, or simply a list in `gen/cern/README.md` pointing into the
 submodule. The last is cheapest and probably right.
 
-### C13. The RNTuple tier `gen/foreign/` never picked up
+### C13. The RNTuple tier `gen/foreign/` never picked up — ✅ discharged 2026-09-22
 
 `grep -i rntuple gen/foreign/MANIFEST.sha256` returns nothing, yet
 scikit-hep-testdata now carries **25 RNTuple files, 2.2 MB**, and
@@ -533,7 +538,51 @@ offsets 224–2119.
 Also confirms `rntviewer-testfile-uncomp-single-rntuple-v1-0-0-0.root` is
 byte-identical to `gen/cern/RNTuple.root`.
 
-### C14. Three rows for `LARGE.toml`
+**Done, and it was not manifest lines only.** All 25 files were fetched and put
+through `check_invariants.py`, `coverage_probe.py` and `read_rntuple` before any
+went in. The survey's figures hold: anchors 1.0.0.0, 1.0.0.1 and 1.0.1.0, writers
+6.34/04 to 6.38/00, and every anchor reads through to its header schema, the
+CMS one's 1679 fields and 710 alias columns included. The duplicate of
+`RNTuple.root` stays out, and the other 23 are in `gen/foreign/MANIFEST.sha256`.
+Twenty-two passed as they were. The 23rd, `uproot-physlite-rntuple_v1-0-0-0.root`
+(2 MB, ATLAS, ROOT 6.34/04), crashed the checker with a `StopIteration`. Behind
+that were two published claims a ROOT-written file contradicts, and three reader
+gaps:
+
+- **`FreeSegments.md` §4.2 said a gap's marker is never missing in practice.**
+  The record chain lost sync at 200897 because the four bytes there are stale,
+  `03 10 dc 00`. The free list has `(200897, 200923)` all the same, directly after
+  a 126-byte `RBlob` at 200771: a 153-byte free slot, a blob, and a 27-byte
+  remainder with no marker. `TKey::Create` puts that marker four bytes past the
+  key in its own buffer, and only `TKey::WriteFile` writes it
+  (`root/io/io/src/TKey.cxx:1501`). RNTuple bypasses `WriteFile`, and ROOT fixed
+  the omission in `d328b598b32` (2025-01-29), first released in 6.36.00. It is the
+  same writer, and the same file, as C4's self-parented keys. §4.2 now says so,
+  invariant 6 exempts exactly that case (an `RBlob`'s end, before 6.36), and §7
+  and `Record.md` §6 say to read the free list first and trust it. **Reader:**
+  `read_records` does that, and `read_free_segments` reads the key at `fSeekFree`
+  instead of finding it through the chain it exists to repair, which is what
+  crashed. Corrupted three ways: an unmarked gap in `container/gap`, the ATLAS file
+  relabelled 6.36, and a marked gap of it broken. All three fail 8.6.
+- **`Collections.md` §4.1 said a member-wise base is read once per element.**
+  1005 branch-baskets of `vector<ElementLink<…>>` failed with "version word 0 …
+  checksum 0x0". The bytes are four `m_persKey`s then four `m_persIndex`s:
+  ROOT reads the base's own info over the whole array
+  (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1409-1410`), so a base is one
+  column per member. **Reader:** `read_column` does that, choosing the base's info
+  the way `TStreamerBase` does, by checksum when `fBaseVersion` is −1
+  (`root/core/meta/src/TStreamerElement.cxx:762-765`). All 1005 now decode.
+- **A container named without template arguments crashed `value_type_name`**
+  (975 × `substring not found`) where `stl_kind` already declined it. It now
+  declines too, which is C19.
+
+Nothing that was already in either corpus moved: 26410 of 26477 and 1696 of 1696
+branch-baskets, 0 failures, before and after the three reader changes. The one
+wrong row found on the way is `PLAN.md` §9.2's "wide key at a small offset rests on
+`volume.root`". Every key in a 6.40 fixture is `fVersion` 1004, and
+`rntuple/compressed` asserts one at 385.
+
+### C14. Three rows for `LARGE.toml` — ✅ discharged 2026-09-22
 
 Range requests work against `opendata.cern.ch`, verified with this project's own
 `fetch_range` unmodified. The URL form is the catch: take the
@@ -554,6 +603,40 @@ of them.
 `Run2012BC_DoubleMuParked_Muons.root` is **already listed** via `rootbench/`, and
 Open Data is its origin: every recorded field matches at both URLs. Worth a line in
 the README, not a row.
+
+**Done.** The schema decision was the smallest one: a row has `path`, relative to
+root.cern as before, or `url`, absolute, and never both (`fetch_cern.large_url`,
+unit-tested). The two paths the survey did not record came from its own report,
+since Open Data's search does not index files inside a dataset. Each file was
+measured with `fetch_range` and `large_file_problems` unmodified, then written
+down and checked by `fetch_cern.py --headers`: **11 files, 0 failures**. Every
+survey figure reproduced — 15 886 107 547 bytes at 6.16/00, 3 274 820 145 at
+6.30/03 with a `TStorageFactoryFile` free record and one interior entry, and
+5 786 425 072 at 5.34/21 — with no redirect and `Accept-Ranges: bytes` on all
+three. The LHCb record (24506) has no licence field, confirmed; the CMS ones are
+CC0. Nothing is kept of any of them but the numbers. The `rootbench/` Muons file is
+Open Data record 12341, whose header, UUID and free-record bytes are identical
+at both URLs; `gen/cern/README.md` says so in a line.
+
+### C19. A class that is a collection, named only by checksum — open
+
+Left by C13. ATLAS's `xAOD::CutBookkeeperContainer_v1` has a streamer info
+of one element, a `TStreamerSTL` named **`This`** with `fSTLtype` 2, `fCtype` 61
+and `fTypeName` the class's own name. That is how ROOT describes a class that has
+a collection proxy of its own, a `DataVector` here. The type name carries no
+`<…>`, so nothing in the element says what the collection holds, and
+`rootfile.py` declines it: **975 branch-baskets**, all in
+`uproot-physlite-rntuple_v1-0-0-0.root`, reported as `SKIPPED`.
+
+The file does say it, one level down. Entry 0 of `CutBookkeepers` reads
+`40 00 00 0c | 40 09 | 00 00 f1 3a 09 61 | 00 00 00 04`: member-wise, and
+`0xf13a0961` is the checksum of the file's `xAOD::CutBookkeeper_v1` info. So a
+reader could find the value class by checksum among the file's infos whenever the
+collection is written member-wise, and never when it is written object-wise.
+What is needed first is the spec text: where ROOT builds a `This` element
+(`TStreamerInfo::Build`), what it reads it with when there is no dictionary, and
+whether a checksum lookup across all infos is what ROOT itself would do, or only
+what the bytes allow. Then the reader, then the 975.
 
 ### C15. 17 KB that closes the newest-version blind spot
 
@@ -657,7 +740,8 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
    `LICENSES/` holds only BSD-3-Clause and CC-BY-4.0. Nothing needs committing —
    roottest is in the submodule and rntuple-validation can be fetched — but if any
    file is ever committed as a fixture, this has to be answered first.
-3. **`LARGE.toml`'s `path` schema**, which assumes one base URL. C14.
+3. ~~**`LARGE.toml`'s `path` schema**, which assumes one base URL. C14.~~ Decided
+   2026-09-22: `path` or `url`, exactly one.
 4. **Whether to cut `2026.09.22`** before or after this work. Cutting first gives
    the corrections a clean "since" boundary in `CHANGELOG.md`; cutting after means
    the first CalVer release contains them. No strong argument either way.
@@ -672,7 +756,7 @@ both — its anchor at 727 is compressed, and the file reports
 `NOT CHECKED ROOT::RNTuple ...` for exactly that reason.~~ C16 is independent
 of everything and cheap enough to do at any point. ~~C8–C11 need no new
 infrastructure once C12's question is answered, because three of the four files
-are already on disk.~~ **C8–C12 are done**, and left C18, which needs a decision
-about reader policy before code. C13 is manifest lines, and `fetch_foreign.py`'s
-`SOURCES` now makes C15 manifest lines too. C17 should happen before anything is
-reported upstream.
+are already on disk.~~ **C8–C14 are done**, and left C18 and C19, each needing
+spec text or a reader-policy decision before code. `fetch_foreign.py`'s `SOURCES`
+makes C15 manifest lines, though C13 is the warning about that phrase: measure
+first. C17 should happen before anything is reported upstream.

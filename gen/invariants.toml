@@ -94,7 +94,7 @@ by = "not-checkable"
 reason = """
 The free record's own key is wide only in a file past 2 GB, and no fixture is that
 large. `gen/cern/LARGE.toml` records the measured header and free-list facts for
-eight files from 1.3 GB to 5.3 GB, fetched by range request rather than held, and
+eleven files from 1.3 GB to 15.9 GB, fetched by range request rather than held, and
 that is the only evidence for this layout anywhere in the project.
 """
 

@@ -10,7 +10,11 @@
 # the two ranges and checks every field below, so a drift in the remote file or a
 # regression in tools/rootfile.py both show up as a failure. Nothing is downloaded.
 #
-# `path` is relative to https://root.cern/files/.
+# `path` is relative to https://root.cern/files/. A row outside root.cern has `url`
+# instead, absolute, and exactly one of the two is allowed. CERN Open Data serves
+# the same range requests with no redirect: take the EOS path from the record's
+# root://eospublic.cern.ch//eos/opendata/... URI and prefix https://opendata.cern.ch
+# (the /record/<id>/files/<name> form does not serve ranges). PLAN-corpus.md C14.
 # `free_small` and `free_large` count the 10-byte and 18-byte TFree entries
 # (FreeSegments.md 2.1); their sum must equal `nfree`.
 
@@ -157,3 +161,59 @@ free_class  = "TFile"
 free_small  = 1539
 free_large  = 0
 sentinel    = [1338275841, 2000000000]
+
+# -- CERN Open Data, added 2026-09-22 (PLAN-corpus.md C14) -------------------
+
+[[file]]
+url         = "https://opendata.cern.ch/eos/opendata/cms/derived-data/AOD2NanoAODOutreachTool/Run2012C_TauPlusX.root"
+why         = "15.9 GB, three times the next largest here: every offset past 8 GB, and the sentinel's fLast at 16 000 000 000. CMS outreach NanoAOD, record 12359, CC0"
+root        = "6.16/00"
+size        = 15886107547
+fversion    = 1061600
+units       = 8
+fbegin      = 100
+fend        = 15886107547
+fseekfree   = 15886107433
+nbytesfree  = 114
+nfree       = 1
+free_keylen = 96
+free_class  = "TFile"
+free_small  = 0
+free_large  = 1
+sentinel    = [15886107547, 16000000000]
+
+[[file]]
+url         = "https://opendata.cern.ch/eos/opendata/cms/Run2024F/EphemeralHLTPhysics1/RAW/v1/000/383/631/00000/071ab81e-897f-4718-b3a8-9c643943ec23.root"
+why         = "the newest large-format writer here, ROOT 6.30/03 against 6.23/01, and a TStorageFactoryFile free record ABOVE the boundary with an interior entry -- the other half of the CMS pair whose 1.997 GB file is below it. CMS Run2024F RAW, record 93956, CC0"
+root        = "6.30/03"
+size        = 3274820145
+fversion    = 1063003
+units       = 8
+fbegin      = 100
+fend        = 3274820145
+fseekfree   = 3274737320
+nbytesfree  = 127
+nfree       = 2
+free_keylen = 91
+free_class  = "TStorageFactoryFile"
+free_small  = 0
+free_large  = 2
+sentinel    = [3274820145, 4000000000]
+
+[[file]]
+url         = "https://opendata.cern.ch/eos/opendata/lhcb/Collision12/EW/LHCb_2012_Beam4000GeV_VeloClosed_MagDown_RealData_Reco14_Stripping21_EW_DST/00041836/0000/00041836_00008626_1.ew.dst"
+why         = "ROOT 5.34/21, the most widely deployed ROOT 5, which nothing else here exercises above 2 GB; a ROOT file with a .dst name. LHCb record 24506 has no licence field of its own and is CC0 by the portal's terms of use only; nothing of it is kept but these numbers"
+root        = "5.34/21"
+size        = 5786425072
+fversion    = 1053421
+units       = 8
+fbegin      = 100
+fend        = 5786425072
+fseekfree   = 5786424971
+nbytesfree  = 101
+nfree       = 1
+free_keylen = 83
+free_class  = "TFile"
+free_small  = 0
+free_large  = 1
+sentinel    = [5786425072, 6000000000]

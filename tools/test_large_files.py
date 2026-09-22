@@ -8,6 +8,7 @@ violation, using the measured reading of `volume.root` as the good case and one
 mutation per invariant.
 """
 
+import tomllib
 import unittest
 
 import fetch_cern
@@ -101,6 +102,28 @@ class FreeEntryParsing(unittest.TestCase):
         self.assertEqual(rootfile.parse_free_list(b"K" * 8 + payload, 8,
                                                   len(payload)),
                          [(10, 20), (2100000000, 3000000000), (30, 40)])
+
+
+class WhereARowIsRead(unittest.TestCase):
+    """LARGE.toml's `path` is under root.cern and `url` is absolute (C14)."""
+
+    def test_path_is_under_root_cern(self):
+        self.assertEqual(fetch_cern.large_url({"path": "volume.root"}),
+                         "https://root.cern/files/volume.root")
+
+    def test_url_is_taken_as_it_is(self):
+        url = "https://opendata.cern.ch/eos/opendata/x/y.root"
+        self.assertEqual(fetch_cern.large_url({"url": url}), url)
+
+    def test_both_or_neither_is_an_error(self):
+        for row in ({}, {"path": "a.root", "url": "https://b/a.root"}):
+            with self.assertRaises(ValueError):
+                fetch_cern.large_url(row)
+
+    def test_every_row_resolves(self):
+        rows = tomllib.loads(fetch_cern.LARGE.read_text())["file"]
+        self.assertTrue(all(fetch_cern.large_url(r).startswith("https://")
+                            for r in rows))
 
 
 if __name__ == "__main__":

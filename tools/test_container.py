@@ -113,6 +113,44 @@ class FreeList(unittest.TestCase):
         self.assertEqual(rootfile.parse_free_list(b"\x00" * 8, 8, 0), [])
 
 
+class AGapWithNoMarker(unittest.TestCase):
+    """FreeSegments.md 4.2: a reader SHOULD trust the free list over the chain.
+
+    ROOT's RNTuple TFile writer did not write the remainder's marker when it
+    placed an RBlob in a larger free slot, until root commit d328b598b32 (first
+    in 6.36.00). `container/gap` with its one marker overwritten is that shape.
+    """
+
+    GAP = Path(__file__).resolve().parents[1] / "data/container/gap.root"
+
+    def unmarked(self) -> bytes:
+        buf = bytearray(self.GAP.read_bytes())
+        self.assertEqual(struct.unpack_from(">i", buf, 718)[0], -187)
+        struct.pack_into(">i", buf, 718, 0x03100DC0)   # stale bytes, positive
+        return bytes(buf)
+
+    def test_the_walk_skips_the_span_the_free_list_names(self):
+        buf = self.unmarked()
+        records = rootfile.read_records(buf, rootfile.read_header(buf))
+        self.assertIn((718, -187), [(r.offset, r.nbytes) for r in records])
+        self.assertIn(905, [r.offset for r in records])   # the key after it
+
+    def test_the_free_list_is_read_without_the_chain(self):
+        buf = self.unmarked()
+        self.assertIn((718, 904),
+                      rootfile.read_free_segments(buf, rootfile.read_header(buf)))
+
+    def test_the_missing_marker_is_still_a_failure(self):
+        # Only an RBlob's remainder in a file older than 6.36 is exempt, and
+        # this is neither.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gap.root"
+            path.write_bytes(self.unmarked())
+            failures = check_invariants.Checker(path).run()
+        self.assertTrue(any("FreeSegments 8.6" in f and "718" in f
+                            for f in failures), failures)
+
+
 class LegacyCodec(unittest.TestCase):
     """Compression.md 3.1. `CS` is raw DEFLATE; `ZL` is zlib-wrapped."""
 

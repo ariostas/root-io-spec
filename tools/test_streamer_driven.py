@@ -259,6 +259,49 @@ class BaseClassCounter(unittest.TestCase):
             decoder.read_members("C", 1, 0, None)
 
 
+class MemberWiseBase(unittest.TestCase):
+    """Collections.md 4.1: in a member-wise column a base is one column per member.
+
+    The shape of ATLAS's `vector<ElementLink<...>>` in `uproot-physlite-rntuple`:
+    the value class has one element, a base with no ClassDef version
+    (fBaseVersion -1) and two `unsigned int` members, so its info is found by
+    checksum and its columns are all the keys, then all the indices.
+    """
+
+    def infos(self):
+        base = rootfile.StreamerInfo(
+            name="ElementLinkBase", title="", version=9, bits=0,
+            checksum=0xFEB3DF9E, class_version=1,
+            elements=[element("m_persKey", ftype=13),
+                      element("m_persIndex", ftype=13)])
+        link = rootfile.Element(
+            cls="TStreamerBase", version=3, name="ElementLinkBase", title="",
+            bits=0, ftype=0, fsize=0, array_length=0, array_dim=0,
+            max_index=[0, 0xFEB3DF9E, 0, 0, 0], type_name="BASE",
+            tail={"fBaseVersion": -1})
+        value = rootfile.StreamerInfo(
+            name="ElementLink<C>", title="", version=9, bits=0,
+            checksum=0x69777553, class_version=1, elements=[link])
+        return [base, value]
+
+    def test_the_columns_are_per_member_of_the_base(self):
+        buf = (b"\x00\x00\x69\x77\x75\x53"         # version 0, the value checksum
+               b"\x00\x00\x00\x02"                  # two elements
+               b"\x00\x00\x00\x07\x00\x00\x00\x08"  # m_persKey, m_persKey
+               b"\xff\xff\xff\xff\xff\xff\xff\xff")  # m_persIndex, m_persIndex
+        decoder = rootfile.Decoder(buf, 0, self.infos())
+        self.assertEqual(decoder.read_member_wise("ElementLink<C>", 0, None),
+                         len(buf))
+
+    def test_a_base_checksum_matching_nothing_is_unsupported(self):
+        infos = self.infos()
+        infos[0].checksum = 0x12345678
+        decoder = rootfile.Decoder(b"\x00\x00\x69\x77\x75\x53\x00\x00\x00\x01"
+                                   + b"\x00" * 8, 0, infos)
+        with self.assertRaises(rootfile.UnsupportedClass):
+            decoder.read_member_wise("ElementLink<C>", 0, None)
+
+
 class SynthesisedPair(unittest.TestCase):
     """Collections.md 8.1. A pair's members from the type name alone.
 

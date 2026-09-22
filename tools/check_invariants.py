@@ -33,6 +33,10 @@ RBLOB_CLASS = "RBlob"
 #: RBlob key's fSeekPdir at the key itself (commit 5fe8a99942).
 RBLOB_PDIR_FIXED = (6, 36, 0)
 
+#: FreeSegments.md 4.2: the first release whose RNTuple writer wrote the marker of
+#: the gap left over when an RBlob took part of a free slot (commit d328b598b32).
+RBLOB_MARKER_FIXED = (6, 36, 0)
+
 #: kNBytesPageChecksum, root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74.
 RN_PAGE_CHECKSUM = 8
 
@@ -2523,10 +2527,16 @@ class Checker:
             previous_last = l
 
         interior = [(f, l) for f, l in segments if l < self.header.end]
+        # FreeSegments.md 4.2: before 6.36 RNTuple's TFile writer placed an RBlob
+        # in a larger free slot and never wrote the remainder's marker. Exempt
+        # exactly that: a gap starting where an RBlob key ends, in such a file.
+        rblob_ends = ({r.offset + r.nbytes for r in self.records
+                       if r.class_name == RBLOB_CLASS}
+                      if self.header.root_version < RBLOB_MARKER_FIXED else set())
         for f, l in interior:
             marker = struct.unpack_from(">i", self.buf, f)[0]
             expected = -min(l - f + 1, KSTART_BIG_FILE)
-            if marker != expected:
+            if marker != expected and f not in rblob_ends:
                 self.bad("FreeSegments 8.6",
                          f"marker at {f} is {marker}, expected {expected}")
 

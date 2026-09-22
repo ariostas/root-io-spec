@@ -10,14 +10,14 @@ exactly what was used and `tools/fetch_cern.py` reproduces it.
 ```sh
 tools/fetch_cern.py                  # core tier: 24 files, 5.5 MB
 tools/fetch_cern.py --tier physics   # 2 real production trees, 27 MB
-tools/fetch_cern.py --headers        # the 8 multi-GB files, by range request
+tools/fetch_cern.py --headers        # the 11 multi-GB files, by range request
 tools/coverage_probe.py --summary build/cern/*.root
 tools/check_invariants.py build/cern/*.root
 ```
 
 ## Why this corpus and not just `gen/foreign/`
 
-`gen/foreign/` is uproot's regression suite. It spans ROOT 4.00 to 6.36 and is
+`gen/foreign/` is uproot's regression suite. It spans ROOT 4.00 to 6.38 and is
 excellent for that, but **it contains files uproot wrote**, so a failing invariant
 there is a lead that has to be traced to a writer before it is evidence. That
 ambiguity dominated the triage recorded in `PLAN.md` §9.8.
@@ -31,7 +31,7 @@ ROOT-4-labelled files turned out not to be ROOT's output at all
 **ROOT 2.24/00 through 6.35/01**, a span of about twenty-five years, with real
 provenance throughout.
 
-And it is the only source of **large files**: eight of them from 1.3 GB to 5.3 GB,
+And it is the only source of **large files**: eleven of them from 1.3 GB to 15.9 GB,
 read by HTTP range request rather than downloaded (see `LARGE.toml`).
 
 ## Tier `core` — 24 files, 5.5 MB
@@ -117,12 +117,12 @@ against one over the 26. They also add almost nothing to the entry coverage —
 28 126 branch-baskets against 28 125 without them — because a geometry file has no
 trees. **Their value is per-class breadth, not per-entry.**
 
-## `LARGE.toml` — 8 files, 1.3 GB to 5.3 GB, never downloaded
+## `LARGE.toml` — 11 files, 1.3 GB to 15.9 GB, never downloaded
 
 root.cern serves `Accept-Ranges: bytes`. The header (512 bytes) and the
 free-segment record (a few hundred) are all that `spec/01-container/`'s large-file
 statements need, so `tools/fetch_cern.py --headers` reads those two ranges and
-checks every recorded field. Roughly 8 KB of traffic for 20 GB of files.
+checks every recorded field. Roughly 11 KB of traffic for 49 GB of files.
 
 What that buys, none of which any fixture covers:
 
@@ -140,6 +140,25 @@ What that buys, none of which any fixture covers:
 - `CMS_7250E9A5-…root`'s free record carries the class name
   `TStorageFactoryFile`, which is why the container's own records must be
   identified structurally rather than by class name.
+
+Three rows come from **CERN Open Data** rather than root.cern, since 2026-09-22.
+They carry an absolute `url` instead of `path`, and CERN Open Data serves the same
+range requests with no redirect (`LARGE.toml`'s header says how to form the URL):
+
+- `Run2012C_TauPlusX.root`, **15.9 GB** at ROOT 6.16/00, three times the next
+  largest. Every offset past 8 GB, and a sentinel `fLast` of 16 000 000 000.
+- A CMS Run2024F RAW file, 3.27 GB at **6.30/03**, the newest large-format writer
+  here, against 6.23/01 before it. Its free record is `TStorageFactoryFile` too, with an
+  interior entry, so the same CMS writer is now listed on **both** sides of the
+  boundary.
+- An LHCb `.ew.dst`, 5.79 GB at **5.34/21**, the last ROOT 5 series, which
+  nothing else exercises above 2 GB. The LHCb record has no licence field of its
+  own and is CC0 only by the portal's terms. Nothing of it is kept but the
+  numbers.
+
+`rootbench/Run2012BC_DoubleMuParked_Muons.root` above is an Open Data file too
+(record 12341). At both URLs the header, the UUID and the 874-byte free record
+are the same bytes, so it is listed once.
 
 ## `root/roottest/` — 5 files, already on disk
 
@@ -186,7 +205,8 @@ Run 2026-09-21, tier `all`:
 > Both were cited by the specification as corpus files and were in neither this
 > table nor `MANIFEST.sha256`, so `fetch_cern.py` did not fetch them and the
 > witnesses they carry could not be reproduced.
-- `tools/fetch_cern.py --headers`: **8 files, 0 failures**.
+- `tools/fetch_cern.py --headers`: **11 files, 0 failures**, re-run 2026-09-22 with
+  the three Open Data rows.
 
 ## Known gaps this corpus exposes
 

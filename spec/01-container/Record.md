@@ -426,7 +426,10 @@ all.
 ## 6. Reading
 
 1. At the current offset, read `fNbytes` as `i32`. If negative, advance by its
-   magnitude and repeat. If zero, stop.
+   magnitude and repeat. If zero, stop. Where the free list has an interior entry
+   beginning here, it is a free span whatever the value is: ROOT 6.34's RNTuple
+   writer left some without their marker
+   ([Free segments §4.2](FreeSegments.md#42-the-marker-may-be-missing)).
 2. Read `fVersion`. If `> 1000`, use the large offsets from §2.
 3. Read the remaining fixed fields; mask `fSeekPdir` per §3.6; take
    `abs(fCycle)`.

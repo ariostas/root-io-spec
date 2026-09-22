@@ -283,8 +283,8 @@ offset past 4 GB where even an unsigned 32-bit reader fails:
 
 ## 6. Evidence, and how it is checked
 
-No committed fixture is over 2 GB and none can be. The evidence is eight files
-published by the ROOT team, read by HTTP range request — a few hundred bytes
+No committed fixture is over 2 GB and none can be. The evidence is eleven files
+published by the ROOT team and by CERN Open Data, read by HTTP range request — a few hundred bytes
 each, nothing downloaded — with every field recorded in `gen/cern/LARGE.toml`
 and re-measured by:
 
@@ -306,9 +306,15 @@ which parses each file's header and its whole free-segment record with
 | `rootbench/Run2012BC…Muons.root` | 6.17/01 | 2 244 449 133 | 66 narrow + 8 wide | CMS open data |
 | `CMS_7250E9A5…root` | 5.22/00 | 1 997 354 026 | 2 narrow | 1.997 GB and **not** wide — the boundary from below |
 | `AOD.067184.big.pool_4.root` | 5.22/00 | 1 338 275 841 | 1539 narrow | the most fragmented free list available |
+| `Run2012C_TauPlusX.root` | 6.16/00 | 15 886 107 547 | 1 wide | the largest, and every offset past 8 GB; Open Data |
+| `071ab81e…root` (CMS Run2024F RAW) | 6.30/03 | 3 274 820 145 | 2 wide | the newest writer, and a `TStorageFactoryFile` free record above the boundary; Open Data |
+| `00041836_00008626_1.ew.dst` (LHCb) | 5.34/21 | 5 786 425 072 | 1 wide | the last ROOT 5 series; Open Data |
 
-The last two are the control: sub-threshold files whose every structure is
-narrow, including the sentinel whose `fLast` is exactly 2 000 000 000.
+`CMS_7250E9A5…` and `AOD.067184…` are the control: sub-threshold files whose
+every structure is narrow, including the sentinel whose `fLast` is exactly
+2 000 000 000. The CMS pair is the sharpest version of it — the same experiment's
+`TStorageFactoryFile` writer on both sides of the boundary, all narrow at 1.997 GB
+under 5.22/00 and all wide at 3.27 GB under 6.30/03.
 
 ## 7. Reading
 
@@ -329,7 +335,7 @@ narrow, including the sentinel whose `fLast` is exactly 2 000 000 000.
 
 ## 8. Invariants
 
-Checked by `tools/fetch_cern.py --headers` over the eight files of §6 rather
+Checked by `tools/fetch_cern.py --headers` over the eleven files of §6 rather
 than by `tools/check_invariants.py`, which has no file large enough.
 
 1. `fVersion >= 1000000` **if** `fEND > 2000000000`; the reverse holds on every

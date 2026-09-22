@@ -38,7 +38,7 @@ Every claim carries two witnesses that a machine verifies on every push: a
 `path:line` citation into the pinned ROOT release, and real bytes in a committed
 reference file. An invariant may not be published unless something checks it —
 `tools/check_coverage.py` fails the build otherwise — and the invariants run
-over 229 files this project did not write, where disagreeing with reality is an
+over 252 files this project did not write, where disagreeing with reality is an
 ordinary outcome rather than a hypothetical one. Nineteen errors in this
 specification were found that way (`PLAN.md` §9.9) and eight more by its first
 outside review (§8.13); each one is written down rather than quietly fixed.
@@ -87,11 +87,11 @@ name and the UUIDs.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**83 reference files, 2102 byte-level assertions, and 1625 source citations
+**83 reference files, 2102 byte-level assertions, and 1629 source citations
 checked against the pinned submodule across 48 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also
-run over 229 files this project did not write — 157 from uproot's regression
-corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.36/02 —
+run over 252 files this project did not write — 180 from uproot's regression
+corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.38/00 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
 nineteen errors in this specification were found and fixed — plus one compression
 codec it had written off as unreadable, and one coverage figure it had been

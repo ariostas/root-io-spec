@@ -11,6 +11,24 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction: a free span's marker can be missing in a file ROOT wrote.**
+  [`FreeSegments.md` §4.2](spec/01-container/FreeSegments.md) said the marker is
+  never missing in practice. RNTuple's `TFile` writer before ROOT 6.36 left it out
+  whenever it put an `RBlob` in a free slot larger than the blob, and an ATLAS file
+  written by 6.34/04 has one. A reader that walks the record chain by markers
+  alone loses the chain there. The free list still has the span, so read the list
+  first, from `fSeekFree`, and skip any span it names whatever the four bytes
+  hold. §7 and [`Record.md` §6](spec/01-container/Record.md) now say so, and
+  invariant 6 exempts exactly that case.
+
+- **Correction: in a member-wise collection, a base class is one column per
+  member.** [`Collections.md` §4.1](spec/02-serialization/Collections.md) said
+  the base is read once per element. ROOT reads the base's own info over the whole
+  array, so a base with members `a` and `b` is every `a`, then every `b`. The two
+  readings disagree as soon as a base has two members, as ATLAS's `ElementLink`
+  does. §4.2 also says how the base's info is chosen when its class has no
+  version: by `fBaseCheckSum`.
+
 - **Correction: three release boundaries were wrong.** Each is now read from the
   release tags in the pinned submodule, and each has a ROOT-written witness:
   - [`Directory.md` §7](spec/01-container/Directory.md): directory record version 1

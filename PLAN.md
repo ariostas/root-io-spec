@@ -18,7 +18,10 @@ It also found a witness for four open §9.1 rows, three of them in
 `root/roottest/`, which the pinned submodule has shipped since ROOT merged
 roottest in April 2025. Working those rows (C8–C11) found **three more** wrong
 release boundaries — `Directory.md` §7, `FileHeader.md` §8 and `TLeaf.md` §7/§12 —
-all fixed the same day, and one reader gap, C18, which stays open.
+all fixed the same day, and one reader gap, C18, which stays open. C13's RNTuple
+tier then found two more — `FreeSegments.md` §4.2's "never missing" and
+`Collections.md` §4.1's member-wise base — in an ATLAS file written by 6.34/04,
+both fixed the same day, and left C19.
 
 Measured, 2026-09-21, by the checks in `tools/`:
 
@@ -157,7 +160,7 @@ classes whose recorded streamer info does not describe their bytes.**
 The original plan was generated version matrices and member tables for ~440
 persistable classes. That aims at the wrong target: a generated table restates
 what the streamer info in the file already says, and `tools/rootfile.py` decodes
-**99.8% of branch-baskets across both corpora** from the file's own infos with no
+**97.7% of branch-baskets across both corpora** from the file's own infos with no
 per-class knowledge beyond the bootstrap set. `tools/gen_tables.py` is therefore
 not planned.
 
@@ -398,8 +401,8 @@ something no fixture and no other listed file does.
 
 | | Files | Reach | Provenance |
 |---|---|---|---|
-| `gen/cern/` | 72 — 24 core, 46 geometry, 2 physics (+8 more by range request) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
-| `gen/foreign/` | 156 | ROOT 4.00 – 6.36/02 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
+| `gen/cern/` | 72 — 24 core, 46 geometry, 2 physics (+11 more by range request, 3 of them from CERN Open Data) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure **is** evidence |
+| `gen/foreign/` | 180 | ROOT 4.00 – 6.38/00 | uproot's regression corpus, which includes files uproot wrote, so a failure is a **lead** |
 
 A lead must be diagnosed against the pinned source and resolved to one of four
 things — a spec error, a missing format fact, a reader gap, or a file at fault.
@@ -408,8 +411,8 @@ a reason and with the suppressed count printed. **Never weaken an invariant
 because a file disagrees with it.**
 
 `tools/fetch_cern.py --headers` re-reads the header and free-segment record of
-eight files from 1.3 GB to 5.3 GB over HTTP range requests — about 8 KB of
-traffic for 20 GB of files. **It is the only thing exercising the large-file
+eleven files from 1.3 GB to 15.9 GB over HTTP range requests — about 11 KB of
+traffic for 49 GB of files. **It is the only thing exercising the large-file
 layout at all** (§9.2).
 
 ### 3.5 Historical versions
@@ -641,6 +644,11 @@ what satisfied it:
    release boundaries, and the submodule's tags settle each one**:
    `git show v3-03-07:base/inc/TDirectory.h` reads a class version at a release
    directly, back to ROOT 1, and that is the check to run before writing one.
+   And two more from C13's RNTuple tier, found the old way, by a checker failing on
+   a ROOT-written file: a free span's marker **can** be missing (6.34's RNTuple
+   writer), and a member-wise base is one column per member, not one read per
+   element. Both fixed the same day, with the ROOT commit and line that explain
+   them.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -806,7 +814,7 @@ asserting it, and the measurement moved decision 7:
   **do** carry them and do decode. Decision 7's "older files carry no streamer
   infos at all" was true of one file and wrong as a rule; the claim is now
   "specified for 4.00 and later, works in practice back to 3.04/02".
-- **`TBranch` is the only class in 229 files below a hand-written threshold.**
+- **`TBranch` is the only class in 252 files below a hand-written threshold.**
   Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
   `TLeafObject` that occurs anywhere in either corpus is above the version at
   which that class becomes streamer-info driven. That is what makes §9.1's
@@ -1972,7 +1980,7 @@ Reframed by §9.10: most of these are **not** blocked on `gen/legacy/` after all
 ### 9.2 Needs a file over 2 GB
 
 Discharged by range requests rather than by a fixture: `gen/cern/LARGE.toml`
-records eight files from 1.3 GB to 5.3 GB and `fetch_cern.py --headers` checks
+records eleven files from 1.3 GB to 15.9 GB and `fetch_cern.py --headers` checks
 every recorded field on each run, downloading nothing.
 
 | Confirmed | Evidence |
@@ -1983,10 +1991,12 @@ every recorded field on each run, downloading nothing.
 | `nfree` agrees with the parsed list; the last entry always passes `fEND` | all eight, counts 1 to 1539 |
 | The boundary from below: over 1 GB and *not* large format | a CMS file at 1.997 GB with `units` 4 |
 | A free record whose key class is a `TFile` subclass | the same file: `TStorageFactoryFile` |
-| A **wide key at a small offset**, which is what disproved the old rule | `volume.root`: `fVersion` 1004 at 105 159 358 (M5, §1.1 of the page) |
+| A **wide key at a small offset**, which is what disproved the old rule | `volume.root`: `fVersion` 1004 at 105 159 358 (M5, §1.1 of the page) — and, it turned out, every key of every 6.40 fixture: `rntuple/compressed` asserts one at 385 |
 | An 8-byte `fSeekPdir` whose top 16 bits are `fPidOffset` and mask away cleanly | both large-format free records read; invariant 6 |
 | The uninitialised slack past a key list, past the threshold | `volume.root`: `00 04 00 62 00 04 00 62` after the one image |
 | `fLast` above 2000000000 | 32 entries of `volume.root`; the wide form **is** that condition |
+| Offsets past 8 GB | `Run2012C_TauPlusX.root`, 15.9 GB, from CERN Open Data by `url` (C14) |
+| One writer on both sides of the boundary | CMS's `TStorageFactoryFile`: all narrow at 1.997 GB under 5.22/00, all wide at 3.27 GB under 6.30/03 (C14) |
 
 Still not asserted by a committed fixture, and never will be: 2 GB cannot be
 committed. `spec/01-container/LargeFiles.md` is the write-up (M5) and
@@ -2055,11 +2065,19 @@ what close that, and their coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-157 files, **0 failures**. The probe: 28537 decoded, 716 container, 6 partial,
-23 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
-locally. Entries: 26410 of 26477 branch-baskets. **Re-measured 2026-09-22 for
-`PLAN-corpus.md` C9**, which added go-hep's `leaves.root`, the manifest's first
-file from outside scikit-hep-testdata: +49 decoded, +3 container and +47
+180 files, **0 failures**. The probe: 32200 decoded, 785 container, 6 partial,
+178 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
+locally. Entries: 43468 of 44545 branch-baskets, 97.6%. **Re-measured 2026-09-22
+for `PLAN-corpus.md` C13**, which added the 23-file RNTuple tier. The move is those
+files and nothing else: the 157 files before it give 26410 of 26477 and 0
+failures both before and after the three reader changes C13 made. All 155 new
+blocked records are RNTuple's own: `RBlob`s, which have no streamer info by design,
+and anchors, which `read_rntuple` reads instead and which every new file's anchor
+passes. Of the 1010 new skips, 975 are one ATLAS file's `This` element (C19) and
+35 are hand-written streamers.
+
+Earlier that day, for C9: go-hep's `leaves.root`, the manifest's first file
+from outside scikit-hep-testdata, gave +49 decoded, +3 container and +47
 branch-baskets, which is that file's whole contribution and nothing else moved.
 
 Earlier the same day, and the move is two things, measured apart:
@@ -2127,8 +2145,8 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 157 files
-(4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
+72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 180 files
+(4.00/00 – 6.38/00) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
 `RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with

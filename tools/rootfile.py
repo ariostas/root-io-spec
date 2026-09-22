@@ -198,11 +198,20 @@ def read_records(buf: bytes, header: FileHeader) -> list[Record]:
     if header.end > len(buf):
         raise FormatError(
             f"fEND is {header.end} but the file is {len(buf)} bytes: truncated")
+    # A gap whose marker was never written is still in the free list, and a
+    # reader that finds a key where the list says there is a gap SHOULD trust the
+    # list (FreeSegments.md 4.2). RNTuple's TFile writer did exactly that before
+    # ROOT 6.36 (root commit d328b598b32), so the list is read first, straight
+    # from fSeekFree rather than through the chain it is here to repair.
+    unmarked = {first: last for first, last in _free_list_at(buf, header)
+                if last < header.end}
     records, off = [], header.begin
     while off < header.end:
         if off + 4 > len(buf):
             raise FormatError(f"record header at {off} runs past the end of the file")
         nbytes = _i32(buf, off)
+        if nbytes >= 0 and off in unmarked:
+            nbytes = -(unmarked[off] - off + 1)
         if nbytes == 0:
             raise FormatError(f"zero-length record at {off}")
         if nbytes < 0:
@@ -274,13 +283,24 @@ def parse_free_list(chunk: bytes, key_len: int,
                                                      payload_nbytes)]
 
 
+def _free_list_at(buf: bytes, header: FileHeader) -> list[tuple[int, int]]:
+    """The free list read from the key at fSeekFree, or [] if there is none.
+
+    Not through read_records, which consults this: the header says where the
+    record is, and its key says how long its own header is.
+    """
+    off = header.seek_free
+    if not off or off + 18 > len(buf):
+        return []
+    nbytes, key_len = _i32(buf, off), _i16(buf, off + 14)
+    if nbytes <= 0 or key_len <= 0 or key_len > nbytes or off + nbytes > len(buf):
+        return []
+    return parse_free_list(buf[off:off + nbytes], key_len, nbytes - key_len)
+
+
 def read_free_segments(buf: bytes, header: FileHeader) -> list[tuple[int, int]]:
     """The `TFree` list from the FreeSegments record: (first, last) byte ranges."""
-    if not header.seek_free:
-        return []
-    rec = next(r for r in read_records(buf, header) if r.offset == header.seek_free)
-    return parse_free_list(buf[rec.offset:rec.offset + rec.nbytes],
-                           rec.key_len, rec.payload_nbytes)
+    return _free_list_at(buf, header)
 
 
 def load(path) -> tuple[bytes, FileHeader, list[Record]]:
@@ -1383,6 +1403,24 @@ class Decoder:
         # collection reached, recorded before it is decoded so that it survives
         # a failure to decode it.
         self.member_wise: list[tuple[str, str, int]] = []
+
+    def base_info(self, el: Element) -> StreamerInfo:
+        """The info a TStreamerBase element selects, where no version word does.
+
+        By fBaseVersion when it is not negative or there is no checksum, and by
+        fBaseCheckSum otherwise (root/core/meta/src/TStreamerElement.cxx:762-765)
+        -- which is how a base whose class declares no version, fBaseVersion -1,
+        is found at all.
+        """
+        version, checksum = el.tail.get("fBaseVersion", -1), el.base_checksum
+        if version >= 0 or checksum == 0:
+            return self.info_for(el.name, version)
+        for info in self.infos.get(el.name, {}).values():
+            if info.checksum == checksum:
+                return info
+        raise UnsupportedClass(
+            f"base {el.name} with checksum {checksum:#010x}, which matches no "
+            f"streamer info in this file")
 
     def info_for(self, cls: str, version: int) -> StreamerInfo:
         if cls in self.custom:
@@ -2523,6 +2561,15 @@ class Decoder:
         width = element_width(element)
         if width is not None:
             return offset + count * width
+        if t == 0 and element.cls == "TStreamerBase":
+            # A base in array mode is its own info read over the same array:
+            # one column per member of the base, and nothing around them
+            # (root/io/io/src/TStreamerInfoReadBuffer.cxx:1409-1410). Not the base
+            # once per element -- those differ as soon as the base has two
+            # members. Collections.md 4.1 and 4.2.
+            for member in self.base_info(element).elements:
+                offset = self.read_column(member, count, offset)
+            return offset
         if OFFSET_L <= t < OFFSET_P:                  # a C array per element
             inner = t - OFFSET_L
             if inner in SCALAR_WIDTH:
@@ -2843,6 +2890,13 @@ def value_type_name(type_name: str) -> str:
     bare = type_name.strip().rstrip("*").strip()
     if bare.startswith("std::"):
         bare = bare[5:]
+    if "<" not in bare:
+        # A class deriving from a container, named by itself -- ATLAS's
+        # xAOD::CutBookkeeperContainer_v1 is a DataVector. Its element type is
+        # not in the name, and stl_kind already declines it (Collections.md 1).
+        raise UnsupportedClass(
+            f"{type_name} is not a container name this specification knows "
+            f"(Collections.md 1)")
     args = template_args(bare)
     head = bare[:bare.index("<")]
     if head in ("map", "multimap", "unordered_map", "unordered_multimap"):

@@ -26,8 +26,41 @@
 # groot/riofs/gendata/gen-flat-tree.go -- and it is the witness TLeaf.md 7 lacked:
 # TLeafF16/TLeafD32 at class version 1 with the bare title, on a scalar, a [10]
 # array and a [N] slice alike (PLAN-corpus.md C9).
+#
+# The RNTuple tier, 23 files, was added on 2026-09-22 (PLAN-corpus.md C13): every
+# RNTuple file scikit-hep-testdata carries except one byte-identical to
+# gen/cern's RNTuple.root. Anchor versions 1.0.0.0, 1.0.0.1 and 1.0.1.0, writers
+# ROOT 6.34/04 to 6.38/00 -- past both corpora's 6.36/02 -- and schema extension,
+# multiple representations, multiple cluster groups and truncated reals, none of
+# which a fixture has. uproot-physlite-rntuple_v1-0-0-0.root is also the witness
+# to FreeSegments.md 4.2: a free slot's remainder with no marker, written by
+# RNTuple's TFile writer before ROOT 6.36 (root commit d328b598b32), and to
+# Collections.md 4.1's member-wise base, in ATLAS's ElementLink.
 0150df7dbb9a5a655e448875c0072cc08a972d7aff0146f9de6365884e32120e      15094  6.28/04     go-hep/leaves.root
 6a71d6ca866b76c8d89689dfce2cc402aecd2aea0ff03a650db9fe78e60b8385      27643  6.35/01     Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root
+80782b7d1baa5fe6c7c9746a300245b410d71ddcea506389798bb2d42645e2a6      50467  6.37/01     cmsopendata2015_ttbar_19980_NANOAOD_RNTupleImporter_rntuple_v1-0-0-1.root
+3562f610fdba54f5c8515496a7639d708ce95ea656fe6076755812dc86c812a9      25267  6.35/01     ntpl001_staff_rntuple_v1-0-0-0.root
+29ba8489be97e2db6b7a8b11123e600c69c2c9429f5f2810e06473a3a22370e6      25318  6.38/00     ntpl001_staff_rntuple_v1-0-1-0.root
+057e436c817f91dfd0f8c7be791a47d19ed6b6302b99244f16253689c99684c7       2382  6.35/01     rntviewer-testfile-multiple-rntuples-v1-0-0-0.root
+a37891c82d06a1479fe390780f0b6c7723f5f4995f91add126dd3c56d7e7ca57       2278  6.35/01     test_1jag_int_float_rntuple_v1-0-0-0.root
+4d896728ebfc754d63c93af925745efa22cf5ae343e601c060b4b4b396519d11       1561  6.35/01     test_atomic_bitset_rntuple_v1-0-0-0.root
+a0c01e7899c357eb638ec4e1081415fcfd77804811935e34ffbe91e13b0b1a43       1390  6.35/01     test_bit_rntuple_v1-0-0-0.root
+799ccda4037d41c75966482077ad6903d0e522ae8050e58b986c9931038c45dd       3122  6.36/00     test_class_inheritance_rntuple_v1-0-0-1.root
+1365c026da2846ee4c1c891ba9831c4fe51637f7bd3b0f5c5951f3bd9bf83dd6       1811  6.35/01     test_emptystruct_invalidvar_rntuple_v1-0-0-0.root
+b269ab6252fa7883e2b3abadd3dee4d79b62e2e2f5db45c86ca72c4fb25c3bb4       3776  6.35/01     test_extension_columns_rntuple_v1-0-0-0.root
+c8052c960a60c68b15a8ca6a801765f49d90d7eaf675de9a33565f1bdc9c968e       1890  6.35/01     test_float_types_rntuple_v1-0-0-0.root
+3c96a33a3c1fccd92374c6a5f97ae1e22ca42e93cc9de9b7f776b0a73e6e004e       2353  6.35/01     test_index_multicluster_rntuple_v1-0-0-0.root
+ab2ba3718e5f5784d803545d5bd17b0d8ba4b6096a8b19223b5dee3b060bcb4b       2255  6.35/01     test_int_5e4_rntuple_v1-0-0-0.root
+2dbd4e9688861f2040505155d41fafcdb8eb5e63214dd43976f6b75e974245c0       1561  6.35/01     test_int_float_rntuple_v1-0-0-0.root
+4fbfd0fb13193780538033edf47607093c82a23b8a51cb5a5e6373389ce4615f       1765  6.35/01     test_int_multicluster_rntuple_v1-0-0-0.root
+9aa21f356bad36fc79ff11363ebf76476c2a02e338bd537bfa553f54282ce50d       2090  6.35/01     test_int_vfloat_tlv_vtlv_rntuple_v1-0-0-0.root
+ac612c1333643cf5138aa25470f5dcfebc0d13059788bf924fd012736969bc24       7162  6.35/01     test_multiple_cluster_groups_rntuple_v1-0-0-0.root
+d87f1684998a72e7b1ef55e6a22e54ae16511aeaacdc38d12a8bbbc3f3545251       1724  6.35/01     test_multiple_representations_rntuple_v1-0-0-0.root
+446f0e7d524f645b9f000b95c0a50698a017b50b5e6d1bd149d50c7048524fe1       2102  6.35/01     test_nested_structs_rntuple_v1-0-0-0.root
+401b546bffedf1ae40298cd5fc56739b31cd24418022ba5ec3a224f9a5d24d87       1780  6.35/01     test_split_3e4_rntuple_v1-0-0-0.root
+b7fde065707f9c318d7a51d5de48f99cead6f6e165c822d82b79348b7e1b2e53       1629  6.38/00     test_splitint_rntuple_v1-0-1-0.root
+29580a1af991729c85e4e4b2777b70deed665711a9fd7fa6a466e9bde029e3ff       3000  6.35/01     test_stl_containers_rntuple_v1-0-0-0.root
+320483c251a168dc4e8b97982836d2e44d374a6498fffdaa483a47206be85d23    2072650  6.34/04     uproot-physlite-rntuple_v1-0-0-0.root
 f37250be474fcd8d3c4e51883a3bb25990e5508a619e0c962f416245870e20c7      30847  6.18/04     issue367b.root
 c14a29b25b15b837226f396e920b5d9fb134f3558bef5b0a9db5d6d9606c5f3a     377623  6.22/08     nanoAOD_2015_CMS_Open_Data_ttbar.root
 89f570c50531955ec3555e95a7a48f0c070fd1e7808aab0cb2533ba96ef2f3d2       5266  6.30/02     string-example.root

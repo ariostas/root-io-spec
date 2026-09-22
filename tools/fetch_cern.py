@@ -113,13 +113,26 @@ def fetch_range(url: str, start: int, length: int) -> bytes:
         return response.read()
 
 
+def large_url(row: dict) -> str:
+    """Where a LARGE.toml row is read from: `path` under root.cern, or `url`.
+
+    Exactly one of the two. `url` is for files outside root.cern -- CERN Open
+    Data serves the same `Accept-Ranges: bytes` from `https://opendata.cern.ch`
+    followed by the EOS path of a record's `root://eospublic.cern.ch/` URI.
+    """
+    if ("path" in row) == ("url" in row):
+        raise ValueError(f"a LARGE.toml row needs exactly one of path and url: "
+                         f"{row.get('path') or row.get('url')!r}")
+    return row["url"] if "url" in row else BASE + row["path"]
+
+
 def check_headers() -> int:
     """Verify every LARGE.toml entry with two range requests."""
     spec = tomllib.loads(LARGE.read_text())
     bad = 0
     for want in spec["file"]:
-        url = BASE + want["path"]
-        name = want["path"].rsplit("/", 1)[-1]
+        url = large_url(want)
+        name = url.rsplit("/", 1)[-1]
         problems: list[str] = []
         try:
             header = rootfile.read_header(fetch_range(url, 0, 512))

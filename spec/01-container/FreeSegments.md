@@ -116,14 +116,36 @@ own comment notes that the marker may therefore be absent on disk, in which case
 only recovery suffers. A reader that walks the chain and finds a key where the free
 list says there is a gap SHOULD trust the free list.
 
-> **In practice it is never missing.** Across both corpora, 15 of 225 files carry
-> interior free space at all, holding **139 gaps** between them — 4 bytes at the
-> smallest, 63 at the median, 10908 at the largest — and in all 15 the markers and
-> the free list agree exactly, on length as well as on offset. So the hedge above
-> is about what a reader must *tolerate*, not about what it will meet: writing the
-> marker is a **fixed** obligation on the write side
+> **ROOT's own writers write it, with one historical exception.** Across both
+> corpora as they stood on 2026-09-21, 15 of 225 files carried interior free
+> space, holding **139 gaps** between them — 4 bytes at the smallest, 63 at the
+> median, 10908 at the largest — and in all 15 the markers and the free list
+> agreed exactly, on length as well as on offset. Writing the marker is a
+> **fixed** obligation on the write side
 > ([Writing a file §2.3](../06-writing/WritingFiles.md#23-updating-the-free-list-and-the-three-outcomes)),
 > and invariant 6 checks it rather than merely allowing it.
+
+**The exception is RNTuple's writer before ROOT 6.36.** `TKey::Create` puts the
+remainder's marker in the key's own buffer, four bytes past the key, and it
+reaches the file only because `TKey::WriteFile` writes those four bytes too
+(`root/io/io/src/TKey.cxx:1501`). RNTuple writes its `RBlob` keys itself,
+bypassing `TKey::WriteFile` ([RNTuple notes §1](../05-rntuple/NOTES.md)), so when
+its `TFile` writer placed a blob in a free slot larger than the blob, the
+remainder got no marker. ROOT fixed that in commit `d328b598b32` (2025-01-29,
+*"properly write the free slot's nbytes"*), first released in **6.36.00**; the
+pinned release writes the four bytes itself
+(`root/tree/ntuple/src/RMiniFile.cxx:1177-1182`). The remainder is still in the
+free list, so a reader that follows the SHOULD above reads such a file
+correctly, and one that walks markers alone loses the chain at the first one.
+
+> Witnessed by `uproot-physlite-rntuple_v1-0-0-0.root` of the foreign corpus
+> (`gen/foreign/MANIFEST.sha256`), an ATLAS file written by ROOT 6.34/04 with the
+> `RBlob` keys of [Records §3.6](Record.md#36-fseekpdir-and-the-packed-fpidoffset)'s
+> historical exception. Of its seven interior free entries six are marked, and
+> the seventh, `(200897, 200923)`, begins exactly where the 126-byte `RBlob` at
+> 200771 ends: a 153-byte slot, a 126-byte blob and 27 bytes left over. The four
+> bytes at 200897 read `03 10 dc 00`, stale, and a marker-only walk reads them as
+> a 51 MB record.
 
 ### 4.3 Directories are never freed
 
@@ -172,11 +194,14 @@ truncated, and ROOT attempts recovery
 
 To walk the chain, per [Records §1](Record.md#1-the-record-chain):
 
-1. Start at `fBEGIN`.
-2. Read an `i32`. If zero, the file is corrupt; stop.
-3. If negative, this is a free span: advance by its magnitude and repeat.
-4. Otherwise parse the key and advance by `fNbytes`.
-5. Stop at `fEND`.
+1. Start at `fBEGIN`, with the list already read (below) — it is found from the
+   header, not from the chain.
+2. If an interior entry of the list begins here, this is a free span whatever the
+   four bytes hold: advance past `fLast` and repeat (§4.2).
+3. Read an `i32`. If zero, the file is corrupt; stop.
+4. If negative, this is a free span: advance by its magnitude and repeat.
+5. Otherwise parse the key and advance by `fNbytes`.
+6. Stop at `fEND`.
 
 To read the list:
 
@@ -203,7 +228,8 @@ To read the list:
 5. Entries are in strictly ascending order, non-overlapping and **non-adjacent** —
    adjacent spans are always merged (`root/io/io/src/TFree.cxx:66-95`).
 6. Every interior entry's `fFirst` holds a negative `i32` whose magnitude is
-   `min(fLast - fFirst + 1, 2000000000)`.
+   `min(fLast - fFirst + 1, 2000000000)` — except, in a file written before ROOT
+   6.36, an entry beginning where an `RBlob` key ends (§4.2).
 7. Every negative marker found while walking the chain corresponds to an entry in
    the list.
 8. Live records and free spans partition `[fBEGIN, fEND)` exactly.
@@ -233,6 +259,7 @@ Against `root/io/doc/TFile/freesegments.md` and `gap.md`:
 | 7 | `gap.md`: the first four bytes hold "the negative of the number of bytes in the segment" | True, but the magnitude is that of the whole **merged** span, clamped to 2000000000, and written at the merged span's start (§4) |
 | 8 | — | A second producer exists: `TKey::Create` marks the remainder of a partially reused gap (§4.1) |
 | 9 | — | Deleting the last record shrinks `fEND`; the marker write is unchecked and may be absent; the span's remaining bytes are stale, not cleared; directory records are never freed (§4.2, §4.3, §6) |
+| 10 | *This document, until 2026-09-22*: "in practice it is never missing" | ROOT 6.34's RNTuple writer left it out after every `RBlob` it placed in a larger free slot, fixed in 6.36.00 (§4.2) |
 
 ## 10. A suspected bug in recovery
 
