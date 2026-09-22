@@ -830,10 +830,16 @@ Per the repository's convention the reply opens with the AI-content marker.
    2026-09-21**, at full length:
    [comment 5767722107](https://github.com/ariostas/root-io-spec/issues/1#issuecomment-5767722107).
    It went out after the RooFit scope decision was committed, so the public
-   statement and the repository agree. It does **not** yet carry R8's outcome:
-   it says item 10 comes first and asks them for bytes on items 9 and 10, and in
-   the event none of that was needed and three of their four RooFit claims were
-   wrong. A follow-up is worth sending — see below.
+   statement and the repository agree. It did not carry R8's outcome — it says
+   item 10 comes first and asks them for bytes on items 9 and 10, and in the
+   event none of that was needed and three of their four RooFit claims were
+   wrong — so a **follow-up was posted 2026-09-22**:
+   [comment 5779518620](https://github.com/ariostas/root-io-spec/issues/1#issuecomment-5779518620),
+   at `5d31288`. It sets out all four outcomes, the two classes they will need
+   that they did not raise, and the three findings that touch any reader: the
+   `0x0b5fb752` pair checksum colliding across unrelated files, a synthesised
+   pair's element titles being the standard library's doc comments, and
+   `RooAbsReal`'s `unique_ptr` spelling.
 7. ~~**R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
    ten-minute ROOT experiment and nothing else.~~ **Done**, and it cost more than
    ten minutes because the file it needed also caught a reader bug: a zero
@@ -852,8 +858,8 @@ Done when: every item above has an outcome recorded in this file, the issue has 
 reply, and `PLAN.md` §8.1 criterion 1 is true again — which it is not today, and
 which is the reason the order starts where it does.
 
-**All three hold as of 2026-09-21.** This file is discharged and deletable:
-nothing left in it is durable that `spec/` or `PLAN.md` does not already carry,
-and `PLAN.md` §8.13 has the outcomes. The one thing that would be lost by
-deleting it now is the record that the posted reply predates R8 — so send the
-follow-up first, or move that note into `PLAN.md` §8.13.
+**All three hold**, as of 2026-09-22 with the follow-up posted. This file is
+discharged and deletable: nothing left in it is durable that `spec/` or
+`PLAN.md` does not already carry, and `PLAN.md` §8.13 has the outcomes.
+Per `CLAUDE.md`, deleting it is the last step — check §8.13 carries the tally
+and both reply links first.
