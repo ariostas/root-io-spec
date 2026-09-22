@@ -1,11 +1,20 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: in progress.** Written 2026-09-21; **R1–R7 done** the same day — the
-three defects of §2, all four gaps of §3, the item-3 attribution, and §4.1's
-corpus question. The reply and R8 remain. Every item below was re-checked against
-the corpora and against our own reference files *before* being planned, and the
-verification is recorded per item, because the point of a review is what it turns
-out to be right about.
+**Status: nearly discharged.** Written 2026-09-21; **R1–R8 done** the same day —
+the three defects of §2, all four gaps of §3, the item-3 attribution, §4.1's
+corpus question, and all four RooFit items of §5 — and the reply posted. What
+remains is three of §6's corroboration citations. Every item below was re-checked
+against the corpora and against our own reference files *before* being planned,
+and the verification is recorded per item, because the point of a review is what
+it turns out to be right about.
+
+**The tally**, from a review that offered six gaps and four observations: the six
+false or incomplete claims of our own that R1–R7 found, plus **two more that the
+RooFit fixture found** — both of `StreamerInfo.md` §11.2's exception lists were
+one entry short (§5); **two reader bugs** fixed and **seven classes the reader
+could not decode** implemented; and **three of the review's own claims
+corrected** — item 8's category, item 9's class, and item 10's reading of a
+frame.
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
 review of this specification from outside it.
 [rootfilespec](https://github.com/nsmith-/rootfilespec) — a pure-Python,
@@ -808,3 +817,7 @@ Per the repository's convention the reply opens with the AI-content marker.
 Done when: every item above has an outcome recorded in this file, the issue has a
 reply, and `PLAN.md` §8.1 criterion 1 is true again — which it is not today, and
 which is the reason the order starts where it does.
+
+**All three hold as of 2026-09-21**, bar §6's three remaining corroboration
+citations. When those land this file is discharged and deletable; nothing else in
+it is durable that `spec/` or `PLAN.md` does not already carry.
