@@ -11,6 +11,36 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction, and it changes what a correct reader does: a basket does not
+  always use the large key layout.**
+  [`TBasket.md` §1](spec/04-ttree/TBasket.md) said it always does, on the strength
+  of an unconditional `fVersion += 1000` in `TBasket`'s constructor. The line is
+  real, but it arrives in **ROOT 4.02** (commit `3970c0bead`, 2004-09-10, first
+  production release 4.02/00). Before it, ROOT writes small-form basket keys --
+  12 385 of them in 19 files of `root/roottest/`, from 2.23/12 to 4.00/04. So the
+  trap runs both ways: a reader that switches on file size reads `fSeekKey` four
+  bytes short, and a reader that assumes the large form reads an older basket four
+  bytes **wide**. Take the width from the key's own `fVersion`, as
+  [`Record.md` §2](spec/01-container/Record.md) requires of every other key. The
+  commit message also gives the reason ROOT pays 8 bytes on every basket: a basket
+  may be created long before a file passes 2 GB and written long after.
+
+- **Correction, for a reader of RNTuple: a compressed page's block chain does not
+  fill its record payload.** An `RBlob` does not hold one compressed object; it
+  holds **sealed pages**, each `blocks || 8-byte XXH3-64 checksum`, and the
+  checksum is appended after compression and counted outside `fObjLen`
+  (`RPageStorage.cxx:751`). So a page's chain stops 8 bytes short, which
+  [`Compression.md` §9](spec/01-container/Compression.md) invariant 1 as written
+  forbade, and a blob holding several pages mixes raw with compressed and cannot
+  be walked from the container layer at all. New
+  [§9.1 *What an `RBlob` is not*](spec/01-container/Compression.md#91-what-an-rblob-is-not)
+  is the write-up; invariants 1, 3 and 5 are scoped to say where they hold. An
+  **envelope** still closes flush -- only a page is short -- which is the
+  distinction, and the new `rntuple/compressed` fixture carries both shapes in
+  1420 bytes. Page checksums are **on by default**, so this is the ordinary case,
+  not an exotic one; no fixture had seen it because all eight RNTuple generators
+  wrote with compression off.
+
 - **Releases are dated now, not numbered.** CalVer, `YYYY.MM.DD`, cut at a
   milestone: a tag marks a point in the document stable enough to cite or to
   vendor a fixture from, not a compatibility boundary. The documents no longer

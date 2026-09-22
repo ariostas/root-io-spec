@@ -45,6 +45,19 @@ Two consequences, both silent:
   that ROOT's own `TFile::Map()` uses instead finds a compression magic that is
   not there and rejects the whole file. `PLAN.md` §9.9 records that this is how
   the `!=`/`>` erratum in `Compression.md` was found.
+- **With compression on it fails the other way round, and louder.** The
+  paragraph above is the uncompressed case, where `fObjLen` comes out *short* and
+  a reader silently truncates. Turn compression on — which is RNTuple's default,
+  and which no fixture here used before 2026-09-22 — and `fObjLen > fNbytes -
+  fKeyLen` becomes **true**, so the payload is walked as a block chain. Then:
+  a single sealed page's chain ends **8 bytes early**, because the page checksum
+  is appended after compression and outside `fObjLen`
+  (`root/tree/ntuple/src/RPageStorage.cxx:751`); and a blob holding **several**
+  pages has no single chain at all, mixes raw pages with compressed ones, and
+  makes a conforming container reader reject the whole file rather than one
+  record. [Compression §9.1](../01-container/Compression.md#91-what-an-rblob-is-not)
+  is the write-up and `rntuple/compressed` is the fixture.
+
 - **Nothing else in the key is usable either.** The document's own rule is the
   one to follow: *"The only relevant means of finding objects is the locator
   information, consisting of an offset and a size."* Take offsets and sizes from

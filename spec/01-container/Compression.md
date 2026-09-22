@@ -313,15 +313,21 @@ never consults the size.
 
 ## 9. Invariants
 
+**These are invariants of a record whose payload is one object.** An `RBlob` is
+not that, and §9.1 says what holds there instead.
+
 1. For every record, `fNbytes - fKeylen` is either at least `fObjlen` (raw) or
-   the exact total length of a chain of compression blocks.
+   the exact total length of a chain of compression blocks — **for an `RBlob`,
+   that length or that length plus 8** (§9.1).
 2. For each block, the total length is `9 + compressed size`, and the block lies
    entirely within the record's payload.
-3. The sum of the blocks' uncompressed sizes equals `fObjlen`.
+3. The sum of the blocks' uncompressed sizes equals `fObjlen`. **In an `RBlob`
+   holding more than one page it does not, and cannot be evaluated** (§9.1).
 4. Every block's magic is one of the five in §3, and the method byte matches that
    algorithm.
 5. No block declares an uncompressed size greater than `0xFFFFFF`, and every block
-   but the last in a chain declares exactly `0xFFFFFF`.
+   but the last in a chain declares exactly `0xFFFFFF`. **Not an `RBlob`'s
+   blocks**, which come from pages compressed independently (§9.1).
 6. For an LZ4 block, the XXH64 of the bytes from offset 17 to the end of the block
    equals the checksum at offsets 9-16, and `compressed size >= 8`.
 7. A raw payload never begins with a valid block magic followed by sizes
@@ -330,6 +336,49 @@ never consults the size.
 
 Invariant 7 is the reason a reader MUST NOT detect compression by sniffing for a
 magic. Object data can begin with any bytes.
+
+### 9.1 What an `RBlob` is not
+
+`RBlob` is the artificial key class RNTuple gives its payload records. Its
+payload is **not one compressed object** but a sequence of **sealed pages**, each
+of them
+
+```
+blocks  ||  optional 8-byte XXH3-64 page checksum
+```
+
+and the checksum is appended **after** compression and counted **outside**
+`fObjLen`: `kNBytesPageChecksum` is `sizeof(std::uint64_t)`
+(`root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74`) and a page is sealed as
+`nBytesZipped + nBytesChecksum` (`root/tree/ntuple/src/RPageStorage.cxx:751`).
+Page checksums are **on by default**.
+
+So a sealed page's block chain stops **8 bytes short of its payload**, which
+invariant 1 as written forbids. Two shapes are well formed and a reader may check
+both:
+
+| The blob holds | The chain ends | Because |
+|---|---|---|
+| an **envelope** | exactly at the payload end | an envelope's checksum is inside its own declared length (`spec/05-rntuple/` *Envelopes*) |
+| **one sealed page** | exactly 8 bytes before it | that gap is the page checksum |
+
+> Demonstrated by `rntuple/compressed`, the one fixture here written with
+> compression **on**. Its four `RBlob`s are the header envelope, the page, the
+> page list and the footer: the three envelopes close flush and **only the page
+> is 8 bytes short**, which is what says the distinction is real and not an
+> accident of one record.
+
+**A blob holding more than one page cannot be walked from the container layer at
+all.** Where the page boundaries fall is in the page list envelope, and a reader
+that has only the key must take offsets and sizes from there — the rule
+`spec/05-rntuple/NOTES.md` §1 already gives for every other field of an `RBlob`.
+Such a blob mixes raw and compressed pages freely, so `fObjLen` may exceed the
+payload and make §1's test read "compressed" on bytes that are not.
+
+> **None of this licenses a reader to stop checking.** The chain of a blob that
+> *does* account for `fObjLen` must still end at one of the two places above;
+> anything else is a malformed page, not an unverifiable one, and
+> `tools/check_invariants.py` fails it.
 
 ## 10. Errata
 

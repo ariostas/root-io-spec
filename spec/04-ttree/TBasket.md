@@ -29,10 +29,37 @@ those extra fields land inside the key:
 > three strings.** Computing it puts the payload 19 bytes early on every basket in
 > the file.
 
-**A basket always uses the large key layout.** Its constructor does
-`fVersion += 1000` unconditionally (`root/tree/tree/src/TBasket.cxx:71`), so
-`fSeekKey` and `fSeekPdir` are 8 bytes each however small the file is. This is the
-only place in ROOT where the large form appears in a file under 2 GB.
+**A basket written by ROOT 4.02 or later always uses the large key layout.** Its
+constructor does `fVersion += 1000` unconditionally
+(`root/tree/tree/src/TBasket.cxx:71`), so `fSeekKey` and `fSeekPdir` are 8 bytes
+each however small the file is. This is the only place in ROOT where the large
+form appears in a file under 2 GB.
+
+The reason is that a basket's width cannot be decided when its record is written.
+The commit that added the line says so (`3970c0bead`, 2004-09-10):
+
+> This solves a nasty problem happening when having TBasket created long before
+> the file reaches 2 GBytes and written long after the file has been above 2
+> GBytes.
+
+which is the same fact [Large files §1.1](../01-container/LargeFiles.md) records
+for keys in general — the width follows where the file ended when the key was
+**built**, not where its record ends up. Paying 8 bytes on every basket
+unconditionally is the price of not having to know.
+
+> **Before 4.02 a basket uses the small form.** ROOT 2 and 3 write key `fVersion`
+> **2**, ROOT 4.00 writes **3**, and the `+ 1000` arrives only at 4.02: the commit
+> above is first in the 4.01/02 development release and first in a production
+> release at 4.02/00. A reader that takes the large layout unconditionally reads
+> `fSeekKey` and `fSeekPdir` four bytes too wide on every basket of an older file.
+>
+> **Take the width from the key's own `fVersion`**, exactly as
+> [Records and keys §2](../01-container/Record.md#2-key-layout) requires of every
+> other key. That rule is correct for a basket at every release, and the
+> paragraph above is a statement about what ROOT writes — not a licence to skip
+> the test. Measured over `root/roottest/`, which the pinned submodule ships:
+> **12 385 basket keys in 19 files use the small form**, from ROOT 2.23/12 to
+> 4.00/04, against 35 959 large-form keys from 4.02/00 to 6.41/01.
 
 Two other key fields carry basket-specific meanings:
 
@@ -509,7 +536,9 @@ These are the invariants of a basket **record**. An embedded basket satisfies 1,
 
 1. `fKeylen` equals the ordinary key length plus 19, or plus 20 when `fIOBits` is
    present, and the header ends exactly at `fKeylen`.
-2. The key's `fVersion` is above 1000.
+2. The key's `fVersion` is above 1000 **in a file whose header names ROOT 4.02
+   or later**. Below that release a basket key carries the ordinary key version
+   and the small layout (§1), so a reader tests the key rather than the class.
 3. `fNevBuf >= 0` and `fLast >= fKeylen`.
 4. `fObjlen - (fLast - fKeylen)` is 0, or `4 + 4 × (fNevBuf + 1)`, or **twice**
    that when a displacement array follows the entry-offset array (§5.3).
@@ -539,7 +568,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | # | Claim | Actually |
 |---|---|---|
 | 1 | — | Nothing says a basket's own fields are inside `fKeylen`, which is the single most damaging omission: a reader that computes the key length from the strings misplaces every payload in the tree (§1) |
-| 2 | — | Nothing says a basket always uses the large key layout, so a reader that switches on file size reads `fSeekKey` four bytes short (§1) |
+| 2 | — | Nothing says a basket written by 4.02 or later always uses the large key layout, so a reader that switches on file size reads `fSeekKey` four bytes short — and nothing says an older basket uses the small form, so a reader that learns the rule from a modern file reads an older one four bytes **wide** (§1) |
 | 3 | — | `fNevBufSize` is documented nowhere, including that it means two different things and that its **sign** carries `fIOBits` (§2.1, §2.2) |
 | 4 | — | Nothing says `fLast` is record-relative, nor that the entry offsets are (§3, §5.1) |
 | 5 | — | Nothing says the offset array's count is `fNevBuf + 1` with a meaningless final element (§5.1) |

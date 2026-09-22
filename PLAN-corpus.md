@@ -1,7 +1,8 @@
 # PLAN-corpus — six external resources, surveyed 2026-09-22
 
-**Status: open.** Nothing discharged. The survey is done; this plan orders what
-to do about it.
+**Status: open. C1 and C2 discharged 2026-09-22**, both with a fixture and a
+source citation; C5–C7, C3–C4 and the rest stand. The survey is done; this plan
+orders what to do about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
 read-only and all of them made to probe with this project's own tools rather than
@@ -46,8 +47,8 @@ the first task of such an item is to reproduce it.
 
 | # | Claim | Checked how | Verdict |
 |---|---|---|---|
-| C1 | A compressed RNTuple page's block chain does **not** fill the record payload | `check_invariants.py` on 4 files → exit 1, 6 failures; gap exactly 8 bytes in each `9.2` case (488/496, 3686/3694) | **Confirmed here**, and cited: `RPageStorage.hxx:74`, `RPageStorage.cxx:751` |
-| C2 | A basket does **not** always use the large key layout | census of every `TBasket` key in `root/roottest/`, 62 ROOT releases | **Confirmed here**; the boundary is ROOT 4.02 |
+| C1 | A compressed RNTuple page's block chain does **not** fill the record payload | `check_invariants.py` on 4 files → exit 1, 6 failures; gap exactly 8 bytes in each `9.2` case (488/496, 3686/3694) | **✅ discharged**, and cited: `RPageStorage.hxx:74`, `RPageStorage.cxx:751` |
+| C2 | A basket does **not** always use the large key layout | census of every `TBasket` key in `root/roottest/`, 62 ROOT releases | **✅ discharged**; the boundary is ROOT 4.02, and the commit that moved it is `3970c0bead` |
 | C3 | `Buffer.md` §2.3's unframed-class list omits `TDatime` | one file, `tdatime.root`, in go-hep's corpus | **Reported** — reproduce before acting |
 | C4 | `Record.md` §8.6 is false for ROOT 6.34/6.35 RNTuple blob keys | one file; agent traced the fix to `RMiniFile.cxx:963` in the pinned release | **Reported** — reproduce before acting |
 | C5 | `check_invariants.py` resolves a base class by name, not `fBaseVersion` | read at `check_invariants.py:846`; symptom is 34 failures on one file | **Reported** — the line is real, the consequence is not reproduced |
@@ -57,7 +58,33 @@ the first task of such an item is to reproduce it.
 
 ## 2. Four defects in published prose — these should not wait
 
-### C1. `Compression.md` §9 has no `RBlob` carve-out
+### C1. `Compression.md` §9 has no `RBlob` carve-out — ✅ discharged 2026-09-22
+
+**Done**: `Compression.md` §9 is scoped and gains §9.1 *What an `RBlob` is not*;
+`NOTES.md` §1 gains the compressed direction; `check_invariants.py` carves the
+shape out under the existing labels; and `gen/cases/rntuple/compressed` is the
+fixture — 1420 bytes, written by the pinned ROOT, 10 assertions.
+
+**What the fixture added that the survey had not seen.** The carve-out is
+narrower than "an `RBlob` is exempt", because the file has four of them: the
+header envelope, the page, the page list and the footer. **The three envelopes
+close flush and only the page is 8 bytes short** — an envelope's checksum is
+inside its own declared length, a page's is not. That distinction is what §9.1
+states, and without a file carrying both shapes it could not have been written.
+
+**And the first attempt at the fix was wrong**, which is the part worth keeping:
+reporting any misaligned `RBlob` chain as unverifiable let a *corrupted* page
+through — `csize + 1` on the fixture passed with exit 0. The discriminator is
+`fObjLen`: once the blocks account for it, the payload must close either flush or
+8 bytes early, and anything else is a malformed page rather than an unplaceable
+one. Corrupting the fixture now fails, and the ordinary-record path still fails
+as it always did (verified on `container/compress-lz4`).
+
+Measured after: rntuple-validation 6 Compression failures → 0, UnROOT's RNTuple
+tier 37 → 0, roottest's two `cms_opendata` files from `UNREADABLE` → clean. What
+remains in those sets is C4 and one unrelated `StreamerDriven 10.5`.
+
+---
 
 §9.2 says the block chain fills the record payload. For an RNTuple page it does
 not, and this is not an edge case: it is what ROOT does by default on every page.
@@ -96,7 +123,32 @@ weakening §9 for ordinary records**; add a fixture — the cheapest is an
 `rntuple/anchor`-style case written by the pinned ROOT with compression *on*,
 which this project can generate itself rather than vendoring.
 
-### C2. `TBasket.md` §1's "always" is true only from ROOT 4.02
+### C2. `TBasket.md` §1's "always" is true only from ROOT 4.02 — ✅ discharged 2026-09-22
+
+**Done**: §1 is scoped and carries the reason; invariant 2 and pitfall row 2 are
+scoped with it; `check_invariants.py` gates `TBasket 9.2` on the writing release;
+`IGNORE.toml`'s `uproot-issue413.root` entry is re-argued.
+
+**The boundary is now cited, not just measured.** `git log -S` on the submodule
+finds `3970c0bead`, 2004-09-10, first in `v4-01-02` and first in a production
+release at **4.02/00** — which is exactly where the census puts it. Its message
+gives the reason, and it is the same one `LargeFiles.md` §1.1 records: *"a
+TBasket created long before the file reaches 2 GBytes and written long after the
+file has been above 2 GBytes."* The width cannot be decided when the record is
+written, so ROOT pays 8 bytes on every basket rather than know.
+
+**A number in this plan was wrong.** The survey reported 238 small-form basket
+keys; the real figure, counted here, is **12 385 in 19 files** — including 1139
+in `BcMC.root` and 10 752 in `sm.root`, both at header 4.00/04, which is what
+puts 4.00 firmly on the small side of the boundary.
+
+**`IGNORE.toml` keeps its conclusion and changes its argument.** "The key is
+small-form" is not on its own evidence about a writer, now that ROOT itself is
+known to write them; it is evidence there because that file's header names
+6.18/04, sixteen years past the boundary. The entry still suppresses its 6
+failures, checked — so it did not quietly become a no-op.
+
+---
 
 §1 says, in bold: *"A basket always uses the large key layout. Its constructor
 does `fVersion += 1000` unconditionally (`root/tree/tree/src/TBasket.cxx:71`), so
@@ -369,8 +421,13 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 ## 11. Order
 
-C1–C4 first, and C1 and C2 before C3 and C4, because those two are confirmed here
-and the other two are not yet reproduced. C5–C7 fall out of C1. C16 is independent
+~~C1–C4 first, and C1 and C2 before C3 and C4~~ — **C1 and C2 are done**. C3 and
+C4 are next, and each begins by reproducing what one survey reported. C5–C7 fall
+out of C1 and are **not** closed by it: the checker now handles the shapes, but
+`rootfile.read_rntuple_anchor()` still cannot read a compressed anchor and
+`payload_range()` still overruns. `gen/cases/rntuple/compressed` is a witness for
+both — its anchor at 727 is compressed, and the file reports
+`NOT CHECKED ROOT::RNTuple ...` for exactly that reason. C16 is independent
 of everything and cheap enough to do at any point. C8–C11 need no new
 infrastructure once C12's question is answered, because three of the four files
 are already on disk. C13 is manifest lines. C17 should happen before anything is

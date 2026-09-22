@@ -31,17 +31,27 @@ item 3) and what the file itself suggests: the branch names are Go type
 spellings -- I32, F64, Str, ArrF64 for [N]float64 and SliF64 for a *slice* of
 float64 -- and nothing in the bytes names a writer, so this is corroboration
 rather than proof. It is certainly not ROOT: every basket key here carries
-fVersion 4 where ROOT adds 1000 unconditionally (see below). ROOT opens it and
+fVersion 4 where ROOT adds 1000 from 4.02 on, and this file's header names
+6.18/04 (see below). ROOT opens it and
 reads all five entries without complaint, so it is not corrupt -- it is just not
 written the way ROOT writes.
 
 Three departures, all diagnosed:
 
   - Its basket keys use fVersion 4, the small-key form. ROOT adds 1000 to a
-    basket's key version unconditionally (TBasket.md 1), which is why every
-    basket in data/ reads 1004, and a reader that computes fSeekKey's width from
-    the version gets four bytes fewer here than ROOT would write. This is the
-    only invariant still failing, and it is the file's doing.
+    basket's key version from release 4.02 onwards (TBasket.md 1), which is why
+    every basket in data/ reads 1004, and a reader that computes fSeekKey's width
+    from the version gets four bytes fewer here than ROOT would write. This is
+    the only invariant still failing, and it is the file's doing.
+
+    The version qualifier was added on 2026-09-22 and it does not weaken this
+    entry -- it is what makes it sound. Before 4.02 ROOT itself writes small-form
+    basket keys (12385 of them in root/roottest/), so "the key is small-form"
+    is not on its own evidence about the writer. It is evidence here because the
+    file's header names 6.18/04, sixteen years the far side of the boundary.
+    check_invariants.py gates TBasket 9.2 on the same header field, so this
+    entry now suppresses a failure the checker still raises for this file rather
+    than one it would have stopped raising anyway.
   - Its TTree's fLeaves entries wrap each object reference in a byte count.
     ROOT's reader accepts that, so it is now specified rather than rejected:
     Buffer.md 6.1. Recorded here only as the diagnosis.

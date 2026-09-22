@@ -24,6 +24,24 @@ sys.path.insert(0, str(REPO / "tools"))
 import rootfile  # noqa: E402
 
 KNOWN_KEY_VERSIONS = {1, 2, 3, 4, 1002, 1003, 1004}
+
+#: Compression.md 9: RNTuple's artificial key class, whose payload is a sequence
+#: of sealed pages rather than one object.
+RBLOB_CLASS = "RBlob"
+
+#: kNBytesPageChecksum, root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74.
+RN_PAGE_CHECKSUM = 8
+
+RBLOB_MULTIPAGE = (
+    "an RBlob holding more than one sealed page: its page boundaries are in the "
+    "page list envelope, which rootfile.py does not read, so Compression 9.2 and "
+    "9.3 cannot be evaluated on it. Compression.md 9"
+)
+
+#: TBasket.md 1: the release from which a basket key is always the large form.
+#: ROOT 4.00/04 still writes the small form; 4.02/00 is the first production
+#: release carrying commit 3970c0bead.
+BASKET_LARGE_KEY_SINCE = (4, 2, 0)
 # A counter need not be marked kCounter: ElementTypes.md 2.1.
 COUNTER_TYPES = {3, 6, 13}
 BLOCK_MAGICS = {b"ZL": 8, b"XZ": 0, b"L4": None, b"ZS": 1, b"CS": 8}
@@ -331,7 +349,13 @@ class Checker:
             self.no_codec.add(f"some records were not decompressed: {exc}")
             out = None
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
-            self.bad("Compression 9", str(exc))
+            # An RBlob is a sequence of sealed pages, not one compressed object,
+            # so decompress() walking it as a single chain is expected to fail.
+            # Compression.md 9; the same carve-out as check_compression.
+            if rec.class_name == RBLOB_CLASS:
+                self.no_codec.add(RBLOB_MULTIPAGE)
+            else:
+                self.bad("Compression 9", str(exc))
             out = None
         # An uncompressed record shares self.buf, so caching it costs nothing; a
         # compressed one is a file-sized copy, so keep only a handful.
@@ -2076,7 +2100,17 @@ class Checker:
             # version shifts fSeekKey and fSeekPdir by 8 bytes, so the record
             # chain and the class name break first and the file is rejected by
             # Record 8.1/8.3/8.6 before reaching here.
-            if rec.key_version <= rootfile.LARGE_KEY_VERSION:
+            #
+            # TBasket.md 1: the `fVersion += 1000` in TBasket's constructor
+            # arrives in ROOT 4.02 (commit 3970c0bead, first production release
+            # 4.02/00). Before it a basket key carries the ordinary key version
+            # and the small layout -- 12385 such keys in 19 files of
+            # root/roottest/, from 2.23/12 to 4.00/04. So this is a claim about
+            # what ROOT writes from 4.02 on, and gating it on the writing release
+            # is scoping it to where it is true, not weakening it: rootfile.py
+            # takes every key's width from the key itself either way.
+            if (self.header.root_version >= BASKET_LARGE_KEY_SINCE
+                    and rec.key_version <= rootfile.LARGE_KEY_VERSION):
                 self.bad("TBasket 9.2",
                          f"basket at {rec.offset} has key fVersion "
                          f"{rec.key_version}, not a large-key form")
@@ -2183,13 +2217,20 @@ class Checker:
                 self.check_raw_is_not_a_block(rec, self.buf)
                 continue
 
-            produced, o, blocks = 0, payload, 0
+            produced, o, blocks, unreadable = 0, payload, 0, False
             while o < end:
                 if o + 9 > end:
                     self.bad("Compression 9.2", f"truncated block header at {o}")
                     break
                 magic = self.buf[o:o+2]
                 if magic not in BLOCK_MAGICS:
+                    # Inside an RBlob this is where the previous sealed page
+                    # ended and the next one begins -- a raw page, or a checksum
+                    # we walked into. Where the boundary is takes the page list.
+                    if rec.class_name == RBLOB_CLASS:
+                        self.no_codec.add(RBLOB_MULTIPAGE)
+                        unreadable = True
+                        break
                     self.bad("Compression 9.4", f"unknown block magic {magic!r} at {o}")
                     break
                 expect = BLOCK_MAGICS[magic]
@@ -2212,14 +2253,53 @@ class Checker:
                 if produced >= rec.obj_len:
                     break
 
+            # Compression.md 9, "What an RBlob is not": an RBlob does not hold
+            # one object. It holds one or more SEALED PAGES, each of them
+            # `blocks || optional 8-byte XXH3-64 checksum`, and the checksum is
+            # appended AFTER compression and counted outside fObjLen
+            # (root/tree/ntuple/src/RPageStorage.cxx:751, and
+            # kNBytesPageChecksum at
+            # root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74). So a sealed page's
+            # chain stops 8 bytes short of the payload and 9.2 does not hold as
+            # stated.
+            #
+            # This stands 9.2 and 9.3 down for exactly that shape and no other.
+            # An RBlob holding an ENVELOPE still satisfies both, because an
+            # envelope's checksum is inside its own declared length -- measured
+            # on data/rntuple/compressed.root, where the three envelope blobs
+            # close exactly and only the page blob is 8 bytes short. A blob
+            # holding SEVERAL pages cannot be checked at all without the page
+            # boundaries, which live in the page list envelope that rootfile.py
+            # does not read; that is reported rather than passed over.
+            sealed = rec.class_name == RBLOB_CLASS
+            if unreadable:       # already recorded as RBLOB_MULTIPAGE
+                continue
+
             if produced != rec.obj_len:
+                # Short of fObjLen inside an RBlob means the walk stopped at a
+                # page boundary it could not place. Say so; do not call it a
+                # malformed chain.
+                if sealed:
+                    self.no_codec.add(RBLOB_MULTIPAGE)
+                    continue
                 self.bad("Compression 9.3",
                          f"blocks decode to {produced} bytes, fObjlen is {rec.obj_len}")
-            if o != end:
+            # The blocks account for fObjLen, so the payload must now close. An
+            # envelope closes flush; a sealed page closes 8 bytes early, and that
+            # gap is the checksum. Nothing else is a shape ROOT writes, so a
+            # chain that lands anywhere else IS a failure -- without this the
+            # carve-out would swallow a corrupted page as "unverifiable".
+            if o != end and not (sealed and o == end - RN_PAGE_CHECKSUM):
                 self.bad("Compression 9.2",
                          f"block chain ends at {o}, payload ends at {end}")
             # 9.5: every block but the last carries exactly kMAXZIPBUF bytes.
-            if blocks > 1 and rec.obj_len > KMAXZIPBUF:
+            # Also a statement about ONE object's chain: ROOT splits a single
+            # buffer at kMAXZIPBUF. An RBlob's blocks come from several pages
+            # compressed independently, so the count follows the page size and
+            # the number of pages, and comparing it against fObjLen is comparing
+            # two unrelated numbers -- 1310 blocks against an "expected" 6 on
+            # test_ntuple_storage_1col_10e6evt.root.
+            if not sealed and blocks > 1 and rec.obj_len > KMAXZIPBUF:
                 expected = 1 + (rec.obj_len - 1) // KMAXZIPBUF
                 if blocks != expected:
                     self.bad("Compression 9.5",

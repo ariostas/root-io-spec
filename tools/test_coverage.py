@@ -83,7 +83,11 @@ class TheToolFails(unittest.TestCase):
         """Adding an entry nothing checks is the case R2 was."""
         path = REPO / "spec/01-container/Compression.md"
         text = path.read_text()
-        marker = "\n## 10. Errata"
+        # The end of section 9's numbered list, which is where an eighth entry
+        # would go. Not "## 10. Errata": since 2026-09-22 section 9.1 sits
+        # between the list and section 10, and an entry appended after it is
+        # part of 9.1's prose rather than an invariant.
+        marker = "\n### 9.1 What an `RBlob` is not"
         self.assertIn(marker, text)
         doctored = text.replace(
             marker, "\n8. Something nobody checks and nobody excused." + marker, 1)
