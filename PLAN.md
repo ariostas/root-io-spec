@@ -8,6 +8,15 @@ submodule and checked against bytes; RNTuple tracks ROOT's own specification plu
 ten errata. §2.9 and §8.4 are the write support, which extends the project past
 the reading side it was scoped to.
 
+**Open sub-plan, `PLAN-corpus.md` (2026-09-22).** A survey of six external
+resources found **four published claims that a ROOT-written file contradicts** —
+`Compression.md` §9 for an RNTuple page, `TBasket.md` §1's "always", `Buffer.md`
+§2.3's unframed list, `Record.md` §8.6 — so §8.1 release criterion 1, *no
+published claim is known to be wrong*, is **not met** until C1–C4 are discharged.
+It also found a witness for four open §9.1 rows, three of them in
+`root/roottest/`, which the pinned submodule has shipped since ROOT merged
+roottest in April 2025.
+
 Measured, 2026-09-21, by the checks in `tools/`:
 
 | | |
@@ -612,7 +621,11 @@ what satisfied it:
    two corpora keep testing, and §8.13 is the proof: the first outside review
    broke it again on 2026-09-21 with three defects, all three fixed the same day,
    and the thing that had let the worst of them stand was an invariant published
-   without a check.
+   without a check. **Broken again on 2026-09-22** by the corpus survey of
+   `PLAN-corpus.md`, with four more — and the lesson is the same one in a new
+   place: all four are in populations nothing was checking, because no fixture and
+   no corpus file had a compressed RNTuple page, a basket written before ROOT 4.02,
+   a `TDatime` stored as a record, or an RNTuple blob key from 6.34/6.35.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
