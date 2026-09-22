@@ -23,6 +23,7 @@ import check_citations  # noqa: E402
 import check_coverage  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
+HAVE_SUBMODULE = (REPO / "root" / "io" / "io" / "src" / "TFile.cxx").exists()
 
 
 class Parsing(unittest.TestCase):
@@ -148,6 +149,7 @@ class EveryCitedFileIsFetchable(unittest.TestCase):
         finally:
             path.write_text(original)
 
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
     def test_roottest_rows_are_fetchable_without_a_manifest(self):
         """gen/cern/README.md's roottest table, the third source (C12)."""
         known = check_citations.fetchable()
@@ -156,6 +158,7 @@ class EveryCitedFileIsFetchable(unittest.TestCase):
             self.assertIn(name, known, name)
         self.assertEqual(check_citations.check_roottest(), [])
 
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
     def test_a_roottest_row_the_submodule_lacks_fails(self):
         readme = REPO / "gen" / "cern" / "README.md"
         original = readme.read_text()
