@@ -656,6 +656,54 @@ One collection of three holds a `kNewClassTag` slot, a null pointer that is four
 zero bytes with no frame at all, and a class back-reference — and nothing in the
 collection frame says which is which.
 
+**R8 items 2, 3 and 4 done 2026-09-21**, together, because they share one
+document and one fixture: `spec/03-classes/RooFit.md`,
+`gen/cases/classes/roofit` and `tools/test_roofit.py`. Each of the three was
+wrong in a different direction, and the fourth was right:
+
+- **Item 9 names the wrong class.** `RooAbsCategory` is streamer-info driven at
+  every version, and every one in the corpora ends exactly where its byte count
+  says. The extra frame belongs to **`RooCategory` below class version 3**,
+  whose hand-written branch writes a whole `RooCategorySharedProperties` after
+  the base — as an object slot at version 1 and in place at version 2. 17
+  records across the two `stressRooFit_*` files failed on exactly this, each 61
+  bytes short.
+- **Item 8 is `custom`, not `extending`, and the difference is the one that
+  matters.** The tail is real — a `RooRealVarSharedProperties` that no streamer
+  info mentions — but `SetByteCount(R__c, true)` runs *after* it, so it is
+  **inside** the byte count and a reader may still skip the object by that
+  count. An `extending` class is exactly the one where that fails. Measured on
+  `classes/roofit`: 369 of 429 bytes described, the other 60 the tail.
+- **Item 7 is right and understates it.** `RooLinkedList` has **no byte count at
+  all**, so nothing catches a reader that follows its info — and the info names
+  `_hashThresh`, a member the `Streamer` never writes, while omitting the object
+  slots that are most of the bytes. The layout quoted in the issue lands on the
+  right offsets by accident: its prefix is 10 + 2 + 4 and the real one is
+  2 + 10 + 4, so a reader two bytes early reads `_size` correctly while naming
+  three fields that are not there.
+
+**Two classes the review did not raise had to come with them**, because every
+`RooAbsArg` reaches both and neither writes an info of its own: `RooAbsBinning`,
+which streams a `TNamed` its own declaration does not have, and `RooRefArray`,
+which streams a `TRefArray` rather than the `TObjArray` it derives from. A third
+gap fell out on the way — `TRefArray` as a *member* had no reader here, which
+blocked 392 objects.
+
+**What it unblocked**: 272 of the 274 RooFit records in the two corpora now
+decode, each accounting to its byte count exactly. The two that do not are the
+`RooWorkspace` records, blocked on `RooWorkspace::CodeRepo`, which is now
+recorded as a `gap` rather than as out of scope.
+
+**And two checksum facts came out of the new fixture**, neither of them RooFit's.
+`RooAbsReal` is a third witness for `StreamerInfo.md` §11.2's "a member ROOT
+rewrote for I/O": its `std::unique_ptr<RooNumIntConfig>` folds as
+`unique_ptr<RooNumIntConfig,default_delete<RooNumIntConfig> >`. And its
+`pair<string,vector<int> >` carries **`0x0b5fb752`**, the same value the three
+pairs of `serialization/pairs` share — a different file, written by a different
+program, on a fourth layout. The number is a constant ROOT produces, not one
+fixture's accident, which is what `Collections.md` §8.2 now says.
+
+
 The trade as it was stated when the decision was open:
 
 | | For specifying RooFit | Against |
@@ -748,9 +796,14 @@ Per the repository's convention the reply opens with the AI-content marker.
    ten minutes because the file it needed also caught a reader bug: a zero
    checksum is a failed computation, `TTime`'s absence is the writer's, and
    `set`/`multimap` were swapped in `fSTLtype` until 5.34/13 (§3).
-8. **R8** — all four RooFit items, in the order §5 gives: the two framing
+8. ~~**R8** — all four RooFit items, in the order §5 gives: the two framing
    observations first, since they need no RooFit in `gen/`, then the `extending`
-   classification, then `RooLinkedList`'s layout.
+   classification, then `RooLinkedList`'s layout.~~ **Done 2026-09-21.** Item 10
+   was a misreading, item 9 named the wrong class, item 8 named the wrong
+   category, and item 7 was right and understated it. Two fixtures,
+   `serialization/pointer-collection` and `classes/roofit`; one new document,
+   `spec/03-classes/RooFit.md`; and two more classes the review did not raise
+   (§5).
 
 Done when: every item above has an outcome recorded in this file, the issue has a
 reply, and `PLAN.md` §8.1 criterion 1 is true again — which it is not today, and

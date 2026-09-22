@@ -136,6 +136,11 @@ physics file is most likely to need are
 is symmetric, and because it is the one class whose bytes continue *past* its own
 byte count.
 
+If the files you care about are workspaces, plots or fit results,
+[RooFit](../03-classes/RooFit.md) is the other one worth doing early: six classes,
+two of which every `RooAbsArg` reaches, and until they are read nothing else in
+such a file is either.
+
 ## 6. Read an unsplit tree
 
 *Working state: values out of a `TTree` whose branches hold whole objects or

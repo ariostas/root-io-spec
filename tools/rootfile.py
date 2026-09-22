@@ -1226,6 +1226,12 @@ CUSTOM_STREAMER = {
     # the prefix; this entry is the template, which is what the sidecar and
     # Bootstrap.md name. spec/03-classes/Matrix.md.
     "TMatrixTSym",
+    # RooFit. All four are implemented below, from spec/03-classes/RooFit.md.
+    # RooRealVar writes no info for itself at all, and RooLinkedList writes one
+    # that names a member it never streams; neither describes the bytes.
+    # RooAbsBinning and RooRefArray are reached from a RooRealVar -- as the base
+    # of its binning and as RooAbsArg's proxy list -- and write no info either.
+    "RooRealVar", "RooLinkedList", "RooAbsBinning", "RooRefArray",
 }
 
 # Classes whose *generated* Streamer writes only their base classes: ClassDef
@@ -1458,6 +1464,25 @@ class Decoder:
                          type_name="TDatime")
         if cls.startswith("TMatrixTSym<"):
             return self.read_matrix_sym(cls, offset)
+        if cls == "RooLinkedList":
+            return self.read_roo_linked_list(offset)
+        if cls == "RooRealVar":
+            return self.read_roo_real_var(offset)
+        if cls == "RooAbsBinning":
+            return self.read_roo_abs_binning(offset)
+        if cls == "RooCategory":
+            return self.read_roo_category(offset)
+        if cls == "RooRefArray":
+            return self.read_roo_ref_array(offset)
+        if cls == "TRefArray":
+            # As a *member* rather than a record payload. Its Streamer is
+            # hand-written and no info describes it, but the layout is the same
+            # one read_ref_array implements. References.md section 4. Reached
+            # through RooAbsArg::_proxyList, which was declared TRefArray until
+            # ROOT 6.26 and RooRefArray after it.
+            array = read_ref_array(self.buf, offset)
+            return Value(name="TRefArray", ftype=61, start=offset,
+                         end=array.end, type_name="TRefArray")
         if cls in self.forwarding:
             return self.read_forwarded(cls, offset, counters)
         try:
@@ -1553,6 +1578,195 @@ class Decoder:
                                   f"count"))
         return Value(name=cls, ftype=61, start=offset, end=end,
                      type_name=cls, members=members)
+
+    def read_roo_linked_list(self, offset: int) -> Value:
+        """A RooLinkedList: a bare version word, TObject, a count, then slots.
+
+        `RooLinkedList::Streamer` opens with `WriteVersion(IsA())` and no
+        `useBcnt`, so **there is no byte count** -- the object begins with its
+        version word (root/roofit/roofitcore/src/RooLinkedList.cxx:890-922).
+        Then a TObject base, an Int_t size, that many object slots, and a
+        TString. The info the file carries lists `_hashThresh`, which the
+        streamer never writes, and no slots at all. RooFit.md section 3.
+        """
+        version = _i16(self.buf, offset)
+        pos = skip_tobject(self.buf, offset + 2)
+        members = [Value(name="TObject", ftype=66, start=offset + 2, end=pos,
+                         type_name="TObject")]
+        size = _i32(self.buf, pos)
+        if size < 0:
+            raise FormatError(
+                f"RooLinkedList at {offset}: _size {size} is negative")
+        members.append(Value(name="_size", ftype=3, start=pos, end=pos + 4,
+                             type_name="Int_t"))
+        pos += 4
+        for _ in range(size):
+            slot = read_slot(self.buf, pos, self.base)
+            if slot.kind == "object":
+                cls, body_at = resolve_class(slot, self.classes)
+                self.read_object(cls, body_at)
+            members.append(Value(name="element", ftype=64, start=pos,
+                                 end=slot.end, type_name=slot.class_name or ""))
+            pos = slot.end
+        # ROOT reads the trailing TString only when 1 < version < 4, and the
+        # write branch has always written it -- so a version-1 record, written
+        # before the member existed, has none. Its info is the corroboration:
+        # the RooLinkedList info in stressRooFit_v522_ref.root lists TObject,
+        # _hashThresh and _size, and no _name.
+        if 1 < version < 4:
+            _, end = _counted_string(self.buf, pos)
+            members.append(Value(name="_name", ftype=65, start=pos, end=end,
+                                 type_name="TString"))
+            pos = end
+        return Value(name="RooLinkedList", ftype=61, start=offset, end=pos,
+                     type_name="RooLinkedList", members=members)
+
+    def read_roo_real_var(self, offset: int) -> Value:
+        """A RooRealVar: its base, three doubles, a binning, and a tail.
+
+        `RooRealVar::Streamer` never calls ReadClassBuffer
+        (root/roofit/roofitcore/src/RooRealVar.cxx:1252-1308), so no info for
+        the class is written at all -- but the frame it opens with
+        `WriteVersion(IsA(), true)` carries a byte count, and
+        `SetByteCount(R__c, true)` closes it after the tail. The object is
+        therefore skippable by its byte count and only decoding it needs this.
+        RooFit.md section 2.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"RooRealVar at {offset} has no byte count")
+        version = frame.version
+        base = self.read_object("RooAbsRealLValue", frame.body)
+        members = [base]
+        pos = base.end
+        if version == 1:
+            # The version-1 shape: the binning was three loose fields, read
+            # before the errors rather than after them.
+            for name, ftype, width in (("fitMin", 8, 8), ("fitMax", 8, 8),
+                                       ("fitBins", 3, 4)):
+                members.append(Value(name=name, ftype=ftype, start=pos,
+                                     end=pos + width, type_name="Double_t"))
+                pos += width
+        for name in ("_error", "_asymErrLo", "_asymErrHi"):
+            members.append(Value(name=name, ftype=8, start=pos, end=pos + 8,
+                                 type_name="Double_t"))
+            pos += 8
+        if version >= 2:
+            pos = self.read_pointer_member(members, "_binning", pos)
+        if version == 3:
+            # At version 3 alone the shared properties were a pointer.
+            pos = self.read_pointer_member(members, "_sharedProp", pos)
+        elif version >= 4:
+            # From version 4 they are written in place, by calling the object's
+            # own Streamer. This is the part no streamer info anywhere
+            # describes, and it is inside the byte count.
+            tail = self.read_object("RooRealVarSharedProperties", pos)
+            tail.name = "_sharedProp"
+            members.append(tail)
+            pos = tail.end
+        if pos != frame.end:
+            raise FormatError(
+                f"RooRealVar v{version} at {offset} ends at {pos}, "
+                f"but its byte count says {frame.end}")
+        return Value(name="RooRealVar", ftype=61, start=offset, end=frame.end,
+                     type_name="RooRealVar", members=members)
+
+    def read_roo_abs_binning(self, offset: int) -> Value:
+        """A RooAbsBinning base: a frame, a TNamed, and RooPrintable.
+
+        Its `Streamer` writes a TNamed where its own class declares none, and
+        at version 1 wrote a bare TObject instead
+        (root/roofit/roofitcore/src/RooAbsBinning.cxx:117-137). No info for it
+        is written, so every concrete binning in a file has a `kBase` element
+        naming a class the file does not describe. RooFit.md section 4.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"RooAbsBinning at {offset} has no byte count")
+        if frame.version == 1:
+            end = skip_tobject(self.buf, frame.body)
+            members = [Value(name="TObject", ftype=66, start=frame.body,
+                             end=end, type_name="TObject")]
+        else:
+            named = self.read_object("TNamed", frame.body)
+            members, end = [named], named.end
+        printable = self.read_object("RooPrintable", end)
+        members.append(printable)
+        if printable.end != frame.end:
+            raise FormatError(
+                f"RooAbsBinning v{frame.version} at {offset} ends at "
+                f"{printable.end}, but its byte count says {frame.end}")
+        return Value(name="RooAbsBinning", ftype=61, start=offset,
+                     end=frame.end, type_name="RooAbsBinning", members=members)
+
+    def read_roo_category(self, offset: int) -> Value:
+        """A RooCategory. Streamer-info driven at version 3 and above only.
+
+        Below that its `Streamer` hand-writes the base and then a
+        RooCategorySharedProperties -- as an object slot at version 1 and as an
+        embedded object at version 2
+        (root/roofit/roofitcore/src/RooCategory.cxx:431-455). Neither is in any
+        streamer info: the class's own info lists the base and, from version 3,
+        `_rangesPointerForIO`. RooFit.md section 5.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"RooCategory at {offset} has no byte count")
+        if frame.version >= 3:
+            version, body = self.resolve_version("RooCategory", frame)
+            members = self.read_members("RooCategory", version, body, frame.end)
+            return Value(name="RooCategory", ftype=61, start=offset,
+                         end=frame.end, type_name="RooCategory",
+                         members=members)
+        base = self.read_object("RooAbsCategoryLValue", frame.body)
+        members = [base]
+        if frame.version == 1:
+            pos = self.read_pointer_member(members, "_sharedProp", base.end)
+        else:
+            tail = self.read_object("RooCategorySharedProperties", base.end)
+            tail.name = "_sharedProp"
+            members.append(tail)
+            pos = tail.end
+        if pos != frame.end:
+            raise FormatError(
+                f"RooCategory v{frame.version} at {offset} ends at {pos}, "
+                f"but its byte count says {frame.end}")
+        return Value(name="RooCategory", ftype=61, start=offset, end=frame.end,
+                     type_name="RooCategory", members=members)
+
+    def read_roo_ref_array(self, offset: int) -> Value:
+        """A RooRefArray: its own frame, and then a TRefArray inside it.
+
+        `RooRefArray::Streamer` builds a temporary TRefArray and streams that
+        (root/roofit/roofitcore/src/RooAbsArg.cxx:2195-2228), so the bytes are
+        a TRefArray's with one more frame around them -- and the class it
+        derives from, TObjArray, never appears. RooFit.md section 4.
+        """
+        frame = read_frame(self.buf, offset)
+        if frame.end is None:
+            raise FormatError(f"RooRefArray at {offset} has no byte count")
+        array = read_ref_array(self.buf, frame.body)
+        if array.end != frame.end:
+            raise FormatError(
+                f"RooRefArray at {offset}: the TRefArray inside it ends at "
+                f"{array.end}, but the byte count says {frame.end}")
+        inner = Value(name="TRefArray", ftype=61, start=frame.body,
+                      end=array.end, type_name="TRefArray")
+        return Value(name="RooRefArray", ftype=61, start=offset, end=frame.end,
+                     type_name="RooRefArray", members=[inner])
+
+    def read_pointer_member(self, members: list, name: str, offset: int) -> int:
+        """One object slot written by `buffer << pointer`, appended to members."""
+        slot = read_slot(self.buf, offset, self.base)
+        nested = None
+        cls = slot.class_name or ""
+        if slot.kind == "object":
+            cls, body_at = resolve_class(slot, self.classes)
+            nested = self.read_object(cls, body_at).members
+        members.append(Value(name=name, ftype=64, start=offset, end=slot.end,
+                             type_name=cls, members=nested,
+                             note="" if slot.kind == "object" else slot.kind))
+        return slot.end
 
     #: The fields TCanvas writes after its TPad base, in order, as
     #: (name, element code, width). Canvas.md section 2. `fCatt` is a framed

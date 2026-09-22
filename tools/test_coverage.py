@@ -32,7 +32,7 @@ class Parsing(unittest.TestCase):
 
     def test_it_finds_the_documents_with_invariants(self):
         # 32 documents, which WriterInvariants.md's own count is derived from.
-        self.assertEqual(len({doc for _, doc, _ in self.entries}), 32)
+        self.assertEqual(len({doc for _, doc, _ in self.entries}), 33)
 
     def test_a_dotted_heading_is_read(self):
         """WritingFiles' heading is "14. Invariants a writer should check ...". """

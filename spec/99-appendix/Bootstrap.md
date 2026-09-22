@@ -136,6 +136,7 @@ meets through the container and the tree rather than as an object of its own,
 | `TCanvas` | seven trailing bytes its info does not mention, five of them `fBits` flags | [Canvas](../03-classes/Canvas.md) |
 | `TMap`, `TExMap`, `TBtree` | pointer-streamed pairs, a forced hash bit, and a `TCollection` frame reached through a class that adds nothing | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TMatrixTSym` | the elements sit **past** the byte count and the file carries no info for the class, only for its base. A reader that stops where the byte count says loses the whole matrix and reports nothing | [Matrices and vectors](../03-classes/Matrix.md) |
+| `RooRealVar`, `RooLinkedList`, `RooAbsBinning`, `RooRefArray`, `RooCategory` | a `RooRealVar` has no info in the file at all; a `RooLinkedList`'s info names a member that is not on disk and omits the object slots that are, and the object has no byte count to catch it | [RooFit](../03-classes/RooFit.md) |
 | `TFile`, `TDirectoryFile` | the container rather than objects in it | [Directories](../01-container/Directory.md) |
 | `TSeqCollection`, `THashList`, `TVirtualPerfStats` | their *generated* `Streamer` writes only their bases: no version word, no byte count, no members. Following their streamer info reads a frame that is not there | [Forwarding streamers](ForwardingStreamers.md) |
 

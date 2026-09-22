@@ -30,10 +30,10 @@ Of the `custom` and `extending` classes, which are the ones a reader must know:
 
 | Status | Count |
 |---|---|
-| `specified` | 36 |
-| `gap` | 10 |
+| `specified` | 40 |
+| `gap` | 15 |
 | `not-persisted` | 5 |
-| `out-of-scope` | 15 |
+| `out-of-scope` | 6 |
 <!-- END GENERATED -->
 
 ## 1. Why most of them cost a reader nothing
@@ -87,15 +87,15 @@ fails on one that is not. `gap` is the worklist.
 |---|---|---|---|
 | `REveTrans` | `root/graf3d/eve7/src/REveTrans.cxx:941` | out-of-scope | the ROOT 7 event display |
 | `RModel` | `root/tmva/sofie/src/RModel.cxx:1914` | out-of-scope | TMVA SOFIE |
-| `RooAbsBinning` | `root/roofit/roofitcore/src/RooAbsBinning.cxx:117` | out-of-scope | RooFit — common in published workspaces, but outside PLAN.md §2.4 |
-| `RooCFunction1Ref` | `root/roofit/roofit/inc/RooCFunction1Binding.h:145` | out-of-scope | RooFit |
-| `RooCFunction2Ref` | `root/roofit/roofit/inc/RooCFunction2Binding.h:161` | out-of-scope | RooFit |
-| `RooCFunction3Ref` | `root/roofit/roofit/inc/RooCFunction3Binding.h:165` | out-of-scope | RooFit |
-| `RooCFunction4Ref` | `root/roofit/roofit/inc/RooCFunction4Binding.h:158` | out-of-scope | RooFit |
-| `RooLinkedList` | `root/roofit/roofitcore/src/RooLinkedList.cxx:891` | out-of-scope | RooFit |
-| `RooRealVar` | `root/roofit/roofitcore/src/RooRealVar.cxx:1252` | out-of-scope | RooFit |
-| `RooRefArray` | `root/roofit/roofitcore/src/RooAbsArg.cxx:2195` | out-of-scope | RooFit |
-| `RooWorkspace::CodeRepo` | `root/roofit/roofitcore/src/RooWorkspace.cxx:2427` | out-of-scope | RooFit — the code repository nested inside a workspace |
+| `RooAbsBinning` | `root/roofit/roofitcore/src/RooAbsBinning.cxx:117` | specified | [RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-a-tnamed-it-does-not-declare) |
+| `RooCFunction1Ref` | `root/roofit/roofit/inc/RooCFunction1Binding.h:145` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
+| `RooCFunction2Ref` | `root/roofit/roofit/inc/RooCFunction2Binding.h:161` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
+| `RooCFunction3Ref` | `root/roofit/roofit/inc/RooCFunction3Binding.h:165` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
+| `RooCFunction4Ref` | `root/roofit/roofit/inc/RooCFunction4Binding.h:158` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
+| `RooLinkedList` | `root/roofit/roofitcore/src/RooLinkedList.cxx:891` | specified | [RooFit §3](../03-classes/RooFit.md#3-roolinkedlist) |
+| `RooRealVar` | `root/roofit/roofitcore/src/RooRealVar.cxx:1252` | specified | [RooFit §2](../03-classes/RooFit.md#2-roorealvar) |
+| `RooRefArray` | `root/roofit/roofitcore/src/RooAbsArg.cxx:2195` | specified | [RooFit §4.2](../03-classes/RooFit.md#42-roorefarray-writes-a-trefarray) |
+| `RooWorkspace::CodeRepo` | `root/roofit/roofitcore/src/RooWorkspace.cxx:2427` | gap | RooFit — the code repository nested inside a workspace; it blocks two records in stressRooFit_v534_ref.root |
 | `TASImage` | `root/graf2d/asimage/src/TASImage.cxx:6080` | gap | graf2d; an embedded image |
 | `TArrayC` | `root/core/cont/src/TArrayC.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TArrayD` | `root/core/cont/src/TArrayD.cxx:148` | specified | [TArray](../03-classes/TArray.md) |

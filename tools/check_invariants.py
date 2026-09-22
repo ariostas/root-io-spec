@@ -525,7 +525,10 @@ class Checker:
     # by check_references and check_tarray.
     # Records whose payload is not a framed object: the container's own
     # bookkeeping, and the classes with a hand-written layout of their own.
-    UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket"}
+    UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket",
+                 # RooLinkedList::Streamer calls WriteVersion with no byte
+                 # count and then writes a whole object. Buffer.md 2.3.
+                 "RooLinkedList"}
                 | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
     # Classes whose records this reader cannot decode, each with the reason,
@@ -535,14 +538,11 @@ class Checker:
     # `tools/inventory.py` classifies two of these very differently.
     # PLAN.md 9.8.
     UNSPECIFIED_STREAMERS = {
-        "RooLinkedList":
-            "writes _size, that many object pointers and _name, while its info "
-            "lists a _hashThresh that is not on disk "
-            "(root/roofit/roofitcore/src/RooLinkedList.cxx:891-924) -- RooFit, "
-            "outside PLAN.md 2.4",
-        "RooAbsCollection":
-            "a hand-written streamer this specification does not describe -- "
-            "RooFit, outside PLAN.md 2.4",
+        "RooWorkspace::CodeRepo":
+            "the code repository inside a RooWorkspace: a hand-written streamer "
+            "this specification does not describe "
+            "(root/roofit/roofitcore/src/RooWorkspace.cxx:2427). The other six "
+            "RooFit streamers are spec/03-classes/RooFit.md",
         "ROOT::RNTuple":
             "an RNTuple anchor: ReadClassBuffer and then an 8-byte XXH3-64 "
             "checksum outside the byte count. Specified in spec/05-rntuple/ and "
@@ -1911,6 +1911,151 @@ class Checker:
                 self.bad("Containers 7.4",
                          f"{where} has {name} {got}, but fOrder {btree.order} "
                          f"gives {want}")
+
+    #: The six RooFit classes of spec/03-classes/RooFit.md 1. RooLinkedList is
+    #: the one with no byte count of its own.
+    ROOFIT_CLASSES = ("RooRealVar", "RooLinkedList", "RooAbsBinning",
+                      "RooRefArray", "RooCategory")
+
+    def check_roofit(self) -> None:
+        """RooFit.md invariants 1 to 5.
+
+        The five classes are mostly reached as members rather than as records,
+        so every record is decoded and its value tree walked. Invariant 1 is
+        checked by consumption: rootfile.py's readers raise when an object does
+        not end where its byte count says, and the failure is attributed here
+        rather than to StreamerDriven 10.1 when the class is one of these.
+        """
+        _, _, infos = self.streamer_infos()
+        if infos is None:
+            return
+
+        # Invariant 5. The info is in the file whenever any class reaches
+        # RooLinkedList through the generated path, and it always names a member
+        # the Streamer never writes.
+        for info in infos:
+            if info.name != "RooLinkedList":
+                continue
+            if not any(e.name == "_hashThresh" for e in info.elements):
+                self.bad("RooFit 7.5",
+                         f"the RooLinkedList info at class version "
+                         f"{info.class_version} does not list _hashThresh")
+
+        for rec in self.records:
+            if rec.free or not rec.class_name:
+                continue
+            if rec.class_name in ("TFile", "TDirectory", "TDirectoryFile"):
+                continue
+            data = self.data(rec)
+            if data is None:
+                continue
+            try:
+                tree = rootfile.decode_record(data, rec, infos)
+            except rootfile.UnsupportedClass:
+                continue
+            except (rootfile.FormatError, struct.error,
+                    IndexError, ValueError) as exc:
+                label = self.roofit_label(rec, exc)
+                if label is not None:
+                    self.bad(label, f"{rec.class_name} {rec.name!r} at "
+                                    f"{rec.offset}: {exc}")
+                continue
+            _, payload_end = rootfile.payload_range(rec)
+            for value in rootfile.walk(tree):
+                cls = self.roofit_class(value)
+                if cls is not None:
+                    self.check_roofit_object(data, value, cls, payload_end)
+
+    #: How a decode failure is attributed to an invariant. Each reader in
+    #: rootfile.py raises with the class name first, so the message says which
+    #: of these broke -- the failure may be nested several objects deep, and the
+    #: innermost class named is the one whose rule was violated.
+    ROOFIT_LABELS = (("RooLinkedList", "RooFit 7.2"),
+                     ("RooRefArray", "RooFit 7.3"),
+                     ("RooAbsBinning", "RooFit 7.4"))
+
+    def roofit_label(self, rec, exc) -> str | None:
+        """Which RooFit invariant a decode failure belongs to, or None."""
+        message = str(exc)
+        for cls, label in self.ROOFIT_LABELS:
+            if cls in message:
+                return label
+        if rec.class_name in self.ROOFIT_CLASSES:
+            return "RooFit 7.1"
+        return None
+
+    @staticmethod
+    def roofit_class(value) -> str | None:
+        """Which of RooFit.md 1's classes this Value is, or None.
+
+        A base class carries its name in `name` and the literal "BASE" in
+        `type_name`, which is how RooAbsBinning and RooCategory are reached;
+        a member or a record carries the class in `type_name`.
+        """
+        for name in (value.type_name, value.name):
+            if name in Checker.ROOFIT_CLASSES:
+                return name
+        return None
+
+    def check_roofit_object(self, data, value, cls: str,
+                            payload_end: int) -> None:
+        """RooFit.md invariants 1 to 4, on one decoded object."""
+        if cls != "RooLinkedList":
+            # Invariant 1, the byte-count half. RooLinkedList has none.
+            frame = rootfile.read_frame(data, value.start)
+            if frame.end is None:
+                self.bad("RooFit 7.1",
+                         f"{cls} at {value.start} has no byte count")
+                return
+            if value.end != frame.end:
+                self.bad("RooFit 7.1",
+                         f"{cls} at {value.start} consumed to {value.end}, "
+                         f"byte count ends at {frame.end}")
+        members = value.members or []
+        if cls == "RooLinkedList":
+            # Invariant 2.
+            size = next((m for m in members if m.name == "_size"), None)
+            if size is None:
+                self.bad("RooFit 7.2",
+                         f"RooLinkedList at {value.start} has no _size")
+                return
+            count = rootfile._int_member(data, size)
+            if count < 0:
+                self.bad("RooFit 7.2",
+                         f"RooLinkedList at {value.start} has _size {count}")
+            slots = [m for m in members if m.name == "element"]
+            if len(slots) != max(count, 0):
+                self.bad("RooFit 7.2",
+                         f"RooLinkedList at {value.start} says _size {count} "
+                         f"and holds {len(slots)} slot(s)")
+            if slots and slots[-1].end > payload_end:
+                self.bad("RooFit 7.2",
+                         f"RooLinkedList at {value.start}: its last slot ends "
+                         f"at {slots[-1].end}, past the payload at {payload_end}")
+        elif cls == "RooRefArray":
+            # Invariant 3.
+            inner = [m for m in members if m.type_name == "TRefArray"]
+            if len(inner) != 1:
+                self.bad("RooFit 7.3",
+                         f"RooRefArray at {value.start} holds {len(inner)} "
+                         f"TRefArray(s), not one")
+            elif inner[0].end != value.end:
+                self.bad("RooFit 7.3",
+                         f"RooRefArray at {value.start}: the TRefArray ends at "
+                         f"{inner[0].end}, the byte count at {value.end}")
+        elif cls == "RooAbsBinning":
+            # Invariant 4.
+            version = rootfile.read_frame(data, value.start).version
+            want = "TObject" if version == 1 else "TNamed"
+            names = [m.name for m in members]
+            if names != [want, "RooPrintable"]:
+                self.bad("RooFit 7.4",
+                         f"RooAbsBinning v{version} at {value.start} holds "
+                         f"{names}, not ['{want}', 'RooPrintable']")
+            elif members[1].end - members[1].start != 6:
+                self.bad("RooFit 7.4",
+                         f"RooAbsBinning at {value.start}: its RooPrintable is "
+                         f"{members[1].end - members[1].start} bytes, not 6")
 
     def check_basket(self) -> None:
         """TBasket.md invariants."""
@@ -3373,6 +3518,7 @@ class Checker:
         self.check_histogram()
         self.check_graphs()
         self.check_matrix()
+        self.check_roofit()
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()

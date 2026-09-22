@@ -77,6 +77,7 @@ than collected here — see `PLAN.md` decision 6:
 | `TMap`, `TExMap`, `TBtree` | [TMap, TExMap and TBtree](Containers.md) |
 | `TCanvas`, `TQObject` | [TCanvas](Canvas.md) |
 | `TMatrixTSym` | [Matrices and vectors](Matrix.md) — and `TMatrixT`, `TMatrixTSparse` and `TVectorT` beside it, which need nothing |
+| `RooRealVar`, `RooLinkedList`, `RooAbsBinning`, `RooRefArray`, `RooCategory` | [RooFit](RooFit.md) — five of the six ways a RooFit file is not streamer-info driven, and the sixth is the `RooCategorySharedProperties` tail of the fifth |
 | `TDatime` | [Records and keys §3.7](../01-container/Record.md#37-fdatime) — four bare bytes as a member, exactly as in a key |
 | `TCollection` | [TList and friends §3.2](Containers.md#32-the-elements-come-from-tcollection-through-a-class-that-adds-nothing) — a byte count, version 3, a bare `TObject`, `fName`, and a count. Reached inside any collection whose streamer ends in `TSeqCollection::Streamer`, `TBtree` among them |
 

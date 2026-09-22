@@ -99,7 +99,10 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
   byte count. `TObject` does this for its base
   (`root/core/base/src/TObject.cxx:1022`), and `TRef` writes **nothing else**,
   so a `TRef` stored as a record of its own has a 12-byte payload whose first
-  word is a version;
+  word is a version. `RooLinkedList` is the same choice around a whole object —
+  a version word, a `TObject` base, a count, that many object slots and a
+  `TString`, with nothing delimiting any of it
+  (`root/roofit/roofitcore/src/RooLinkedList.cxx:913`);
 - a class whose hand-written streamer writes no version word either. A `TArray`
   payload begins with its element **count**
   ([TArray §1](../03-classes/TArray.md#1-layout));
@@ -110,7 +113,9 @@ through `WriteClassBuffer`, which asks for one. Two kinds do not:
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
 > `fObjlen` 12 and its payload begins `00 01` — the `TObject` version word —
 > where every other object record in that file begins `40 00`. And by
-> `classes/tarray`, whose eight records begin with an `i32` count.
+> `classes/tarray`, whose eight records begin with an `i32` count. And by
+> `classes/roofit`, whose `RooLinkedList` record at 977 begins `00 03` and runs
+> 93 bytes with no byte count anywhere in it.
 
 **And on a file older than ROOT 5, an ordinary class's payload may have no byte
 count either.** The leading byte count that `WriteClassBuffer` requests today was

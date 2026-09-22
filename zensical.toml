@@ -42,6 +42,7 @@ nav = [
       { "TFormula and TF1" = "03-classes/Formula.md" },
       { "TCanvas" = "03-classes/Canvas.md" },
       { "Matrices and vectors" = "03-classes/Matrix.md" },
+      { "RooFit" = "03-classes/RooFit.md" },
   ] },
   { "TTree" = [
       { "The tree record" = "04-ttree/TTree.md" },

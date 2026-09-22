@@ -166,11 +166,18 @@ does:
 | `custom` | 63 | know the layout; the streamer info describes the bytes at no version |
 
 Of the 66 `custom` and `extending` — the two kinds a reader must know —
-**36 specified**, 5 never objects in a file, 15 outside scope (RooFit, EVE,
-SOFIE, the SQL backend), **10 gaps**: `TASImage`, `TClassTree`, `TMaterial`,
-`TMixture`, `TPolyLine3D`, `TPolyMarker3D`, `TPointSet3D` and the three
-`graf2d/gviz` wrappers. All of narrow reach; none is something a physics file is
-likely to hold, and they are **not** in the MVP (§8).
+**40 specified**, 5 never objects in a file, 6 outside scope (EVE, SOFIE, the
+SQL backend), **15 gaps**. Four of those moved from out-of-scope to specified on
+2026-09-21, when RooFit came into scope (decision 8, §8.13): `RooRealVar`,
+`RooLinkedList`, `RooAbsBinning` and `RooRefArray`, in
+[`spec/03-classes/RooFit.md`](spec/03-classes/RooFit.md). The gaps are
+`TASImage`, `TClassTree`, `TMaterial`, `TMixture`, `TPolyLine3D`,
+`TPolyMarker3D`, `TPointSet3D`, the three `graf2d/gviz` wrappers, and five RooFit
+classes nothing in either corpus reaches bar one — `RooWorkspace::CodeRepo`,
+which blocks the two `RooWorkspace` records of `stressRooFit_v534_ref.root`, and
+the four `RooCFunctionNRef`. All of narrow reach; none but `CodeRepo` is
+something a physics file is likely to hold, and they are **not** in the MVP
+(§8).
 
 Written so far: ✅ `TArray.md`, ✅ `Containers.md` (`TMap`, `TExMap`, `TBtree`),
 ✅ `Formula.md` (`ROOT::v5::TFormula`/`TF1Data` against the ROOT 6 classes),
@@ -776,6 +783,13 @@ records, **94% decoded**: 468 no-streamer-info (the floor), 216 RooFit (out of
 scope), 137 an LZ4 payload with no `lz4` package here, 50 `TBranch` 7/8/9,
 8 `TASImage`, and a tail of single records. Two of those six are the project's,
 and both are named on the front page.
+
+**Re-measured 2026-09-21, after RooFit came into scope**: 31 734 records,
+**94.9% decoded**, and **RooFit is no longer in the census at all**. What is
+left is 463 no-streamer-info histograms (the floor), 132 LZ4 payloads with no
+`lz4` package here, 8 `TASImage`, and a tail; the only class-shaped entry that
+remains is `RooWorkspace::CodeRepo`, which is now a `gap` rather than out of
+scope.
 
 `README.md` was rewritten around the same numbers: 65 fixtures, 1563 assertions,
 1111 citations across 39 documents, 226 corpus files at 0 failures, and the
@@ -1781,8 +1795,25 @@ RooFit" sounds — checked against `inventory.py`'s classification:
 
 Two of the four are container-layer facts that happen to have been found in RooFit
 files, so they are worth doing first and are useful whatever happens to the rest.
-The cost decision 8 named still stands and is now accepted: RooFit in the generator
-environment is a new build dependency for `gen/`.
+
+**Done 2026-09-21, and the cost decision 8 named turned out to be nothing**:
+conda-forge `root` 6.40.04, the pinned release, reports `--has-roofit` yes, so
+`gen/` builds a RooFit fixture with the toolchain already in use.
+
+What the four turned into:
+
+| Item | Outcome |
+|---|---|
+| 10 `RooVectorDataStore` | **a misreading, not a gap.** The frame whose version word is 1 is `RealVector`'s own class frame, reached through pointer content; `Collections.md` §3.1 and `serialization/pointer-collection` |
+| 9 `RooAbsCategory` | **the wrong class.** The extra frame belongs to `RooCategory` below class version 3 and is a whole `RooCategorySharedProperties`; `RooFit.md` §5 |
+| 8 `RooRealVar` | **`custom`, not `extending`.** The tail is real and is *inside* the byte count, so the object is still skippable; `RooFit.md` §2.2 |
+| 7 `RooLinkedList` | **confirmed, and worse.** No byte count at all, and the info names a member that is not on disk; `RooFit.md` §3 |
+
+And two classes the review did not mention had to be specified with them, because
+every `RooAbsArg` reaches both: `RooAbsBinning` and `RooRefArray` (`RooFit.md`
+§4). `spec/03-classes/RooFit.md`, `gen/cases/classes/roofit` and
+`tools/test_roofit.py` are the result; 272 of the 274 RooFit records in the two
+corpora now decode.
 
 ## 9. Known gaps
 
@@ -1956,6 +1987,13 @@ container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
 `RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with
 **no streamer infos at all** (out of scope for objects, decision 7).
+
+**Re-measured 2026-09-21**, after `spec/03-classes/RooFit.md`: 1623 decoded, 264
+container, 480 partial, **13 blocked** — 197 of the 205 were RooFit and every
+one of them now decodes. What is left blocked is RNTuple's four `RBlob` records
+and its anchor, seven collections whose value class has no streamer info in the
+file (`Collections.md` §9), and one slot referencing a class position that is
+not in its buffer.
 
 M6 added three more from here, all of them `TBranch` invariants that had only
 ever been checked against files from ROOT 5.34 on: 11.1, 11.3 and 11.9, each

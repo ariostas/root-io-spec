@@ -422,6 +422,14 @@ value class and its columns are ordinary columns:
 and `pair<TString,PHit*>` all carry `0x0b5fb752`, in their recorded streamer
 infos and in their member-wise headers alike.
 
+**And the same value is in another file, on a fourth layout.**
+`classes/roofit` was generated from RooFit rather than from that case, and its
+`pair<string,vector<int> >` — reached through `RooCategory::_rangesPointerForIO`
+and `RooRealVarSharedProperties::_altBinning` — carries `0x0b5fb752` too. So the
+number is a constant ROOT produces, not a coincidence of one fixture, and a
+reader that keys a table by checksum will collide with it in files that have
+nothing to do with each other.
+
 ROOT reads such a file correctly because it never searches for the checksum
 globally. `ReadVersionForMemberWise` is given the value class — already resolved
 from the member's *declared type name* — and calls

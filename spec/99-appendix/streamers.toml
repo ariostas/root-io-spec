@@ -254,37 +254,37 @@ status = "out-of-scope"
 note = "TMVA SOFIE"
 
 [class.RooAbsBinning]
-status = "out-of-scope"
-note = "RooFit — common in published workspaces, but outside PLAN.md §2.4"
+status = "specified"
+spec = "[RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-a-tnamed-it-does-not-declare)"
 
 [class.RooRealVar]
-status = "out-of-scope"
-note = "RooFit"
+status = "specified"
+spec = "[RooFit §2](../03-classes/RooFit.md#2-roorealvar)"
 
 [class.RooLinkedList]
-status = "out-of-scope"
-note = "RooFit"
+status = "specified"
+spec = "[RooFit §3](../03-classes/RooFit.md#3-roolinkedlist)"
 
 [class.RooRefArray]
-status = "out-of-scope"
-note = "RooFit"
+status = "specified"
+spec = "[RooFit §4.2](../03-classes/RooFit.md#42-roorefarray-writes-a-trefarray)"
 
 [class."RooWorkspace::CodeRepo"]
-status = "out-of-scope"
-note = "RooFit — the code repository nested inside a workspace"
+status = "gap"
+note = "RooFit — the code repository nested inside a workspace; it blocks two records in stressRooFit_v534_ref.root"
 
 [class.RooCFunction1Ref]
-status = "out-of-scope"
-note = "RooFit"
+status = "gap"
+note = "RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one"
 
 [class.RooCFunction2Ref]
-status = "out-of-scope"
-note = "RooFit"
+status = "gap"
+note = "RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one"
 
 [class.RooCFunction3Ref]
-status = "out-of-scope"
-note = "RooFit"
+status = "gap"
+note = "RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one"
 
 [class.RooCFunction4Ref]
-status = "out-of-scope"
-note = "RooFit"
+status = "gap"
+note = "RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one"

@@ -100,11 +100,14 @@ class Checksums(unittest.TestCase):
     #: Members ROOT rewrites for I/O -- std::array recorded as a fixed C array,
     #: std::unique_ptr as a plain pointer -- keep their *declared* type name in
     #: the checksum. test_transformed_type_name reproduces both values.
-    TRANSFORMED = {"TF1", "CollectionForms"}
+    TRANSFORMED = {"TF1", "CollectionForms", "RooAbsReal"}
     #: ROOT's own value is wrong here: the checksum was computed before the
     #: members were known and cached forever (PLAN.md 7.1 item 8).
+    #: All four carry 0x0b5fb752, and the fourth is in a different file written
+    #: by a different program, which is what makes it a constant ROOT produces
+    #: rather than a coincidence of one fixture.
     PAIR_BUG = {"pair<TString,PHit*>", "pair<int,string>",
-                "pair<int,vector<short> >"}
+                "pair<int,vector<short> >", "pair<string,vector<int> >"}
     #: Every mismatch now has a named cause. TPad used to be listed here; it
     #: was this project's own bug in the `[` locator, not ROOT's
     #: (`StreamerInfo.md` 11 step 3).
@@ -222,6 +225,18 @@ class Checksums(unittest.TestCase):
         self.assertEqual(rw.checksum(rw.Info("TF1", 12, elements)),
                          info.checksum)
 
+        # RooAbsReal is the third witness, and the one that shows the spelling
+        # is not TF1's habit: its unique_ptr member is recorded as
+        # RooNumIntConfig* and the checksum folds the default deleter too.
+        info = self.infos_named("data/classes/roofit.root", "RooAbsReal")[0]
+        elements = self.elements_of(info)
+        for e in elements:
+            if e.name == "_specIntegratorConfig":
+                e.type_name = ("unique_ptr<RooNumIntConfig,"
+                               "default_delete<RooNumIntConfig> >")
+        self.assertEqual(rw.checksum(rw.Info("RooAbsReal", 3, elements)),
+                         info.checksum)
+
     def test_the_three_pairs_share_one_wrong_value(self):
         """PLAN.md 7.1 item 8, from the other direction."""
         _, _, infos = streamer_infos(REPO / "data/serialization/pairs.root")
@@ -240,6 +255,27 @@ class Checksums(unittest.TestCase):
         self.assertEqual(
             rw.checksum(rw.Info(fourth.name, 1, self.elements_of(fourth))),
             fourth.checksum)
+
+    def test_a_fourth_pair_in_another_file_carries_the_same_value(self):
+        """0x0B5FB752 is a constant, not a coincidence of one fixture.
+
+        `data/classes/roofit.root` was generated from RooFit rather than from
+        `gen/cases/serialization/pairs`, and its `pair<string,vector<int> >` --
+        a layout that appears in neither of the three -- carries the same
+        checksum. StreamerInfo.md 11.2.
+        """
+        info = self.infos_named("data/classes/roofit.root",
+                                "pair<string,vector<int> >")[0]
+        self.assertEqual(info.checksum, 0x0B5FB752)
+        computed = rw.checksum(rw.Info(info.name, 1, self.elements_of(info)))
+        self.assertNotEqual(computed, info.checksum)
+        # And distinct from all three of the pairs.root values, so it is not
+        # simply one of those layouts under another name.
+        _, _, infos = streamer_infos(REPO / "data/serialization/pairs.root")
+        others = {rw.checksum(rw.Info(i.name, 1, self.elements_of(i)))
+                  for i in infos
+                  if i.name.startswith("pair<") and i.checksum == 0x0B5FB752}
+        self.assertNotIn(computed, others)
 
 
 class Histograms(unittest.TestCase):

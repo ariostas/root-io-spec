@@ -39,8 +39,8 @@ repository's `PLAN.md` has the phasing, and its §9 every known gap.
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-Behind it: **80 reference files with 2047 byte-level assertions, 1600 source
-citations checked against the pinned ROOT tree across 48 documents**, and the
+Behind it: **81 reference files with 2078 byte-level assertions, 1614 source
+citations checked against the pinned ROOT tree across 49 documents**, and the
 invariants of every layer run over 227 files this project did not write — ROOT
 2.24/00 to 6.36/02 — with **0 failures**.
 
