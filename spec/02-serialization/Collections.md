@@ -414,6 +414,19 @@ value class and its columns are ordinary columns:
 
 > All six are demonstrated by `serialization/pairs`, one map each.
 
+> **The element titles are the standard library's own doc comments**, so two
+> files holding the same pair can differ in the bytes of its info. libstdc++
+> declares `_T1 first;  ///< The first member` in `<bits/stl_pair.h>` and libc++
+> declares no comment, so a `pair<string,int>` with a real dictionary carries
+> `The first member` and `The second member` where one built against libc++
+> carries two empty strings — 35 bytes against 2. An *emulated* pair, built with
+> no dictionary at all, carries `Emulation` on both members instead, whichever
+> library is in use. None of the three affects decoding, and all three are in
+> the fixtures: `serialization/pairs` has the emulated form on three of its
+> pairs and the dictionary form on `pair<string,int>`, which is why that case
+> and `classes/roofit` are the two that cannot have a portable digest
+> (`PLAN.md` §3.3).
+
 ### 8.2 The checksum does not identify the pair
 
 > **Two different `pair<K,V>` in the same file can carry the same checksum.**

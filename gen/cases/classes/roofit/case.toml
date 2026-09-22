@@ -1,6 +1,12 @@
 id   = "classes/roofit"
 file = "data/classes/roofit.root"
-size = 16338
+
+# No `size`, and no digest: this file is 16338 bytes when libc++ wrote it and
+# 16371 when libstdc++ did, for the reason `digest_reason` below gives -- the
+# same one `serialization/pairs` carries. Every offset the assertions use is in
+# the RooRealVar record (533..977) or the RooLinkedList record (1071..1164),
+# both of which come *before* the StreamerInfo record where the divergence is,
+# and both of which are identical either way.
 
 description = """
 The two RooFit classes whose recorded streamer info does not describe their
@@ -43,6 +49,26 @@ spec = [
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
 
+# A RooRealVar drags RooNumIntConfig, RooCategory and RooAbsCategory into the
+# file's class graph, and RooAbsCategory::_stateNames is a map<string,int> --
+# so this file carries a synthesised pair<string,int>, and with it the one
+# difference between the two standard libraries that a mask cannot repair.
+# libstdc++ carries doc comments on std::pair's members and libc++ does not, so
+# that pair's two TStreamerElement titles are "The first member" and "The second
+# member" on Linux and empty on macOS: 35 bytes against 2. It is a *length*
+# difference, so every offset after the StreamerInfo record moves by 33.
+# PLAN.md section 9.6, and gen/cases/serialization/pairs for the same exemption.
+#
+# Nothing else about the case is exempt: its 31 byte assertions run everywhere,
+# and none of them touches an fTitle.
+digest        = false
+digest_reason = """
+a RooRealVar pulls a synthesised pair<string,int> into the class graph, and
+libstdc++ gives std::pair's members doc comments where libc++ does not, so its
+element titles differ in LENGTH -- 35 bytes against 2 -- and a mask cannot
+restore a length. The byte assertions still run. PLAN.md 9.6
+"""
+
 [[records]]
 offset = 100
 nbytes = 228
@@ -67,17 +93,21 @@ role   = "the RooLinkedList; fKeyLen 94, so the payload starts at 1071"
 offset = 1164
 nbytes = 14731
 class  = "TList"
-role   = "StreamerInfo"
+role   = "StreamerInfo; 14764 bytes with libstdc++"
+# The two records below sit after the StreamerInfo record, so their offsets are
+# the libc++ ones; with libstdc++ they are 15928 and 16261. Nothing checks these
+# entries -- they are here to describe the file -- but the difference is real and
+# is the whole reason this case has no `size` and no digest.
 [[records]]
 offset = 15895
 nbytes = 333
 class  = "TFile"
-role   = "keys list"
+role   = "keys list (15928 with libstdc++)"
 [[records]]
 offset = 16228
 nbytes = 110
 class  = "TFile"
-role   = "free segments"
+role   = "free segments (16261 with libstdc++)"
 
 # ---------------------------------------------------------------------------
 # RooRealVar, payload 533..977.

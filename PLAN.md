@@ -349,15 +349,26 @@ find:
   can no longer see `fSize`, a case SHOULD assert it directly for members whose
   `sizeof` is standard-library independent.
 
-Two fixtures opt out with `digest = false` and a required `digest_reason`,
+Three fixtures opt out with `digest = false` and a required `digest_reason`,
 printed on every run as `NO DIGEST`, because the difference is a **length**
-change a mask cannot undo: `serialization/pairs` (libstdc++ carries doc comments
-on `std::pair`'s members) and `rntuple/anchor` (`std::uint64_t` resolves to
-`unsigned long` on one platform and `unsigned long long` on the other, so the
-same member is `kULong` on one and `kULong64` on the other — the format fact is
-`ElementTypes.md` §2.4). `classes/canvas` opts out for a third reason: the
-order of entries in the `StreamerInfo` record is process registration order, not
-a property of the file (`StreamerInfo.md` §3.4).
+change a mask cannot undo: `serialization/pairs` and, since 2026-09-21,
+`classes/roofit` (libstdc++ carries doc comments on `std::pair`'s members —
+`/**< The first member */` — and libc++ does not, so a synthesised
+`pair<string,int>`'s two element titles are 35 bytes on one and 2 on the other),
+and `rntuple/anchor` (`std::uint64_t` resolves to `unsigned long` on one platform
+and `unsigned long long` on the other, so the same member is `kULong` on one and
+`kULong64` on the other — the format fact is `ElementTypes.md` §2.4).
+`classes/canvas` opts out for a third reason: the order of entries in the
+`StreamerInfo` record is process registration order, not a property of the file
+(`StreamerInfo.md` §3.4).
+
+**A fixture can inherit that exemption without containing a pair itself.**
+`classes/roofit` writes a `RooRealVar` and a `RooLinkedList` and no map at all;
+the pair arrives because `RooAbsReal::_specIntegratorConfig` reaches
+`RooNumIntConfig`, which holds `RooCategory`, whose `_stateNames` is a
+`map<string,int>` — and a file records infos for its whole reachable class
+graph. So the portability of a fixture is a property of that graph, not of what
+the case writes.
 
 **Every new case must go through the container loop in `CLAUDE.md` before a
 push**, not after a red build. The drift is libc++ against libstdc++, not
@@ -1908,6 +1919,7 @@ version word in a 500/501/85/86/87 frame is **not** the constant 10 but
 | `rootfile.py` has no `TTree` support | ✅ tree, branches, leaves, baskets, entry spans, and the split decoder |
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ☐ worth adding as a complement; not MVP |
 | Four fixtures were not digest-portable between macOS and Linux | ✅ three fixed by masks, one exempted with a reason; the causes are in §3.3 |
+| `classes/roofit` was pushed without the container loop of §3.3 and CI caught it | ✅ 2026-09-21, and the rule is the finding: `generate.py --check` cannot see a cross-platform drift, because it does not regenerate. Only the ROOT-having job can, so a green local suite is not evidence about a **new** case |
 | Eight upstream bug candidates banked, not reported | ☐ §7.1, M10 |
 
 ### 9.7 What the coverage probe measures

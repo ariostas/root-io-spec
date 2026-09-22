@@ -703,6 +703,18 @@ decode, each accounting to its byte count exactly. The two that do not are the
 `RooWorkspace` records, blocked on `RooWorkspace::CodeRepo`, which is now
 recorded as a `gap` rather than as out of scope.
 
+**CI caught what the local suite could not.** The first push of `classes/roofit`
+went red on the regenerate job: the file is 16338 bytes with libc++ and 16371
+with libstdc++, because a `RooRealVar` pulls a synthesised `pair<string,int>`
+into the class graph and libstdc++ gives `std::pair`'s members doc comments.
+`PLAN.md` §3.3 already says every new case must go through the container loop
+*before* a push, and the reason is exactly this: `generate.py --check` does not
+regenerate, so a green local suite says nothing about a new case's portability.
+The case now carries `digest = false` with a reason, like
+`serialization/pairs`; all 31 byte assertions hold on both standard libraries,
+because every offset they use is in the two object records, which come before
+the `StreamerInfo` record where the divergence is.
+
 **And two checksum facts came out of the new fixture**, neither of them RooFit's.
 `RooAbsReal` is a third witness for `StreamerInfo.md` §11.2's "a member ROOT
 rewrote for I/O": its `std::unique_ptr<RooNumIntConfig>` folds as
