@@ -12,8 +12,9 @@ review is what it turns out to be right about.
 **The tally**, from a review that offered six gaps and four observations: the six
 false or incomplete claims of our own that R1–R7 found, plus **two more that the
 RooFit fixture found** — both of `StreamerInfo.md` §11.2's exception lists were
-one entry short (§5); **two reader bugs** fixed and **seven classes the reader
-could not decode** implemented; and **three of the review's own claims
+one entry short (§5); **two reader bugs** fixed and **six classes the reader
+could not decode** implemented — `RooRealVar`, `RooLinkedList`, `RooAbsBinning`,
+`RooRefArray`, `RooCategory` below version 3 and `TRefArray` as a member; and **three of the review's own claims
 corrected** — item 8's category, item 9's class, and item 10's reading of a
 frame.
 [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) is the first
