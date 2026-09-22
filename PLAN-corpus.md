@@ -4,7 +4,8 @@
 prose, so `PLAN.md` §8.1 criterion 1 is met again. Every one has a source
 citation; the bytes are a new fixture for C1 and C3, 12 385 basket keys in
 `root/roottest/` for C2, and for C4 the only witness there is, now a
-`gen/foreign/` file. C5–C7 and the rest stand. The survey is done; this plan
+`gen/foreign/` file. **C5–C7 discharged the same day**: two real bugs and one
+that was not, whose audit found a vacuous invariant instead. C8 onward stands. The survey is done; this plan
 orders what to do about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
@@ -54,7 +55,7 @@ the first task of such an item is to reproduce it.
 | C2 | A basket does **not** always use the large key layout | census of every `TBasket` key in `root/roottest/`, 62 ROOT releases | **✅ discharged**; the boundary is ROOT 4.02, and the commit that moved it is `3970c0bead` |
 | C3 | `Buffer.md` §2.3's unframed-class list omits `TDatime` | reproduced (`Buffer 9.2`, exit 1), then a census of every persisted hand-written `Streamer` | **✅ discharged** — and the census found two more classes and a reader bug |
 | C4 | `Record.md` §8.6 is false for ROOT 6.34/6.35 RNTuple blob keys | reproduced (4 × `Record 8.6`), and the fix found by `git log -S`: `5fe8a99942`, first in 6.36.00 | **✅ discharged** — scoped to one writer, not to all RNTuple files |
-| C5 | `check_invariants.py` resolves a base class by name, not `fBaseVersion` | read at `check_invariants.py:846`; symptom is 34 failures on one file | **Reported** — the line is real, the consequence is not reproduced |
+| C5 | `check_invariants.py` resolves a base class by name, not `fBaseVersion` | reproduced (34 × `StreamerInfo 13.7`), then split: 15 matched another info of the class, 19 matched none | **✅ discharged** — the right key is the checksum, not `fBaseVersion` |
 | C8 | `skim.root` is the only file anywhere with version-3 `TStreamerElement` | census over 273 files: v4 28 844, v2 7 377, **v3 426, all in one file** | **Reported** — file confirmed present in the submodule |
 | C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here** |
 | — | Open Data serves HTTP range requests | agent ran this project's own `fetch_range`, `read_header`, `parse_free_entries`, `large_file_problems` → 0 problems | **Reported**, with our tools unmodified |
@@ -300,7 +301,53 @@ release tag, since the pinned submodule no longer contains it, and a claim about
 6.34/6.35 that cannot be cited at 6.40.04 needs `check_citations.py`-friendly
 handling. Then state the exception.
 
-## 3. Three reader and checker bugs
+## 3. Three reader and checker bugs — ✅ discharged 2026-09-22
+
+**C6 was real, C5 was real but latent, and C7 was not a bug** — but auditing it
+found one that was.
+
+- **C6 ✅.** Reproduced on this project's own `rntuple/compressed`: the anchor at
+  727 is compressed and `read_rntuple_anchor` read the first four bytes of a zlib
+  stream as a byte count. It now reads through `object_data`. After the fix **27
+  anchors** within reach read through to their header schema, **19 of them
+  compressed** — every roottest 6.37/01 file included. *Why it survived*: only
+  the unit tests call `read_rntuple`, on three named fixtures, all uncompressed.
+  `test_rntuple.EveryAnchorReads` now reads every anchor in `data/` and requires at
+  least one to be compressed, and it fails against the previous reader.
+- **C7 — not a bug.** All 20 `payload_range` call sites were traced: every one
+  indexes the buffer `object_data` returns, where the payload is decompressed in
+  place and `start + obj_len` is exact, or a record already known to be raw. A
+  multi-page `RBlob` never reaches it; `object_data` raises first, which C1
+  already handles. The survey read the function without its callers. The
+  docstring now states the contract the audit relied on.
+- **…but the audit found `Compression` 9.7 checking the wrong bytes.**
+  `check_raw_is_not_a_block` added the record's offset to a `start` that already
+  included it, so it read nine bytes at twice the record's offset — another
+  record, or past the end of the file, where it returned early. **A published,
+  "checked" invariant that had never checked anything**: rewriting a raw payload
+  to open with a valid `ZL` header did not trip it. Fixed, it catches that
+  corruption and is clean over every fixture, written file and all 228 corpus
+  files, so 9.7's claim is now measured for the first time. `check_coverage.py`
+  could not see this — it matches labels, and the label was emitted by live code.
+  It is the §8.13 lesson again from the other side: an invariant wired to a check
+  is still only as good as the check.
+- **C5 ✅, latent.** Reproduced: 34 × `StreamerInfo 13.7` on UnROOT's
+  `TLeafC_pr342.root`. The question that decided it was whether *another* info for
+  the base class in the file carried the recorded checksum: **15 did** — our
+  lookup kept the last info of each name — and **19 matched no info at all**, the
+  g4tools writer's canned list, and a lead. The survey's proposed fix was wrong:
+  the key is not `fBaseVersion`, which §9.2 already shows may name a version the
+  file lacks, but the checksum, which identifies a layout. 13.7 now accepts a
+  checksum matching **any** info of the class, the published wording says so, and
+  the lead file goes from 34 failures to exactly the 19. A search of every file in
+  reach — fixtures, both corpora, all of `root/roottest/` — found **no** base
+  element naming a class its file describes twice, so no ROOT-written file had
+  ever hit it. The witness is therefore built: `test_write` writes a file whose
+  base class has two infos with the derived class pointing at the one a name
+  lookup does not keep, and checks both that it passes and that an unmatched
+  checksum still fails. It failed before the fix.
+
+---
 
 - **C5. `check_invariants.py:846` resolves a base class with `by_name.get(e.name)`**
   — one info per class name. On a file carrying two infos for one class at
@@ -506,12 +553,12 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 ## 11. Order
 
-~~C1–C4 first, and C1 and C2 before C3 and C4~~ — **C1–C4 are done**. C5–C7 fall
+~~C1–C4 first, and C1 and C2 before C3 and C4~~ — **C1–C7 are done**. ~~C5–C7 fall
 out of C1 and are **not** closed by it: the checker now handles the shapes, but
 `rootfile.read_rntuple_anchor()` still cannot read a compressed anchor and
 `payload_range()` still overruns. `gen/cases/rntuple/compressed` is a witness for
 both — its anchor at 727 is compressed, and the file reports
-`NOT CHECKED ROOT::RNTuple ...` for exactly that reason. C16 is independent
+`NOT CHECKED ROOT::RNTuple ...` for exactly that reason.~~ C16 is independent
 of everything and cheap enough to do at any point. C8–C11 need no new
 infrastructure once C12's question is answered, because three of the four files
 are already on disk. C13 is manifest lines. C17 should happen before anything is

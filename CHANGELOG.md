@@ -11,6 +11,14 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Clarified: a base element's checksum may match any of its class's infos.**
+  [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) invariant 13.7 said a
+  `TStreamerBase`'s `fMaxIndex[1]` is 0 or "that info's `fCheckSum`", as though a
+  file held one info per class. It may hold several, at different versions, and
+  the checksum is what says which one the derived class was built against (§9.2).
+  A reader or checker that looks the base up by name and compares against
+  whatever it finds rejects a correct file.
+
 - **Correction: the list of records that do not open with a byte count was
   incomplete, and is now complete.**
   [`Buffer.md` §2.3](spec/02-serialization/Buffer.md) listed the container's

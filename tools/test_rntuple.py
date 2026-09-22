@@ -192,6 +192,37 @@ def _fundamental_table(text: str) -> dict[str, str]:
     return defaults
 
 
+class EveryAnchorReads(unittest.TestCase):
+    """Every RNTuple in data/ reads through its anchor to its header schema.
+
+    Every other test here names its fixture, and until 2026-09-22 all of them
+    named uncompressed ones -- so nothing in CI ever handed read_rntuple_anchor a
+    compressed anchor, and it could not read one (PLAN-corpus.md C6). Walking
+    every fixture instead of a list means a new RNTuple case is covered the day
+    it is committed, whatever it was written to demonstrate.
+    """
+
+    def test_every_anchor_reads_and_one_is_compressed(self):
+        sys.path.insert(0, str(REPO / "tools"))
+        import rootfile
+        read = compressed = 0
+        for path in sorted((REPO / "data").rglob("*.root")):
+            buf, _, recs = rootfile.load(path)
+            for rec in recs:
+                if rec.free or rec.class_name != "ROOT::RNTuple":
+                    continue
+                with self.subTest(file=path.name):
+                    anchor, schema = rootfile.read_rntuple(buf, rec)
+                    self.assertEqual((anchor.epoch, anchor.major), (1, 0))
+                    self.assertTrue(schema.fields)
+                read += 1
+                compressed += rec.compressed
+        self.assertGreater(read, 0)
+        # Without this the test could pass by never meeting the case it exists
+        # for, if rntuple/compressed were ever regenerated with compression off.
+        self.assertGreater(compressed, 0)
+
+
 class FundamentalTypeTable(unittest.TestCase):
     """The tracked table against a file, so the two cannot drift apart.
 

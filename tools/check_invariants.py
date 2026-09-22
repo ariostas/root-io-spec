@@ -851,6 +851,9 @@ class Checker:
             return
 
         by_name = {i.name: i for i in infos}
+        all_by_name: dict[str, list] = {}
+        for i in infos:
+            all_by_name.setdefault(i.name, []).append(i)
         seen: set[tuple[str, int]] = set()
         for si in infos:
             if not si.name:
@@ -894,12 +897,19 @@ class Checker:
                     # 0 means "not recorded": the field did not exist before
                     # ROOT 6, and is 0 whenever the writer had no base class
                     # loaded. StreamerInfo.md 9.1.
-                    target = by_name.get(e.name)
-                    if (target is not None and e.base_checksum
-                            and target.checksum != e.base_checksum):
+                    #
+                    # "the base info" is any info for that class in the file: a
+                    # file may hold several at different versions, and
+                    # fBaseCheckSum identifies a layout (StreamerInfo.md 9.2).
+                    # Comparing against the one by_name happened to keep failed
+                    # a base element naming the other (PLAN-corpus.md C5).
+                    targets = all_by_name.get(e.name, [])
+                    if (targets and e.base_checksum
+                            and all(t.checksum != e.base_checksum for t in targets)):
+                        have = ", ".join(f"0x{t.checksum:08x}" for t in targets)
                         self.bad("StreamerInfo 13.7",
-                                 f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} != "
-                                 f"the base info's fCheckSum 0x{target.checksum:08x}")
+                                 f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} "
+                                 f"matches no {e.name} info in the file ({have})")
                     # There is deliberately no invariant on fBaseVersion.
                     # It records the base version the *derived* class's info was
                     # built against, which need not be the version of the base's
@@ -2217,8 +2227,14 @@ class Checker:
         header would make the two readings of the same record disagree. It does
         not happen, and this is what says so.
         """
+        # payload_range's start is already a file offset. Until 2026-09-22 this
+        # added rec.offset to it a second time, so the check read 9 bytes at
+        # twice the record's offset -- another record, or past the end of the
+        # file, where it returned early. It passed vacuously on every record it
+        # was ever given; corrupting a raw payload to open with a valid `ZL`
+        # header did not trip it (PLAN-corpus.md C7).
         start, end = rootfile.payload_range(rec)
-        head = data[rec.offset + start:rec.offset + start + 9]
+        head = data[start:start + 9]
         if len(head) < 9 or head[:2] not in BLOCK_MAGICS:
             return
         # A block header is magic, method, then two 3-byte little-endian sizes.

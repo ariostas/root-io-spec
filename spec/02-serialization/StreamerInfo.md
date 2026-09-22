@@ -710,8 +710,11 @@ a rewritten member — and not from the element list about to be emitted. See
 6. Every element's `fType` is in the on-disk set of
    [Element types §1](ElementTypes.md#1-the-type-codes).
 7. For a `TStreamerBase` whose base class also has an info in the same file,
-   `fMaxIndex[1]` read as unsigned is **either 0 or** that info's `fCheckSum`. It
-   is 0 on every file written before ROOT 6 (§9.1).
+   `fMaxIndex[1]` read as unsigned is **either 0 or** the `fCheckSum` of **one of**
+   that class's infos. A file may describe a class at several versions, and the
+   checksum is what says which layout the derived class was built against (§9.2);
+   comparing it with whichever info a lookup by name returns is wrong. It is 0 on
+   every file written before ROOT 6 (§9.1).
 8. A `TStreamerBase` has `fTypeName` `"BASE"`, and `fType` is 0, 66, 67 or -1.
 9. Every `TStreamerSTL` and `TStreamerSTLstring` has `fType == 500` on disk,
    on a file written by ROOT 5 or later. ROOT 4 wrote the real code (§10.1).

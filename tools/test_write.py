@@ -1494,6 +1494,39 @@ class Evolution(unittest.TestCase):
             hits = [f for f in checker.failures if "13.7" in f]
             self.assertEqual(len(hits), expected, (checksum, checker.failures))
 
+    def test_a_base_with_two_infos_is_matched_by_checksum(self):
+        """StreamerInfo 13.7 when the base class has two infos in the file.
+
+        fBaseCheckSum identifies a layout (StreamerInfo.md 9.2), so the base
+        element must match *an* info for that class, not whichever one a lookup
+        by name happens to keep. Until 2026-09-22 the check compared against the
+        last info of that name, and failed a file whose base element named the
+        earlier one -- 15 of the 34 failures PLAN-corpus.md C5 reported. The
+        other 19 were a writer's genuinely unmatched checksums, and the second
+        half of this test is that those are still caught.
+        """
+        import check_invariants
+        bottom, top = self.base_pair()
+        newer = rw.Info("Bottom", 2, [
+            rw.Element("TStreamerBasicType", "fBase", "in the base", 3, 4, "Int_t"),
+            rw.Element("TStreamerBasicType", "fMore", "added at v2", 3, 4, "Int_t")])
+        newer.checksum = rw.checksum(newer)
+        self.assertNotEqual(newer.checksum, bottom.checksum)
+        # `newer` listed last, so a lookup by name lands on it and not on the
+        # info `top` was built against.
+        for base_checksum, expected in ((bottom.checksum, 0), (0xdeadbeef, 1)):
+            _, top = self.base_pair()
+            top.elements[0].base_checksum = base_checksum
+            top.checksum = rw.checksum(top)
+            data = self.file_with([bottom, newer, top])
+            with tempfile.TemporaryDirectory() as tmp:
+                path = pathlib.Path(tmp) / "two-base-infos.root"
+                path.write_bytes(data)
+                checker = check_invariants.Checker(path)
+                checker.run()
+            hits = [f for f in checker.failures if "13.7" in f]
+            self.assertEqual(len(hits), expected, (hex(base_checksum), hits))
+
     def test_a_disagreeing_base_version_is_not_an_error(self):
         """StreamerInfo 9.2: it names the version built against, not the one in
         the file beside it. Five corpus files rely on that being allowed."""

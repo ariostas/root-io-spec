@@ -500,7 +500,16 @@ def is_compressed(rec: Record) -> bool:
 
 
 def payload_range(rec: Record) -> tuple[int, int]:
-    """File offsets of the payload of an uncompressed record."""
+    """Where `rec`'s object data lies in the buffer `object_data` returns.
+
+    For a raw record that buffer is the file itself; for a compressed one it is
+    the file with the payload decompressed in place, which is why the range ends
+    at `start + obj_len` and not at the record's end. Index the file with it only
+    for a record known to be raw. Every caller was audited against that on
+    2026-09-22 (PLAN-corpus.md C7): all of them hold to it, and the one that got
+    the *start* wrong -- Compression 9.7, adding the record's offset twice -- is
+    fixed.
+    """
     start = rec.offset + rec.key_len
     return start, start + rec.obj_len
 
@@ -4404,7 +4413,15 @@ def read_rntuple_anchor(buf: bytes, rec: Record) -> RNTupleAnchor:
     The offsets below start six bytes into the payload, not at it: the byte
     count and the class version come first and the document's anchor schema does
     not show them (ERRATA 2).
+
+    The anchor is an ordinary TKey payload, so it may be compressed like any
+    other record -- RNTuple compresses it whenever compression is on, as
+    rntuple/compressed shows. Until 2026-09-22 this read the raw file at the
+    payload and took the first four bytes of a zlib stream for a byte count
+    (PLAN-corpus.md C6). Every offset below is into the decompressed payload;
+    the seeks it returns are file offsets and are used against the file.
     """
+    buf = object_data(buf, rec)
     start, end = payload_range(rec)
     word = _u32(buf, start)
     if not word & BYTE_COUNT_MASK:
