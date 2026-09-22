@@ -463,6 +463,16 @@ checksum → info table will decode two of those three maps as the wrong type.
 > happens to is a function of the order in which the writing program touched
 > them; `PLAN.md` §7.1 banks it as an upstream report.
 
+> **The usual case is the sound one**, which is why a reader must not infer the
+> rule from the exception. `uproot-issue38c.root` of the foreign corpus
+> (`PLAN.md` §9.8), written by ROOT 6.22/06, carries `pair<double,double>` at
+> class version 1 with checksum **`0x00D7BED2`** — the value class of
+> `TEfficiency::fBeta_bin_params`, a `vector<pair<double,double> >` — and that
+> value **recomputes exactly** from the element list the same file records. So
+> most pairs in most files are ordinary, and none of that helps: nothing in a
+> file marks which pairs escaped the caching and which did not, so the rule above
+> holds either way.
+
 ## 9. The value class's streamer info can be missing entirely
 
 > **ROOT can write a `std::vector<T>` that nothing, including ROOT, can read.**

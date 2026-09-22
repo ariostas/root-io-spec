@@ -1,12 +1,13 @@
 # PLAN-review — the rootfilespec review, issue #1
 
-**Status: nearly discharged.** Written 2026-09-21; **R1–R8 done** the same day —
-the three defects of §2, all four gaps of §3, the item-3 attribution, §4.1's
-corpus question, and all four RooFit items of §5 — and the reply posted. What
-remains is three of §6's corroboration citations. Every item below was re-checked
-against the corpora and against our own reference files *before* being planned,
-and the verification is recorded per item, because the point of a review is what
-it turns out to be right about.
+**Status: discharged.** Written 2026-09-21; **R1–R8 done** the same day — the
+three defects of §2, all four gaps of §3, the item-3 attribution, §4.1's corpus
+question, all four RooFit items of §5 and all four corroborations of §6 — and
+the reply posted. One thing is left and it is not a task in this plan: the reply
+predates R8, so it does not carry the outcome (§8 item 6). Every item below was
+re-checked against the corpora and against our own reference files *before*
+being planned, and the verification is recorded per item, because the point of a
+review is what it turns out to be right about.
 
 **The tally**, from a review that offered six gaps and four observations: the six
 false or incomplete claims of our own that R1–R7 found, plus **two more that the
@@ -766,15 +767,28 @@ second implementation confirming a byte pattern is exactly the evidence
   the depth at which framing resumes follows the class chain, so a reader matching
   one prefix has hard-coded a class rather than implemented the rule. Sixth
   correction of the review, and the only one not found by a check;
-- `uproot-issue-222.root` as a field witness for `Buffer.md` §4's version-0,
-  byte-count-2, no-checksum case;
-- `0x00D7BED2` as a wild member-wise `pair<double,double>` checksum for
-  `Collections.md` §8.2;
-- `uproot-issue-407.root` confirming `Record.md` §3.7's bare four-byte `TDatime`
-  member, on a class we did not write.
+- ~~`uproot-issue-222.root` as a field witness for `Buffer.md` §4's version-0,
+  byte-count-2, no-checksum case;~~ **landed 2026-09-21.** Five `TAttBBox2D`
+  bases in its single `TH1F`, each `40 00 00 02 00 00`: a byte count of 2
+  covering only the version word, no checksum, no content. `TAttBBox2D` is
+  `ClassDef(TAttBBox2D,0)`, and the file's own info for it carries
+  `fClassVersion` 0 and an empty element list — so the lookup rule §4 gives a
+  reader resolves it from the file alone;
+- ~~`0x00D7BED2` as a wild member-wise `pair<double,double>` checksum for
+  `Collections.md` §8.2;~~ **landed 2026-09-21**, and it turned out to be the
+  *opposite* witness to the one that section needed. `uproot-issue38c.root`'s
+  `pair<double,double>` carries `0x00D7BED2` and that value **recomputes
+  exactly** from the element list the same file records. It is evidence that the
+  usual case is sound, which is what makes the rule necessary rather than
+  optional: nothing in a file marks which pairs escaped the caching;
+- ~~`uproot-issue-407.root` confirming `Record.md` §3.7's bare four-byte
+  `TDatime` member, on a class we did not write.~~ **Already landed** — it went
+  in with R6 and this list was stale in saying otherwise. `Record.md` §3.7 has
+  carried it since 2026-09-21: "whose `TFoo` is a `TObject` and a `TDatime` in a
+  20-byte payload".
 
-Each is one line in the document's reference-files table or a footnote beside the
-claim. Cheap, and it makes the next review cheaper.
+Each was one line in the document's reference-files table or a footnote beside
+the claim. Cheap, and it makes the next review cheaper. **All four are in.**
 
 ## 7. What to reply, and when
 
@@ -811,7 +825,14 @@ Per the repository's convention the reply opens with the AI-content marker.
    **Done**: `Directory.md` §3.1, §7.1 and invariant 15; `FileHeader.md` §8.1 with
    §4 and invariant 11 corrected; and the groot attribution, with the evidence
    separated from the claim (§3).
-6. **Reply to the issue** (§7), including the corpus question.
+6. ~~**Reply to the issue** (§7), including the corpus question.~~ **Done
+   2026-09-21**, at full length:
+   [comment 5767722107](https://github.com/ariostas/root-io-spec/issues/1#issuecomment-5767722107).
+   It went out after the RooFit scope decision was committed, so the public
+   statement and the repository agree. It does **not** yet carry R8's outcome:
+   it says item 10 comes first and asks them for bytes on items 9 and 10, and in
+   the event none of that was needed and three of their four RooFit claims were
+   wrong. A follow-up is worth sending — see below.
 7. ~~**R6** — needs `uproot-issue283.root` for half of it; the `TTime` half needs a
    ten-minute ROOT experiment and nothing else.~~ **Done**, and it cost more than
    ten minutes because the file it needed also caught a reader bug: a zero
@@ -830,6 +851,8 @@ Done when: every item above has an outcome recorded in this file, the issue has 
 reply, and `PLAN.md` §8.1 criterion 1 is true again — which it is not today, and
 which is the reason the order starts where it does.
 
-**All three hold as of 2026-09-21**, bar §6's three remaining corroboration
-citations. When those land this file is discharged and deletable; nothing else in
-it is durable that `spec/` or `PLAN.md` does not already carry.
+**All three hold as of 2026-09-21.** This file is discharged and deletable:
+nothing left in it is durable that `spec/` or `PLAN.md` does not already carry,
+and `PLAN.md` §8.13 has the outcomes. The one thing that would be lost by
+deleting it now is the record that the posted reply predates R8 — so send the
+follow-up first, or move that note into `PLAN.md` §8.13.

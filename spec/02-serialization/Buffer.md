@@ -228,6 +228,17 @@ is written.
 > is a `TH1L`: the version word at 361 is 0 and the next four bytes are the
 > **byte count of the embedded `TH1` base**, `0x40000200`.
 
+> **And in the wild, by `uproot-issue-222.root`** of the foreign corpus
+> (`PLAN.md` §9.8), a ROOT 6.20/04 file holding one `TH1F`. Five
+> `TAttBBox2D` base objects inside it read `40 00 00 02 00 00` and nothing
+> else — a byte count of 2 covering only the version word, which is 0, with no
+> checksum and no content. `TAttBBox2D` is `ClassDef(TAttBBox2D,0)`
+> (`root/core/base/inc/TAttBBox2D.h:33`), so it takes the right-hand row, and
+> the file says so itself: its streamer info for the class carries
+> `fClassVersion` 0 and an empty element list. One base is under a `TBox` and
+> four under `TText`, so a reader meets the case five times in a file whose only
+> object is a histogram.
+
 ROOT resolves the ambiguity by consulting the compiled class
 (`root/io/io/src/TBufferFile.cxx:2966-2975`). A third-party reader has no
 compiled classes, and MUST use the file's own streamer info instead:
