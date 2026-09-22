@@ -5,7 +5,7 @@ directory that belongs to somebody else.
 
 | What | Licence | Full text |
 |---|---|---|
-| `spec/`, `README.md`, `PLAN.md`, `CONTRIBUTING.md`, `CHANGELOG.md` — the prose | **CC-BY-4.0** | [LICENSES/CC-BY-4.0.txt](LICENSES/CC-BY-4.0.txt) |
+| `spec/`, `README.md`, `PLAN.md`, `CONTRIBUTING.md`, `AGENTS.md` — the prose | **CC-BY-4.0** | [LICENSES/CC-BY-4.0.txt](LICENSES/CC-BY-4.0.txt) |
 | `tools/`, `gen/`, `data/`, `.github/`, `zensical.toml` — the code, the generators and the reference files they produce | **BSD-3-Clause** | [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt) |
 | `root/` — a submodule, not content of this repository | ROOT's own **LGPL-2.1-or-later** | `root/LICENSE` |
 | `spec/05-rntuple/BinaryFormatSpecification.md` — see below | not ours to licence | — |

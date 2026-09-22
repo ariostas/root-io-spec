@@ -13,10 +13,11 @@ abstract: >-
   A specification of the ROOT on-disk binary formats -- the container layer,
   object serialization, the classes whose recorded streamer information does not
   describe their bytes, and TTree -- written so that a third party can implement
-  a reader without reading ROOT's C++ source. Every claim is verified twice:
-  against a pinned ROOT release with a path:line citation, and against real bytes
-  in a committed reference file. The invariants of each layer run over 226 ROOT
-  files this project did not write.
+  a reader without reading ROOT's C++ source. It is written by an AI agent from
+  ROOT's source under human direction, which is tractable only because every claim
+  is verified twice by machine: against a pinned ROOT release with a path:line
+  citation, and against real bytes in a committed reference file. The invariants
+  of each layer run over 227 ROOT files this project did not write.
 keywords:
   - ROOT
   - TFile
@@ -32,5 +33,8 @@ license:
   - CC-BY-4.0
   - BSD-3-Clause
 license-url: https://github.com/ariostas/root-io-spec/blob/main/LICENSE
+# The specification tracks ROOT rather than carrying a meaning of its own, so its
+# releases are CalVer (YYYY.MM.DD), tagged at a milestone. Bumping these two lines
+# is part of cutting one. 0.1.0 was the last release under the old scheme.
 version: 0.1.0
 date-released: '2026-09-17'

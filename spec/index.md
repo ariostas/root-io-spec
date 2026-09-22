@@ -1,6 +1,9 @@
 # ROOT I/O Specification
 
-**Version 0.1.0**, descriptive of ROOT **6.40.04**.
+Descriptive of ROOT **6.40.04**, pinned as a submodule at `v6-40-04`. This is a
+living document that tracks ROOT, and this line is where it says which release it
+currently describes; its own releases are dated (`YYYY.MM.DD`) and cut at
+milestones.
 
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.
@@ -124,9 +127,18 @@ it is good for.
 ## Scope
 
 **It is descriptive, not normative.** This describes ROOT 6.40.04, pinned as a
-submodule, and its own version is 0.1.0 — the changelog in the repository says
-what each release changed for a reader. Where this specification and that submodule disagree, the submodule is
+submodule. Its own releases are dated rather than numbered — CalVer, tagged when
+the document reaches a milestone — because the version that carries meaning is
+ROOT's and not this document's. There is no changelog: the repository's git log is
+the record of what changed, and of how each fact was established.
+Where this specification and that submodule disagree, the submodule is
 right and this has a bug. Source citations link to that exact commit.
+
+**It is written by an AI agent and checked by machine.** Every claim here carries
+two witnesses — a `path:line` citation into that submodule, and real bytes in a
+committed reference file — and both are verified on every push, as is the rule
+that no `Invariants` entry may be published without something checking it. Read
+it accordingly: a correction is more welcome than an addition.
 
 **Reading is specified; writing is specified where a writer has no freedom.** Each
 layer ends with an `Invariants` section stating what a conforming file satisfies,

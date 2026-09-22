@@ -82,10 +82,11 @@ nav = [
   ] },
 ]
 
-# The specification's own version, not ROOT's. CHANGELOG.md is the record and
-# CITATION.cff carries the same number; spec/index.md states it on the front page.
+# The ROOT release this specification describes. It has no version of its own --
+# it is a living document that tracks ROOT -- so this is the only number here,
+# and spec/index.md states it on the front page. check_pin.py holds the citation
+# commit below to the pinned submodule, which is what stops the two drifting.
 [project.extra]
-version = "0.1.0"
 describes_root = "6.40.04"
 
 [project.theme]

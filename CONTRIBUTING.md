@@ -197,7 +197,7 @@ file does, and the reason goes in the README beside it.
   `feat(ttree):`).
 
 `PLAN.md` holds the structure, the scope decisions and what is left; `§8` is the
-route to the next release and `§9` lists every known gap. If you are looking for
+route the work took and `§9` lists every known gap. If you are looking for
 something to do, those gaps are ranked by how much of the corpora they block.
 There is no open sub-plan. A sub-plan is deleted when it is discharged, as
 `PLAN-ttree.md`, `PLAN-writing.md` and `PLAN-review.md` were; what is worth

@@ -1,7 +1,7 @@
 # PLAN — ROOT I/O Specification
 
 **Status: the reading side is specified end to end for files written by ROOT 4
-and later, 0.1.0 is released, and the writing side covers the container with
+and later, and the writing side covers the container with
 subdirectories, an object, histograms and profiles, graphs, and a flat `TTree`
 with many baskets and with a `TLeafC`.** Everything is cited against the pinned
 submodule and checked against bytes; RNTuple tracks ROOT's own specification plus
@@ -101,8 +101,8 @@ hand-written text, and structuring the repo this way makes the *size of the
 hand-written surface* explicit — the thing third-party implementers currently
 have to discover the hard way.
 
-`LICENSE`, `LICENSES/`, `CONTRIBUTING.md`, `CITATION.cff` and `CHANGELOG.md` are
-in place as of 0.1.0 (§8 item M7).
+`LICENSE`, `LICENSES/`, `CONTRIBUTING.md` and `CITATION.cff` are in place (§8 item
+M7). `CHANGELOG.md` was too, and was deleted on 2026-09-22 — decision 9.
 
 ### 2.1 `spec/00-conventions.md` ✅
 
@@ -443,7 +443,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | RNTuple | ◐ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; one form left (collection proxy) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
 | Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
-| Release plumbing (licence, citation, version) | ✅ 0.1.0, §8 item M7 |
+| Release plumbing (licence, citation, releases) | ✅ §8 item M7; CalVer at milestones and no changelog since 2026-09-22, decision 9 |
 | Writing (`spec/06-writing/`) | ✅ container and subdirectories, object, histograms and profiles, graphs, flat `TTree` with many baskets and with a `TLeafC`, plus the element lists — every object-bearing record in `data/written/` byte-identical to ROOT's (§8.4) |
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
@@ -464,6 +464,7 @@ phase.
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims **reading** for files written by ROOT 4.00 and later, and M4 measured that it works back to **3.04/02**. The floor is not a release number but a property of the file: object decoding needs streamer infos, and a file old enough carries none. Exactly one corpus file is in that state — `pippa.root`, ROOT 2.24/00 — and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
 | 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope; **revised 2026-09-21: RooFit is in**) | Four groups: the frameworks inside ROOT that define their own persistent classes — the SQL backend, PROOF, both event displays, SOFIE, each with its reason in `streamers.toml`. **RooFit was on that list and is not any more**, on the demand argument of §8.13: rootfilespec asked for it rather than reverse-engineer it, which is the strongest signal about what to write next this project has had; what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and, on the write side, what decision 3 leaves out after its 2026-09-18 revision and its 2026-09-21 extension — earlier class versions, two writers on one file at once, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
+| 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and no changelog.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document whose whole job is to describe somebody else's format: the number that carries meaning is ROOT's, and it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. So releases are `YYYY.MM.DD`, tagged when the specification reaches a milestone — they exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` is deleted: it recorded what changed for a reader, but the git log records that **and** how each fact was established, and this project's commit bodies carry the second half deliberately (`AGENTS.md`). One release exists under the old scheme, `v0.1.0`, and it stays where it is. |
 
 ## 7. Open items
 
@@ -621,7 +622,10 @@ what satisfied it:
    `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
-   published site. ✅ M7.
+   published site. ✅ M7 — though the version number and the changelog were both
+   reconsidered on 2026-09-22 (decision 9); what the criterion was really after
+   is that the work be citable and the fixtures vendorable, and a dated tag does
+   that without claiming a semantics the document does not have.
 6. **The front pages are accurate.** ✅ M4, and re-measured at M5 and M6; both
    quote the counts the checks print.
 
@@ -949,7 +953,10 @@ is the main way a third party would use this.*
   said.
 - **`CITATION.cff`**, **`CHANGELOG.md`**, and the version in three places that
   cannot drift silently: `[project.extra]` in `zensical.toml`, the front page, and
-  the citation file.
+  the citation file. **Superseded by decision 9 on 2026-09-22**: the changelog is
+  gone, and of those three places only the citation file still carries a version —
+  the other two carry the *ROOT* release instead, which is the number a reader
+  needs and the one the checkers can hold in place.
 - **Pages already serves the current build** — `LargeFiles/` and
   `ReaderChecklist/`, both published today, answer 200 at
   <https://ariostas.github.io/root-io-spec/>. No deploy work was needed.
@@ -1640,8 +1647,9 @@ with the rest.
 §8.5 closed the scope the writing layer was first given: the current versions of
 the most common types, created from nothing. A sub-plan, `PLAN-writing.md`, ordered
 the extension and was **deleted when discharged** the same day, as `PLAN-ttree.md`
-was; the git log holds its four items, `CHANGELOG.md` holds what each changed for a
-reader, and what follows is the part worth keeping in one place.
+was; the git log holds its four items — `CHANGELOG.md` held what each changed for a
+reader until decision 9 deleted it — and what follows is the part worth keeping in
+one place.
 
 **Four items, all landed**, and they were one feature seen from four angles — a
 writer that can reopen its own output:

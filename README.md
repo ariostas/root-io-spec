@@ -1,10 +1,22 @@
 # ROOT I/O Specification
 
-**Version 0.1.0** — descriptive of ROOT 6.40.04. Published at
-<https://ariostas.github.io/root-io-spec/>.
+### 📖 [Read the specification →](https://ariostas.github.io/root-io-spec/)
 
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
 that a third party can implement a reader without reading ROOT's C++ source.
+
+**Descriptive of ROOT 6.40.04**, pinned as the `root/` submodule at `v6-40-04`.
+That is the version number that carries meaning here. It is stated on the front
+page and held there by the checkers — `check_pin.py` requires the site to cite
+the pinned commit and `check_citations.py` requires every cited line to exist at
+it — so the reference release cannot drift quietly. Where this specification and
+that submodule disagree, the submodule is right and this has a bug.
+
+This is a living document that tracks ROOT, so it has no semantic version of its
+own to read meaning into. Releases are **CalVer**, `YYYY.MM.DD`, tagged when the
+specification reaches a milestone rather than on a schedule: `main` is always the
+current document, and a tag is a point in it stable enough to cite or to vendor a
+fixture from.
 
 ROOT ships exactly one real format specification — the RNTuple binary format,
 [tracked here verbatim](spec/05-rntuple/BinaryFormatSpecification.md). The
@@ -14,6 +26,26 @@ third-party implementations (uproot, groot, UnROOT.jl, root-io, JSROOT) have bee
 built largely by reverse engineering.
 
 This repository aims to be the shared, testable artifact those projects can rely on.
+
+## How it is written
+
+**This is an AI-driven project.** The specification, the reference files, the
+reference reader and writer, and the checkers were produced by an AI agent
+working from ROOT's source under human direction, and they continue to be.
+
+That is only worth trusting because nothing here rests on the agent's word.
+Every claim carries two witnesses that a machine verifies on every push: a
+`path:line` citation into the pinned ROOT release, and real bytes in a committed
+reference file. An invariant may not be published unless something checks it —
+`tools/check_coverage.py` fails the build otherwise — and the invariants run
+over 227 files this project did not write, where disagreeing with reality is an
+ordinary outcome rather than a hypothetical one. Nineteen errors in this
+specification were found that way (`PLAN.md` §9.9) and eight more by its first
+outside review (§8.13); each one is written down rather than quietly fixed.
+
+Read it as you would any reverse-engineered specification: **where it and ROOT
+disagree, ROOT is right.** A correction is more welcome than an addition, and
+needs no fixture.
 
 ## Status
 
@@ -71,7 +103,7 @@ order, eight milestones, each one a state in which something works.
 [spec/index.md](spec/index.md) states the scope — which releases are covered for
 reading, what is deliberately out of scope, and the two gaps a file in either
 corpus still hits. See [PLAN.md](PLAN.md) for the structure, phasing and
-decisions; §8 is the route to a first release and §9 lists every known gap.
+decisions; §8 is how it was built, item by item, and §9 lists every known gap.
 
 Scope in brief: reading is specified normatively, and writing two ways — per-layer
 invariants that a conforming file satisfies whatever wrote it, collected for a
@@ -131,12 +163,11 @@ vectors by an implementation in any language, closed-source included. One file i
 neither: `spec/05-rntuple/BinaryFormatSpecification.md` is a tracked copy of
 ROOT's own document.
 
-[CITATION.cff](CITATION.cff) has the machine-readable citation;
-[CHANGELOG.md](CHANGELOG.md) says what each release changed for a reader; and
+[CITATION.cff](CITATION.cff) has the machine-readable citation, and
 [CONTRIBUTING.md](CONTRIBUTING.md) has the mechanics, of which the load-bearing
-one is that every claim carries two witnesses — a `path:line` citation into the
-pinned ROOT release, and real bytes in a reference file. **A correction to this
-specification is more welcome than an addition, and needs no fixture.**
+one is the two-witness rule above. There is no changelog: the git log is the
+record of what changed and of **how each fact was established**, which is the half
+a changelog throws away, and a release's notes are generated from it.
 
 ## Building the site
 

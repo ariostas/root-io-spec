@@ -510,3 +510,10 @@ version changed.
 Bodies record what was *found*, not just what changed — a version-dependent field, an
 erratum, a reader bug and how it surfaced. The git log is part of the project's
 record of how the format was reverse-engineered.
+
+**There is no changelog, and that is deliberate** (`PLAN.md` decision 9): a
+changelog records what changed and this log records how each fact was established,
+which is the half worth keeping. Do not add one back. Releases are CalVer,
+`YYYY.MM.DD`, tagged at a milestone; cutting one means bumping `version` and
+`date-released` in `CITATION.cff` and nothing else, because the only version the
+documents state is **ROOT's**.
