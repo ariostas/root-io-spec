@@ -141,6 +141,32 @@ What that buys, none of which any fixture covers:
   `TStorageFactoryFile`, which is why the container's own records must be
   identified structurally rather than by class name.
 
+## `root/roottest/` — 5 files, already on disk
+
+ROOT's own regression suite has been inside `root-project/root` since April 2025,
+so the pinned submodule ships it: 274 `.root` files from ROOT 2.23/12 to 6.41/01,
+written by ROOT and published by the ROOT team, the same grade of evidence as the
+rest of this corpus. **They cost nothing to fetch and need no manifest**: the
+submodule pin (`tools/check_pin.py`) fixes every byte of them.
+
+They are not a tier and there is no fetch step. The rows below are the ones the
+specification cites, each earning its place the way a row above does, and
+`tools/check_citations.py` reads this table: a cited file must appear here, and a
+file here must exist in the submodule.
+
+| File | ROOT | Why it is here | `check_invariants.py` |
+|---|---|---|---|
+| `root/roottest/root/tree/friend/MC_uds_reco-1.root` | **2.23/12** | The oldest ROOT-written file in reach, and unlike `pippa.root` it has `TTree`s. Its byte-counted `TTree` holds bases with bare version words, and every class tag in it has a byte count, so [Buffer §6.4](../../spec/02-serialization/Buffer.md#64-legacy-buffers-key-the-map-differently)'s sequential map is never used | 0 failures |
+| `root/roottest/root/io/arrayobject/Event.3.2.0.root` | 3.03/02 | A **version 1** directory and no header UUID at 3.03/02, which dated [Directory §7](../../spec/01-container/Directory.md#7-version-history) and [FileHeader §8](../../spec/01-container/FileHeader.md#8-version-history) wrongly until 2026-09-22 | 0 failures |
+| `root/roottest/root/io/abstractclass/data_v3_05_07.root` | 3.05/07 | The smallest version-3 directory record, 1 199 bytes | 0 failures |
+| `root/roottest/root/io/abstractclass/data_v4_00_02.root` | 4.00/02 | The smallest version-4 directory record, 1 225 bytes | 0 failures |
+| `root/roottest/root/io/evolution/skim.root` | 4.03/05 | The only file anywhere with **version-3 `TStreamerElement`s**, which no ROOT release wrote ([StreamerInfo §7.1](../../spec/02-serialization/StreamerInfo.md#71-the-range-fields-moved-out-of-the-record)): 223 of them | **2 failures**, `ReadingEntries 8.5` — a reader gap: `HoldMuo` objects written with no byte count and no version word, which ROOT reads by a rule this specification does not yet state. `PLAN-corpus.md` C18 |
+
+Two exclusions, so that nobody runs the whole directory and mistakes the result
+for evidence: `root/tree/basket/corrupted.root` is damaged on purpose for ROOT's
+error-handling tests and produces over four million failures on its own, and three
+files are byte-identical to rows above and would be counted twice.
+
 ## Standing result
 
 Run 2026-09-21, tier `all`:

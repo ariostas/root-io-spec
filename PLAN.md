@@ -16,7 +16,9 @@ published claim is known to be wrong*, was **not met** until C1–C4 were
 discharged, which they were the same day.
 It also found a witness for four open §9.1 rows, three of them in
 `root/roottest/`, which the pinned submodule has shipped since ROOT merged
-roottest in April 2025.
+roottest in April 2025. Working those rows (C8–C11) found **three more** wrong
+release boundaries — `Directory.md` §7, `FileHeader.md` §8 and `TLeaf.md` §7/§12 —
+all fixed the same day, and one reader gap, C18, which stays open.
 
 Measured, 2026-09-21, by the checks in `tools/`:
 
@@ -631,7 +633,14 @@ what satisfied it:
    place: all four are in populations nothing was checking, because no fixture and
    no corpus file had a compressed RNTuple page, a basket written before ROOT 4.02,
    a `TDatime` stored as a record, or an RNTuple blob key from 6.34/6.35. All
-   four fixed the same day, two with a new fixture.
+   four fixed the same day, two with a new fixture. Then three more, found by
+   checking the §9.1 witnesses rather than by any failing check: a version-1
+   directory and no header UUID at ROOT 3.03/02, where `Directory.md` §7 and
+   `FileHeader.md` §8 said 3.03/01 had moved on, and `TLeafF16`/`TLeafD32`
+   version 2 dated to 6.40 when `v6-38-00` already has it. **All three are
+   release boundaries, and the submodule's tags settle each one**:
+   `git show v3-03-07:base/inc/TDirectory.h` reads a class version at a release
+   directly, back to ROOT 1, and that is the check to run before writing one.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -797,7 +806,7 @@ asserting it, and the measurement moved decision 7:
   **do** carry them and do decode. Decision 7's "older files carry no streamer
   infos at all" was true of one file and wrong as a rule; the claim is now
   "specified for 4.00 and later, works in practice back to 3.04/02".
-- **`TBranch` is the only class in 228 files below a hand-written threshold.**
+- **`TBranch` is the only class in 229 files below a hand-written threshold.**
   Every version of `TH1`, `TGraph`, `TFormula`, `TF1`, `TAxis`, `TTree` and
   `TLeafObject` that occurs anywhere in either corpus is above the version at
   which that class becomes streamer-info driven. That is what makes §9.1's
@@ -1949,16 +1958,16 @@ Reframed by §9.10: most of these are **not** blocked on `gen/legacy/` after all
 
 | Gap | Document | Available in |
 |---|---|---|
-| Directory record versions 1, 3, 4 | `Directory.md` | ✅ read; no fixture, and version 2 occurs nowhere (M4) |
+| Directory record versions 1, 3, 4 | `Directory.md` | ✅ read; no fixture, and version 2 occurs nowhere (M4) — nor in `root/roottest/`'s 273 files, whose smallest witnesses of 1, 3 and 4 (9 227, 1 199 and 1 225 bytes) are now listed in `gen/cern/README.md`. The 3.03/02 one refuted §7's release boundaries, now read from tags (`PLAN-corpus.md` C11) |
 | `TBranch` class versions 6–9 | `TBranch.md` §13.1 | ✅ **closed by M6**: specified, read, and 116 legacy branches decoded in `mlpHiggs.root` (7), `uproot-from-geant4.root` (8) and `stock.root` (9) |
 | `TStreamerElement` at base version 2 | `StreamerInfo.md` | ✅ 979 elements, §9.10 — M6 |
 | Collection layouts below `TStreamerInfo` version 8 | `Collections.md` | ✅ info versions 2, 4, 5, 6 present — M6 |
-| The version-3 `TStreamerElement` form with `fXmin`/`fXmax`/`fFactor` | `StreamerInfo.md` | ☐ not in either corpus (only 2 and 4 occur) |
-| A buffer written with no byte counts | `Buffer.md` | ☐ needs a pre-ROOT-3 file; `pippa.root` is the candidate to check |
+| The version-3 `TStreamerElement` form with `fXmin`/`fXmax`/`fFactor` | `StreamerInfo.md` | ✅ `root/roottest/root/io/evolution/skim.root`, ROOT 4.03/05: 223 elements, 24 bytes each, and every one in reach. **No release wrote this version**; it lived three days on the 4.03/05 trunk (C8) |
+| A buffer written with no byte counts | `Buffer.md` | ◐ checked, and "no byte counts" was never all or nothing: `pippa.root` (2.24/00) and roottest's `MC_uds_reco-1.root` (2.23/12) byte-count their outer objects and write their `TNamed`/`TObject`/`TAtt*` bases as bare version words. §6.4's sequential map needs a class tag with no byte count before it, and **no file in reach has one** — the 2.23/12 file's 11 all do (C10) |
 | A file old enough to take the `BuildEmulated` path | `SchemaEvolution.md` | ✅ `pippa.root`, ROOT 2.24/00, **zero streamer infos** — out of scope for objects by decision 7 |
 | `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `Collections.md` | ☐ only version 4 occurs |
 | `ROOT::v5::TFormula` 1–3 and `ROOT::v5::TF1Data` 1–4 | `Formula.md` §4 | ◐ v8/v7 in `uproot-issue-181.root` (ROOT 5.34/36); versions 1–4 in neither |
-| A leaf class at a legacy version | `TLeaf.md` | ☐ `TLeaf` v2 and `TLeafObject` v4 are the current versions and are all that occur |
+| A leaf class at a legacy version | `TLeaf.md` | ◐ `TLeaf` **v1** in roottest's `MC_uds_reco-1.root`, byte-verified: version 2's field order ends on its byte count. `TLeafF16`/`TLeafD32` v1 in go-hep's `leaves.root` and in `uproot-double32-float16.root`, which had been in `gen/foreign/` all along and which the census missed by looking at `TLeaf` and `TLeafObject` only. `TLeafObject` 1–3 in no file in reach (C9) |
 
 ### 9.2 Needs a file over 2 GB
 
@@ -2046,9 +2055,14 @@ what close that, and their coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-156 files, **0 failures**. The probe: 28488 decoded, 713 container, 6 partial,
+157 files, **0 failures**. The probe: 28537 decoded, 716 container, 6 partial,
 23 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
-locally. **Re-measured 2026-09-22**, and the move is two things, measured apart:
+locally. Entries: 26410 of 26477 branch-baskets. **Re-measured 2026-09-22 for
+`PLAN-corpus.md` C9**, which added go-hep's `leaves.root`, the manifest's first
+file from outside scikit-hep-testdata: +49 decoded, +3 container and +47
+branch-baskets, which is that file's whole contribution and nothing else moved.
+
+Earlier the same day, and the move is two things, measured apart:
 `5d6a95b`'s RooFit readers decoded two records here as well as in `gen/cern/`
 (+2 decoded, −1 partial, −1 blocked — the tools as they were before that commit
 reproduce the old figures exactly), which nobody had re-measured on this side;
@@ -2113,7 +2127,7 @@ header should be.
 
 ### 9.9 Standing result over `gen/cern/`
 
-72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 156 files
+72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 157 files
 (4.00/00 – 6.36/02) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
 container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
 two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
@@ -2169,6 +2183,10 @@ which is the threshold the collection layouts turn on.
 
 **`TStreamerElement` base versions**: 4 (31186) and **2 (979)**. Version 3, the
 form that persists `fXmin`/`fXmax`/`fFactor`, does not occur.
+
+> Re-measured 2026-09-22 with `root/roottest/` added, whose 274 files the pinned
+> submodule ships: 4 (60 835), 2 (8 364) and **3 (223, all in `skim.root`)**.
+> Directory version 2 still occurs nowhere. `PLAN-corpus.md` C8–C11.
 
 **Class versions present, against the pinned submodule's current version**:
 

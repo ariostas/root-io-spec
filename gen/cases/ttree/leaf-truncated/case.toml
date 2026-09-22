@@ -33,7 +33,7 @@ What this case pins down:
   UInt_t is round(50 x 10.24) = 512.
 - Every basket here has a fixed entry size and therefore no offset array:
   fNevBufSize is the entry width, 3 or 4, and fObjlen is twice it.
-- TLeafF16 and TLeafD32 are at class version 2, which is new in ROOT 6.40. At
+- TLeafF16 and TLeafD32 are at class version 2, which is new in ROOT 6.38. At
   version 1 the title held the type spec alone, with no leaf name and no leading
   slash.
 """
@@ -183,7 +183,7 @@ offset = 1029
 type = "bytes"
 value = "TLeafF16"
 [[bytes]]
-name = "TLeafF16 class version: 2, which is new in ROOT 6.40"
+name = "TLeafF16 class version: 2, which is new in ROOT 6.38"
 offset = 1042
 type = "i16"
 value = 2

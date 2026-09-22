@@ -148,6 +148,25 @@ class EveryCitedFileIsFetchable(unittest.TestCase):
         finally:
             path.write_text(original)
 
+    def test_roottest_rows_are_fetchable_without_a_manifest(self):
+        """gen/cern/README.md's roottest table, the third source (C12)."""
+        known = check_citations.fetchable()
+        for name in ("skim.root", "MC_uds_reco-1.root", "Event.3.2.0.root",
+                     "leaves.root"):             # the last: gen/foreign's go-hep/
+            self.assertIn(name, known, name)
+        self.assertEqual(check_citations.check_roottest(), [])
+
+    def test_a_roottest_row_the_submodule_lacks_fails(self):
+        readme = REPO / "gen" / "cern" / "README.md"
+        original = readme.read_text()
+        try:
+            readme.write_text(original + "\n| `root/roottest/not/there.root` | x |\n")
+            bad = check_citations.check_roottest()
+            self.assertEqual(len(bad), 1)
+            self.assertIn("root/roottest/not/there.root", bad[0])
+        finally:
+            readme.write_text(original)
+
     def test_the_illustrative_names_are_named(self):
         """NOT_CORPUS is an allowlist, so each entry carries its reason."""
         self.assertIn("your-file.root", check_citations.NOT_CORPUS)

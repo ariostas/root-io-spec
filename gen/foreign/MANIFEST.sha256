@@ -19,6 +19,14 @@
 # ROOT 6.36. The pinned ROOT cannot write it, and none of root/roottest/'s 23
 # RNTuple files carries it (PLAN-corpus.md C4). It is the first RNTuple file in
 # this manifest; the rest of scikit-hep-testdata's RNTuple tier is C13.
+#
+# A third, go-hep/leaves.root, is the first from another corpus: go-hep's
+# groot/testdata, fetched at a pinned commit (tools/fetch_foreign.py SOURCES).
+# Unlike most of this list its writer is known -- ROOT 6.28/04, from the macro in
+# groot/riofs/gendata/gen-flat-tree.go -- and it is the witness TLeaf.md 7 lacked:
+# TLeafF16/TLeafD32 at class version 1 with the bare title, on a scalar, a [10]
+# array and a [N] slice alike (PLAN-corpus.md C9).
+0150df7dbb9a5a655e448875c0072cc08a972d7aff0146f9de6365884e32120e      15094  6.28/04     go-hep/leaves.root
 6a71d6ca866b76c8d89689dfce2cc402aecd2aea0ff03a650db9fe78e60b8385      27643  6.35/01     Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root
 f37250be474fcd8d3c4e51883a3bb25990e5508a619e0c962f416245870e20c7      30847  6.18/04     issue367b.root
 c14a29b25b15b837226f396e920b5d9fb134f3558bef5b0a9db5d6d9606c5f3a     377623  6.22/08     nanoAOD_2015_CMS_Open_Data_ttbar.root

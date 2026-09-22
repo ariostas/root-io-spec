@@ -352,13 +352,26 @@ them together, and a reader looking for subdirectories must accept both (§8).
 
 | Class version | ROOT | Change |
 |---|---|---|
-| 1 | ≤ 3.02 | **No UUID at all** |
-| 2 | 3.03/01 – 3.03/07 | UUID as raw 16 bytes, **no version word** |
-| 3 | 3.03/09+ | UUID gains its 2-byte version word |
+| 1 | ≤ 3.03/06 | **No UUID at all** |
+| 2 | 3.03/07 only | UUID as raw 16 bytes, **no version word** |
+| 3 | 3.03/08 – 3.10 | UUID gains its 2-byte version word |
 | 4 | 4.00+ | The `> 1000` large layout, and the 12 reserved bytes |
-| 5 | 5.16+ | `TDirectory` split into `TDirectory`/`TDirectoryFile`; **no layout change** |
+| 5 | 5.15/02+, 5.16 in production | `TDirectory` split into `TDirectory`/`TDirectoryFile`; **no layout change** |
 
 ROOT 6.40.04 writes 5, or 1005 in the large layout.
+
+**The boundaries are release tags**, read out of the submodule's history, which
+reaches back to ROOT 1: `v3-03-06` has `ClassDef(TDirectory,1)`, `v3-03-07` has
+2 and `v3-03-08` has 3. Version 2 arrived on the development trunk on
+2002-07-09 (root commit `a84103dbe0d`, "Each directory has now a universal
+unique id") and was replaced on 2002-08-02 (`ce1a652165b`), so **exactly one
+release, 3.03/07, wrote it** — along with the development builds between those two
+dates. The same commit series gave the file header its UUID (FileHeader §8).
+
+> Until 2026-09-22 this table said version 1 ended at 3.02 and version 2 began at
+> 3.03/01. A ROOT-written 3.03/02 file refutes that:
+> `root/roottest/root/io/arrayobject/Event.3.2.0.root` holds a **version 1** root
+> directory, 30 bytes, no UUID, and its file header's UUID bytes are zero.
 
 Reading the UUID therefore depends on `version mod 1000`
 (`root/io/io/src/TDirectoryFile.cxx:1792-1796`):
@@ -373,7 +386,7 @@ Reading the UUID therefore depends on `version mod 1000`
 > with `if (versiondir > 1)`, unconditionally expecting a version word
 > (`root/io/io/src/TFile.cxx:823`), so it would misparse a version-2 root
 > directory — while `TDirectoryFile::Streamer` handles it correctly. This affects
-> only files from ROOT 3.03/01 to 3.03/07.
+> only files from ROOT 3.03/07.
 
 ### 7.1 Payload length per version *and* width
 
@@ -545,8 +558,16 @@ in §7 is confirmed there: `pippa.root` (ROOT 2.24/00) holds 24 **version 1**
 records, 23 of them subdirectories of exactly 30 bytes; `mlpHiggs.root` (3.04/02)
 and `H1display.root` (3.05/07) hold one **version 3** record each, 48 bytes after
 the name and title copy and no reserved bytes; five further files carry version 4.
-**Version 2 is witnessed nowhere** — only ROOT 3.03/01 through 3.03/07 wrote it —
-so its version-word-less UUID is the one row of §7 resting on the source alone.
+
+The smallest witnesses of each are in `root/roottest/`, which the pinned submodule
+ships (`gen/cern/README.md` lists them): `Event.3.2.0.root` (9 227 bytes, ROOT
+3.03/02) for version 1, `data_v3_05_07.root` (1 199 bytes) for version 3 and
+`data_v4_00_02.root` (1 225 bytes) for version 4. The first is also what dates
+§7's first row.
+
+**Version 2 is witnessed nowhere** — only ROOT 3.03/07 wrote it, and 0 of
+roottest's 273 files carry it — so its version-word-less UUID is the one row of §7
+resting on the source alone.
 The two **version 1001** records in `gen/foreign/` are the other axis: class
 version 1 in the wide layout, 42 bytes, no UUID (§3.1).
 

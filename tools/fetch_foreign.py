@@ -19,6 +19,11 @@ legacy corpus `gen/legacy/` was meant to provide.
 **Their provenance is mixed.** uproot's corpus contains files uproot itself wrote,
 so a file failing an invariant is not evidence about ROOT's format until its writer
 is established. See `PLAN.md` §9.8.
+
+A manifest name with a `<source>/` prefix comes from another corpus in `SOURCES`,
+pinned to a commit, and lands in the same directory under its bare name. The first
+is go-hep's `groot/testdata`, whose files are written by ROOT from macros committed
+beside them (`PLAN-corpus.md` C9).
 """
 
 from __future__ import annotations
@@ -32,7 +37,18 @@ REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "gen/foreign/MANIFEST.sha256"
 BASE = ("https://raw.githubusercontent.com/scikit-hep/scikit-hep-testdata/"
         "main/src/skhep_testdata/data/")
+#: Other corpora, each pinned to a commit so a manifest digest stays meaningful.
+SOURCES = {
+    "go-hep": ("https://codeberg.org/go-hep/hep/raw/commit/"
+               "8d0fccd8a3b52da108d9f446122ba494b240d6fa/groot/testdata/"),
+}
 DEFAULT_DIR = REPO / "build/foreign"
+
+
+def url(name: str) -> str:
+    """Where a manifest name is fetched from."""
+    source, _, bare = name.rpartition("/")
+    return SOURCES[source] + bare if source else BASE + name
 
 
 def entries() -> list[tuple[str, int, str]]:
@@ -54,12 +70,12 @@ def main(argv: list[str]) -> int:
 
     bad = missing = fetched = 0
     for digest, size, name in entries():
-        path = target / name
+        path = target / name.rsplit("/", 1)[-1]
         if not path.exists():
             if check_only:
                 missing += 1
                 continue
-            urllib.request.urlretrieve(BASE + name, path)
+            urllib.request.urlretrieve(url(name), path)
             fetched += 1
         got = hashlib.sha256(path.read_bytes()).hexdigest()
         if got != digest:

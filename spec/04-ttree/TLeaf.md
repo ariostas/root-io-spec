@@ -345,12 +345,19 @@ out of `GetXmin()` (`root/io/io/src/TBufferFile.cxx:633-634`).
 > `00 00 02 00` (50.0 × 10.24 = 512), `c/d` is `40 20 00 00` (a plain float 2.5)
 > and `d/d[0,0,8]` is `80 00 c0`.
 
-> **Class version 2 of both is new in ROOT 6.40.** Below it the constructor
+> **Class version 2 of both is new in ROOT 6.38.** Below it the constructor
 > overwrote the title with the type spec alone, so a version-1 leaf's title can be
 > `f[0,100,10]` with no name, no dimensions and no leading `/`, and the counter
 > information for a variable-size truncated array is simply lost. ROOT repairs the
 > missing slash on read (`root/tree/tree/src/TLeafF16.cxx:226-228`); a reader
 > should accept both forms.
+>
+> Witnessed by go-hep's `leaves.root`, written by ROOT 6.28/04 from a macro
+> committed beside it: all six truncated leaves are version 1 with the bare title
+> — `f[0,0,16]` for the scalar, for `ArrD16[10]` and for `SliD16[N]` alike — so the
+> `[N]` on the last survives only in the **branch** title and in `fLeafCount`. A
+> reader MUST take the counter from `fLeafCount` (§3.1), which is present at both
+> versions, and never from the leaf title.
 
 ## 8. `TLeafObject` and `TLeafElement`
 
@@ -574,8 +581,8 @@ See `PLAN.md` §7.1.
 | `TLeaf` | 2 | current; `fNdata` and `fBranch` became transient |
 | `TLeafO`…`TLeafD`, `TLeafC` | 1 | never changed |
 | `TLeafG` | 1 | the class did not exist before ROOT 6.24 |
-| `TLeafF16`, `TLeafD32` | 1 | ROOT 6.18 to 6.38: the title held the type spec alone |
-| `TLeafF16`, `TLeafD32` | 2 | **new in ROOT 6.40**; the title keeps the name and dimensions |
+| `TLeafF16`, `TLeafD32` | 1 | ROOT 6.18 to 6.36: the title held the type spec alone |
+| `TLeafF16`, `TLeafD32` | 2 | **new in ROOT 6.38** (root commit `da232dd758f`, first tagged `v6-38-00`); the title keeps the name and dimensions |
 | `TLeafElement` | 1 | never changed |
 | `TLeafObject` | 1, 2, 3, 4 | three legacy shapes; 3 was a private FNAL variant (§8) |
 
@@ -593,5 +600,17 @@ See `PLAN.md` §7.1.
 `TLeafObject` and `TLeafElement` are covered elsewhere: `ttree/tree-branchref`
 has a `TLeafObject`, and the split cases hold 52 `TLeafElement`s between them.
 
-No fixture covers a leaf class at a legacy version, which needs a legacy ROOT
-(`PLAN.md` §9.1).
+No fixture covers a leaf class at a legacy version, which needs a legacy ROOT.
+The corpora do, for two of §12's rows (`PLAN.md` §9.1):
+
+- **`TLeaf` version 1**:
+  `root/roottest/root/tree/friend/MC_uds_reco-1.root`, ROOT 2.23/12. Its `TLeafI`,
+  `TLeafF` and `TLeafD` have a version-1 `TLeaf` base, and read in version 2's
+  field order, `TNamed` to `fLeafCount`, each ends exactly on that base's byte
+  count, which is what §12 claims.
+- **`TLeafF16` and `TLeafD32` version 1**: `leaves.root` from go-hep (ROOT
+  6.28/04, six including a `[N]` slice) and `uproot-double32-float16.root` (ROOT
+  6.20/04, twelve including `[3]` arrays), both in `gen/foreign/MANIFEST.sha256`
+  and both read with 0 failures.
+
+`TLeafObject` below version 4 occurs in no file in reach.

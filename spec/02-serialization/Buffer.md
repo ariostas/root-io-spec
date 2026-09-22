@@ -475,7 +475,10 @@ on — and bounds are checked against the map size rather than the buffer length
 (`root/io/io/src/TBufferFile.cxx:2597`, `root/io/io/src/TBufferFile.cxx:2791`).
 
 No file written by ROOT 3 or later uses this mode, and no fixture here exercises
-it. It is recorded because it is what the code implements.
+it. **Nor does the oldest ROOT-written file in reach**: `MC_uds_reco-1.root`, ROOT
+2.23/12, has 11 new-class tags and a byte count in front of every one, so its
+buffers switch to offset keys at the first object slot; `pippa.root` (2.24/00) has
+no class tags at all. It is recorded because it is what the code implements.
 
 ## 7. The `TObject` base
 
@@ -605,3 +608,14 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 No fixture covers a buffer written without byte counts, which needs a file older
 than any ROOT release that can still be built here. The member-wise version word
 is covered by `serialization/collections`.
+
+The two ROOT 2 files in reach are the witnesses there are, and they show that
+"before byte counts" was never all or nothing. In `pippa.root` (ROOT 2.24/00, in
+`gen/cern/`) a `TH1F` opens `40 00 03 2e 00 01` and its `TH1` base `40 00 01 8c
+00 01` — byte counts on both — while the `TNamed`, `TObject` and `TAttLine`
+inside them are bare version words. `root/roottest/root/tree/friend/MC_uds_reco-1.root`
+(ROOT 2.23/12) has the same shape in a `TTree`: `40 02 31 6e 00 04`, then `TNamed`,
+`TObject`, `TAttLine`, `TAttFill` and `TAttMarker` with none. §3's structural test
+is what reads both. Both also carry `fBits` as `0x03000000`, the unmasked value of
+erratum 9. Neither file has a streamer info, so decision 7 of `PLAN.md` puts their
+objects out of scope and this is a statement about framing only.

@@ -11,6 +11,38 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction: three release boundaries were wrong.** Each is now read from the
+  release tags in the pinned submodule, and each has a ROOT-written witness:
+  - [`Directory.md` §7](spec/01-container/Directory.md): directory record version 1
+    lasted until 3.03/06, version 2 was written by **3.03/07 alone**, and version 3
+    began at 3.03/08. The table said 3.02, 3.03/01–3.03/07 and 3.03/09. A reader
+    that picks the UUID layout by ROOT release instead of by `version mod 1000`,
+    as §7 requires, gets 3.03/01–3.03/06 wrong.
+  - [`FileHeader.md` §8](spec/01-container/FileHeader.md): the header UUID arrived
+    in 3.03/07, not 3.03/00. A 3.03/02 file has zeros there.
+  - [`TLeaf.md` §7 and §12](spec/04-ttree/TLeaf.md): `TLeafF16` and `TLeafD32`
+    version 2 is new in **6.38**, not 6.40. So a 6.38 file's truncated leaves
+    already carry the name and dimensions in the title.
+
+- **Added: `TLeaf.md` §7 now says where a truncated leaf's counter comes from.**
+  At version 1 the leaf title is the bare type spec even for a `[N]` array, so the
+  counter survives only in `fLeafCount` and the branch title. A reader MUST take
+  it from `fLeafCount`. Legacy leaf versions now have witnesses:
+  `TLeaf` version 1 in a ROOT 2.23 file, which reads in version 2's field order as
+  §12 says, and `TLeafF16`/`TLeafD32` version 1 in two corpus files.
+
+- **Added: version 3 of `TStreamerElement` never shipped.**
+  [`StreamerInfo.md` §7.1](spec/02-serialization/StreamerInfo.md): it existed for
+  three days on the 4.03/05 development trunk in April 2005, so only a
+  development build writes one. One such file is in reach, with 223 of them.
+
+- **Added: what ROOT 2 files actually frame.**
+  [`Buffer.md` §6.4 and §11](spec/02-serialization/Buffer.md): the two ROOT 2
+  files in reach byte-count their outer objects and write bases as bare version
+  words, and neither ever reaches §6.4's legacy object map. That mode is still
+  specified from the source alone, and the document now says no file in reach
+  can test it.
+
 - **Clarified: a base element's checksum may match any of its class's infos.**
   [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) invariant 13.7 said a
   `TStreamerBase`'s `fMaxIndex[1]` is 0 or "that info's `fCheckSum`", as though a

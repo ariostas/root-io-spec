@@ -389,7 +389,7 @@ nothing could tell.
 Invariant 5 is the general statement of the others and is the one a third-party
 reader should test itself against. It cannot be checked by a rule — only by
 decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
-reason that reader exists. Over the fixtures and both corpora it holds on **28 059
+reason that reader exists. Over the fixtures and both corpora it holds on **28 106
 branch-baskets, 99.8% of them**, with the remaining 67 named individually in the
 checker's `SKIPPED` report with a count and a reason each. Every one of those 67 is
 something **no reader could decode from the file**: a collection whose value class

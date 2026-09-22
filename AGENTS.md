@@ -67,7 +67,7 @@ designed around to get a ranked list of what is still missing, rather than guess
 from `PLAN.md`:
 
 ```sh
-tools/fetch_foreign.py                      # 156 third-party files, 22 MB, to build/foreign/
+tools/fetch_foreign.py                      # 157 third-party files, 22 MB, to build/foreign/
 tools/coverage_probe.py --summary build/foreign/*.root
 ```
 
@@ -124,6 +124,16 @@ header and free-segment record of a 5 GB file cost a few hundred bytes each, and
 fixture does, and it already confirmed the interleaved 10-byte/18-byte `TFree`
 entries of `FreeSegments.md` §2.1 on `volume.root` (51 entries, 32 large).
 
+**`root/roottest/` needs no fetch**: ROOT's own test suite ships inside the pinned
+submodule, 274 ROOT-written files from 2.23/12 to 6.41/01, and the ones the
+specification cites are a table in `gen/cern/README.md` that `check_citations.py`
+reads. Run the tools on a listed path directly. Do not run them on the whole
+directory: `root/tree/basket/corrupted.root` is damaged on purpose.
+**To date a class version to a release, read it at the tag**, since the
+submodule's history reaches ROOT 1:
+`git -C root show v3-03-07:base/inc/TDirectory.h`. Three published boundaries
+were wrong until that was done (`PLAN-corpus.md` C9, C11).
+
 Adding a file to either corpus: it must earn its place by covering something no
 fixture and no listed file does, and the reason goes in the README. Re-running
 `--headers` after a `rootfile.py` change is a cheap regression check on the
@@ -144,7 +154,7 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **28059 of 28126, 99.8%**, with 0 failures, and the
+Over the two corpora that is **28106 of 28173, 99.8%**, with 0 failures, and the
 67 skips are of two kinds only, both of them **things no reader could decode from
 the file**:
 

@@ -16,6 +16,12 @@ so were the four `TGeoManager` files carrying `StreamerInfo.md` §9.2's whole
 `fBaseVersion` table (`PLAN.md` §8.13). Both were fixed by hand. This is what
 stops a third.
 
+A third source needs no manifest: `root/roottest/`, which the pinned submodule
+ships. The files the specification cites from it are the table rows of
+`gen/cern/README.md` that begin with a `root/roottest/` path, and each must exist
+in the submodule, so that a bump which drops one fails here rather than leaving a
+citation nothing can reproduce.
+
 Requires the submodule to be checked out. Needs no third-party packages.
 
   tools/check_citations.py            check every document under spec/
@@ -108,6 +114,23 @@ NOT_CORPUS = {
 
 ROOT_FILE = re.compile(r"`?([A-Za-z0-9_.\-]+\.root)`?")
 
+#: A roottest row of gen/cern/README.md: its first cell is the path.
+ROOTTEST_ROW = re.compile(r"^\| `(root/roottest/[A-Za-z0-9_./+\-]+\.root)` \|")
+
+
+def roottest_files() -> list[str]:
+    """The root/roottest/ paths gen/cern/README.md lists, repo-relative."""
+    text = (REPO / "gen/cern/README.md").read_text()
+    return [m[1] for line in text.splitlines()
+            if (m := ROOTTEST_ROW.match(line))]
+
+
+def check_roottest() -> list[str]:
+    """Every listed roottest file exists in the pinned submodule."""
+    return [f"gen/cern/README.md lists {path}, which the pinned submodule "
+            f"does not have" for path in roottest_files()
+            if not (REPO / path).is_file()]
+
 
 def fetchable() -> set[str]:
     """Every file name a fixture or a manifest accounts for."""
@@ -129,6 +152,7 @@ def fetchable() -> set[str]:
             names.add(value.rsplit("/", 1)[-1])
 
     walk(large)
+    names.update(path.rsplit("/", 1)[-1] for path in roottest_files())
     return names
 
 
@@ -176,6 +200,7 @@ def main(argv: list[str]) -> int:
         p for p in sorted((REPO / "spec").rglob("*.md")) if p not in NOT_OURS]
     failures = check(paths)
     failures += check_cited_files(paths)
+    failures += check_roottest()
     if not argv:
         failures += check_published_count(paths)
     for f in failures:

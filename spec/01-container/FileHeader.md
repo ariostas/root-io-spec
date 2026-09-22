@@ -362,11 +362,17 @@ A reader MUST treat the padding as "don't care" and MUST NOT rely on it being ze
 
 | ROOT versions | Header |
 |---|---|
-| ≤ 3.02 | `fBEGIN = 64`. No UUID: bytes 45-63 are unwritten. |
-| 3.03 – 3.04 | `fBEGIN = 64`, UUID present. |
+| ≤ 3.03/06 | `fBEGIN = 64`. No UUID: bytes 45-63 are unwritten. |
+| 3.03/07 – 3.04 | `fBEGIN = 64`, UUID present. |
 | ≥ 3.05 | `fBEGIN = 100`. Large-file layout exists; `fVersion >= 1000000` is possible. |
 | ≥ ~5.30 | `fCompress` gains its algorithm component (§5.8). |
 | ≥ 6.x | Reproducible mode possible (§6). |
+
+The UUID's boundary is a release tag: `TFile.cxx` has no `fUUID` at `v3-03-06`
+and writes one at `v3-03-07`, the same release that gave directories theirs
+([Directory §7](Directory.md#7-version-history)). Until 2026-09-22 the table put
+it at 3.03/00. `root/roottest/root/io/arrayobject/Event.3.2.0.root`, written by
+3.03/02, has `fBEGIN` 64 and zeros at bytes 45-63.
 
 Field order, offsets, widths and byte order have been stable since 3.05. The
 large-file layout cannot occur in a file older than 3.05, since the flag did not
@@ -498,7 +504,7 @@ Against `root/io/doc/TFile/header.md` in the pinned submodule:
 | 9 | — | Bytes 96-99 are required to be zero by the registered media type (§4) |
 | 10 | — | Reproducible mode zeroes the UUID (§6) |
 | 11 | — | The header UUID is write-only; the authoritative one is in the directory record (§6) |
-| 12 | Two historical layouts are given (3.02.06 and 6.22.06) | A third exists: `fBEGIN = 64` **with** a UUID, in the 3.03-3.04 line (§8) |
+| 12 | Two historical layouts are given (3.02.06 and 6.22.06) | A third exists: `fBEGIN = 64` **with** a UUID, from 3.03/07 to 3.04 (§8) |
 
 ## 12. Reference files
 

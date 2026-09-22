@@ -5,8 +5,12 @@ prose, so `PLAN.md` §8.1 criterion 1 is met again. Every one has a source
 citation; the bytes are a new fixture for C1 and C3, 12 385 basket keys in
 `root/roottest/` for C2, and for C4 the only witness there is, now a
 `gen/foreign/` file. **C5–C7 discharged the same day**: two real bugs and one
-that was not, whose audit found a vacuous invariant instead. C8 onward stands. The survey is done; this plan
-orders what to do about it.
+that was not, whose audit found a vacuous invariant instead. **C8–C11 discharged
+the same day**, and C12 with them in its cheapest form: every witness was
+re-measured here, two of the four reported claims turned out narrower than
+reported, and checking them found **three more wrong release boundaries** in
+published prose and one reader gap, which is the new C18. C13 onward stands. The
+survey is done; this plan orders what to do about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
 read-only and all of them made to probe with this project's own tools rather than
@@ -56,8 +60,12 @@ the first task of such an item is to reproduce it.
 | C3 | `Buffer.md` §2.3's unframed-class list omits `TDatime` | reproduced (`Buffer 9.2`, exit 1), then a census of every persisted hand-written `Streamer` | **✅ discharged** — and the census found two more classes and a reader bug |
 | C4 | `Record.md` §8.6 is false for ROOT 6.34/6.35 RNTuple blob keys | reproduced (4 × `Record 8.6`), and the fix found by `git log -S`: `5fe8a99942`, first in 6.36.00 | **✅ discharged** — scoped to one writer, not to all RNTuple files |
 | C5 | `check_invariants.py` resolves a base class by name, not `fBaseVersion` | reproduced (34 × `StreamerInfo 13.7`), then split: 15 matched another info of the class, 19 matched none | **✅ discharged** — the right key is the checksum, not `fBaseVersion` |
-| C8 | `skim.root` is the only file anywhere with version-3 `TStreamerElement` | census over 273 files: v4 28 844, v2 7 377, **v3 426, all in one file** | **Reported** — file confirmed present in the submodule |
-| C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here** |
+| C8 | `skim.root` is the only file anywhere with version-3 `TStreamerElement` | census over 273 files: v4 28 844, v2 7 377, **v3 426, all in one file** | **✅ discharged** — one file, but **223** elements, not 426; counted here over roottest and both corpora by the `TStreamerElement` **base** version |
+| C9 | `leaves.root` carries a leaf class at a legacy version | frame bytes of six truncated leaves | **✅ discharged** — true, and the witness to the §9.1 row it named is a different file: `TLeaf` v1 in roottest's `MC_uds_reco-1.root` |
+| C10 | `MC_uds_reco-1.root` witnesses a buffer written with no byte counts | "one outer byte count, then `TNamed` and `TObject` with none" | **✅ discharged, narrower** — bare version words in bases, which `pippa.root` already showed; every class tag has a byte count, so `Buffer.md` §6.4 is still unwitnessed |
+| C11 | Two roottest files are the cheapest directory-version witnesses | header and directory versions | **✅ discharged** — versions 3 and 4, not 1; version 1's cheapest is `Event.3.2.0.root`, which refuted `Directory.md` §7 |
+| C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here**; adopted as a list in `gen/cern/README.md` that `check_citations.py` reads |
+| C18 | `skim.root`'s `HoldMuo` has no byte count and no version word | `check_invariants.py` → 2 × `ReadingEntries 8.5`; ROOT 6.40.04 reads the same entries correctly | **Confirmed here**, found while doing C8. Open |
 | — | Open Data serves HTTP range requests | agent ran this project's own `fetch_range`, `read_header`, `parse_free_entries`, `large_file_problems` → 0 problems | **Reported**, with our tools unmodified |
 
 ## 2. Four defects in published prose — these should not wait
@@ -363,7 +371,7 @@ found one that was.
   multi-page `RBlob` runs past the record's end into the next key. Same root cause
   as C1; fix them together.
 
-## 4. Four §9 rows with a witness for the first time
+## 4. Four §9 rows with a witness for the first time — ✅ discharged 2026-09-22
 
 All four files are **already on disk** in `root/roottest/`, except C9.
 
@@ -379,9 +387,110 @@ source-cited only: all six truncated leaves carry the bare version-1 title
 (`f[0,0,16]`, no name, no dimensions) **including on `[10]` static arrays and
 `[N]` slices** — the counter information really is lost.
 
-## 5. Corpus additions, cheapest first
+**Done.** The rule was the one C1–C4 used: re-measure every claim with this
+project's tools before writing any of it down. That paid for itself. Two of the
+four reported claims were narrower than reported, and in checking them three
+published boundaries turned out wrong, each settled by reading a class version at
+a release tag in the submodule (`git show v3-03-07:base/inc/TDirectory.h`), which
+reaches back to ROOT 1.
 
-### C12. roottest as a third corpus — costs a README and a list
+- **C12 first, as a README list.** `gen/cern/README.md` gains a
+  `root/roottest/` table of the five files the specification now cites, with each
+  one's `check_invariants.py` result, and the two exclusions (`corrupted.root`,
+  and the three byte-identical duplicates of `gen/cern/` files).
+  `check_citations.py` reads that table: a cited roottest file must be a row, and
+  a row must exist in the submodule. Both corrupted and tested
+  (`tools/test_coverage.py`). No third corpus, no fetch step, no manifest.
+- **C8.** 223 version-3 elements in `skim.root`, not 426, each carrying exactly
+  24 bytes after `fTypeName` — the three doubles, all zero. The survey's 426 did
+  not reproduce; this count is by the `TStreamerElement` **base** version, over
+  roottest and both corpora, and the file's 29 `TStreamerBase` elements at
+  *subclass* version 3 are a different number and not in it. Nothing was wrong in
+  `StreamerInfo.md`; what it gained is the history. Version 3 **never shipped**:
+  `ccca6c91c4a` introduced it on 2005-04-18 and `81aa9214fd3` replaced it on
+  2005-04-21, both stamped 4.03/05, and no release tag contains it. §7.1 now says
+  so, with the witness, and §15 no longer says a version below 4 needs ROOT 3.
+- **C9.** `leaves.root`'s claims hold exactly: six `TLeafF16`/`TLeafD32` at
+  version 1, bare titles on the scalar, the `[10]` and the `[N]`. It joins
+  `gen/foreign/` as the first file from outside scikit-hep-testdata:
+  `fetch_foreign.py` gained `SOURCES`, go-hep pinned to commit `8d0fccd8a3b5`, and
+  a `go-hep/` prefix in the manifest. Two things the survey did not report:
+  - **`TLeaf.md` dated version 2 to 6.40, and it is 6.38.** `da232dd758f` is first
+    tagged `v6-38-00`, and `v6-36-14` still has `ClassDefOverride(TLeafF16, 1)`.
+    Corrected in §7, §12 and in `ttree/leaf-truncated`'s descriptions.
+  - **The §9.1 row was about layouts, and a version-1 `TLeafF16` is not one**:
+    its layout is version 2's and only the title differs. The row's real witness
+    is `TLeaf` **version 1** in roottest's `MC_uds_reco-1.root`, whose leaves read
+    in version 2's field order end exactly on their byte counts. And
+    `uproot-double32-float16.root` had twelve version-1 truncated leaves in
+    `gen/foreign/` all along; §9.10's census had looked at `TLeaf` and
+    `TLeafObject` only. `TLeafObject` 1–3 occur nowhere.
+- **C10, narrower than reported.** `MC_uds_reco-1.root` does write bases as
+  bare version words inside a byte-counted `TTree` — but so does `pippa.root`,
+  already in `gen/cern/`, inside a byte-counted `TH1F`. What the §9.1 row needs is
+  `Buffer.md` §6.4's sequential object map, and that needs a class tag with no
+  byte count in front of it: the 2.23/12 file has 11 class tags and a byte count
+  before every one, and `pippa.root` has none. No older ROOT-written file exists
+  in reach, so §6.4 stays source-only and now says why. Both files also carry
+  `fBits` `0x03000000` unmasked, a byte witness for `Buffer.md` erratum 9.
+- **C11, and the find of the batch.** The two files are versions 3 and 4, as
+  reported; version 1's cheapest witness in roottest is `Event.3.2.0.root`, and
+  that file is **ROOT 3.03/02 with a version-1 directory and no header UUID** —
+  where `Directory.md` §7 said version 2 began at 3.03/01 and `FileHeader.md` §8
+  said the UUID arrived with 3.03. The tags say: `v3-03-06` has
+  `ClassDef(TDirectory,1)` and no `fUUID` in `TFile.cxx`, `v3-03-07` has 2 and the
+  UUID, `v3-03-08` has 3. Version 2 was released exactly once, in 3.03/07.
+  Corrected in both documents, with the witness, including `Directory.md` §7's
+  "latent inconsistency" note, which named the same wrong range.
+- **Counts.** `gen/foreign/` is 157 files and the corpora 229; both still
+  0 failures, and every count moved by exactly `leaves.root`'s share.
+
+### C18. An object with no byte count and no version word — open
+
+Found doing C8: `check_invariants.py` over `skim.root` gives two
+`ReadingEntries 8.5` failures, `Jpsi.jmu1` and `Jpsi.jmu2` entry 0, **122 bytes
+in the basket and 120 decoded**. The entry is one `HoldMuo`, a `kObject` (61)
+member of a split `TClonesArray` column, and its bytes are
+`00 01 | 00 00 00 00 | 03 00 00 00 | 52 bytes of members | 40 00 00 38 00 01 …` —
+a bare `TObject`, then `HoldMuo`'s own members, then a byte-counted `HoldPtl`. So
+**`HoldMuo` itself has neither a byte count nor a version word**; the reader takes
+`00 01` as its version and then reads a `TObject` two bytes late. `Jpsi.pvx` and
+`Jpsi.ptl`, the same shape of member on other classes, are framed normally.
+
+**ROOT reads it correctly**, which makes it a reader gap and not a file at fault:
+`TTree::Scan` in 6.40.04 gives `Jpsi.jmu1.ptl.pt` 3.425, equal to the same muon's
+`Muo.ptl.pt`. The mechanism is `TBufferFile::ReadClassEmulated`, which ROOT takes
+for a class it has no dictionary for: *"We attempt to recover if a version count
+was not written"* — with no byte count it rewinds to the object's start and reads
+the members with no version word at all
+(`root/io/io/src/TBufferFile.cxx:3428-3435`, since `ec691d21d29`, 2001, written
+for `TVector3`, whose streamer wrote no version). The compiled path,
+`ReadClassBuffer`, has no such rewind.
+
+**Why it is not fixed yet: the file alone does not say which reading applies.**
+Every generic-path object without a byte count was counted over every fixture,
+both corpora and the two roottest files. `HoldMuo` is the only unframed one; the
+others with no byte count all have a version word, and some are read correctly
+**only** that way. `nEXO::SmartRef` in `uproot-issue475.root` opens with the same
+`00 01 00 00 00 …` bytes, but the objects sit 20 bytes apart: the version-first
+reading consumes 2 + 10 + 8 and lands on the next one, giving `m_entry` 0, 1, 2 in
+order, while the no-version reading consumes 18. So ROOT without the nEXO library
+would, by arithmetic, fall two bytes short per object, and applying ROOT's rule
+everywhere would move this failure from one file to another. (That file is in
+`gen/foreign/`, so it is a lead; its writer has not been traced.) What is needed:
+
+1. a statement in `StreamerDriven.md` or `Buffer.md`: an object with no byte count
+   was written by a hand-written `Streamer`, which no streamer info describes;
+   ROOT without the class's library assumes there is no version word, and with
+   it, whatever that `Streamer` does;
+2. a reader policy that is exact where the extent is known — a basket entry, or
+   an enclosing byte count — which is where both readings can be tested, as
+   ROOT's two paths in effect do;
+3. `skim.root` then passes, `uproot-issue475.root` still does, and the census
+   above is the regression test.
+
+
+### C12. roottest as a third corpus — costs a README and a list — ✅ adopted as the list, 2026-09-22
 
 roottest was merged into `root-project/root` in April 2025 (commit `9133116945c`),
 so the pinned submodule ships it at `root/roottest/`: **274 `.root` files, 138 MB,
@@ -540,8 +649,10 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 ## 10. What is not decided
 
-1. **Whether to adopt roottest as a corpus at all**, and if so in what form — a
-   third corpus, a `gen/cern/` tier, or a list in a README. C12.
+1. ~~**Whether to adopt roottest as a corpus at all**, and if so in what form — a
+   third corpus, a `gen/cern/` tier, or a list in a README. C12.~~ Decided
+   2026-09-22: the list, in `gen/cern/README.md`, checked by `check_citations.py`.
+   Revisit only if a use needs roottest run as a whole rather than file by file.
 2. **The licence question.** roottest and rntuple-validation are both LGPL-2.1.
    `LICENSES/` holds only BSD-3-Clause and CC-BY-4.0. Nothing needs committing —
    roottest is in the submodule and rntuple-validation can be fetched — but if any
@@ -559,7 +670,9 @@ out of C1 and are **not** closed by it: the checker now handles the shapes, but
 `payload_range()` still overruns. `gen/cases/rntuple/compressed` is a witness for
 both — its anchor at 727 is compressed, and the file reports
 `NOT CHECKED ROOT::RNTuple ...` for exactly that reason.~~ C16 is independent
-of everything and cheap enough to do at any point. C8–C11 need no new
+of everything and cheap enough to do at any point. ~~C8–C11 need no new
 infrastructure once C12's question is answered, because three of the four files
-are already on disk. C13 is manifest lines. C17 should happen before anything is
+are already on disk.~~ **C8–C12 are done**, and left C18, which needs a decision
+about reader policy before code. C13 is manifest lines, and `fetch_foreign.py`'s
+`SOURCES` now makes C15 manifest lines too. C17 should happen before anything is
 reported upstream.

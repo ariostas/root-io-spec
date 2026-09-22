@@ -329,6 +329,24 @@ array — an `i32` count followed by that many values — rather than as exactly
 | 3 | 5 × `i32` | **present**, 3 × `f64` |
 | 4 | 5 × `i32` | absent; recovered from `fTitle` |
 
+**Version 3 was never released.** It lived for three days on the development
+trunk, all of them stamped 4.03/05: root commit `ccca6c91c4a` (2005-04-18)
+introduced it with the extended `Double32_t`, and `81aa9214fd3` (2005-04-21) made
+the three fields transient again as version 4, *"so that files written by this
+new version of ROOT are readable without any warning messages by older versions"*.
+No release tag in the submodule carries it — `v4-04-02` already has version 4. A
+file with version-3 elements was therefore written by a development build, and
+those are the only ones a reader will meet.
+
+> One exists: `root/roottest/root/io/evolution/skim.root`, ROOT 4.03/05. Its
+> **223** elements with a version-3 `TStreamerElement` base each carry exactly 24
+> bytes after `fTypeName` — the three doubles, all zero here, since no member of
+> it declares a range — and 223 is every version-3 element in `root/roottest/`,
+> `gen/cern/` and `gen/foreign/` together, against 60 835 at version 4 and 8 364
+> at version 2. The subclass version is a separate number: the file's
+> `TStreamerBase` elements are at **their** version 3, which is `fBaseVersion`'s
+> arrival (§8) and says nothing about the base.
+
 ### 7.2 Read-time fixups
 
 A reader MUST apply these after reading an element, because ROOT's own reader
@@ -768,5 +786,6 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/collections` | `TStreamerSTL` in seven shapes, and the only `TStreamerSTLstring` in the corpus |
 
 No fixture covers `TStreamerLoop`, `TStreamerArtificial` (which cannot occur —
-§14), or any `TStreamerElement` version below 4; the last needs a file written by
-ROOT 3.
+§14), or any `TStreamerElement` version below 4, which needs a ROOT this project
+cannot build. The corpora and `root/roottest/` cover the last: version 2 in 41
+files, from ROOT 3.03 to 4.03, and version 3 in exactly one, `skim.root` (§7.1).
