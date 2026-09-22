@@ -165,9 +165,9 @@ ROOT's own document.
 
 [CITATION.cff](CITATION.cff) has the machine-readable citation, and
 [CONTRIBUTING.md](CONTRIBUTING.md) has the mechanics, of which the load-bearing
-one is the two-witness rule above. There is no changelog: the git log is the
-record of what changed and of **how each fact was established**, which is the half
-a changelog throws away, and a release's notes are generated from it.
+one is the two-witness rule above. [CHANGELOG.md](CHANGELOG.md) records what
+changed for a **reader** at each release; the git log records **how each fact was
+established**, which is the other half.
 
 ## Building the site
 

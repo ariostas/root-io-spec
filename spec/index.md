@@ -129,8 +129,8 @@ it is good for.
 **It is descriptive, not normative.** This describes ROOT 6.40.04, pinned as a
 submodule. Its own releases are dated rather than numbered — CalVer, tagged when
 the document reaches a milestone — because the version that carries meaning is
-ROOT's and not this document's. There is no changelog: the repository's git log is
-the record of what changed, and of how each fact was established.
+ROOT's and not this document's. The repository's `CHANGELOG.md` says what changed
+for a reader at each release, and its git log how each fact was established.
 Where this specification and that submodule disagree, the submodule is
 right and this has a bug. Source citations link to that exact commit.
 

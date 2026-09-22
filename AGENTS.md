@@ -511,9 +511,12 @@ Bodies record what was *found*, not just what changed — a version-dependent fi
 erratum, a reader bug and how it surfaced. The git log is part of the project's
 record of how the format was reverse-engineered.
 
-**There is no changelog, and that is deliberate** (`PLAN.md` decision 9): a
-changelog records what changed and this log records how each fact was established,
-which is the half worth keeping. Do not add one back. Releases are CalVer,
-`YYYY.MM.DD`, tagged at a milestone; cutting one means bumping `version` and
-`date-released` in `CITATION.cff` and nothing else, because the only version the
-documents state is **ROOT's**.
+**`CHANGELOG.md` is the reader's half of the same record** (`PLAN.md` decision 9).
+A commit body says what was *found*; a changelog entry says what a reader of the
+specification should now do differently. Add one under `## Unreleased` when a change
+is reader-facing -- a new document, a corrected claim, a closed gap, a fact a reader
+would get wrong without it -- and add none when it is not: a fixture, a check, a
+refactor of `tools/` leaves no entry. Releases are CalVer, `YYYY.MM.DD`, tagged at a
+milestone; cutting one means retitling `## Unreleased` with the date and bumping
+`version` and `date-released` in `CITATION.cff`, and nothing else, because the only
+version the documents state is **ROOT's**.
