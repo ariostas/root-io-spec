@@ -99,6 +99,11 @@ NOT_CORPUS = {
     "noop.root": "written and discarded by the no-op update experiment of WritingFiles 13.9",
     "HcompassF_226Ra_run_2_20231117_085722.root":
         "the internal name uproot-issue-861.root carries in its own header, quoted",
+    "uproot-issue243-new.root":
+        "named by GitHub issue #1 as a fourth ROOT::TIOFeatures duplicate; it "
+        "repeats a pattern two listed files already carry, so it is not in "
+        "gen/foreign/ and SchemaEvolution.md 8.1 cites it as a report rather "
+        "than as evidence",
 }
 
 ROOT_FILE = re.compile(r"`?([A-Za-z0-9_.\-]+\.root)`?")

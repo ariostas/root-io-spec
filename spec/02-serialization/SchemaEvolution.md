@@ -413,6 +413,13 @@ heap and had not been destructed.
 > other had not (`root/io/io/src/TStreamerInfo.cxx:1885`). That is session state
 > and nothing else — which is the point.
 >
+> A fourth is reported in `uproot-issue243-new.root`, with the same
+> `0x3030000`/`0x3010000` as the last two
+> ([issue #1](https://github.com/ariostas/root-io-spec/issues/1)). That file is
+> not in `gen/foreign/`: it repeats a pattern two listed files already carry, so
+> it does not earn a place by the rule in `gen/cern/README.md`, and the count
+> above is what this project measured rather than what the pattern is worth.
+>
 > The fourth duplicate in `data/` is the other kind: `data/written/two-versions.root`
 > holds `Grown` at versions 1 and 2 with different checksums, where the two
 > entries describe genuinely different layouts and the version word chooses.

@@ -50,7 +50,7 @@ decision (§4) rather than a doubt about the finding.
 | 5 | `TTime` appears with no streamer info | read the file | **Confirmed** — two `TTime` records, 70 bytes each, and ROOT would have described it (R6) |
 | 6 | Counterexamples to `StreamerDriven` 10.5 | scanned every info in both corpora **and in `data/`** | **Confirmed, and worse than reported** — R2 |
 | 7–10 | RooFit layouts | out of scope, not checked | **Needs a scope decision**, §5 |
-| — | Duplicate `TIOFeatures` in four files, and the differing bit is not always `kIsCompiled` | read all three of ours | **Confirmed on our own files** — R3 |
+| — | Duplicate `TIOFeatures` in four files, and the differing bit is not always `kIsCompiled` | read all three of ours | **Confirmed on our own files** — R3. Their fourth, `uproot-issue243-new.root`, is not in `gen/foreign/`: it repeats a pattern two listed files carry, so §8.1 cites it as a report and `check_citations.NOT_CORPUS` records why |
 
 Measured while checking, and both numbers belong in the documents this plan
 touches: **36 `kBase` elements in 27 corpus files name a class with no info in
