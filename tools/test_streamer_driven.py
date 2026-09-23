@@ -302,6 +302,159 @@ class MemberWiseBase(unittest.TestCase):
             decoder.read_member_wise("ElementLink<C>", 0, None)
 
 
+class UnframedObject(unittest.TestCase):
+    """StreamerDriven.md 7.1: an object of a TObject-derived class, no byte count.
+
+    `Hold` is `skim.root`'s `HoldMuo` reduced to one member: a TObject base and
+    an `Int_t`. Without its library ROOT reads it from the first byte with no
+    version word; a class of ROOT's own is read version first.
+    """
+
+    TOBJECT = b"\x00\x01" + b"\x00\x00\x00\x00" + b"\x03\x00\x00\x00"
+
+    def infos(self, version=1):
+        base = element("TObject", cls="TStreamerBase", ftype=66,
+                       type_name="BASE")
+        base.tail = {"fBaseVersion": 1}
+        hold = info(base, element("n"), name="Hold")
+        hold.class_version = version
+        return [hold]
+
+    def test_no_version_word_is_read_from_the_first_byte(self):
+        buf = self.TOBJECT + b"\x00\x00\x00\x07"
+        decoder = rootfile.Decoder(buf, 0, self.infos())
+        value = decoder.read_object("Hold", 0)
+        self.assertEqual(value.end, len(buf))
+        self.assertEqual(decoder.unframed, [("Hold", 0, "no version word")])
+
+    def test_a_tobject_version_other_than_1_rejects_the_reading(self):
+        # A version word first: read with no version word, the TObject base
+        # would begin at 0 and carry version 2, which ROOT never writes.
+        buf = b"\x00\x02" + self.TOBJECT + b"\x00\x00\x00\x07"
+        decoder = rootfile.Decoder(buf, 0, self.infos(version=2))
+        self.assertEqual(decoder.read_object("Hold", 0).end, len(buf))
+        self.assertEqual(decoder.unframed, [("Hold", 0, "version-first")])
+
+    def test_an_extent_decides_when_the_tobject_version_cannot(self):
+        # Class version 1 makes both readings admissible on their own: the
+        # no-version one ends 2 bytes short, and the extent sends it back.
+        buf = b"\x00\x01" + self.TOBJECT + b"\x00\x00\x00\x07"
+        decoder = rootfile.Decoder(buf, 0, self.infos())
+        value = decoder.within_extent(lambda: decoder.read_object("Hold", 0),
+                                      0, len(buf), lambda v: v.end)
+        self.assertEqual(value.end, len(buf))
+        self.assertEqual(decoder.versioned, set())
+
+    def test_neither_reading_fitting_is_a_hand_written_streamer(self):
+        # nEXO::SmartRef's shape: a TObject, the member, and two bytes its info
+        # does not describe. The version-first reading also ends at the extent
+        # here, and is rejected by its TObject version word of 0.
+        buf = self.TOBJECT + b"\x00\x00\x00\x07" + b"\x00\x00"
+        decoder = rootfile.Decoder(buf, 0, self.infos())
+        with self.assertRaisesRegex(rootfile.UnsupportedClass, "hand-written"):
+            decoder.within_extent(lambda: decoder.read_object("Hold", 0),
+                                  0, len(buf), lambda v: v.end)
+
+
+class ThisElement(unittest.TestCase):
+    """Collections.md 11.2: a class that is a collection, read from its title.
+
+    The shape of ATLAS's `xAOD::CutBookkeeperContainer_v1`: one `TStreamerSTL`
+    named `This`, `fSTLtype` 2 (list), its own class as the type name, and the
+    value class only in the title.
+    """
+
+    def this(self, title="<V> Used to call the proper TStreamerInfo case"):
+        el = element("This", cls="TStreamerSTL", ftype=500, title=title,
+                     type_name="Container_v1")
+        el.tail = {"fSTLtype": 2, "fCtype": 61}
+        return el
+
+    def test_the_value_class_is_the_bracketed_title(self):
+        self.assertEqual(rootfile.collection_value(self.this()),
+                         ("V", rootfile.STL_VECTOR))
+        nested = self.this("<pair<int,W<a> >*> Used to call the proper case")
+        self.assertEqual(rootfile.collection_value(nested)[0],
+                         "pair<int,W<a> >*")
+
+    def test_an_stl_class_is_read_by_its_name_not_its_title(self):
+        # uproot-issue243.root's map<string,double> branch: ROOT builds the
+        # proxy from the name, and the title's pair would need an info the
+        # file does not carry.
+        el = self.this("<pair<string,double> > Used to call the proper case")
+        el.type_name = "map<string,double>"
+        el.tail = {"fSTLtype": rootfile.STL_MAP, "fCtype": 61}
+        self.assertEqual(rootfile.collection_value(el),
+                         ("pair<string,double>", rootfile.STL_MAP))
+
+    def test_a_title_without_the_value_class_reads_nothing(self):
+        with self.assertRaises(rootfile.UnsupportedClass):
+            rootfile.collection_value(
+                self.this("Used to call the proper TStreamerInfo case"))
+
+    def test_a_member_wise_entry_is_read_as_a_vector_of_the_title(self):
+        value = info(element("n"), name="V")
+        container = info(self.this(), name="Container_v1")
+        body = (b"\x40\x09"                            # member-wise, version 9
+                b"\x00\x01"                            # V's version
+                b"\x00\x00\x00\x02"                    # two elements
+                b"\x00\x00\x00\x05\x00\x00\x00\x06")   # the n column
+        buf = struct.pack(">I", 0x40000000 | len(body)) + body
+        decoder = rootfile.Decoder(buf, 0, [value, container])
+        self.assertEqual(decoder.read_collection(self.this(), 0), len(buf))
+        self.assertEqual(decoder.member_wise, [("This", "V", 0)])
+
+    def test_invariant_11(self):
+        alone = info(self.this(), name="Container_v1")
+        self.assertEqual(check_invariants.this_element_failures(alone), [])
+        crowded = info(self.this(), element("n"), name="Container_v1")
+        self.assertEqual([w for w, _ in
+                          check_invariants.this_element_failures(crowded)],
+                         ["Collections 14.11"])
+        renamed = info(self.this(), name="Other")
+        self.assertTrue(check_invariants.this_element_failures(renamed))
+
+
+class TObjectVersionWord(unittest.TestCase):
+    """Buffer.md invariant 10: a TObject base's version word is 1."""
+
+    FIXTURE = Path(__file__).resolve().parents[1] / \
+        "data/serialization/unframed-records.root"
+
+    def test_a_tobject_record_with_version_2_fails(self):
+        buf = bytearray(self.FIXTURE.read_bytes())
+        at = 439 + 60                     # the TObject record's 10-byte payload
+        self.assertEqual(buf[at:at + 2], b"\x00\x01")
+        buf[at + 1] = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unframed-records.root"
+            path.write_bytes(bytes(buf))
+            failures = check_invariants.Checker(path).run()
+        self.assertTrue(any("Buffer 9.10" in f and "version word 2" in f
+                            for f in failures), failures)
+
+
+SKIM = Path(__file__).resolve().parents[1] / "root/roottest/root/io/evolution/skim.root"
+
+
+@unittest.skipUnless(SKIM.is_file(), "root/ submodule is not checked out")
+class SkimHoldMuo(unittest.TestCase):
+    """StreamerDriven.md 7.1 on the file it came from: `Jpsi.jmu1`, entry 0."""
+
+    def test_the_entry_is_read_with_no_version_word(self):
+        checker = check_invariants.Checker(SKIM)
+        _, _, infos = checker.streamer_infos()
+        for data, _, tree in checker.trees():
+            reader = rootfile.TreeReader(checker.buf, tree, infos,
+                                         checker.fetch_basket, tree_payload=data)
+            for br in rootfile.walk_branches(tree.branches):
+                if br.name == "Jpsi.jmu1":
+                    start, end, consumed = reader.entry_end(br, 0)
+                    self.assertEqual((end - start, consumed), (122, end))
+                    return
+        self.fail("no Jpsi.jmu1 branch")
+
+
 class SynthesisedPair(unittest.TestCase):
     """Collections.md 8.1. A pair's members from the type name alone.
 

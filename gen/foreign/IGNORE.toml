@@ -140,12 +140,20 @@ records it; g4tools does not.
 Nothing else in the file fails, TH3 included: TAtt3D adds no bytes, so the
 absence costs a reader nothing here. It would cost one on any class whose
 undescribed base is not empty.
+
+Its root directory record is also at version 1001 -- the wide layout -- with
+every offset under 200 KB, where ROOT's TDirectoryFile::FillBuffer widens only
+when one of the record's three offsets passes 2 000 000 000 (LargeFiles.md 8.7,
+root/io/io/src/TDirectoryFile.cxx:751-759). Every ROOT-written directory record
+in reach agrees with that rule, so this is the writer's choice rather than a
+ROOT behaviour; a reader that sizes by the version word, as Directory.md 3
+requires, reads it correctly.
 """
-skip = ["StreamerDriven 10.5"]
+skip = ["StreamerDriven 10.5", "LargeFiles 8.7"]
 
 ["uproot-issue-250.root"]
 reason = """
-The same writer and the same single failure as uproot-from-geant4.root; see that
+The same writer and the same two failures as uproot-from-geant4.root; see that
 entry for the diagnosis.
 """
-skip = ["StreamerDriven 10.5"]
+skip = ["StreamerDriven 10.5", "LargeFiles 8.7"]

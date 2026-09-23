@@ -92,10 +92,12 @@ reason = "Restates FreeSegments 8.5, checked there."
 [invariant."LargeFiles 8.6"]
 by = "not-checkable"
 reason = """
-The free record's own key is wide only in a file past 2 GB, and no fixture is that
-large. `gen/cern/LARGE.toml` records the measured header and free-list facts for
-eleven files from 1.3 GB to 15.9 GB, fetched by range request rather than held, and
-that is the only evidence for this layout anywhere in the project.
+A wide key occurs only in a file past 2 GB, and no fixture is that large.
+`gen/cern/LARGE.toml` records the measured header, free-list, top-directory and
+key-list facts for eleven files from 1.3 GB to 15.9 GB, fetched by range request
+rather than held -- 38 wide keys between them -- and `fetch_cern.py --headers`
+checks this invariant on every one. That is the only evidence for this layout
+anywhere in the project.
 """
 
 [invariant."Record 8.9"]

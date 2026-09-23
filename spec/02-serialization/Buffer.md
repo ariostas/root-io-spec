@@ -146,24 +146,40 @@ the ones that emit something other than a byte count.
 > their own: a `TDatime` of 4 bytes, a `TString` of 6, a `TStringLong` of 17, a
 > `TObject` of 10 beginning `00 01`, and a `TQObject` of **0**.
 
-**And on a file older than ROOT 5, an ordinary class's payload may have no byte
-count either.** The leading byte count that `WriteClassBuffer` requests today was
-not always written: a ROOT 4 record holding a `TH1D` opens with the bare version
-words of `TH1D` and then `TH1`, and only the `TNamed` base inside is framed.
+**A writer other than ROOT may leave the byte count out of an ordinary class's
+payload.** g4tools, Geant4's own ROOT writer, opens a `TH1D` record with the bare
+version words of `TH1D` and then `TH1`, and only the `TNamed` base inside is
+framed. ROOT reads that with its own `Streamer`s, because `ReadVersion` takes a
+version word with or without a byte count in front of it
+(`root/io/io/src/TBufferFile.cxx:2959-2962`).
 
-> Measured on the two ROOT 4.00/00 files of the foreign corpus (`PLAN.md` §9.8):
-> **19** histogram records across them open with bare version words instead of a
-> byte count, and they do not all open the same way —
+> Measured on the two g4tools files of the foreign corpus, whose header claims
+> ROOT 4.00/00 and whose keys were written in 2018–2020
+> (`gen/foreign/IGNORE.toml`): **19** histogram records open with bare version
+> words instead of a byte count, and they do not all open the same way —
 >
 > | Records | Class | First six bytes |
 > |---|---|---|
 > | 14 | `TH1D` | `00 01 00 03 40 00` — a version word, a version word, then a byte count |
 > | 5 | `TH2D` | `00 03 00 03 00 03` — **three** version words, and no byte count among them |
 >
-> so the depth at which framing resumes is a property of the class chain, not of
-> the file. Nothing in the record says any of it; only the file header's version
-> does. A reader that recognises one prefix and not the other has hard-coded a
-> class rather than implemented the rule.
+> so the depth at which framing resumes is a property of the writer and the class
+> chain, not of the file. A reader that recognises one prefix and not the other
+> has hard-coded a class rather than implemented the rule.
+
+**ROOT itself does not do this at the top of a record, at any release in reach.**
+Until 2026-09-23 this paragraph said it did — "on a file older than ROOT 5" — on
+the strength of those two files, which are not ROOT's. Over every record of every
+ROOT-written file in reach, the 72 of `gen/cern/` and the 273 of
+`root/roottest/`, **all 2 025 payloads of any other class open with a byte
+count**: 472 of them written by ROOT 2, 61 by ROOT 3 and 324 by ROOT 4. (Not
+counted: an STL collection stored as a record, which is bare, and an RNTuple
+blob, which is not a streamed object.) And
+ROOT 4.00's generated streamers already asked for one, exactly as today's do
+(`TClass::WriteBuffer` calls `WriteVersion(this, kTRUE)` at tag `v4-00-08`).
+*Inside* a record is another matter: ROOT 2 wrote bases as bare version words
+(§11), and a class's own hand-written `Streamer` may write an object with no
+frame at all ([Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)).
 
 A reader MUST therefore decide from the class, not from the first word, whether
 a payload is framed, and what the first word then means. Reading a `TArray`'s
@@ -492,8 +508,15 @@ version:i16   fUniqueID:u32   fBits:u32   [pidf:u16]
 
 Four properties a reader needs:
 
-- **The version word is ignored on reading.** `TObject::Streamer` calls
-  `SkipVersion` (`root/core/base/src/TObject.cxx:1000`).
+- **The version word is ignored on reading, and it is always 1.**
+  `TObject::Streamer` calls `SkipVersion` (`root/core/base/src/TObject.cxx:1000`),
+  and writes `TObject::IsA()`'s version (`root/core/base/src/TObject.cxx:1022`),
+  which is `ClassDef(TObject, 1)` (`root/core/base/inc/TObject.h:248`) and is
+  the same at all 396 release tags from 3.00 to 6.40 that carry the header. Being ignored, it is no use for
+  reading the base itself; it is the one fixed value a reader can test a
+  **framing** decision against, which is what
+  [Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)
+  needs. Invariant 10.
 - **`fBits` is masked when written.** `kIsOnHeap` (`0x01000000`) and
   `kNotDeleted` (`0x02000000`) are cleared
   (`root/core/base/src/TObject.cxx:1033`), so they never appear on disk even
@@ -571,6 +594,15 @@ To read a version word at the current position:
    exactly — **except** for the classes of §2.4, which write past their own byte
    count by design; for the classes of §2.3 there is no outermost count to check
    against.
+
+10. Every `TObject` base's version word is 1 (§7).
+
+> Invariant 10 holds on every record of every file in reach — the fixtures,
+> `gen/cern/`, `gen/foreign/` and `root/roottest/` — and on every entry too. Over
+> those same files, until 2026-09-23 the only `TObject` base any reading met with
+> another value was a misreading: 20 in `uproot-issue475.root` and 2 in
+> `skim.root`, each a version word taken for a `TObject` or the reverse
+> ([Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)).
 
 Invariant 9 is the one that legitimately fails in the wild: a class whose
 hand-written `Streamer` is out of step with its data produces a byte-count

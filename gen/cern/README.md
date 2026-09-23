@@ -119,10 +119,11 @@ trees. **Their value is per-class breadth, not per-entry.**
 
 ## `LARGE.toml` — 11 files, 1.3 GB to 15.9 GB, never downloaded
 
-root.cern serves `Accept-Ranges: bytes`. The header (512 bytes) and the
-free-segment record (a few hundred) are all that `spec/01-container/`'s large-file
-statements need, so `tools/fetch_cern.py --headers` reads those two ranges and
-checks every recorded field. Roughly 11 KB of traffic for 49 GB of files.
+root.cern serves `Accept-Ranges: bytes`. The header (512 bytes), the
+free-segment record, the top directory record and its key list (a few hundred
+each) are all that `spec/01-container/`'s large-file statements need, so
+`tools/fetch_cern.py --headers` reads those four ranges and checks every recorded
+field. Roughly 25 KB of traffic for 49 GB of files.
 
 What that buys, none of which any fixture covers:
 
@@ -179,7 +180,7 @@ file here must exist in the submodule.
 | `root/roottest/root/io/arrayobject/Event.3.2.0.root` | 3.03/02 | A **version 1** directory and no header UUID at 3.03/02, which dated [Directory §7](../../spec/01-container/Directory.md#7-version-history) and [FileHeader §8](../../spec/01-container/FileHeader.md#8-version-history) wrongly until 2026-09-22 | 0 failures |
 | `root/roottest/root/io/abstractclass/data_v3_05_07.root` | 3.05/07 | The smallest version-3 directory record, 1 199 bytes | 0 failures |
 | `root/roottest/root/io/abstractclass/data_v4_00_02.root` | 4.00/02 | The smallest version-4 directory record, 1 225 bytes | 0 failures |
-| `root/roottest/root/io/evolution/skim.root` | 4.03/05 | The only file anywhere with **version-3 `TStreamerElement`s**, which no ROOT release wrote ([StreamerInfo §7.1](../../spec/02-serialization/StreamerInfo.md#71-the-range-fields-moved-out-of-the-record)): 223 of them | **2 failures**, `ReadingEntries 8.5` — a reader gap: `HoldMuo` objects written with no byte count and no version word, which ROOT reads by a rule this specification does not yet state. `PLAN-corpus.md` C18 |
+| `root/roottest/root/io/evolution/skim.root` | 4.03/05 | The only file anywhere with **version-3 `TStreamerElement`s**, which no ROOT release wrote ([StreamerInfo §7.1](../../spec/02-serialization/StreamerInfo.md#71-the-range-fields-moved-out-of-the-record)): 223 of them | 0 failures. Also the witness to [Streamer-driven reading §7.1](../../spec/02-serialization/StreamerDriven.md#71-an-object-with-no-byte-count): `HoldMuo` objects written with no byte count and no version word, which ROOT reads from the first byte when it has no library for the class. Until 2026-09-23 they were two `ReadingEntries 8.5` failures (`PLAN-corpus.md` C18) |
 
 Two exclusions, so that nobody runs the whole directory and mistakes the result
 for evidence: `root/tree/basket/corrupted.root` is damaged on purpose for ROOT's

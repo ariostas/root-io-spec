@@ -152,7 +152,7 @@ including its field and column records.
 | `std::atomic`, and the parent-with-one-child shape it shares with an enum | audited against bytes, clean |
 | Low-precision Floating Points | audited against bytes — **ERRATA 7** |
 | Type Name Normalization inside template arguments | audited against bytes, clean |
-| `std::map` and the unordered/multi variants | audited against the source only — ROOT aborts writing one here, §5 |
+| `std::map` and the unordered/multi variants | audited against the source only — no fixture yet, though one is possible: §5 says which maps ROOT can write |
 | User-defined enums, scoped and unscoped | audited against bytes, clean — `rntuple/user-class` |
 | User-defined classes → Regular class / struct, base classes, transient members | audited against bytes, clean |
 | Field Description: the type version and checksum of a class field | audited against bytes — **ERRATA 8** |
@@ -255,10 +255,10 @@ Nothing here should be read as a statement that the unaudited sections are
 correct. They are simply not yet checked, which is the same standard the rest of
 this project holds itself to.
 
-## 5. `std::map` cannot be written from the interpreter in 6.40.04
+## 5. A `std::map` without a compiled dictionary cannot be written in 6.40.04
 
-The one type in *Stdlib Types and Collections* that this project cannot put in a
-fixture. With the field empty and never touched:
+The one type in *Stdlib Types and Collections* that this project has no fixture
+for. With the field empty and never touched:
 
 ```cpp
 auto model = ROOT::RNTupleModel::Create();
@@ -278,13 +278,33 @@ comment is "Should not be used"
 both built successfully; the abort is in `Fill()`. Assigning to the field first —
 `operator[]` or `insert` — segfaults earlier, before reaching `Fill()`.
 
+**What decides it is the dictionary, not `std::map`.** Measured over eleven
+instantiations on 2026-09-23, each written empty and filled, through `MakeField`
+and through `AddField(std::make_unique<ROOT::RField<M>>(name))` alike:
+
+| Writes | Aborts |
+|---|---|
+| `map<int,int>`, `map<string,float>`, `map<string,int>`, `map<double,int>` | `map<int,float>`, `map<int,double>`, `map<std::int64_t,float>`, `map<float,int>`, `map<int,string>`, `map<char,int>`, `map<long,float>` |
+
+The left column is exactly the instantiations ROOT ships compiled dictionaries
+for, in `libmapDict` and `libmap2Dict` (`root/core/clingutils/src/mapLinkdef.h`,
+`root/core/clingutils/src/map2Linkdef.h`); for every other one `TClass` has no
+dictionary and is emulated, and that is the case that reaches the assertion. `map<int,float>`
+writes as soon as ACLiC compiles a dictionary for it. rntuple-validation's
+`map<std::string, std::int32_t>` writes for the same reason, which is how its
+weekly CI stays green. **`map<long,float>` is the instructive case**: it has a
+shipped dictionary and still aborts, because RNTuple normalises the type to
+`std::map<std::int64_t,float>`, which on macOS resolves to `map<Long64_t,float>`
+— a `long long` map with no dictionary.
+
 Two things this is **not**. It is not a format question: the document's `std::map`
 paragraph is a collection parent over a `std::pair<K, V>` child named `_0`, which
 is `std::vector<std::pair<K,V>>`'s shape and is consistent with everything else
-audited. And it is not necessarily a bug in RNTuple — the path taken here is the
-interpreted one, and ACLiC on this machine cannot compile a comparison (`AGENTS.md`
-records why). What it is, is a reason the `std::map` row above says *source only*,
-and a candidate worth reporting with that caveat attached: `PLAN.md` §7.1 item 10.
+audited. And it is not a fixture problem any more: a `map<std::string,int>` or
+`map<int,int>` field can be written from a plain macro. What it is, is a defect
+narrower than first recorded — RNTuple accepts a field whose collection proxy is
+emulated, then aborts in `Fill()` rather than refusing it when the model is
+built — and `PLAN.md` §7.1 item 10 holds the report.
 
 ## 6. The compatibility notes are reader requirements, and ROOT keeps the hard one
 

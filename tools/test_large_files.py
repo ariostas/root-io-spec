@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The invariants of spec/01-container/LargeFiles.md section 8.
 
-They are checked over the network by `fetch_cern.py --headers`, against eight
+They are checked over the network by `fetch_cern.py --headers`, against eleven
 files this repository cannot commit. These tests do the other half of the
 discipline `AGENTS.md` asks for: each invariant is shown to **catch** a
 violation, using the measured reading of `volume.root` as the good case and one
@@ -86,6 +86,58 @@ class Invariants(unittest.TestCase):
         import dataclasses
         narrow = dataclasses.replace(KEY, key_version=4, seek_pdir=999)
         self.assertEqual(self.problems(key=narrow), [])
+
+
+# volume.root's top directory, as measured by --headers on 2026-09-23: a
+# narrow record in a 5 GB file, because its three offsets are all small, and a
+# key list whose own key and one image are wide.
+DIRECTORY = rootfile.Directory(
+    version=5, datime_c=0, datime_m=0, datime_offset=0, nbytes_keys=125,
+    nbytes_name=72, seek_dir=100, seek_parent=0, seek_keys=105159233,
+    uuid=b"", uuid_offset=0, fields_offset=0)
+LIST_KEY = rootfile.Record(offset=105159233, nbytes=125, key_version=1004,
+                           key_len=60, seek_key=105159233, seek_pdir=100,
+                           pid_offset=0, class_name="TFile")
+IMAGES = [rootfile.Record(offset=0, nbytes=0, key_version=1004, key_len=0,
+                          seek_key=5252483583, seek_pdir=100, pid_offset=0,
+                          name="volume", cycle=1)]
+
+
+class TopDirectory(unittest.TestCase):
+    """Invariants 6, on every wide key in reach, and 7, by the same method."""
+
+    def problems(self, directory=None, list_key=None, images=None):
+        return fetch_cern.top_directory_problems(
+            HEADER, directory or DIRECTORY, list_key or LIST_KEY,
+            IMAGES if images is None else images)
+
+    def test_the_measured_file_passes(self):
+        self.assertEqual(self.problems(), [])
+
+    def test_7_a_wide_record_with_small_offsets(self):
+        import dataclasses
+        wide = dataclasses.replace(DIRECTORY, version=1005)
+        self.assertIn("8.7", " ".join(self.problems(directory=wide)))
+
+    def test_7_a_narrow_record_with_a_large_offset(self):
+        import dataclasses
+        far = dataclasses.replace(DIRECTORY, seek_keys=3000000000)
+        self.assertIn("8.7", " ".join(self.problems(directory=far)))
+
+    def test_6_an_unmasked_fseekpdir_on_a_key_image(self):
+        import dataclasses
+        unmasked = [dataclasses.replace(IMAGES[0], seek_pdir=(3 << 48) | 100)]
+        self.assertIn("8.6", " ".join(self.problems(images=unmasked)))
+
+    def test_6_a_pid_offset_on_the_key_list_key(self):
+        import dataclasses
+        pid = dataclasses.replace(LIST_KEY, pid_offset=1)
+        self.assertIn("8.6", " ".join(self.problems(list_key=pid)))
+
+    def test_6_is_not_applied_to_a_narrow_image(self):
+        import dataclasses
+        narrow = [dataclasses.replace(IMAGES[0], key_version=4, seek_pdir=7)]
+        self.assertEqual(self.problems(images=narrow), [])
 
 
 class FreeEntryParsing(unittest.TestCase):

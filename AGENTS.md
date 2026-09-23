@@ -103,7 +103,7 @@ tools/fetch_cern.py                         # core tier: 24 files, 5.5 MB
 tools/fetch_cern.py --tier physics          # 2 production trees, 27 MB more
 tools/fetch_cern.py --tier geometry         # the TGeoManager sweep, 46 files, 19 MB
 tools/fetch_cern.py --tier all              # all three, 72 files
-tools/fetch_cern.py --headers               # the 11 multi-GB files, ~11 KB of traffic
+tools/fetch_cern.py --headers               # the 11 multi-GB files, ~25 KB of traffic
 tools/coverage_probe.py --summary build/cern/*.root
 tools/check_invariants.py build/cern/*.root
 ```
@@ -118,7 +118,8 @@ the manifest says so or not**, which is now a check: `check_citations.py` fails 
 cited `.root` that no fixture and no manifest accounts for.
 
 `--headers` is the interesting one. root.cern serves `Accept-Ranges: bytes`, so the
-header and free-segment record of a 5 GB file cost a few hundred bytes each, and
+header, free-segment record, top directory record and key list of a 5 GB file
+cost a few hundred bytes each, and
 `gen/cern/LARGE.toml` records the measured facts for eleven files from 1.3 GB to
 15.9 GB, three of them from CERN Open Data by an absolute `url`. **That is the only thing exercising the large-file layout at all** — no
 fixture does, and it already confirmed the interleaved 10-byte/18-byte `TFree`
@@ -154,21 +155,26 @@ invariant 5 — the bytes an entry occupies equal the bytes its decoding consume
 Each prints `SKIPPED n branch-basket(s)` per reason when it cannot run, and the
 run ends with an `ENTRIES` line giving the fraction it did reach.
 
-Over the two corpora that is **45164 of 46241, 97.7%**, with 0 failures. 102 of
-the 1077 skips are of two kinds, both of them **things no reader could decode from
-the file**:
+Over the two corpora that is **46137 of 46241, 99.8%**, with 0 failures, and
+all 104 skips are of two kinds, both of them **things no reader could decode
+from the file**:
 
 - **a collection whose value class has no streamer info in it** — `Collections.md`
   §9 says nobody can read those, ROOT included;
 - **a class whose `Streamer` is hand-written**, which no streamer info describes.
+  Two of these are named by the bytes rather than by a list: `nEXO::SmartRef`
+  has no byte count, and neither of the two readings `StreamerDriven.md` §7.1
+  allows ends where its entry does.
 
-**The other 975 are unimplemented, and named as such**: one ATLAS file's
-`xAOD::CutBookkeeperContainer_v1`, a class that *is* a collection. Its streamer
-info holds a single `TStreamerSTL` called `This` whose type name is the class itself,
-so the value class is named only by the checksum in the member-wise header.
-`PLAN-corpus.md` C19. Until 2026-09-22 the figure was 28106 of 28173, 99.8%, and
-this list had no third kind. It gained one when that file joined, and a lower
-figure that says so is worth more than the old one.
+For one day that list had a third kind, and the figure was 97.7%: 975
+branch-baskets of an ATLAS class that *is* a collection, whose value class the
+reader could not find. It was in the element's title all along
+(`Collections.md` §11.2): the survey that raised it had said "named only by
+checksum", and reading `TStreamerInfo::Build` was enough to find otherwise. And the
+`SmartRef` skips used to be **passes**: the reader read every object with no
+byte count version first, which lands exactly on each 20-byte `SmartRef` by
+coincidence, while failing `skim.root`, which ROOT reads correctly. A pass is
+only as good as the reading behind it.
 Read a `0 failure(s)` line against the `ENTRIES` line all the same: it means zero
 failures among the things checked, and that is the number to quote.
 

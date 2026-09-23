@@ -292,9 +292,11 @@ and re-measured by:
 tools/fetch_cern.py --headers
 ```
 
-which parses each file's header and its whole free-segment record with
-`tools/rootfile.py` and fails if any recorded field, the entry-width counts, the
-`nfree` agreement or the sentinel rule has drifted.
+which parses each file's header, its whole free-segment record, its top
+directory record at `fBEGIN` and that directory's key list with
+`tools/rootfile.py`, and fails if any recorded field, the entry-width counts, the
+`nfree` agreement or the sentinel rule has drifted. The four ranges cost about
+1.5 KB a file.
 
 | File | ROOT | `fEND` | Free entries | Why it is listed |
 |---|---|---|---|---|
@@ -309,6 +311,33 @@ which parses each file's header and its whole free-segment record with
 | `Run2012C_TauPlusX.root` | 6.16/00 | 15 886 107 547 | 1 wide | the largest, and every offset past 8 GB; Open Data |
 | `071ab81e…root` (CMS Run2024F RAW) | 6.30/03 | 3 274 820 145 | 2 wide | the newest writer, and a `TStorageFactoryFile` free record above the boundary; Open Data |
 | `00041836_00008626_1.ew.dst` (LHCb) | 5.34/21 | 5 786 425 072 | 1 wide | the last ROOT 5 series; Open Data |
+
+The top directory and its key list, read since 2026-09-23, reach the ordinary
+keys the free record could not:
+
+| File | Directory record | Top keys | Wide | Largest `fSeekKey` |
+|---|---|---|---|---|
+| `lhcb2.root` | 1005 | 2 | 2 | 4 945 934 133 |
+| `volume.root` | **5** | 1 | 1 | 5 252 483 583 |
+| `Event100000.root` | 1005 | 5 | **3** | 2 906 685 764 |
+| `h1huge.root` | 1005 | 1 | 1 | 2 238 171 119 |
+| `rootbench/h1analysis.root` | **5** | 1 | 1 | 2 670 269 327 |
+| `rootbench/Run2012BC…Muons.root` | **5** | 2 | 2 | 2 244 422 000 |
+| `CMS_7250E9A5…root` | 5 | 9 | 0 | 1 997 313 581 |
+| `AOD.067184.big.pool_4.root` | 5 | 11 | 0 | 1 325 895 767 |
+| `Run2012C_TauPlusX.root` | 1005 | 1 | 1 | 15 885 617 883 |
+| `071ab81e…root` | 1005 | 6 | 6 | 3 274 771 239 |
+| `00041836_00008626_1.ew.dst` | 1005 | 3 | 3 | 5 786 412 835 |
+
+Three things in it are worth having. **Seven keys hold an `fSeekKey` past 4 GB**,
+in four files, which no 32-bit field could. **Three large files have a narrow
+directory record**, because §1.2's `FillBuffer` rule looks at the record's own
+three offsets and theirs are all below the threshold — each key list lies in
+the first 106 MB of its file. And **`Event100000.root` mixes the two key widths in one list**:
+the first `TTree` cycle, at 1 019 932 163, and the `TProcessID` are narrow, the
+second cycle and both histograms are wide — §1.1's converse on ordinary keys,
+where until now only the key at `fBEGIN` showed it. Every wide key reached has
+`fSeekPdir` equal to `fBEGIN` once masked and `fPidOffset` 0.
 
 `CMS_7250E9A5…` and `AOD.067184…` are the control: sub-threshold files whose
 every structure is narrow, including the sentinel whose `fLast` is exactly
@@ -336,7 +365,8 @@ under 5.22/00 and all wide at 3.27 GB under 6.30/03.
 ## 8. Invariants
 
 Checked by `tools/fetch_cern.py --headers` over the eleven files of §6 rather
-than by `tools/check_invariants.py`, which has no file large enough.
+than by `tools/check_invariants.py`, which has no file large enough — except
+invariant 7, which both check.
 
 1. `fVersion >= 1000000` **if** `fEND > 2000000000`; the reverse holds on every
    known file but is not guaranteed, because the flag is never cleared once set
@@ -350,13 +380,24 @@ than by `tools/check_invariants.py`, which has no file large enough.
    by reading the version word desynchronises here and nowhere else.
 5. Every entry satisfies `0 <= fFirst <= fLast <= fEND`, except the trailing
    entry, whose `fLast` passes `fEND` by design.
-6. When the free-segment record's own key is wide, its `fSeekPdir` masked to 48
-   bits is `fBEGIN` and its `fPidOffset` is 0 — the project's only measurement
-   of the packed field on a file it did not write.
+6. When a key is wide — the free-segment record's own, the top directory's
+   key-list record's own, or a key image in that list — its `fSeekPdir` masked
+   to 48 bits is `fBEGIN` and its `fPidOffset` is 0. This is the project's only
+   measurement of the packed field on files it did not write: 20 wide key
+   images and 18 wide record keys over the eleven files.
+7. The top directory record's version word is `> 1000` **iff** one of its
+   `fSeekDir`, `fSeekParent` and `fSeekKeys` exceeds 2 000 000 000
+   (`root/io/io/src/TDirectoryFile.cxx:751-759`). Three of the eleven files are
+   large and still have a narrow record by this rule. Unlike the rest of this
+   list it needs no large file to fail, so `tools/check_invariants.py` checks it
+   too, on every directory record of every file. Of the 820 in reach — `data/`,
+   both corpora and `root/roottest/` — the only two that disagree are
+   the two g4tools files of `gen/foreign/`, each of which writes its root
+   directory at version 1001 with every offset under 200 KB.
 
 Each is a mutation test in `tools/test_large_files.py`, which takes the measured
 reading of `volume.root` as the good case and breaks one invariant at a time, so
-none of the six can pass vacuously.
+none of the seven can pass vacuously.
 
 ## 9. Errata
 
@@ -370,5 +411,5 @@ none of the six can pass vacuously.
 ## 10. Reference files
 
 None committed: a fixture would have to be 2 GB. `gen/cern/LARGE.toml` records
-the eight measured files of §6 and `tools/fetch_cern.py --headers` re-checks them
+the eleven measured files of §6 and `tools/fetch_cern.py --headers` re-checks them
 over the network; `gen/cern/README.md` says why each is listed.

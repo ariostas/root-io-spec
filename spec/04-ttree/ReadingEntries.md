@@ -389,21 +389,22 @@ nothing could tell.
 Invariant 5 is the general statement of the others and is the one a third-party
 reader should test itself against. It cannot be checked by a rule — only by
 decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
-reason that reader exists. Over the fixtures and both corpora it holds on **45 164
-branch-baskets, 97.7% of them**, with the remaining 1 077 named individually in
-the checker's `SKIPPED` report with a count and a reason each. 102 of those are
-something **no reader could decode from the file**: a collection whose value class
-has no streamer info in it
+reason that reader exists. Over the fixtures and both corpora it holds on **46 137
+branch-baskets, 99.8% of them**, with the remaining 104 named individually in
+the checker's `SKIPPED` report with a count and a reason each. Every one of them
+is something **no reader could decode from the file**: a collection whose value
+class has no streamer info in it
 ([Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
 says nobody can read those, ROOT included), or a class whose `Streamer` is
-hand-written. The other 975 are one ATLAS file's collection class, whose streamer
-info is a single `TStreamerSTL` named `This`. It names the value class only by
-checksum, and this specification does not yet describe it.
+hand-written — two of them recognised by their bytes alone, as
+[Streamer-driven reading §7.1](../02-serialization/StreamerDriven.md#71-an-object-with-no-byte-count)
+describes.
 
 > Two of the reasons are worth naming here, because neither is a defect and
 > neither can be resolved from inside the file. A class whose `Streamer` is
 > hand-written has a streamer info that does not describe its bytes, and nothing
-> marks it ([Streamer-driven §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes));
+> marks it but, sometimes, a missing byte count
+> ([Streamer-driven §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes));
 > and a collection whose value class has no streamer info in the file cannot be
 > decoded at all. Both show up as skips rather than failures.
 

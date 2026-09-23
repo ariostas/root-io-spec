@@ -1,6 +1,6 @@
 # PLAN-corpus — six external resources, surveyed 2026-09-22
 
-**Status: open. C1–C4 discharged 2026-09-22** — the four defects in published
+**Status: discharged 2026-09-23 — every item is worked. C1–C4 discharged 2026-09-22** — the four defects in published
 prose, so `PLAN.md` §8.1 criterion 1 is met again. Every one has a source
 citation; the bytes are a new fixture for C1 and C3, 12 385 basket keys in
 `root/roottest/` for C2, and for C4 the only witness there is, now a
@@ -12,8 +12,11 @@ reported, and checking them found **three more wrong release boundaries** in
 published prose and one reader gap, which is the new C18. **C13 and C14
 discharged the same day**, and C13 was not only manifest lines: its largest file
 contradicted two more published claims and hit three reader gaps. The new C19 is
-what is left of it. C15 onward stands. The survey is done; this plan orders what to
-do about it.
+what is left of it. **C15–C19 discharged 2026-09-23**: one more wrong published
+claim (`Buffer.md` §2.3's ROOT 4 framing is g4tools'), C18 and C19 closed with
+spec text and no weakened invariant, C19's premise refuted, and C15's three
+files measured and not taken. The survey is done; this plan orders what to do
+about it.
 
 Six resources were investigated on 2026-09-22, one subagent each, all of them
 read-only and all of them made to probe with this project's own tools rather than
@@ -70,7 +73,11 @@ the first task of such an item is to reproduce it.
 | C12 | roottest is inside the pinned submodule | `ls root/roottest/` | **Confirmed here**; adopted as a list in `gen/cern/README.md` that `check_citations.py` reads |
 | C13 | 25 RNTuple files in scikit-hep-testdata, "manifest lines only" | fetched, `check_invariants.py`, `coverage_probe.py`, `read_rntuple` on each | **✅ discharged**, 23 added — and not manifest lines only: `check_invariants.py` crashed on one, which contradicted two published claims |
 | C14 | Three Open Data files serve range requests | `fetch_range` and `large_file_problems` unmodified, then `fetch_cern.py --headers` | **✅ discharged** — every survey figure reproduced; 11 rows, 0 failures |
-| C18 | `skim.root`'s `HoldMuo` has no byte count and no version word | `check_invariants.py` → 2 × `ReadingEntries 8.5`; ROOT 6.40.04 reads the same entries correctly | **Confirmed here**, found while doing C8. Open |
+| C18 | `skim.root`'s `HoldMuo` has no byte count and no version word | `check_invariants.py` → 2 × `ReadingEntries 8.5`; ROOT 6.40.04 reads the same entries correctly | **✅ discharged 2026-09-23** — ROOT's no-dictionary rule, and `uproot-issue475.root` turned out undecodable, not contrary |
+| C15 | go-hep's three newest files close a version blind spot | fetched at the pinned commit, generators read, probed and checked | **✅ discharged, not adopted** — ROOT-written and clean, but every class, version and checksum is already in a listed file |
+| C16 | Two more ranges per large file witness `fPidOffset` on ordinary keys | `fetch_cern.py --headers` extended; 11 files | **✅ discharged** — and `LargeFiles.md` invariant 7, checked on all 820 local directory records |
+| C17 | rntuple-validation writes `std::map` where we could not | eleven instantiations, two APIs, ACLiC | **✅ discharged** — the dictionary decides, not the API |
+| C19 | A `This` element names its value class only by checksum | `TStreamerInfo::Build`, ROOT without ATLAS's libraries | **✅ discharged, premise refuted** — the title names it |
 | — | Open Data serves HTTP range requests | agent ran this project's own `fetch_range`, `read_header`, `parse_free_entries`, `large_file_problems` → 0 problems | **Reported**, with our tools unmodified |
 
 ## 2. Four defects in published prose — these should not wait
@@ -450,7 +457,30 @@ reaches back to ROOT 1.
 - **Counts.** `gen/foreign/` is 157 files and the corpora 229; both still
   0 failures, and every count moved by exactly `leaves.root`'s share.
 
-### C18. An object with no byte count and no version word — open
+### C18. An object with no byte count and no version word — ✅ discharged 2026-09-23
+
+**Done.** The two files did not need opposite readings. `nEXO::SmartRef` has
+a hand-written `Streamer` its info does not describe: 20 bytes where the info says 18.
+ROOT 6.40.04 without nEXO's library reads it by the same rewind rule that is
+right for `HoldMuo`, and says `read too few bytes: 37 instead of 39` on every
+object. The version-first reading had landed on 20 by coincidence, reading the
+`TObject` base's version word as 0. So one rule serves both, with two checks
+that reject a wrong reading:
+
+- a `TObject` base's version word is always 1. That was measured over 525 files,
+  and every other value any reading met was one of these misreadings; it is now
+  `Buffer.md` invariant 10;
+- the enclosing extent.
+
+`StreamerDriven.md` §7.1 has the whole of it, including why the rule is ROOT's
+only for classes it has no dictionary for. `skim.root` passes, and
+`SmartRef`'s two baskets are a named skip. Checking the rule against
+`uproot-from-geant4.root` found that `Buffer.md` §2.3's "ROOT 4 records open
+with bare version words" rested on g4tools files. A census of 2 025 records in
+ROOT-written files, from ROOT 2 on, found none, and the paragraph is corrected.
+
+What follows is the item as it was written on 2026-09-22.
+
 
 Found doing C8: `check_invariants.py` over `skim.root` gives two
 `ReadingEntries 8.5` failures, `Jpsi.jmu1` and `Jpsi.jmu2` entry 0, **122 bytes
@@ -618,7 +648,26 @@ CC0. Nothing is kept of any of them but the numbers. The `rootbench/` Muons file
 Open Data record 12341, whose header, UUID and free-record bytes are identical
 at both URLs; `gen/cern/README.md` says so in a line.
 
-### C19. A class that is a collection, named only by checksum — open
+### C19. A class that is a collection, named only by checksum — ✅ discharged 2026-09-23, premise refuted
+
+**Done, and the premise was wrong.** `TStreamerInfo::Build` writes the value
+class into the `This` element's **title**, as `<xAOD::CutBookkeeper_v1> Used to
+call the proper TStreamerInfo case`
+(`root/io/io/src/TStreamerInfo.cxx:421-429`). This has been so since
+`e69180ee910`, first released in 5.34/10 and 6.00. Without a dictionary ROOT
+reads the type back from the title and emulates a `vector` of it (`:1000-1024`),
+and it reads all 4 elements of the entry quoted below. No ROOT code path looks a
+checksum up across classes.
+
+`Collections.md` §11.2 has the rule, and all 975 branch-baskets decode. One
+trap was found by the per-file comparison: an STL class's own info has a `This`
+element too, and ROOT consults the title only when the name gave no proxy.
+Taking the title for `uproot-issue243.root`'s `map<string,double>` branch read a
+map as a `vector` of pairs, and silently dropped 113 branch-baskets from the
+entry denominator. Invariant 10 is scoped to match, and invariant 11 is new.
+
+What follows is the item as it was written on 2026-09-22.
+
 
 Left by C13. ATLAS's `xAOD::CutBookkeeperContainer_v1` has a streamer info
 of one element, a `TStreamerSTL` named **`This`** with `fSTLtype` 2, `fCtype` 61
@@ -638,7 +687,22 @@ What is needed first is the spec text: where ROOT builds a `This` element
 whether a checksum lookup across all infos is what ROOT itself would do, or only
 what the bytes allow. Then the reader, then the 975.
 
-### C15. 17 KB that closes the newest-version blind spot
+### C15. 17 KB that closes the newest-version blind spot — ✅ discharged 2026-09-23, not adopted
+
+**Measured, and not taken.** All three are ROOT-written: go-hep's
+`gen-embedded-tbox.go`, `gen-teff.go` and `issue-1063.go` run ROOT macros. All
+three decode completely with 0 failures, but none earns a place:
+
+- their `TEfficiency` v2, `TH1D` v3 and `TH1` v8 infos are identical, checksums
+  included, to `uproot-issue209.root`'s;
+- `TBox` and `TAttBBox2D` are already in four listed files;
+- the fixtures are written by 6.40.04, so a 6.40 release number adds no
+  container-layer coverage either.
+
+The survey's `TScatter`, `TGraphMultiErrors` and `TF1Convolution` come from
+other go-hep generators (`gen-tscatter.go`, `gen-tgme.go`), not from these
+files. Recorded in §8.
+
 
 Both corpora stop at 6.36/02. go-hep has `issue-1063.root` (**6.40/02**, 4 608 B),
 `embedded-tbox.root` (**6.40/00**, 4 334 B) and `tefficiency.root` (6.38/04, 8 375 B).
@@ -646,7 +710,23 @@ All three probe 0 partial / 0 blocked — so the generic streamer-driven read al
 handles `TEfficiency`, `TScatter`, `TGraphMultiErrors` and `TF1Convolution`, none of
 which appear in `spec/`. A clean positive for the 6.40 era, and cheap.
 
-## 6. C16. Extend the range technique — no new file needed
+## 6. C16. Extend the range technique — no new file needed — ✅ discharged 2026-09-23
+
+**Done.** `--headers` now reads the top directory record and its key list too,
+and `LARGE.toml` records six more fields per file. It found more than the item
+asked for:
+
+- **8.6 on ordinary keys.** Every wide key has `fSeekPdir` equal to `fBEGIN`
+  once masked, and `fPidOffset` 0: 20 key images and 18 record keys.
+- **Offsets past 4 GB.** Seven keys hold an `fSeekKey` above 2³².
+- **Mixed widths in one list.** `Event100000.root`'s key list holds both widths.
+- **Narrow directory records in large files.** Three large files have one.
+
+That last point became `LargeFiles.md` invariant 7, `FillBuffer`'s rule. It needs
+no large file to fail, so `check_invariants.py` checks it on all 820 directory
+records in reach. It holds on every one except g4tools' two version-1001
+records, which are now in `IGNORE.toml` with the reason.
+
 
 `gen/cern/LARGE.toml` reads two ranges per file: the header and the free-segment
 record. The top directory record (at `fBEGIN`, sized by `fNbytesName`) and its key
@@ -659,7 +739,23 @@ key's `fPidOffset` and `fSeekPdir`.
 ordinary object keys too, **on all eight files already listed**, for about 1 KB
 more traffic. Self-contained, and independent of every other item here.
 
-## 7. C17. One retraction to check before it goes upstream
+## 7. C17. One retraction to check before it goes upstream — ✅ discharged 2026-09-23
+
+**Done, and item 10 narrowed rather than retracted.** Neither the API nor the
+key type decides it; the dictionary does. Over eleven instantiations, each tried
+through `MakeField` and through `AddField`, empty and filled:
+
+- exactly the four that ROOT ships compiled dictionaries for write
+  (`libmapDict`, `libmap2Dict`);
+- `map<int,float>` writes once ACLiC compiles one;
+- `map<long,float>` has a dictionary and still aborts, because RNTuple
+  normalises it to `std::int64_t`, which on macOS is `long long`.
+
+rntuple-validation's `map<std::string,std::int32_t>` is one of the four.
+`PLAN.md` §7.1 item 10 and `spec/05-rntuple/NOTES.md` §5 now say this. What is
+reportable is that RNTuple accepts an emulated proxy and aborts in `Fill()`
+instead of refusing the field.
+
 
 `PLAN.md` §7.1 item 10 holds that `std::map` cannot be written from the
 interpreter in 6.40.04. rntuple-validation writes `std::map<std::string, std::int32_t>`
@@ -688,6 +784,7 @@ point: the next person to go looking should not repeat these trips.
 | Two streamer infos for one class at the **same** version, different checksums | none | roottest, km3net, go-hep |
 | A `type=readraw` rule | none; the only `ReadRaw` hit in 5602 tracked files is an unrelated ALICE method | roottest |
 | A new compression codec | none — zlib, LZMA, LZ4, ZSTD and the legacy codec are all that occur | all six |
+| go-hep's `issue-1063.root`, `embedded-tbox.root`, `tefficiency.root` (C15) | **nothing new**: ROOT-written and clean, but every class, version and checksum is already in a listed file | `gen/foreign/`, `gen/cern/` |
 | `TRef` in a production experiment corpus | **no.** aanet uses index members, not references — the hypothesis that drove part of the km3net brief was wrong | km3net |
 
 Two near-misses worth naming so they are not re-chased: go-hep's `pid.root` looks

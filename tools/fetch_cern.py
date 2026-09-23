@@ -24,8 +24,9 @@ it is evidence. Here it is evidence.
 `gen/cern/README.md` says why each file is listed.
 
 The multi-gigabyte files are never downloaded. root.cern serves
-`Accept-Ranges: bytes`, so `--headers` reads each one's header and free-segment
-record -- a few hundred bytes -- and checks them against the facts recorded in
+`Accept-Ranges: bytes`, so `--headers` reads each one's header, free-segment
+record, top directory record and key list -- about 1.5 KB -- and checks them
+against the facts recorded in
 `gen/cern/LARGE.toml`. That is how the large-file layout of
 `spec/01-container/` gets exercised at all; no fixture covers it.
 """
@@ -90,6 +91,61 @@ def large_file_problems(header, key, entries) -> list[str]:
     return out
 
 
+def top_directory_problems(header, directory, list_key, keys) -> list[str]:
+    """LargeFiles.md section 8, invariants 6 and 7, on the top directory.
+
+    `directory` is the rootfile.Directory read out of the record at fBEGIN,
+    `list_key` the key of its key-list record and `keys` the key images in that
+    list. Invariant 6 is the free record's rule applied to every other wide key
+    in reach; 7 is TDirectoryFile::FillBuffer's condition
+    (root/io/io/src/TDirectoryFile.cxx:751-759).
+    """
+    out = []
+    offsets = (directory.seek_dir, directory.seek_parent, directory.seek_keys)
+    if (directory.version > 1000) != (max(offsets) > BIG):
+        out.append(f"the top directory record has version {directory.version} "
+                   f"and offsets {offsets} (LargeFiles 8.7)")
+    named = [("the key list's own key", list_key)]
+    named += [(f"key {k.name};{k.cycle}", k) for k in keys]
+    for what, k in named:
+        if k.key_version <= 1000:
+            continue
+        if k.seek_pdir != header.begin:
+            out.append(f"{what} has fSeekPdir {k.seek_pdir}, not fBEGIN "
+                       f"{header.begin} (LargeFiles 8.6)")
+        if k.pid_offset:
+            out.append(f"{what} has fPidOffset {k.pid_offset} (LargeFiles 8.6)")
+    return out
+
+
+def read_top_directory(url: str, header):
+    """`(directory, list key, key images)` by two more range requests.
+
+    The record at fBEGIN is read into a buffer padded with fBEGIN zero bytes, so
+    that rootfile.read_directory's fSeekDir self-check sees true offsets; the key
+    list is parsed where it lies, since only its count and images are needed.
+    """
+    head = fetch_range(url, header.begin, 1024)
+    nbytes = struct.unpack_from(">i", head)[0]
+    if nbytes > len(head):
+        head = fetch_range(url, header.begin, nbytes)
+    padded = bytes(header.begin) + head[:nbytes]
+    record, _ = rootfile._read_key_at(padded, header.begin)
+    directory = rootfile.read_directory(padded, record)
+    if directory is None:
+        raise rootfile.FormatError(f"no directory record at fBEGIN {header.begin}")
+    chunk = fetch_range(url, directory.seek_keys, directory.nbytes_keys)
+    list_key, _ = rootfile._read_key_at(chunk, 0)
+    at = list_key.key_len
+    count = struct.unpack_from(">i", chunk, at)[0]
+    at += 4
+    keys = []
+    for _ in range(count):
+        key, at = rootfile._read_key_at(chunk, at)
+        keys.append(key)
+    return directory, list_key, keys
+
+
 def entries(tier: str) -> list[tuple[str, int, str]]:
     """(digest, size, remote path) for the requested tier."""
     out = []
@@ -127,7 +183,7 @@ def large_url(row: dict) -> str:
 
 
 def check_headers() -> int:
-    """Verify every LARGE.toml entry with two range requests."""
+    """Verify every LARGE.toml entry with four range requests."""
     spec = tomllib.loads(LARGE.read_text())
     bad = 0
     for want in spec["file"]:
@@ -143,6 +199,7 @@ def check_headers() -> int:
             triples = rootfile.parse_free_entries(chunk, record.key_len,
                                                   record.payload_nbytes)
             free = [(first, last) for _, first, last in triples]
+            directory, list_key, keys = read_top_directory(url, header)
         except (OSError, rootfile.FormatError, struct.error, IndexError,
                 ValueError) as exc:
             print(f"FAIL {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -165,14 +222,22 @@ def check_headers() -> int:
             "free_small": len(free) - len(large),
             "free_large": len(large),
             "sentinel": list(free[-1]) if free else None,
+            "dir_version": directory.version,
+            "fseekkeys": directory.seek_keys,
+            "nbyteskeys": directory.nbytes_keys,
+            "nkeys": len(keys),
+            "keys_large": sum(k.key_version > 1000 for k in keys),
+            "max_seekkey": max((k.seek_key for k in keys), default=0),
         }
         for field, value in got.items():
-            if want[field] != value:
-                problems.append(f"{field}: recorded {want[field]!r}, "
+            if want.get(field) != value:
+                problems.append(f"{field}: recorded {want.get(field)!r}, "
                                 f"measured {value!r}")
         # The invariants LargeFiles.md section 8 states, checked here because no
         # local file is large enough to exercise them.
         problems.extend(large_file_problems(header, record, triples))
+        problems.extend(top_directory_problems(header, directory, list_key,
+                                               keys))
         if problems:
             bad += 1
             for problem in problems:
@@ -181,7 +246,8 @@ def check_headers() -> int:
             print(f"  ok  {name[:44]:44} {got['root']}  "
                   f"{'large' if header.version >= 1000000 else 'small'} format, "
                   f"fEND {header.end}, {header.nfree} free "
-                  f"({got['free_large']} of them 18-byte)")
+                  f"({got['free_large']} of them 18-byte), "
+                  f"{len(keys)} top key(s) ({got['keys_large']} wide)")
     print(f"{len(spec['file'])} large file(s) checked by range request, "
           f"{bad} failure(s)")
     return 1 if bad else 0

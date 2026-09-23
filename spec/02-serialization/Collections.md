@@ -319,7 +319,9 @@ Member-wise is chosen only if **all six** of these hold
 2. the collection has a proxy **and** a non-null value *class*;
 3. the global `TVirtualStreamerInfo::GetStreamMemberWise()`, default true
    (`root/core/meta/src/TVirtualStreamerInfo.cxx:30`);
-4. `TClass::CanSplit()` on the value class;
+4. `TClass::CanSplit()` on the **collection's** class, which then tests the
+   value class — the proxy is the collection's
+   (`root/io/io/src/TStreamerInfoActions.cxx:1177-1180`);
 5. the element's comment does not begin with exactly `||`;
 6. the value class has no custom streamer member.
 
@@ -639,6 +641,71 @@ one flattened collection.
 > `std::vector<Int_t> fVecArr[2]`, one frame of 22 bytes holding `{11, 12}` and
 > then `{13}`.
 
+### 11.2 A class that is a collection: the `This` element
+
+A class may *be* a collection rather than hold one: it has a collection proxy of
+its own, supplied by its dictionary, while its name is no STL name at all.
+ATLAS's `DataVector<T>` is the case in practice, and so is any class named after
+one, such as `xAOD::CutBookkeeperContainer_v1`. Its streamer info then holds
+**one element and nothing else**, built by `TStreamerInfo::Build` whenever the
+class has a proxy (`root/io/io/src/TStreamerInfo.cxx:421-435`):
+
+| Field | Value |
+|---|---|
+| `fName` | `This` |
+| `fTypeName` | the class's own name — `xAOD::CutBookkeeperContainer_v1`, no template argument |
+| `fTitle` | `<Value> Used to call the proper TStreamerInfo case`, or `<Value*> …` when the proxy holds pointers |
+| `fSTLtype` | what the proxy reports, **not** what the name says (`root/core/meta/src/TStreamerElement.cxx:1803`) |
+| `fCtype` | 61 for a value class without pointers (`root/core/meta/src/TStreamerElement.cxx:1810-1812`) |
+
+**The value class is in the title**, between the leading `<` and its matching
+`>`. `fTypeName` cannot give it, because it names the container class rather
+than spelling a container. This is also what ROOT does with no dictionary: it
+takes the title's bracketed type, prepends `vector`, and gives the class that
+`vector`'s emulated proxy (`root/io/io/src/TStreamerInfo.cxx:1000-1024`). So
+**a reader SHOULD read such a `This` element as a `vector` of the title's
+type**, whatever `fSTLtype` says.
+
+**An STL class's own info has a `This` element too**, and there the name
+decides. A `map<string,double>` stored as a branch of its own has an info named
+`map<string,double>` whose one element is `This`, titled
+`<pair<string,double> > …`. ROOT builds a proxy from an STL name, and consults
+the title only for a class that has none (`isstl && !fClass->GetCollectionProxy()`,
+`root/io/io/src/TStreamerInfo.cxx:1002-1003`). A reader that takes the title there
+reads the map as a `vector` of pairs — objects that need a `pair` info the file
+does not carry. So the title applies exactly when `fTypeName` is not a container
+name. The bytes are an ordinary collection member
+(§2 to §4): the frame, then the count and elements object-wise, or the value
+class's version and checksum, the count and the columns member-wise.
+
+The title has recorded the value class since ROOT commit `e69180ee910`
+(2013-07-30), first in 5.34/10 and in the 6 series. Before it, the title is
+the bare `Used to call the proper TStreamerInfo case`. Then ROOT, without the
+class's dictionary, warns that it *"will claim the content is a bool (i.e. no
+data will be read)"* (`root/io/io/src/TStreamerInfo.cxx:1025-1030`), and a reader
+has no better source.
+
+**A member-wise frame's checksum is not a substitute.** It is present only when
+the value class is foreign and at class version 1 or less
+(`root/io/io/src/TBufferFile.cxx:3162-3172`), and ROOT uses it to choose among
+the infos of a class it already knows by name (`TClass::FindStreamerInfo`,
+`root/core/meta/src/TClass.cxx:7159-7184`). No code path in ROOT looks a checksum
+up across classes, and §8.2 shows that doing so can find the wrong one.
+
+> Measured on `uproot-physlite-rntuple_v1-0-0-0.root` (`gen/foreign/`, ATLAS,
+> ROOT 6.34/04). Three classes in it have a `This` element, all with `fSTLtype` 2
+> (`list`) and `fCtype` 61, and titles `<xAOD::CutBookkeeper_v1> …`,
+> `<xAOD::TruthMetaData_v1> …` and `<xAOD::TriggerMenuJson_v1> …`. The `MetaData`
+> tree stores them in 1 010 unsplit branches (`fType` 0, `fID` -1), every entry
+> member-wise. In 970 of them the entry is
+> `40 00 00 0c | 40 09 | 00 00 f1 3a 09 61 | 00 00 00 04` — `0xf13a0961` is
+> `xAOD::CutBookkeeper_v1`'s checksum, and 4 is the count — with **no columns**,
+> because that class's only member is a base whose own base has no elements. ROOT
+> 6.40.04 without ATLAS's libraries reads the same 4 elements from it.
+> Until 2026-09-23 this project's reader declined the 975 whose type name has no
+> template argument, and read the other 35 by taking `DataVector<X>`'s first
+> argument — right only because ATLAS's value class is that argument.
+
 ## 12. `TClonesArray`
 
 A `TClonesArray` predates all of the above and has its own format. Class version
@@ -710,7 +777,8 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
 6. Seek to the end the byte count implies, whatever was consumed.
 
 The value class is `fTypeName`'s first template argument for a sequence, and
-`pair<K,V>` for an associative container. If it is a `pair` and the file has no
+`pair<K,V>` for an associative container — except for an element named `This`,
+where it is the bracketed type in the title, read as a `vector` (§11.2). If it is a `pair` and the file has no
 info for it, synthesise one from the two arguments (§8). If it is anything else
 and the file has no info for it, the collection is not readable (§9).
 
@@ -747,7 +815,11 @@ and the file has no info for it, the collection is not readable (§9).
     **ends up with**, so it fails on a reader that skips §1's `set`/`multimap`
     repair — which is how the omission in `tools/rootfile.py` was found. Holds on
     all 1368 `TStreamerSTL` elements of `data/` and both corpora; three of them
-    need the repair to pass.
+    need the repair to pass. **It does not apply to an element named `This`
+    whose `fTypeName` is no container name**, since its `fSTLtype` comes from the
+    class's proxy (§11.2).
+11. An element named `This` is the only element of its streamer info, and its
+    `fTypeName` is the name of the class that info describes (§11.2).
 
 Invariant 6 is the one that fails on a file ROOT wrote (§9), which is why it is
 reported rather than assumed.

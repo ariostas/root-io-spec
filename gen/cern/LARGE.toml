@@ -7,7 +7,7 @@
 # committed fixture covers and nothing else in reach does either (PLAN.md 9.1).
 #
 # Each entry records what was measured. `tools/fetch_cern.py --headers` re-reads
-# the two ranges and checks every field below, so a drift in the remote file or a
+# the four ranges and checks every field below, so a drift in the remote file or a
 # regression in tools/rootfile.py both show up as a failure. Nothing is downloaded.
 #
 # `path` is relative to https://root.cern/files/. A row outside root.cern has `url`
@@ -17,6 +17,12 @@
 # (the /record/<id>/files/<name> form does not serve ranges). PLAN-corpus.md C14.
 # `free_small` and `free_large` count the 10-byte and 18-byte TFree entries
 # (FreeSegments.md 2.1); their sum must equal `nfree`.
+#
+# Two more ranges per file since 2026-09-23 (PLAN-corpus.md C16): the top
+# directory record at `fbegin` and its key list at `fseekkeys`. `dir_version` is
+# that record's version word, `nkeys` and `keys_large` count the key images in
+# the list and the wide ones among them, and `max_seekkey` is their largest
+# fSeekKey. They witness LargeFiles.md 8.6 on ordinary keys and 8.7.
 
 [[file]]
 path        = "lhcb2.root"
@@ -35,6 +41,12 @@ free_class  = "TFile"
 free_small  = 0
 free_large  = 1
 sentinel    = [4947894760, 5000000000]
+dir_version = 1005
+fseekkeys   = 4947894397
+nbyteskeys  = 240
+nkeys       = 2
+keys_large  = 2
+max_seekkey = 4945934133
 
 [[file]]
 path        = "volume.root"
@@ -53,6 +65,12 @@ free_class  = "TFile"
 free_small  = 19
 free_large  = 32
 sentinel    = [5253395573, 6000000000]
+dir_version = 5
+fseekkeys   = 105159233
+nbyteskeys  = 125
+nkeys       = 1
+keys_large  = 1
+max_seekkey = 5252483583
 
 [[file]]
 path        = "Event100000.root"
@@ -71,6 +89,12 @@ free_class  = "TFile"
 free_small  = 0
 free_large  = 1
 sentinel    = [2906686793, 3000000000]
+dir_version = 1005
+fseekkeys   = 2906686259
+nbyteskeys  = 439
+nkeys       = 5
+keys_large  = 3
+max_seekkey = 2906685764
 
 [[file]]
 path        = "h1huge.root"
@@ -89,6 +113,12 @@ free_class  = "TFile"
 free_small  = 0
 free_large  = 1
 sentinel    = [2242724865, 3000000000]
+dir_version = 1005
+fseekkeys   = 2242719871
+nbyteskeys  = 120
+nkeys       = 1
+keys_large  = 1
+max_seekkey = 2238171119
 
 [[file]]
 path        = "rootbench/h1analysis.root"
@@ -107,6 +137,12 @@ free_class  = "TFile"
 free_small  = 1
 free_large  = 1
 sentinel    = [2670464440, 3000000000]
+dir_version = 5
+fseekkeys   = 21658420
+nbyteskeys  = 119
+nkeys       = 1
+keys_large  = 1
+max_seekkey = 2670269327
 
 [[file]]
 path        = "rootbench/Run2012BC_DoubleMuParked_Muons.root"
@@ -125,6 +161,12 @@ free_class  = "TFile"
 free_small  = 66
 free_large  = 8
 sentinel    = [2244449133, 3000000000]
+dir_version = 5
+fseekkeys   = 30042700
+nbyteskeys  = 190
+nkeys       = 2
+keys_large  = 2
+max_seekkey = 2244422000
 
 [[file]]
 path        = "CMS_7250E9A5-682D-DF11-8701-002618943934.root"
@@ -143,6 +185,12 @@ free_class  = "TStorageFactoryFile"
 free_small  = 2
 free_large  = 0
 sentinel    = [1997354026, 2000000000]
+dir_version = 5
+fseekkeys   = 1995716771
+nbyteskeys  = 492
+nkeys       = 9
+keys_large  = 0
+max_seekkey = 1997313581
 
 [[file]]
 path        = "AOD.067184.big.pool_4.root"
@@ -161,6 +209,12 @@ free_class  = "TFile"
 free_small  = 1539
 free_large  = 0
 sentinel    = [1338275841, 2000000000]
+dir_version = 5
+fseekkeys   = 5207105
+nbyteskeys  = 954
+nkeys       = 11
+keys_large  = 0
+max_seekkey = 1325895767
 
 # -- CERN Open Data, added 2026-09-22 (PLAN-corpus.md C14) -------------------
 
@@ -181,6 +235,12 @@ free_class  = "TFile"
 free_small  = 0
 free_large  = 1
 sentinel    = [15886107547, 16000000000]
+dir_version = 1005
+fseekkeys   = 15886102543
+nbyteskeys  = 162
+nkeys       = 1
+keys_large  = 1
+max_seekkey = 15885617883
 
 [[file]]
 url         = "https://opendata.cern.ch/eos/opendata/cms/Run2024F/EphemeralHLTPhysics1/RAW/v1/000/383/631/00000/071ab81e-897f-4718-b3a8-9c643943ec23.root"
@@ -199,6 +259,12 @@ free_class  = "TStorageFactoryFile"
 free_small  = 0
 free_large  = 2
 sentinel    = [3274820145, 4000000000]
+dir_version = 1005
+fseekkeys   = 3274736909
+nbyteskeys  = 411
+nkeys       = 6
+keys_large  = 6
+max_seekkey = 3274771239
 
 [[file]]
 url         = "https://opendata.cern.ch/eos/opendata/lhcb/Collision12/EW/LHCb_2012_Beam4000GeV_VeloClosed_MagDown_RealData_Reco14_Stripping21_EW_DST/00041836/0000/00041836_00008626_1.ew.dst"
@@ -217,3 +283,9 @@ free_class  = "TFile"
 free_small  = 0
 free_large  = 1
 sentinel    = [5786425072, 6000000000]
+dir_version = 1005
+fseekkeys   = 5786424673
+nbyteskeys  = 298
+nkeys       = 3
+keys_large  = 3
+max_seekkey = 5786412835

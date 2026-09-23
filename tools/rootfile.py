@@ -1371,6 +1371,14 @@ def _bare_class(type_name: str) -> str:
     return name.rstrip("*").strip()
 
 
+def _tobject_versions(values: list[Value]):
+    """The version word of every TObject base inside `values`, depth first."""
+    for value in values:
+        if value.tobject is not None:
+            yield value.tobject.version
+        yield from _tobject_versions(value.members or [])
+
+
 class Decoder:
     """Applies streamer infos to a record's object data.
 
@@ -1403,6 +1411,12 @@ class Decoder:
         # collection reached, recorded before it is decoded so that it survives
         # a failure to decode it.
         self.member_wise: list[tuple[str, str, int]] = []
+        # (class, offset, reading) for each object read with no byte count;
+        # StreamerDriven.md 7.1.
+        self.unframed: list[tuple[str, int, str]] = []
+        # Classes whose unframed objects are to be read version-first, because
+        # an enclosing extent rejected the no-version reading of them.
+        self.versioned: set[str] = set()
 
     def base_info(self, el: Element) -> StreamerInfo:
         """The info a TStreamerBase element selects, where no version word does.
@@ -1545,14 +1559,125 @@ class Decoder:
             return self.read_forwarded(cls, offset, counters)
         try:
             frame = read_frame(self.buf, offset)
+            if frame.end is None and self.is_tobject(cls):
+                if cls in self.versioned:
+                    self.unframed.append((cls, offset, "version-first"))
+                else:
+                    unframed = self.read_unframed(cls, offset, counters)
+                    if unframed is not None:
+                        return unframed
             version, body = self.resolve_version(cls, frame)
             members = self.read_members(cls, version, body, frame.end, counters)
+            if (frame.end is None and self.is_tobject(cls)
+                    and any(v != 1 for v in _tobject_versions(members))):
+                # Neither reading of an unframed object is admissible: the
+                # no-version one was rejected already, and this one finds a
+                # TObject version word ROOT never writes. StreamerDriven.md 7.1.
+                raise UnsupportedClass(
+                    f"{cls} has no byte count and its bytes are not what its "
+                    f"streamer info describes: a hand-written Streamer "
+                    f"(StreamerDriven.md 7.1)")
         except UnsupportedClass as exc:
             return self.skip_or_fail(cls, offset, exc)
         end = frame.end if frame.end is not None else (
             members[-1].end if members else body)
         return Value(name=cls, ftype=61, start=offset, end=end,
                      type_name=cls, members=members)
+
+    def is_tobject(self, cls: str) -> bool:
+        """Does `cls` derive from TObject, per the file's own infos?"""
+        seen: set[str] = set()
+        stack = [cls]
+        while stack:
+            current = stack.pop()
+            if current == "TObject":
+                return True
+            if current in seen:
+                continue
+            seen.add(current)
+            for info in self.infos.get(current, {}).values():
+                stack += [el.name for el in info.elements
+                          if el.cls == "TStreamerBase"]
+        return False
+
+    def read_unframed(self, cls: str, offset: int,
+                      counters: dict[str, int] | None = None) -> Value | None:
+        """An object of a TObject-derived class with no byte count at all.
+
+        What ROOT does depends on a dictionary the file does not hold: with the
+        class's library it runs that Streamer, and without one it assumes there
+        is **no version word** either and applies the elements from the object's
+        first byte (root/io/io/src/TBufferFile.cxx:3412-3436). This is that
+        second reading, which is ROOT's for every class it knows only from the
+        file. The info is the one at the version the first two bytes give, else
+        the class's first, as ROOT's fallback does. StreamerDriven.md 7.1.
+
+        None when the reading is not admissible -- it raises, or a TObject base
+        inside it does not carry the version word 1 that ROOT always writes
+        (Buffer.md 7) -- and the caller then takes the version-first reading of
+        ROOT's own Streamers. Which one was taken is recorded in `unframed`, so
+        that whoever knows the enclosing extent can tell a reading that does not
+        fit it from a failure (within_extent).
+        """
+        by_version = self.infos.get(cls, {})
+        if not by_version:
+            return None
+        info = by_version.get(_i16(self.buf, offset)) \
+            or next(iter(by_version.values()))
+        try:
+            members = self.read_members(cls, info.class_version, offset, None,
+                                        counters)
+        except (FormatError, struct.error, IndexError, ValueError):
+            self.unframed.append((cls, offset, "version-first"))
+            return None
+        if any(v != 1 for v in _tobject_versions(members)):
+            self.unframed.append((cls, offset, "version-first"))
+            return None
+        self.unframed.append((cls, offset, "no version word"))
+        end = members[-1].end if members else offset
+        return Value(name=cls, ftype=61, start=offset, end=end, type_name=cls,
+                     members=members, note="no byte count and no version "
+                     "word: StreamerDriven.md 7.1")
+
+    def read_in_slot(self, cls: str, body_at: int, slot_end: int) -> Value:
+        """The object inside an object slot, whose byte count gives its extent.
+
+        The slot's end wins whatever the object consumed (StreamerDriven.md 8),
+        but an object read with no byte count of its own that does not fill the
+        slot is the hand-written Streamer of section 7.1, reported as such rather
+        than stepped over.
+        """
+        return self.within_extent(lambda: self.read_object(cls, body_at),
+                                  body_at, slot_end, lambda v: v.end)
+
+    def within_extent(self, read, start: int, end: int, end_of):
+        """Run `read`, whose result must end at `end`, with StreamerDriven.md 7.1.
+
+        If it does not, and it read an object with no byte count by the
+        no-version reading, it is run again with those classes read version
+        first. If that does not end there either, the class has a hand-written
+        Streamer its info does not describe.
+        """
+        mark = len(self.unframed)
+        result = read()
+        if end_of(result) == end:
+            return result
+        chosen = {c for c, at, how in self.unframed[mark:]
+                  if start <= at < end and how == "no version word"}
+        if not chosen - self.versioned:
+            within = [c for c, at, _ in self.unframed[mark:] if start <= at < end]
+            if within:
+                raise UnsupportedClass(
+                    f"{within[0]} has no byte count and its bytes are not what "
+                    f"its streamer info describes: a hand-written Streamer "
+                    f"(StreamerDriven.md 7.1)")
+            return result
+        added = chosen - self.versioned
+        self.versioned |= added
+        try:
+            return self.within_extent(read, start, end, end_of)
+        finally:
+            self.versioned -= added
 
     def read_forwarded(self, cls: str, offset: int,
                        counters: dict[str, int] | None = None) -> Value:
@@ -1820,7 +1945,7 @@ class Decoder:
         cls = slot.class_name or ""
         if slot.kind == "object":
             cls, body_at = resolve_class(slot, self.classes)
-            nested = self.read_object(cls, body_at).members
+            nested = self.read_in_slot(cls, body_at, slot.end).members
         members.append(Value(name=name, ftype=64, start=offset, end=slot.end,
                              type_name=cls, members=nested,
                              note="" if slot.kind == "object" else slot.kind))
@@ -2218,7 +2343,7 @@ class Decoder:
                 # it. Reading TList through its streamer info instead produces a
                 # TSeqCollection base that its streamer never writes: the divergence
                 # of StreamerDriven.md section 7, in a real file.
-                nested = self.read_object(cls, body_at)
+                nested = self.read_in_slot(cls, body_at, slot.end)
                 members = nested.members
             if cls is None:
                 return done(pos, note=note)
@@ -2249,7 +2374,7 @@ class Decoder:
                         slot = read_slot(buf, pos, self.base)
                         if slot.kind == "object":
                             name, body_at = resolve_class(slot, self.classes)
-                            self.read_object(name, body_at)
+                            self.read_in_slot(name, body_at, slot.end)
                         pos = slot.end
                     else:
                         pos = self.read_object(cls, pos).end
@@ -2432,7 +2557,7 @@ class Decoder:
         if stl >= OFFSET_P:
             raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
 
-        value = value_type_name(el.type_name)
+        value, stl = collection_value(el)
         # A fixed array of collections shares ONE frame and then repeats the
         # collection fArrayLength times. The stored fType is still 500, and
         # kOffsetL only appears after the read-time recompute of
@@ -2636,7 +2761,7 @@ class Decoder:
                     f"string column {el.name} consumed to {pos}, byte count "
                     f"says {frame.end}")
             return frame.end
-        value = value_type_name(el.type_name)
+        value, stl = collection_value(el)
         if frame.member_wise:
             self.member_wise.append((el.name, value, offset))
             version = 0
@@ -2891,9 +3016,9 @@ def value_type_name(type_name: str) -> str:
     if bare.startswith("std::"):
         bare = bare[5:]
     if "<" not in bare:
-        # A class deriving from a container, named by itself -- ATLAS's
-        # xAOD::CutBookkeeperContainer_v1 is a DataVector. Its element type is
-        # not in the name, and stl_kind already declines it (Collections.md 1).
+        # A class with a collection proxy of its own, named by itself: its
+        # value type is in a This element's title, which collection_value reads
+        # before this is reached (Collections.md 11.2).
         raise UnsupportedClass(
             f"{type_name} is not a container name this specification knows "
             f"(Collections.md 1)")
@@ -2902,6 +3027,36 @@ def value_type_name(type_name: str) -> str:
     if head in ("map", "multimap", "unordered_map", "unordered_multimap"):
         return f"pair<{args[0]},{args[1]}>"
     return args[0]
+
+
+def collection_value(el: Element) -> tuple[str, int]:
+    """`(value type, fSTLtype to read it as)` for a TStreamerSTL element.
+
+    From `fTypeName` for an ordinary collection member. A `This` element is
+    different: it is the whole of the info of a class that has a collection
+    proxy of its own -- ATLAS's `DataVector` -- and its type name is that class,
+    with no template argument. TStreamerInfo::Build records the value class in
+    the element's **title** instead, as `<Value>` or `<Value*>`
+    (root/io/io/src/TStreamerInfo.cxx:421-429), and without a dictionary ROOT
+    reads it back from there and emulates a `vector` of it, whatever fSTLtype
+    says (root/io/io/src/TStreamerInfo.cxx:1000-1024). Collections.md 11.2.
+    """
+    if el.name != "This" or is_collection_name(el.type_name):
+        # An STL class's own info has a This element too -- `map<string,double>`
+        # stored as a branch of its own -- and ROOT builds its proxy from the
+        # name, consulting the title only when there is none
+        # (root/io/io/src/TStreamerInfo.cxx:1002-1003). So the name decides here.
+        return value_type_name(el.type_name), el.tail.get("fSTLtype", 0)
+    if el.title.startswith("<"):
+        level = 0
+        for i, c in enumerate(el.title):
+            level += (c == "<") - (c == ">")
+            if level == 0:
+                return el.title[1:i].strip(), STL_VECTOR
+        raise FormatError(f"unbalanced title on a This element: {el.title!r}")
+    raise UnsupportedClass(
+        f"{el.type_name} has a collection proxy and its This element does "
+        f"not record the value class; ROOT reads no data (Collections.md 11.2)")
 
 
 #: Collection head name to fSTLtype. Collections.md section 1.
@@ -4218,8 +4373,12 @@ class TreeReader:
                 f"branch {br.name!r} is an interior node and holds no entries")
         rec, payload, basket, index, embedded = self.basket_for(br, entry)
         start, end = basket_entry_range(rec, basket, index)
-        return start, end, self.decode_entry(br, entry, rec, payload, basket,
-                                             index, start, end, embedded)
+        decoder = self.decoder_for(rec, payload, embedded)
+        consumed = decoder.within_extent(
+            lambda: self.decode_entry(br, entry, rec, payload, basket, index,
+                                      start, end, embedded),
+            start, end, lambda pos: pos)
+        return start, end, consumed
 
     def decode_entry(self, br: Branch, entry: int, rec: Record, payload: bytes,
                      basket: Basket, index: int, start: int, end: int,

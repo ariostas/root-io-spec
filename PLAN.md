@@ -18,10 +18,16 @@ It also found a witness for four open §9.1 rows, three of them in
 `root/roottest/`, which the pinned submodule has shipped since ROOT merged
 roottest in April 2025. Working those rows (C8–C11) found **three more** wrong
 release boundaries — `Directory.md` §7, `FileHeader.md` §8 and `TLeaf.md` §7/§12 —
-all fixed the same day, and one reader gap, C18, which stays open. C13's RNTuple
+all fixed the same day, and one reader gap, C18. C13's RNTuple
 tier then found two more — `FreeSegments.md` §4.2's "never missing" and
 `Collections.md` §4.1's member-wise base — in an ATLAS file written by 6.34/04,
-both fixed the same day, and left C19.
+both fixed the same day, and left C19. **C15–C19 were worked on 2026-09-23**, and
+found one more wrong published claim: `Buffer.md` §2.3 attributed to ROOT 4 a
+framing that only g4tools writes. C18 became `StreamerDriven.md` §7.1 and a new
+`Buffer.md` invariant; C19 became `Collections.md` §11.2, whose value class the
+survey said the file did not record; C16 became `LargeFiles.md` invariant 7;
+C17 narrowed §7.1 item 10; and C15's three files added nothing and were not
+taken.
 
 Measured, 2026-09-21, by the checks in `tools/`:
 
@@ -160,7 +166,7 @@ classes whose recorded streamer info does not describe their bytes.**
 The original plan was generated version matrices and member tables for ~440
 persistable classes. That aims at the wrong target: a generated table restates
 what the streamer info in the file already says, and `tools/rootfile.py` decodes
-**97.7% of branch-baskets across both corpora** from the file's own infos with no
+**99.8% of branch-baskets across both corpora** from the file's own infos with no
 per-class knowledge beyond the bootstrap set. `tools/gen_tables.py` is therefore
 not planned.
 
@@ -571,15 +577,26 @@ reported** (§8 item M10).
    while its own entries are 37, 45, 13 and 27 bytes — `1 + n × 2` for counts of
    18, 22, 6 and 13. ROOT reads no indices at all and reports nothing. The bytes
    are intact; only the pointer is wrong. `ReadingEntries.md` §4.1 and erratum 6.
-10. **Writing a `std::map` field to an RNTuple aborts from the interpreter.**
+10. **Writing a `std::map` field to an RNTuple aborts — when the map has no
+    compiled dictionary.** *Narrowed 2026-09-23 (`PLAN-corpus.md` C17).*
     `Fill()` reaches `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`, a
     function whose comment is "Should not be used"
-    (`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`), with the field empty and
-    never touched; assigning to it first segfaults earlier still. The model and the
-    writer are built without complaint. Reproducer in
-    `spec/05-rntuple/NOTES.md` §5. **Report with the caveat attached**: only the
-    interpreted path was tested, because ACLiC cannot compile on this machine
-    (`AGENTS.md`), so a compiled comparison is the first thing to ask for.
+    (`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`), and assigning to the
+    field first segfaults earlier still; the model and the writer are built
+    without complaint. It is **not** `std::map` as such, and not the API: over
+    eleven instantiations, the ones that write are exactly those whose class
+    under RNTuple's normalised name has a dictionary — `map<int,int>`,
+    `map<string,float>`, `map<string,int>`, `map<double,int>`, all in
+    `libmapDict`/`libmap2Dict` (`root/core/clingutils/src/mapLinkdef.h`) — and
+    `map<int,float>` writes too once ACLiC compiles one. `MakeField` and
+    `AddField(make_unique<RField<M>>)` behave alike, empty or filled.
+    rntuple-validation's `map<std::string, std::int32_t>` works because it ships a
+    dictionary. The sharpest case: `map<long,float>` **has** one and still aborts,
+    because RNTuple normalises it to `std::map<std::int64_t,float>`, which on macOS
+    names `map<Long64_t,float>` and has none. So what is reportable is narrower
+    and clearer than before: RNTuple accepts a collection field whose proxy is
+    emulated and then aborts in `Fill()` instead of refusing it when the model is
+    built. Reproducer in `spec/05-rntuple/NOTES.md` §5.
 
 11. **Writing an object of an emulated class does not complete.** `WriteObjectAny`
     with a `TClass` in the `kEmulated` state — `Head` read from
@@ -1080,8 +1097,8 @@ Three more facts that are ROOT's rules rather than the document's, each hit whil
 building a fixture: a **top-level** field of a streamer-mode class is refused
 outright (`RFieldMeta.cxx:95`), so the streamed form exists only under a native
 field; an **SoA class and its record must carry the same class version**
-(`RFieldMeta.cxx:707`); and `std::map` **cannot be written at all** from the
-interpreter (§7.1 item 10).
+(`RFieldMeta.cxx:707`); and a `std::map` whose instantiation has no compiled
+dictionary aborts in `Fill()` (§7.1 item 10).
 
 The prose sections are audited too, and did not need fixtures. *Limits* is
 arithmetic over encodings this project had already checked. *Naming* is clean from
@@ -2074,7 +2091,11 @@ failures both before and after the three reader changes C13 made. All 155 new
 blocked records are RNTuple's own: `RBlob`s, which have no streamer info by design,
 and anchors, which `read_rntuple` reads instead and which every new file's anchor
 passes. Of the 1010 new skips, 975 are one ATLAS file's `This` element (C19) and
-35 are hand-written streamers.
+35 are hand-written streamers. **Re-measured 2026-09-23** after C18 and C19:
+entries 44441 of 44545, 99.8%, and the probe unchanged. The whole move is two
+files: the ATLAS file's 975 decode (`Collections.md` §11.2), and
+`uproot-issue475.root`'s two `nEXO::SmartRef` baskets, which had passed by a
+coincidence of lengths, are skipped by name (`StreamerDriven.md` §7.1).
 
 Earlier that day, for C9: go-hep's `leaves.root`, the manifest's first file
 from outside scikit-hep-testdata, gave +49 decoded, +3 container and +47

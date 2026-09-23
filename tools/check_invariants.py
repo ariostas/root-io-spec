@@ -151,6 +151,27 @@ def counted_string_len(buf: bytes, offset: int) -> int:
     return 1 + 4 + struct.unpack_from(">i", buf, offset + 1)[0] if n == 255 else 1 + n
 
 
+def this_element_failures(info) -> list[tuple[str, str]]:
+    """Collections.md invariant 11: a `This` element is its info's only element,
+    and its type name is the class the info describes.
+
+    The shape TStreamerInfo::Build gives a class with a collection proxy of its
+    own (root/io/io/src/TStreamerInfo.cxx:421-435). Its fSTLtype is the proxy's
+    and its type name no container name, which is why invariant 10 does not
+    apply to it (Collections.md 11.2).
+    """
+    out = []
+    for el in info.elements:
+        if el.name != "This" or el.cls != "TStreamerSTL":
+            continue
+        if len(info.elements) != 1 or el.type_name != info.name:
+            out.append(("Collections 14.11",
+                        f"{info.name} has a This element of type "
+                        f"{el.type_name!r} among {len(info.elements)} "
+                        f"element(s)"))
+    return out
+
+
 def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
     """StreamerDriven.md invariants 3, 4 and 6, over one streamer info.
 
@@ -1044,7 +1065,7 @@ class Checker:
             if data is None:
                 continue
             try:
-                rootfile.decode_record(data, target, infos)
+                value = rootfile.decode_record(data, target, infos)
             except rootfile.UnsupportedClass:
                 continue    # a hand-written Streamer; StreamerDriven.md 7
             except (rootfile.FormatError, struct.error,
@@ -1059,6 +1080,18 @@ class Checker:
                 self.bad("StreamerDriven 10.1",
                          f"{target.class_name} {target.name!r} at "
                          f"{target.offset}: {exc}")
+                continue
+            # Buffer.md 9.10: ROOT writes TObject::IsA()'s version, which has
+            # been 1 at every release. A reading that finds anything else here
+            # has taken a version word for a TObject or the reverse, which is
+            # the one mistake StreamerDriven.md 7.1 leaves a reader to make.
+            for v in rootfile.walk(value):
+                if v.tobject is not None and v.tobject.version != 1:
+                    self.bad("Buffer 9.10",
+                             f"{target.class_name} {target.name!r} at "
+                             f"{target.offset}: a TObject base at "
+                             f"{v.start} has version word {v.tobject.version}")
+                    break
 
     def check_references(self) -> None:
         """References.md invariants 1 to 6."""
@@ -1260,6 +1293,8 @@ class Checker:
         known = {i.name for i in infos}
 
         for info in infos:
+            for where, message in this_element_failures(info):
+                self.bad(where, message)
             for el in info.elements:
                 if el.cls not in ("TStreamerSTL", "TStreamerSTLstring"):
                     continue
@@ -1276,6 +1311,11 @@ class Checker:
                                  f"{info.name}.{el.name} is a TStreamerSTLstring "
                                  f"with fSTLtype {stl} and fCtype "
                                  f"{el.tail.get('fCtype')}, not 365 and 365")
+                elif (el.name == "This"
+                      and not rootfile.is_collection_name(el.type_name)):
+                    # 14.10 does not apply: the fSTLtype is the proxy's and the
+                    # type name no container name. Collections.md 11.2.
+                    pass
                 elif bare not in (300, 365):
                     # 14.10. Checked on the value a reader ends up with, so it
                     # fails on a reader that skips the set/multimap repair of
@@ -2376,6 +2416,14 @@ class Checker:
                     self.bad("FileHeader 10.3",
                              f"the root directory record ends at {after}, past "
                              f"fEND {self.header.end}")
+            # LargeFiles.md 8.7: TDirectoryFile::FillBuffer widens on the
+            # record's own three offsets and nothing else
+            # (root/io/io/src/TDirectoryFile.cxx:751-759).
+            offsets = (d.seek_dir, d.seek_parent, d.seek_keys)
+            if (d.version > 1000) != (max(offsets) > 2000000000):
+                self.bad("LargeFiles 8.7",
+                         f"directory record at {rec.offset} has version "
+                         f"{d.version} and offsets {offsets}")
             if not 1 <= d.version % 1000 <= 5:
                 self.bad("Directory 9.9", f"directory version {d.version}")
             else:

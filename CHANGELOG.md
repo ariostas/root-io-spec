@@ -11,6 +11,51 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction: ROOT does not write bare version words at the top of a record.**
+  [`Buffer.md` §2.3](spec/02-serialization/Buffer.md) said a record from a file
+  older than ROOT 5 may open an ordinary class with bare version words. Its only
+  witnesses were two files written by g4tools, Geant4's own ROOT writer. Every
+  record of every ROOT-written file in reach, back to ROOT 2, opens with a byte
+  count. A reader still has to accept the g4tools shape, and the section now
+  attributes it to g4tools.
+
+- **New: an object with no byte count, and how to read it.**
+  [`StreamerDriven.md` §7.1](spec/02-serialization/StreamerDriven.md) covers an
+  object of a class deriving from `TObject` that has no byte count at all. Such an
+  object was written by a hand-written `Streamer`. ROOT without the class's library
+  assumes there is no version word either, and reads the elements from the first
+  byte. Its own classes it reads version first. The section gives the rule for
+  choosing, which uses two tests: [`Buffer.md` §7](spec/02-serialization/Buffer.md)'s
+  new invariant 10 (a `TObject` base's version word is always 1), and the extent
+  that encloses the object. When neither reading passes both tests, no reader can
+  decode the object.
+
+- **New: a class that is itself a collection.**
+  [`Collections.md` §11.2](spec/02-serialization/Collections.md) describes the
+  one-element streamer info of a class with a collection proxy of its own, such as
+  ATLAS's `DataVector`. The value class is in the `This` element's **title**, not
+  in its type name. Read it as a `vector` of that type, whatever `fSTLtype` says,
+  as ROOT does, and only when the type name is not an STL name. Invariant 10 no
+  longer applies to such an element, and invariant 11 describes it. §5 also
+  corrects which class `CanSplit` is asked about: the collection's, not the
+  value's.
+
+- **New: two large-file invariants reach ordinary keys and directories.**
+  [`LargeFiles.md` §8](spec/01-container/LargeFiles.md) invariant 6 now covers
+  every wide key: the key list's own key and each key image, not only the free
+  record's. Invariant 7 states when a directory record is wide: exactly when one
+  of its own three offsets passes 2 000 000 000. §6 adds what the eleven large
+  files' top directories and key lists show:
+  - keys with offsets past 4 GB;
+  - narrow directory records in large files;
+  - one key list mixing both key widths.
+
+- **Correction: a `std::map` can be written to an RNTuple when it has a
+  dictionary.** [`spec/05-rntuple/NOTES.md` §5](spec/05-rntuple/NOTES.md) said
+  ROOT 6.40.04 cannot write one from the interpreter. It can, for exactly the
+  instantiations that have a compiled dictionary, such as `map<string,int>` and
+  `map<int,int>`. The others abort in `Fill()`.
+
 - **Correction: a free span's marker can be missing in a file ROOT wrote.**
   [`FreeSegments.md` §4.2](spec/01-container/FreeSegments.md) said the marker is
   never missing in practice. RNTuple's `TFile` writer before ROOT 6.36 left it out

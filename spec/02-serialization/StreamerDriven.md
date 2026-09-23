@@ -486,6 +486,87 @@ info reads three nested objects that are not there.
 > `TSeqCollection` base. `tools/coverage_probe.py` reports exactly that when the
 > hand-written reader is bypassed.
 
+### 7.1 An object with no byte count
+
+A generated `Streamer` always writes a byte count
+([Buffer framing §2.3](Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)).
+So an object of a class outside that section's list that has **no byte count at
+all** was written by something else — in a ROOT-written file, by the class's own
+hand-written `Streamer`. This is the one place where the file shows a trace of
+§7, and it shows the trace without saying what to do about it: such an object
+may or may not have a version word, and **what ROOT does depends on a dictionary
+that is not in the file**.
+
+- **With the class's library,** ROOT runs that `Streamer`, whatever it does.
+- **Without it, for a class deriving from `TObject`,** there is **no version
+  word** either. ROOT gives such a class the emulated `TObject` streamer
+  (`root/core/meta/src/TClass.cxx:6223`, `root/core/meta/src/TClass.cxx:6287`,
+  `root/core/meta/src/TClass.cxx:6342`), which calls `ReadClassEmulated`
+  (`root/core/meta/src/TClass.cxx:6938-6942`). That reads the first two bytes as
+  a version, to choose a streamer info, and then — *"We attempt to recover if a
+  version count was not written"* — finds no byte count, **rewinds to the
+  object's first byte**, and applies the info's elements from there
+  (`root/io/io/src/TBufferFile.cxx:3412-3436`). The first two bytes are then read
+  a second time, as the version word of the class's first base, which is
+  normally `TObject`'s. The info chosen is the one at the version those two bytes
+  give, and failing that the class's current version
+  (`root/core/meta/src/TClass.cxx:4706-4714`), which for a class ROOT knows only
+  from the file is the version of the first info the file gave for it
+  (`root/io/io/src/TStreamerInfo.cxx:928`).
+- **Without it, for any other class,** ROOT calls `ReadClassBuffer`
+  (`root/core/meta/src/TClass.cxx:6336-6340`,
+  `root/core/meta/src/TClass.cxx:6973-6976`), which takes the first two bytes as
+  a version word and reads the elements after it.
+- **For a class of ROOT's own,** there is always a dictionary, and its
+  `Streamer` reads a version word first. That is how ROOT reads the g4tools
+  records of [Buffer framing §2.3](Buffer.md#23-a-records-object-data-does-not-always-begin-with-one).
+
+Two files in reach meet the second case, and ROOT 6.40.04, without either
+library, reads one of them right and the other wrong:
+
+> **`skim.root`** (`root/roottest/root/io/evolution/`, ROOT 4.03/05). In the
+> split `TClonesArray` column `Jpsi.jmu1`, each entry is one `HoldMuo`, 122 bytes:
+> `00 01 | 00 00 00 00 | 03 00 00 00`, the class's thirteen scalars, then a
+> byte-counted `HoldPtl`. That is a `TObject` base, the members, and nothing
+> before them. ROOT's reading gives `Jpsi.jmu1.ptl.pt` 3.425 in `TTree::Scan`,
+> equal to the same muon's `Muo.ptl.pt`. The version-first reading ends at 120.
+>
+> **`uproot-issue475.root`** (`gen/foreign/`). `nEXO::SmartRef`'s info lists a
+> `TObject` base and a `Long64_t` — 18 bytes — and every object is **20**. Read as
+> an entry of `SimHeader`'s `m_event` branch, the first is
+> `00 01 | 00 00 00 02 | 03 00 00 00 | 00 × 10`. ROOT, with no nEXO library, reads
+> 18 of the 20 and says so on every pointer in `navigator`'s `m_refs`:
+> `object of class nEXO::SmartRef read too few bytes: 37 instead of 39`. Two
+> bytes that no element describes, as in `TRef`'s `pidf` — a hand-written
+> `Streamer` that its info does not describe (§7), which **no reader can decode
+> from the file**. The version-first reading *does* end at 20, and is wrong: it
+> reads the `TObject` base's version word as `00 00`.
+
+A reader has no dictionaries, so it is in ROOT's position without one for every
+class that is not ROOT's own, and SHOULD read such an object as ROOT then does.
+Where it cannot tell whether a class is ROOT's, the bytes can decide, and on
+every file in reach they do. A reading of an object with no byte count is
+**rejected** when
+
+1. a `TObject` base inside it has a version word other than 1, which ROOT never
+   writes ([Buffer framing §7](Buffer.md#7-the-tobject-base), invariant 10); or
+2. it does not end where something enclosing it says it must — the entry's
+   end in a basket, or the byte count of an object slot around it.
+
+A reader SHOULD take ROOT's no-dictionary reading unless it is rejected, then the
+version-first reading unless it is rejected, and otherwise report the object as a
+hand-written `Streamer` its info does not describe. **Neither test is enough
+alone**: `SmartRef`'s version-first reading passes the second and fails the
+first, and a version word of 1 can pass the first as a `TObject`'s.
+
+> **This project's reader passed `uproot-issue475.root` for the wrong reason
+> until 2026-09-23.** It read every unframed object version first, which landed
+> exactly on each `SmartRef`'s end, and failed `skim.root`, which ROOT reads
+> correctly. `PLAN-corpus.md` C18 left it open for exactly that reason: applying
+> ROOT's rule everywhere moved the failure from one file to the other, until the
+> second file turned out not to be decodable at all. `tools/check_invariants.py`
+> now reports its two `SimHeader`/`ElecHeader` baskets as skipped, by that name.
+
 ## 8. Resynchronisation
 
 Two properties make a partial reader viable, and both come from the byte count.
@@ -526,7 +607,9 @@ To read an object whose class, version and byte range are known:
     3. If `fType` names an object-valued code (61 to 71), consume the framing of
        [Element types §7](ElementTypes.md#7-object-valued-codes-61-to-71),
        determine the class from the class record where one is present and from
-       `fTypeName` otherwise, and apply this procedure recursively.
+       `fTypeName` otherwise, and apply this procedure recursively. If the
+       object has no byte count and its class derives from `TObject`, choose
+       between its two readings as §7.1 says.
     4. If `fType` is 500 or 501 on a `TStreamerSTL`, read a collection as
        specified in `02-serialization/Collections.md`.
     5. If `fType` is 500 on any other element, the member is opaque: seek to the
