@@ -46,12 +46,12 @@ Each file below covers something no fixture and no other listed file does. The
 | `pippa.root` | **2.24/00** | The oldest file available, by fifteen years. 517 records, **24 nested directories**, **zero streamer infos** (it predates schema evolution entirely), and every payload in the legacy `CS` codec, which this file led to specifying. Found [FileHeader erratum 2](../../spec/01-container/FileHeader.md#11-errata): four bytes past `fEND` in a cleanly closed file |
 | `mlpHiggs.root` | 3.04/02 | `TTree` records from before automatic schema evolution; `CS` |
 | `H1display.root` | 3.05/07 | ROOT 3.05 at 8.5 KB |
-| `stock.root` | 4.00/07 | Ten `TTree` records at **`TBranch` class version 9**, the only sub-10 branches available. Byte-verified [TBranch §13.3](../../spec/04-ttree/TBranch.md#133-at-version-9-the-streamer-info-is-not-authoritative): `fBasketSeek`'s flag byte is a width selector |
+| `stock.root` | 4.00/07 | Ten `TTree` records at **`TBranch` class version 9**, the only sub-10 branches in the fetched tiers (`root/roottest/` has version 8, [TBranch §13.2](../../spec/04-ttree/TBranch.md#132-what-the-legacy-writers-did-differently)). Byte-verified [TBranch §13.3](../../spec/04-ttree/TBranch.md#133-at-version-9-the-streamer-info-is-not-authoritative): `fBasketSeek`'s flag byte is a width selector |
 | `lhcb_mag.root` | 4.03/04 | ROOT 4.03 |
 | `galaxy.root` | 5.01/01 | ROOT 5.01; a `TASImage` payload |
 | `linearIO.root` | 5.05/01 | `TMatrixT<float>` and `TMatrixTSym<float>` in 3.8 KB: the divergent classes `PLAN.md` §9.8 named, in a very small file |
 | `rootstat.root` | 5.15/07 | `TH1` class version **5**; 82 `TH1F` records |
-| `alice_ESDs.root` | 5.16/00 | The only `TBranch` class version **10** available anywhere, with `TTree` v16, 59 streamer infos and 76 baskets |
+| `alice_ESDs.root` | 5.16/00 | The only `TBranch` class version **10** in the fetched tiers (the 4.0x files of `root/roottest/` below have it too), with `TTree` v16, 59 streamer infos and 76 baskets. Its 19 collection count branches carry the empty leafcount basket every split collection got before 5.18/00 ([TBranch §5](../../spec/04-ttree/TBranch.md#5-fbaskets-is-written-and-is-usually-empty)) |
 | `tmva_class_example.root` | 5.18/00 | `TBranch` v10 with a flat tree |
 | `stressHistogram.5.18.00.root` | 5.18/00 | `TH1` v6, `TProfile` |
 | `stressRooFit_v522_ref.root` | 5.21/07 | RooFit's divergent streamers: `RooPlot`, `RooAbsCollection`, `RooDouble` |
@@ -159,7 +159,7 @@ range requests with no redirect (`LARGE.toml`'s header says how to form the URL)
 (record 12341). At both URLs the header, the UUID and the 874-byte free record
 are the same bytes, so it is listed once.
 
-## `root/roottest/` — 5 files, already on disk
+## `root/roottest/` — 16 files, already on disk
 
 ROOT's own regression suite has been inside `root-project/root` since April 2025,
 so the pinned submodule ships it: 273 `.root` files from ROOT 2.23/12 to 6.41/01,
@@ -176,14 +176,28 @@ submodule.
 |---|---|---|---|
 | `root/roottest/root/tree/friend/MC_uds_reco-1.root` | **2.23/12** | The oldest ROOT-written file in reach, and unlike `pippa.root` it has `TTree`s. Its byte-counted `TTree` holds bases with bare version words, and every class tag in it has a byte count, so [Buffer §6.4](../../spec/02-serialization/Buffer.md#64-legacy-buffers-key-the-map-differently)'s sequential map is never used | 0 failures |
 | `root/roottest/root/io/arrayobject/Event.3.2.0.root` | 3.03/02 | A **version 1** directory and no header UUID at 3.03/02, which dated [Directory §7](../../spec/01-container/Directory.md#7-version-history) and [FileHeader §8](../../spec/01-container/FileHeader.md#8-version-history) wrongly until 2026-09-22 | 0 failures |
+| `root/roottest/root/tree/friend/Event2a.root` | 3.03/06 | One of six `Event*` files here whose `TBranchElement`s have unzeroed basket arrays: `fBasketSeek[0]` 3670392 at an embedded slot ([TBranch §13.4](../../spec/04-ttree/TBranch.md#134-two-constructors-left-the-basket-arrays-unzeroed)) | 0 failures |
+| `root/roottest/root/treeformula/clones/digi.root` | 3.04/02 | Unzeroed basket arrays from a `TBranchElement` constructor before 3.10/02: every element above `fWriteBasket`, and `fBasketSeek[0]` at the embedded slot, is `0xBAADF00D` ([TBranch §13.4](../../spec/04-ttree/TBranch.md#134-two-constructors-left-the-basket-arrays-unzeroed)). One `Bool_t` branch with `fStreamerType` 11 | 0 failures |
+| `root/roottest/root/tree/friend/short0.root` | 3.05/07 | Counters in the counted leaf's own branch with `fIsRange` 0: 35 of 215, the ones whose name an earlier branch already used ([TLeaf](../../spec/04-ttree/TLeaf.md)) | 0 failures |
+| `root/roottest/root/tree/friend/short1.root` | 3.05/07 | Byte-identical to `short0.root`; cited by name beside it | 0 failures |
 | `root/roottest/root/io/abstractclass/data_v3_05_07.root` | 3.05/07 | The smallest version-3 directory record, 1 199 bytes | 0 failures |
 | `root/roottest/root/io/abstractclass/data_v4_00_02.root` | 4.00/02 | The smallest version-4 directory record, 1 225 bytes | 0 failures |
+| `root/roottest/root/treeformula/parse/mksm.root` | 4.00/08 | `Bool_t` branches with `fStreamerType` 11 from before `kBool`, and split `fBits` columns of referenced objects, where an entry carries a 2-byte `pidf` ([TBranchElement](../../spec/04-ttree/TBranchElement.md), [Element types §2.3](../../spec/02-serialization/ElementTypes.md)) | 0 failures. 30 branch-baskets skipped: `TRef` has a hand-written `Streamer` |
+| `root/roottest/root/treeformula/stl/EDM.root` | 4.03/02 | `fSavedBytes` equal to `fTotBytes`, from before 5.27/02 ([TTree §6.3](../../spec/04-ttree/TTree.md#63-fautoflush-and-fautosave-are-not-what-the-writer-asked-for)), and 194 branch records with the empty leafcount basket ([TBranch §5](../../spec/04-ttree/TBranch.md#5-fbaskets-is-written-and-is-usually-empty)) | 0 failures |
 | `root/roottest/root/io/evolution/skim.root` | 4.03/05 | The only file anywhere with **version-3 `TStreamerElement`s**, which no ROOT release wrote ([StreamerInfo §7.1](../../spec/02-serialization/StreamerInfo.md#71-the-range-fields-moved-out-of-the-record)): 223 of them | 0 failures. Also the witness to [Streamer-driven reading §7.1](../../spec/02-serialization/StreamerDriven.md#71-an-object-with-no-byte-count): `HoldMuo` objects written with no byte count and no version word, which ROOT reads from the first byte when it has no library for the class. Until 2026-09-23 they were two `ReadingEntries 8.5` failures (`PLAN-corpus.md` C18) |
+| `root/roottest/root/treeformula/stl/RefTest.root` | 4.04/02 | `fStreamerType` 71 (`kSTLp`) on a `vector<T>*` member whose element stores 500 ([TBranchElement](../../spec/04-ttree/TBranchElement.md)); `fSavedBytes` equal to `fTotBytes` ([TTree §6.3](../../spec/04-ttree/TTree.md#63-fautoflush-and-fautosave-are-not-what-the-writer-asked-for)) | 0 failures. 4 branch-baskets skipped: a pointer to a collection |
+| `root/roottest/root/tree/addresses/cmsursula.root` | 4.04/02 | 15 empty-base `edm::EDProduct` branches with no leaf and no sub-branch that hold data ([TBranch §9.2](../../spec/04-ttree/TBranch.md#92-a-leafless-branch-may-still-hold-data)); `fSavedBytes` equal to `fTotBytes` | 0 failures |
+| `root/roottest/root/treeformula/retobj/mcpool.root` | 4.04/02 | One empty-base branch, `HepMCProduct_PythiaInput__HepMC.edm::EDProduct`, which ROOT 6.40.04 reads as 10 bytes per entry ([TBranch §9.2](../../spec/04-ttree/TBranch.md#92-a-leafless-branch-may-still-hold-data)); `fSavedBytes` equal to `fTotBytes` | 0 failures |
+| `root/roottest/root/treeformula/stl/AthenaCrossSection.root` | 5.14/00 | Unzeroed basket arrays from the top-level collection constructor before 5.21/02: `reco_ee_charge` has `fBasketBytes[1]` −1 at its embedded slot ([TBranch §13.4](../../spec/04-ttree/TBranch.md#134-two-constructors-left-the-basket-arrays-unzeroed)) | 0 failures |
+| `root/roottest/root/io/evolution/issue-8083/stringarray.old.root` | 6.25/01 | `fStreamerType` 320 (`kSTL + kOffsetL`) on a `std::string` array whose element stores 500 ([TBranchElement](../../spec/04-ttree/TBranchElement.md)) | 1 failure, `ReadingEntries 8.5` on `obj.fOutputNames[4]`: ROOT writes the array under one byte count and `rootfile.py` reads one string, a reader gap |
 
 Do not run the checks over the whole directory and treat the result as evidence.
 `root/tree/basket/corrupted.root` is damaged on purpose for ROOT's error-handling
 tests and produces over four million failures on its own, and three files are
-byte-identical to rows above and would be counted twice.
+byte-identical to rows of the tiers above and would be counted twice. Inside
+`root/tree/friend/`, `short1.root` is a copy of `short0.root`, `Event2a.root` of
+`Event2b.root`, `Eventa.root` and `Eventb.root`, and `Event3a.root` of
+`Event3b.root`.
 
 ## Standing result
 

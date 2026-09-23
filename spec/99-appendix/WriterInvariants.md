@@ -138,7 +138,7 @@ reading side's [TBranch](../04-ttree/TBranch.md),
 | `fMaxBaskets >= fWriteBasket + 1`, and the three counted arrays hold exactly `fMaxBaskets` values each | checked |
 | A branch's `fEntryOffsetLen` is non-zero iff its baskets have an offset array | checked |
 | In a basket, `fLast == fKeylen +` the data length, and the offset array's first element is `fKeylen` (the latter only when the array holds offsets rather than `kGenerateOffsetMap` deltas) | checked |
-| A counter leaf has `fIsRange` set and an `fMaximum` at least as large as every count in the file | nothing; ROOT clamps the read with a `printf` |
+| A counter leaf has `fIsRange` set and an `fMaximum` at least as large as every count in the file | nothing; ROOT clamps the read with a `printf`. A reader must not rely on `fIsRange`: files from ROOT before 5.28 have counters with it 0 ([TLeaf §6](../04-ttree/TLeaf.md#6-fisrange-fminimum-and-fmaximum)) |
 | A leaf's `fLeafCount` names a leaf written earlier in the same record | nothing |
 | `fEntries` on the tree agrees with the branches, and no entry is reachable past it | checked |
 | The key list contains no `TBasket` key | checked |
@@ -202,8 +202,9 @@ every attribute of `TAttLine`, `TAttFill`, `TAttMarker` and `TAttAxis`.
 
 **A streamer info's `fBits` is also free, and a reader must not rely on it.** It
 is written wholesale through the `TNamed` base, so it holds the writing session's
-in-memory status, including `kIsOnHeap` and `kNotDeleted`, which mean only that
-the object was on the heap and had not been destructed. The three corpus files
+in-memory status. Before ROOT 6.30 that included `kIsOnHeap` and `kNotDeleted`,
+which mean only that the object was on the heap and had not been destructed
+([Buffer framing §7](../02-serialization/Buffer.md#7-the-tobject-base)). The three corpus files
 that hold one class twice differ in `kIsCompiled` in one case and `kBuildOldUsed`
 in the other two
 ([Schema evolution §8.1](../02-serialization/SchemaEvolution.md#81-a-class-may-appear-twice-in-one-streamerinfo-record)).

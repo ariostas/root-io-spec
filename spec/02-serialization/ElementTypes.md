@@ -130,10 +130,18 @@ A reader resolving `fCountName` must therefore accept 3 and 13 as well as 6.
 type (`root/io/io/src/TStreamerInfo.cxx:624-627`), so all three are a 4-byte value
 on disk, and the code describes the writing class, not the bytes.
 
-> Seen on real files: `TBits.fAllBits` names `fNbytes` with `fType` 13
-> (`PLAN.md` §9.8). A third-party writer may also store 3 where ROOT stores 6:
-> g4tools does for `TArray::fN`, the counter of `TArrayD`, `TArrayF` and
-> `TArrayI`, in both of its files in the foreign corpus. Every counter in a
+> Seen on real files: `TBits` declares `UInt_t fNbytes` and counts `fAllBits`
+> with it (`root/core/cont/inc/TBits.h:31-32`), and `TIndArray` does the same
+> with `UInt_t fElems` and `fArr` (`root/tree/tree/inc/TIndArray.h:40-42`). Both
+> counters keep 13, because promotion applies only to a code below 6
+> (`root/core/meta/src/TStreamerElement.cxx:99`). Over the fixtures and both
+> corpora, 2200 counted members name a counter in their own streamer info: 2196
+> name one of code 6, and 4 one of code 13. The four are `TBits.fNbytes` in
+> `alice_ESDs.root` (ROOT 5.16/00) and `uproot-issue213.root` (6.14/00), and
+> `TIndArray.fElems` in `ttree/branch-first-entry` and
+> `ttree/split-ptr-collection`. A third-party writer may also store 3 where ROOT
+> stores 6: g4tools does for `TArray::fN`, the counter of `TArrayD`, `TArrayF`
+> and `TArrayI`, in both of its files in the foreign corpus. Every counter in a
 > ROOT-written file available is 6 or 13, including the 417 in files older than
 > ROOT 5.
 
@@ -158,11 +166,13 @@ are both four zero bytes** and cannot be distinguished.
 fBits:u32   [pidf:u16 if fBits has kIsReferenced (BIT(4))]
 ```
 
-`root/io/io/src/TStreamerInfoReadBuffer.cxx:1031-1055`. The writer masks off
-`kIsOnHeap` and `kNotDeleted`
+`root/io/io/src/TStreamerInfoReadBuffer.cxx:1031-1055`. Since ROOT 6.30 the
+writer masks off `kIsOnHeap` and `kNotDeleted`
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:409-412`), as
 [Buffer framing §7](Buffer.md#7-the-tobject-base) describes for the `TObject`
-base.
+base. Older files have both set: the split `fBits` columns of
+`root/roottest/root/treeformula/parse/mksm.root` (ROOT 4.00/08) hold values
+such as `0x03000018`, `kIsReferenced` included, each followed by its `pidf`.
 
 This code exists only because `Build` special-cases `TObject::fBits`
 (`root/io/io/src/TStreamerInfo.cxx:668-670`), so it appears only in `TObject`'s
@@ -625,8 +635,8 @@ Given a streamer info and a buffer positioned at an object's first content byte:
 2. Skip any element whose `kWrite` bit is set
    (`root/io/io/src/TStreamerInfoReadBuffer.cxx:791`).
 3. For each element, consume the bytes its code specifies, per §2 to §9. Retain
-   the value of every `kCounter` member for later `kOffsetP` and `kStreamLoop`
-   members.
+   the value of every member of code 3, 6 or 13 for later `kOffsetP` and
+   `kStreamLoop` members: a counter is not always marked `kCounter` (§2.1).
 4. For a code the reader does not implement, seek to the end of the enclosing byte
    count. Because every nested object has one, each is a resynchronisation
    point ([Buffer framing §2.1](Buffer.md#21-a-byte-count-is-authoritative)).
@@ -707,6 +717,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/streamer-info` | The element records that carry these codes, and `fType` 500 on a collection |
 | `serialization/version-zero` | `kBase` with a byte count, and code 66 without one |
 | `serialization/element-types` | 7 including a null, 501 in all three forms, 81 and 82, and 69 with `fArrayLength` 2 |
+| `ttree/split-tbits` | A counter left at 13 (§2.1), and code 15 on a split `fBits` column (§2.3) |
 
 `kBits` (15) is covered from the `TTree` side rather than here. A split branch
 turns a `TObject` base into `fUniqueID` and `fBits` sub-branches whose elements

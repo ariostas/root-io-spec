@@ -176,7 +176,8 @@ of them.
 
 There is one fixture per shape: `ttree/split-object`, `split-unsplit`,
 `split-naming`, `split-nested`, `split-counter`, `split-clones`,
-`split-stl-toplevel`, `split-ptr-collection`, `split-bitset`, `split-double32`.
+`split-stl-toplevel`, `split-ptr-collection`, `split-bitset`, `split-double32`,
+`split-tbits`, `split-stl-pointer`.
 
 The most useful check here is
 [Reading entries invariant 5](../04-ttree/ReadingEntries.md#8-invariants): the

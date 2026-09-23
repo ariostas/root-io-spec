@@ -30,6 +30,11 @@ class FormatError(Exception):
     pass
 
 
+#: Element codes a counted member's fCountName can name: kCounter, and kInt or
+#: kUInt when the counter was not promoted (ElementTypes.md 2.1).
+COUNTER_TYPES = (3, 6, 13)
+
+
 @dataclass
 class FileHeader:
     version: int
@@ -991,6 +996,9 @@ class Element:
     type_name: str
     tail: dict               # subclass-specific members
     fsize_offset: int = -1   # where fSize sits in the buffer; see normalize.py
+    #: fType as the record stores it, before the Bool_t fixup of
+    #: StreamerInfo.md 7.2 (None when it is the same as `ftype`).
+    stored_ftype: int | None = None
 
     @property
     def has_range(self) -> bool:
@@ -1100,7 +1108,9 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
         else:
             tail[member], eo = _counted_string(buf, eo)
 
+    stored_ftype = None
     if ftype == 11 and type_name in ("Bool_t", "bool"):
+        stored_ftype = ftype
         ftype = 18      # read-time fixup, root/core/meta/src/TStreamerElement.cxx:566
 
     # The second read-time fixup, which cannot be skipped: until 5.34/13
@@ -1118,7 +1128,8 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
     return Element(cls=cls, version=outer.version, name=name, title=title, bits=bits,
                    ftype=ftype, fsize=fsize, array_length=array_length,
                    array_dim=array_dim, max_index=max_index, type_name=type_name,
-                   tail=tail, fsize_offset=fsize_offset)
+                   tail=tail, fsize_offset=fsize_offset,
+                   stored_ftype=stored_ftype)
 
 
 def read_streamer_info(buf: bytes, rec: Record, slot: Slot,
@@ -2207,7 +2218,7 @@ class Decoder:
                 value = Value(name=el.name, ftype=el.ftype, start=pos,
                               end=frame.end, type_name=el.type_name,
                               note=f"unread: {exc}")
-            if el.ftype == 6:                 # kCounter: retain it for later
+            if el.ftype in COUNTER_TYPES:     # a possible counter: retain it
                 counters[el.name] = _i32(self.buf, pos)
             values.append(value)
             pos = value.end
@@ -2231,7 +2242,7 @@ class Decoder:
             counters = {}
         for el in info.elements:
             value = self.read_element_value(el, pos, counters)
-            if el.ftype == 6:                 # kCounter: retain it for later
+            if el.ftype in COUNTER_TYPES:     # a possible counter: retain it
                 counters[el.name] = _i32(self.buf, pos)
             pos = value.end
         return pos
@@ -2269,6 +2280,10 @@ class Decoder:
         if t == 7:                                    # kCharStar: i32 then n bytes
             n = _i32(buf, offset)
             return done(offset + 4 + max(n, 0))
+
+        if t == 15:                                   # kBits: fBits [pidf]
+            bits = _u32(buf, offset)
+            return done(offset + (6 if bits & IS_REFERENCED else 4))
 
         if t in SCALAR_WIDTH:
             return done(offset + SCALAR_WIDTH[t])
@@ -3846,6 +3861,8 @@ def element_width(element: Element) -> int | None:
     t = element.ftype
     if t in (9, 19):
         return quantised_width(t, element.title)
+    if t == 15:
+        return None     # kBits: 4 bytes, or 6 with kIsReferenced. ElementTypes.md 2.3
     if t in SCALAR_WIDTH:
         return SCALAR_WIDTH[t]
     return None
@@ -4073,6 +4090,14 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
     """
     counts = dict(counts or {})
     leaves = leaves if leaves is not None else branch.leaves
+    # The leaves of this branch that another leaf of it counts with. Found from
+    # fLeafCount, not from fIsRange: a counter need not have fIsRange set
+    # (TLeaf.md 6), as in short0.root, written by ROOT 3.05/07.
+    local = {lf.slot for lf in branch.leaves}
+    own_counters = set()
+    for lf in branch.leaves:
+        if lf.leaf_count and lf.count_slot in local:
+            own_counters.add(lf.count_slot)
     start, end = basket_entry_range(rec, basket, index)
     pos = start
     spans: list[tuple[Leaf, int, int]] = []
@@ -4099,7 +4124,7 @@ def entry_spans(buf: bytes, rec: Record, basket: Basket, branch: Branch,
         spans.append((leaf, pos, pos + n * width))
         # A counter in this same branch precedes what it counts, so read its
         # value here rather than requiring it up front. TLeaf.md section 5.2.
-        if leaf.is_range and width and n == 1:
+        if leaf.slot in own_counters and width and n == 1:
             counts[leaf.slot] = int.from_bytes(buf[pos:pos + width], "big",
                                                signed=True)
         pos += n * width
@@ -4217,7 +4242,10 @@ class TreeReader:
             raise FormatError(
                 f"branch {br.name!r}: basket {i} holds entry {entry} but "
                 f"fBasketSeek has {len(br.basket_seek)} entries")
-        if not br.basket_seek[i] and i in br.embedded:
+        if i in br.embedded:
+            # The slot is consulted before fBasketSeek, as ROOT does
+            # (root/tree/tree/src/TBranch.cxx:1234-1236): a legacy writer can
+            # leave fBasketSeek unassigned at an embedded slot. TBranch.md 10.
             # Never written as a record: the basket is inside the TTree record,
             # and its raw block is the buffer its own offsets are relative to.
             # The block start plays the part the record offset plays for a

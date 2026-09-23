@@ -18,12 +18,19 @@ the rest of this document assumes it. Given a branch and an entry number:
 
 1. Find the basket index *i* with `fBasketEntry[i] <= entry < fBasketEntry[i+1]`.
 2. Read that basket ([TBasket](TBasket.md)). **It need not be a record**: when
-   `fBasketSeek[i]` is 0 the basket is embedded in the `TTree` record itself
+   slot *i* of `fBaskets` holds a basket, that basket is embedded in the `TTree`
+   record itself
    ([TBranch §5](TBranch.md#5-fbaskets-is-written-and-is-usually-empty)), and its
    raw block takes the place of the record below: every offset in step 3 is
-   relative to the block start. A reader that can only fetch a basket by file
-   offset cannot read such an entry, and in a file written by
-   `TDirectory::WriteTObject` every entry is of this kind.
+   relative to the block start. ROOT takes the slot first and consults
+   `fBasketSeek[i]` only when the slot is empty
+   (`root/tree/tree/src/TBranch.cxx:1234-1236`). `fBasketSeek[i]` is then
+   usually 0, but not always: before 3.10/02 the `TBranchElement` constructors
+   never assigned it (`v3-04-02:tree/src/TBranchElement.cxx:146-151`; fixed at
+   `v3-10-02:tree/src/TBranchElement.cxx:151-155`), and `digi.root` in
+   `root/roottest/` has uninitialised heap bytes there. A reader that can only
+   fetch a basket by file offset cannot read such an entry, and in a file
+   written by `TDirectory::WriteTObject` every entry is of this kind.
 3. The entry's byte range within the basket payload is:
 
 | | start | end |
@@ -101,6 +108,13 @@ fDet.fHits.fE    entry 0   00 00 00 00 3f 00 00 00      0.0f, 0.5f
 **An empty collection gives an empty entry**, not a zero or a marker. Entry 1
 occupies no bytes, so a variable-length column needs the offset array of §1; its
 entries cannot be located by multiplication.
+
+A column of `TObject::fBits` values (`kBits`, 15) is not fixed-width either. Each
+value is 4 bytes, or 6 when it has `kIsReferenced` set and carries a `pidf`
+([Element types §2.3](../02-serialization/ElementTypes.md#23-kbits-15)), so one
+entry can mix both sizes. `mksm.root` in `root/roottest/` (4.00/08) has such
+columns, because its file also has `TRef` branches: every `pv.fBits` entry is 6
+bytes, and the `fType` 41 column `jet.fBits` mixes 4-byte and 6-byte values.
 
 ### 3.3 An unsplit object: no framing of its own, but its members have theirs
 
@@ -215,7 +229,7 @@ tree holds two split objects of one class whose sub-branches have no parent
 prefix, both objects' members get a pointer to the **first** object's counter, and
 the read path uses it unchanged (`root/tree/tree/src/TBranchElement.cxx:4649`).
 
-> **Observed.** `alice_ESDs.root` (ROOT 5.34) splits an `AliESDVertex` twice, as
+> **Observed.** `alice_ESDs.root` (ROOT 5.16/00) splits an `AliESDVertex` twice, as
 > `SPDVertex` and `PrimaryVertex`. Both objects' sub-branches are named plainly
 > `fNIndices` and `fIndices`, so both `fIndices` branches record the *same*
 > `fBranchCount`, the one under `SPDVertex`, whose value is 0 for all 20 entries.
@@ -360,6 +374,10 @@ Normative, for one entry of one branch.
    - `fType` 0 with `fID` −1: every element of `fClassName`'s streamer info, in
      order, with no class-level framing (§3.3).
    - `fType` < 0: the class's own streamer (§3.5).
+   - `fType` 1 with no sub-branches, the empty base class of
+     [TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference):
+     one framed object of that base class, which the single element `fID`
+     selects as below.
    - a `std::bitset` member whose byte range is empty: nothing (§3.6).
    - otherwise: the single element `fID` selects.
 6. The bytes consumed must equal the byte range from step 3. This equality is
@@ -370,7 +388,9 @@ Normative, for one entry of one branch.
 
 1. For a branch with `fType` 3 or 4, every entry is exactly four bytes.
 2. For a branch with `fType` 1 or 2, or `fType` 0 with `fID` −2, there are no
-   baskets and no entries.
+   baskets and no entries, except on the empty-base-class branch of
+   [TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference),
+   an `fType` 1 branch with no sub-branches written before 5.34/20 and 6.02/00.
 3. For a branch with `fType` 31 or 41 whose element has a fixed width *w*, the
    entry's length is *n* × *w*, where *n* is the count branch's value for that
    entry, and 0 when *n* is 0.
@@ -389,9 +409,8 @@ and `tools/check_coverage.py` checks that record.
 
 Invariant 5 is the general statement of the others, and a third-party reader
 should test itself against it. It cannot be checked by a rule, only by decoding,
-which is what `tools/rootfile.py`'s `TreeReader` exists for. Over the fixtures and
-both corpora it holds on **46 137
-branch-baskets, 99.8% of them**. The remaining 104 are named individually in the
+which is what `tools/rootfile.py`'s `TreeReader` exists for. Over both corpora it
+holds on **48 295 branch-baskets, 99.8% of them**. The remaining 104 are named individually in the
 checker's `SKIPPED` report, each with a count and a reason, and **no reader could
 decode any of them from the file**. Each is either a collection whose value class
 has no streamer info in the file
@@ -428,6 +447,7 @@ describes.
 | `ttree/split-counter` | §3.4: the flag byte, a counter branch with no offset array, and a member column with one |
 | `ttree/split-double32` | §5.2: five members whose widths differ and are recorded nowhere but the streamer element |
 | `ttree/split-clones` | The `TClonesArray` form of §3.1 and §3.2 |
+| `ttree/split-tbits` | §3.4 and §4: a counted array whose counter branch has `fStreamerType` 13 rather than 6, and §3.3 on an unsplit `TBits` |
 | `ttree/split-bitset` | §3.6: a `bitset<16>` as twenty-six bytes, and the bit order, which only its third entry fixes |
 
 Not covered by a fixture: §3.5, which needs a class with a hand-written

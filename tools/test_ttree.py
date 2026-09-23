@@ -9,6 +9,7 @@ file for, and the entry-to-basket search at its boundaries.
 
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -147,10 +148,6 @@ class ResolveLeafCount(unittest.TestCase):
         counted = leaf(leaf_count=447, count_slot=42)
         with self.assertRaises(rootfile.FormatError):
             rootfile.resolve_leaf_count(counted, [counted])
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class BranchCountReference(unittest.TestCase):
@@ -594,7 +591,7 @@ class MaxBasketsByClassVersion(unittest.TestCase):
         c.failures = []
         c.branch_class_version = lambda: class_version
         br = SimpleNamespace(
-            name="b", write_basket=0, max_baskets=max_baskets,
+            name="b", cls="TBranch", write_basket=0, max_baskets=max_baskets,
             basket_bytes=[0] * max_baskets, basket_entry=[0] * max_baskets,
             basket_seek=[0] * max_baskets, basket_slots=1, branches=[],
             embedded={}, entries=0, entry_number=0, first_entry=0,
@@ -703,3 +700,361 @@ class CounterResolution(unittest.TestCase):
         reader = self.reader(extra=[lonely])
         with self.assertRaises(rootfile.UnsupportedClass):
             reader.counter_branch(reader.by_slot[400], "fNothing")
+
+
+class SameBranchCounter(unittest.TestCase):
+    """TLeaf.md 5.2 and 6: a counter in the counted leaf's own branch is read
+    from the same entry, and fIsRange does not say which leaf that is.
+
+    ROOT 3.05/07 wrote such counters without fIsRange (short0.root, 35 of
+    them). Current ROOT cannot, so no fixture has one.
+    """
+
+    def spans(self, is_range: bool):
+        n = leaf(name="n", slot=100, is_range=is_range)
+        a = leaf(cls="TLeafF", name="a", title="a[n]", slot=200,
+                 leaf_count=100 + 2, count_slot=100)
+        br = SimpleNamespace(name="b", leaves=[n, a])
+        data = (2).to_bytes(4, "big") + bytes.fromhex("3f800000 40000000")
+        buf = b"\x00" * 10 + data               # one entry: n = 2, two floats
+        rec = rootfile.Record(offset=0, nbytes=len(buf))
+        basket = rootfile.Basket(
+            version=2, buffer_size=0, nev_buf_size=1000, nev_buf=1, last=22,
+            flag=0, io_bits=0, generated=False, key_len=10, header_offset=0,
+            data_start=10, data_end=22, entry_offsets=[10])
+        return rootfile.entry_spans(buf, rec, basket, br, 0, {}, [n, a])
+
+    def test_a_counter_with_firange_set(self):
+        self.assertEqual([(s, e) for _, s, e in self.spans(True)],
+                         [(10, 14), (14, 22)])
+
+    def test_a_counter_without_firange_as_root_3_05_wrote_it(self):
+        self.assertEqual([(s, e) for _, s, e in self.spans(False)],
+                         [(10, 14), (14, 22)])
+
+
+class ReferencedBits(unittest.TestCase):
+    """ElementTypes.md 2.3 and ReadingEntries.md 8.5: kBits (15) is fBits,
+    then a two-byte pidf when kIsReferenced is set.
+
+    A split TObject base gives an fBits sub-branch whose entries are 4 or 6
+    bytes each. mksm.root (4.00/08) has them: pv.fBits entry 0 is
+    03 00 00 18 00 00, kIsReferenced 0x10 set and pidf 0.
+    """
+
+    EL = staticmethod(lambda: element(name="fBits", ftype=15,
+                                      type_name="UInt_t"))
+    PLAIN = bytes.fromhex("03000008")
+    REFERENCED = bytes.fromhex("03000018 0000")
+
+    def value_end(self, buf):
+        return rootfile.Decoder(buf, 0, []).read_element_value(
+            self.EL(), 0, {}).end
+
+    def test_unreferenced_is_four_bytes(self):
+        self.assertEqual(self.value_end(self.PLAIN + b"\xff" * 4), 4)
+
+    def test_referenced_is_six_bytes(self):
+        self.assertEqual(self.value_end(self.REFERENCED + b"\xff" * 4), 6)
+
+    def test_kbits_has_no_fixed_width(self):
+        # So ReadingEntries 8.3, which is about fixed-width columns, does not
+        # apply to it, and a column goes through the per-value path.
+        self.assertIsNone(rootfile.element_width(self.EL()))
+
+    def test_a_column_mixes_both_widths(self):
+        # jet.fBits in mksm.root: 176 of 669 elements referenced.
+        buf = self.PLAIN + self.REFERENCED + self.PLAIN + b"\xff" * 8
+        decoder = rootfile.Decoder(buf, 0, [])
+        self.assertEqual(decoder.read_column(self.EL(), 3, 0), 14)
+
+
+def stub_checker(version=(6, 40, 4), infos=()):
+    """A Checker with no file behind it: `version` is the header's release and
+    `infos` the file's streamer infos."""
+    c = check_invariants.Checker.__new__(check_invariants.Checker)
+    c.path = Path("stub.root")
+    c.failures = []
+    c.skipped = {}
+    c.verified = 0
+    c.header = SimpleNamespace(root_version=version)
+    c._infos = (None, None, list(infos))
+    c._tree_payload = None
+    return c
+
+
+def labelled(c, label):
+    return [f for f in c.failures if f": {label}:" in f]
+
+
+def embedded(nev_buf, key_len=20, width=10):
+    """An embedded basket of `nev_buf` entries of `width` bytes, at offset 0 of
+    its buffer, with an offset array."""
+    end = key_len + nev_buf * width
+    basket = rootfile.Basket(
+        version=2, buffer_size=32000, nev_buf_size=10, nev_buf=nev_buf,
+        last=end, flag=11, io_bits=0, generated=False, key_len=key_len,
+        header_offset=key_len - 9, data_start=key_len, data_end=end,
+        entry_offsets=[key_len + i * width for i in range(nev_buf)] or None)
+    return rootfile.EmbeddedBasket(start=0, end=end, key_len=key_len,
+                                   basket=basket, block=0)
+
+
+class SavedBytesBeforeRelease5_27_02(unittest.TestCase):
+    """TTree.md 11.2 and 6.3: fSavedBytes was fTotBytes before 5.27/02.
+
+    RefTest.root (4.04/02): fTotBytes 72075, fZipBytes 6915, fSavedBytes
+    72075. Root commit fa3ad228d72 switched AutoSave to fZipBytes.
+    """
+
+    def failures(self, version, saved, flushed=0):
+        c = stub_checker(version)
+        c.check_tree(None, None, tree(tot_bytes=72075, zip_bytes=6915,
+                                      saved_bytes=saved, flushed_bytes=flushed))
+        return labelled(c, "TTree 11.2")
+
+    def test_ftotbytes_passes_before_5_27_02(self):
+        self.assertEqual(self.failures((4, 4, 2), 72075), [])
+        self.assertEqual(self.failures((5, 26, 0), 72075), [])
+
+    def test_ftotbytes_fails_from_5_27_02(self):
+        bad = self.failures((5, 27, 2), 72075)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("fZipBytes 6915", bad[0])
+
+    def test_above_ftotbytes_fails_at_any_release(self):
+        bad = self.failures((5, 26, 0), 72076)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("fTotBytes 72075", bad[0])
+
+    def test_fflushedbytes_is_bounded_by_fzipbytes_at_any_release(self):
+        self.assertEqual(len(self.failures((4, 4, 2), 0, flushed=6916)), 1)
+
+
+class UnzeroedBasketArrays(unittest.TestCase):
+    """TBranch.md 11.4 and 11.9: the arrays a TBranchElement constructor left
+    unzeroed, before 3.10/02 for every constructor and before 5.21/02 for the
+    top-level collection one.
+
+    digi.root (3.04/02) holds 0xBAADF00D above fWriteBasket and in
+    fBasketSeek at its embedded slot 0.
+    """
+
+    GARBAGE = -1163005939           # 0xBAADF00D, the Windows heap fill
+
+    def failures(self, version, **kw):
+        fields = dict(
+            cls="TBranchElement", element_type=0, element_id=0,
+            class_name="Event", leaves=[leaf()], entries=3, entry_number=3,
+            basket_bytes=[0] + [self.GARBAGE] * 9,
+            basket_entry=[0] + [self.GARBAGE] * 9,
+            basket_seek=[self.GARBAGE] * 10,
+            embedded={0: embedded(3)})
+        fields.update(kw)
+        c = stub_checker(version)
+        c.check_branch(None, branch(**fields))
+        return labelled(c, "TBranch 11.4") + labelled(c, "TBranch 11.9")
+
+    def test_any_tbranchelement_before_3_10_02_is_exempt(self):
+        self.assertEqual(self.failures((3, 4, 2)), [])
+
+    def test_the_exemption_ends_at_3_10_02(self):
+        # Three arrays nonzero above fWriteBasket, and the embedded slot's seek.
+        self.assertEqual(len(self.failures((3, 10, 2))), 4)
+
+    def test_a_plain_tbranch_is_never_exempt(self):
+        self.assertEqual(
+            len(self.failures((3, 4, 2), cls="TBranch", element_type=None,
+                              element_id=None)), 4)
+
+    def test_a_top_level_collection_is_exempt_before_5_21_02(self):
+        top = dict(element_id=-1, class_name="vector<int>")
+        self.assertEqual(self.failures((5, 14, 0), **top), [])
+        self.assertEqual(len(self.failures((5, 21, 2), **top)), 4)
+
+    def test_any_other_tbranchelement_is_not_exempt_after_3_10_02(self):
+        self.assertEqual(len(self.failures((5, 14, 0))), 4)
+
+
+class BasketAboveWriteBasket(unittest.TestCase):
+    """TBranch.md 11.9 and 5: a basket in a slot above fWriteBasket is never
+    read, so it holds no entries.
+
+    Before 5.18/00 a split collection count branch carried a second,
+    never-filled basket in slot 1 (alice_ESDs.root, 5.16/00).
+    """
+
+    def failures(self, above):
+        c = stub_checker((5, 16, 0))
+        c.check_branch(None, branch(
+            cls="TBranchElement", element_type=3, element_id=-1,
+            class_name="TClonesArray", leaves=[leaf()], entries=3,
+            entry_number=3, basket_slots=2,
+            embedded={0: embedded(3), 1: embedded(above)}))
+        return labelled(c, "TBranch 11.9")
+
+    def test_an_empty_basket_above_fwritebasket_passes(self):
+        self.assertEqual(self.failures(0), [])
+
+    def test_a_basket_with_entries_above_fwritebasket_fails(self):
+        bad = self.failures(1)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("slot 1, above fWriteBasket 0", bad[0])
+
+
+class EmptyBaseBranch(unittest.TestCase):
+    """TBranch.md 9.2: before 5.34/20 and 6.02/00 an empty base class of a
+    top-level split object got an fType 1 branch with no leaf and no children,
+    whose baskets still hold one framed base-class object per entry.
+
+    cmsursula.root and mcpool.root (4.04/02): <top>.edm::EDProduct, each entry
+    40 00 00 06 | 00 00 | 0e 3a fc b6, byte count 6, version 0, checksum.
+    """
+
+    CHECKSUM = 0x0E3AFCB6
+    ENTRY = bytes.fromhex("40000006 0000 0e3afcb6")
+
+    def infos(self, base_elements=()):
+        parent = rootfile.StreamerInfo(
+            name="edm::Wrapper<X>", title="", version=9, bits=0, checksum=1,
+            class_version=3, elements=[element(
+                name="edm::EDProduct", cls="TStreamerBase", ftype=0,
+                type_name="BASE")])
+        base = rootfile.StreamerInfo(
+            name="edm::EDProduct", title="", version=9, bits=0,
+            checksum=self.CHECKSUM, class_version=1,
+            elements=list(base_elements))
+        return [parent, base]
+
+    def branch(self):
+        return branch(
+            name="W.edm::EDProduct", cls="TBranchElement", element_type=1,
+            element_id=0, class_name="edm::Wrapper<X>", class_version=3,
+            streamer_type=0, entries=2, entry_number=2,
+            embedded={0: embedded(2)})
+
+    def run_checks(self, entries=None, base_elements=()):
+        c = stub_checker((4, 4, 2), self.infos(base_elements))
+        br = self.branch()
+        data = b"\x00" * 20 + (entries or self.ENTRY * 2)
+        c.check_branch(data, br)
+        c.check_splitting(br, {})
+        c.check_leaves(data, br, [])
+        return c
+
+    def test_the_branch_is_exempt_from_the_interior_node_invariants(self):
+        c = self.run_checks()
+        self.assertEqual(labelled(c, "TBranch 11.10"), [])
+        self.assertEqual(labelled(c, "Splitting 8.2"), [])
+
+    def test_a_base_with_members_is_not_exempt(self):
+        c = self.run_checks(base_elements=[element(name="fX")])
+        self.assertEqual(len(labelled(c, "TBranch 11.10")), 1)
+        self.assertEqual(len(labelled(c, "Splitting 8.2")), 1)
+
+    def test_its_entries_are_decoded_not_skipped(self):
+        c = self.run_checks()
+        self.assertEqual(c.failures, [])
+        self.assertEqual(c.verified, 1)
+        self.assertFalse([k for k in c.skipped if k[0] == "ReadingEntries 8.5"])
+
+    def test_a_wrong_checksum_fails(self):
+        entry = bytes.fromhex("40000006 0000 0e3afcb7")
+        bad = labelled(self.run_checks(self.ENTRY + entry), "ReadingEntries 8.5")
+        self.assertEqual(len(bad), 1)
+        self.assertIn("entry 1 checksum", bad[0])
+
+    def test_a_byte_count_past_the_entry_fails(self):
+        entry = bytes.fromhex("40000007 0000 0e3afcb6")
+        bad = labelled(self.run_checks(entry + self.ENTRY), "ReadingEntries 8.5")
+        self.assertEqual(len(bad), 1)
+        self.assertIn("entry 0 spans 10 bytes", bad[0])
+
+
+class LeaflessBasketCountedOnce(unittest.TestCase):
+    """The ENTRIES denominator: a leafless TBranchSTL basket is one skipped
+    branch-basket, not one per check that looks at it."""
+
+    def test_one_basket_is_one_skip(self):
+        c = stub_checker()
+        br = branch(cls="TBranchSTL", entries=1, entry_number=1,
+                    embedded={0: embedded(1)})
+        data = b"\x00" * 30
+        c.check_branch(data, br)
+        c.check_leaves(data, br, [])
+        self.assertEqual(
+            sum(n for k, n in c.skipped.items() if k[0] == "ReadingEntries 8.5"),
+            1)
+
+
+class StreamerTypeDivergences(unittest.TestCase):
+    """TBranchElement.md 10.10 and 5.2: the branch's fStreamerType is the
+    in-memory code, which the element record does not always carry."""
+
+    def failures(self, streamer_type, el):
+        info = rootfile.StreamerInfo(name="Holder", title="", version=9, bits=0,
+                                     checksum=0, class_version=1, elements=[el])
+        c = stub_checker(infos=[info])
+        c.check_branch_element(branch(
+            cls="TBranchElement", element_type=0, element_id=0,
+            class_name="Holder", class_version=1,
+            streamer_type=streamer_type), {})
+        return labelled(c, "TBranchElement 10.10")
+
+    @staticmethod
+    def stl(type_name, array_length=0, cls="TStreamerSTL"):
+        return element(name="m", cls=cls, ftype=500, type_name=type_name,
+                       array_length=array_length)
+
+    def test_kstlp_against_a_pointer_to_a_collection(self):
+        # RefTest.root (4.04/02) and ROOT 6.40.04 alike.
+        self.assertEqual(self.failures(71, self.stl("vector<Item>*")), [])
+        self.assertEqual(len(self.failures(300, self.stl("vector<Item>*"))), 1)
+
+    def test_kstl_against_a_collection(self):
+        self.assertEqual(self.failures(300, self.stl("vector<Item>")), [])
+        self.assertEqual(len(self.failures(71, self.stl("vector<Item>"))), 1)
+
+    def test_koffsetl_is_added_for_an_array(self):
+        el = self.stl("string", array_length=2, cls="TStreamerSTLstring")
+        self.assertEqual(self.failures(320, el), [])
+        self.assertEqual(len(self.failures(300, el)), 1)
+
+    def test_a_bool_that_stored_11_may_keep_11(self):
+        # mksm.root (4.00/08): the element stored kUChar 11 and reads as 18.
+        el = replace(element(name="ok", ftype=18, type_name="Bool_t"),
+                     stored_ftype=11)
+        self.assertEqual(self.failures(11, el), [])
+        self.assertEqual(self.failures(18, el), [])
+
+    def test_a_bool_that_stored_18_may_not_be_11(self):
+        el = element(name="ok", ftype=18, type_name="Bool_t")
+        self.assertEqual(len(self.failures(11, el)), 1)
+
+
+class UnpromotedCounterBranch(unittest.TestCase):
+    """TBranchElement.md 10.9: a counter branch has the counter's element
+    code, 13 for an unsigned counter such as TBits::fNbytes, since only a code
+    below 6 is promoted to kCounter (ElementTypes.md 2.1)."""
+
+    def failures(self, counter_type):
+        counter = branch(slot=100, name="fNbytes", cls="TBranchElement",
+                         element_type=0, element_id=1, class_name="TBits",
+                         streamer_type=counter_type)
+        counted = branch(slot=200, name="fAllBits", cls="TBranchElement",
+                         element_type=0, element_id=2, class_name="TBits",
+                         streamer_type=51, count_slot=100)
+        c = stub_checker()
+        c.check_branch_element(counted, {100: counter, 200: counted})
+        return labelled(c, "TBranchElement 10.9")
+
+    def test_every_counter_code_is_a_counter_branch(self):
+        for code in (3, 6, 13):
+            self.assertEqual(self.failures(code), [], code)
+
+    def test_a_float_is_not(self):
+        self.assertEqual(len(self.failures(5)), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -11,6 +11,51 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Legacy layouts in ROOT's own old files, and four reader corrections.** Every
+  failure the checks gave on ROOT-written files in `root/roottest/` older than
+  ROOT 5, plus one in the foreign corpus, turned out to be a format fact the
+  documents lacked or a claim scoped too widely. None was a fault in a file.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md): read an embedded basket from the
+    `fBaskets` slot before looking at `fBasketSeek`, as ROOT does (§10 step 4,
+    §5). Before 3.10/02, and before 5.21/02 for a top-level collection branch,
+    `TBranchElement` left its three basket arrays unzeroed, so the elements above
+    `fWriteBasket`, and `fBasketSeek` at an embedded slot, can hold heap garbage
+    such as `0xBAADF00D` (new §13.4). The `fWriteBasket + 2` slot count is not a
+    one-off: before 5.18/00 every split `TClonesArray` or collection count branch
+    got a second, never-filled basket, which reaches disk while `fWriteBasket` is
+    0 (§5, invariant 9). A basket in a slot above `fWriteBasket` holds no entries.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md) §9.2,
+    [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) §4,
+    [`Splitting.md`](spec/04-ttree/Splitting.md) and
+    [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md): before 6.02/00 and
+    5.34/20, an empty base class of a top-level split object got a branch with no
+    leaves and no children that still holds one framed object per entry. An
+    `fType` 1 branch with no leaves is not necessarily empty.
+  - [`TTree.md`](spec/04-ttree/TTree.md) §6.3: before 5.27/02, `fSavedBytes` was
+    set from `fTotBytes`, not `fZipBytes`, so it can exceed `fZipBytes` in older
+    files. The class version does not mark the change; only the file's release
+    does.
+  - [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) §5.2: a branch's
+    `fStreamerType` can also be 71, 91 or 320 against a stored 500 (a pointer to
+    a collection, an array of such pointers, an array of collections), and
+    current ROOT still writes them. Before 4.03/02 a `Bool_t` branch stores 11,
+    which the element's read-time fixup turns into 18 and the branch's does not.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §3.2 and §9,
+    [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) §2.1 and §10, and
+    [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) §6: a counter is the
+    element `fCountName` names, of code 3, 6 or 13, not only `kCounter`. An
+    unsigned counter such as `TBits::fNbytes` is never promoted and keeps 13, and
+    its branch has `fMaximum` 0.
+  - [`TLeaf.md`](spec/04-ttree/TLeaf.md) §5.2 and §6: a counter can be an earlier
+    leaf of the counted leaf's own branch, and need not have `fIsRange` set.
+    Before 5.28 the counter lookup searched the whole tree. Find counters by
+    following `fLeafCount`, as ROOT does.
+  - [`Buffer.md`](spec/02-serialization/Buffer.md) §7,
+    [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) §2.3 and
+    [`SchemaEvolution.md`](spec/02-serialization/SchemaEvolution.md):
+    `kIsOnHeap` and `kNotDeleted` are masked out of a written `fBits` only since
+    ROOT 6.30. Older files have them set.
+
 - **Correction: six "ROOT 4" behaviours were g4tools.** Two files in the foreign
   corpus have headers claiming ROOT 4.00/00 but were written by g4tools, Geant4's
   own ROOT writer, and six claims rested on them alone. No ROOT-written file

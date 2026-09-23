@@ -512,12 +512,21 @@ A reader needs to know the following:
   reader can test a framing decision, which
   [Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)
   needs. Invariant 10.
-- **`fBits` is masked when written.** `kIsOnHeap` (`0x01000000`) and
-  `kNotDeleted` (`0x02000000`) are cleared
-  (`root/core/base/src/TObject.cxx:1033`), so they never appear on disk even
-  though they are always set in memory. The exception is a file with
+- **`fBits` is masked when written, since ROOT 6.30.** `kIsOnHeap`
+  (`0x01000000`) and `kNotDeleted` (`0x02000000`) are cleared
+  (`root/core/base/src/TObject.cxx:1033`), so a current file does not have them
+  even though they are always set in memory. The exception is a file with
   `TFile::k630forwardCompatibility`, which writes `fBits` raw
   (`root/core/base/src/TObject.cxx:1030`); it is off unless explicitly enabled.
+  The masking arrived in root commit `3038a5243dc`, first tagged `v6-29-02`.
+  Before it, `fBits` was written as it was in memory
+  (`v6-28-00:core/base/src/TObject.cxx:911`), so an older file has both bits
+  set. In `uproot-sample-6.20.04-uncompressed.root` (ROOT 6.20/04) all 24
+  streamer infos have `fBits` `0x03010000` and all 115 elements `0x03000000`,
+  where those of `ttree/basket` (ROOT 6.40/04) have `0x00010000` and 0. The split
+  `fBits` columns of `root/roottest/root/treeformula/parse/mksm.root` (ROOT
+  4.00/08) hold values such as `0x03000018`. A reader MUST NOT require either
+  bit to be clear, and MUST NOT give either a meaning.
 - **`kIsReferenced` (`BIT(4)`) adds a trailing `u16`.** When that bit is set in
   `fBits`, a `pidf` process-identifier index follows `fBits`
   (`root/core/base/src/TObject.cxx:1005-1008`,
@@ -617,7 +626,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 6 | — | A class is mapped at its tag word but an object at its byte-count word, four bytes apart (§6.1) |
 | 7 | — | A class name in a `kNewClassTag` record is null-terminated, not a counted string — the only such string in the format (§5.1) |
 | 8 | — | `TObject`'s version word is ignored on reading, `kIsReferenced` adds a trailing `u16`, `fUniqueID` is then truncated to 24 bits, and the whole base may be absent (§7) |
-| 9 | `tobject.md`: inside the `StreamerInfo` record `fBits` "will be `0x03000000`" | It is `0x00000000`. `kIsOnHeap` and `kNotDeleted` are masked off on write (§7). `0x03000000` was correct before the masking was introduced |
+| 9 | `tobject.md`: inside the `StreamerInfo` record `fBits` "will be `0x03000000`" | It is `0x00000000`. `kIsOnHeap` and `kNotDeleted` are masked off on write (§7). `0x03000000` was correct before the masking arrived in ROOT 6.30 (§7) |
 | 10 | `dobject.md`: only the class back-reference is described | Neither the **object** back-reference nor the null pointer is documented at all, so a reader built from it cannot parse either (§6) |
 | 11 | `dobject.md`: the two byte counts are given identical wording | They have different owners and different extents: the outer one spans the class record **and** the object, the inner one only the version and members (§2, §5) |
 | 12 | — | Not every record's object data starts with a byte count: a `TRef` record's starts with a version word (§2.3) |

@@ -24,15 +24,15 @@ Measured, 2026-09-23, by the checks in `tools/`:
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 84 / 2151, 0 failures |
+| Reference files / byte assertions | 86 / 2203, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1670, 0 failures |
+| Source citations checked | 1698, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 98 files, 0 failures |
+| Invariants over the fixtures and the written files | 100 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
-| Entries decoded and checked | 46137 of 46241 branch-baskets, 99.8% |
-| Unit tests | 495 |
+| Entries decoded and checked | 48295 of 48399 branch-baskets, 99.8% |
+| Unit tests | 537 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register: every gap the written documents record, so that each can be picked up
@@ -2143,24 +2143,76 @@ The lesson for the tooling: nothing checks a "§n" reference against the heading
 it names, or a spelled-out count against the list it introduces, and those were
 the largest group.
 
-**Leads, not yet diagnosed.** Running `check_invariants.py` on individual
-pre-ROOT-5 files of `root/roottest/` for §8.15 shows failures on other labels:
-`TTree` 11.2 in seven files, `TBranch` 11.4 (39) and 11.9 (12) in `digi.root`,
-`TBranchElement` 10.10 in `mksm`, `RefTest` and `digi`, `TBranch` 11.10 and
-`Splitting` 8.2 in `cmsursula` and `mcpool`, `ReadingEntries` 8.5 in `mksm`, and
-`TLeaf` 10.7 in `short0.root` and `short1.root`. `TBranch` invariant 9 says
-`fWriteBasket + 2` slots occur in one ROOT 5 file; roottest has 53 such branches
-in files from 3.03 to 4.04. These files are ROOT-written, so each failure is
-evidence of a legacy layout the documents do not yet describe, or of an
-invariant scoped too widely.
+**The leads, resolved.** Running `check_invariants.py` on the pre-ROOT-5 files of
+`root/roottest/` for §8.15 gave failures on eight more labels, and `lz4` exposed
+one in the foreign corpus. Each was diagnosed against the source at the old
+release tags. None is a fault in a file, and no `IGNORE.toml` entry was added:
 
-One more lead is in the corpus itself. With the `lz4` package installed, the
-corpus run reaches 48294 of 48398 branch-baskets (99.8%) rather than 46137 of
-46241, and fails once: `uproot-issue213.root`, `ReadingEntries` 8.5, branch
-`fGenInfo`, where `fAllBits` names the counter `fNbytes` before it is seen. The
-same failure occurs at `83d6977`, so it predates this review. Without `lz4` the
-file's baskets are skipped as a missing codec, which is why the quoted figures
-never showed it. The figures quoted elsewhere are without `lz4`.
+- `TTree` 11.2 (12 files): `AutoSave` stored `fTotBytes` in `fSavedBytes` until
+  5.27/02 (`TTree.md` §6.3). The bound is now scoped by the header's release.
+- `TBranch` 11.4 and 11.9 (`digi.root`, six `tree/friend/Event*` files,
+  `AthenaCrossSection.root`): `TBranchElement` left its basket arrays unzeroed
+  before 3.10/02, and for a top-level collection before 5.21/02 (`TBranch.md`
+  §13.4). The reader also looked at `fBasketSeek` before the `fBaskets` slot,
+  the reverse of ROOT's order.
+- `TBranch` invariant 9: the `+2` slots are not one ROOT 5 file but 344 branch
+  records in 23 files from 3.03/06 to 5.16/00, the second "leafcount" basket
+  that `TBranchElement` gave every count branch before 5.18/00 (`TBranch.md`
+  §5). The "53" first written here was not reproducible.
+- `TBranch` 11.10 and `Splitting` 8.2 (`cmsursula`, `mcpool`): empty base classes
+  got a leafless branch that holds data before 6.02/00 and 5.34/20 (`TBranch.md`
+  §9.2). The checker now decodes those entries rather than skipping them.
+- `TBranchElement` 10.10 (`mksm`, `RefTest`, `digi`): a branch samples the
+  in-memory code, 71, 91 or 320 for STL pointers and arrays, which current ROOT
+  still writes, and 11 for `Bool_t` before 4.03/02 (`TBranchElement.md` §5.2).
+- `ReadingEntries` 8.5 on `mksm`: the reader took `kBits` as 4 bytes, ignoring
+  the `pidf` that `kIsReferenced` adds. `ElementTypes.md` §2.3 was already right.
+- `TLeaf` 10.7 (`short0.root` and its byte-identical copy `short1.root`): the
+  reader found a same-branch counter by `fIsRange`, which a pre-5.28 file need
+  not set; it now follows `fLeafCount` (`TLeaf.md` §5.2, §6).
+- `ReadingEntries` 8.5 on `uproot-issue213.root` (ROOT 6.14/00, readable only
+  with `lz4`): `TBits::fNbytes` is a `UInt_t` counter, which ROOT never promotes
+  to `kCounter`, and the reader kept only code 6 (`StreamerDriven.md` §3.2).
+
+Two new fixtures cover what current ROOT still writes: `ttree/split-tbits` and
+`ttree/split-stl-pointer`. The quoted entry figures had been measured without
+`lz4`, which drops eight files' 2158 branch-baskets from both sides of the ratio;
+they are now measured with it: 48295 of 48399, 0 failures.
+
+Two checker defects surfaced as well. Every basket of a leafless branch was
+counted twice in the `ENTRIES` denominator (the fixtures read 109 of 115, not 109
+of 113). And `Checker.check_branch` returns early for a leafless branch, so
+`TBranch` 11.5 to 11.7 are never checked on one, `TBranchSTL` included; that one
+is still open.
+
+**Open leads.** A sweep of all 272 roottest files (one process each; `sm.root`
+peaks at 1.3 GB) now gives 591 failures in 28 files. Only one of those files is cited, for a
+fact the failure does not touch (`stringarray.old.root`, `TBranchElement.md`
+§5.2). They are undiagnosed, and roottest holds some files that are broken on
+purpose, so each is a lead:
+
+- `ReadingEntries` 8.5, "names counter ... not yet seen", on an `Int_t` counter
+  (`fNsp` in `tree/selector/Event1-3.root` and `io/evolution/Event_2.root`,
+  `fNrSrcs` in `memleak.root`, `fN` in `varyingArray_51508.root`). This is not
+  the `issue213` mechanism, whatever the lead reports expected.
+- `ReadingEntries` 8.5 on collection columns: `small_aod.pool.root` (350, "no
+  byte count") and the two `S_1_*KGrec.root` files (54 each, the column ends
+  104 bytes short of its byte count).
+- `ReadingEntries` 8.5 on a split `std::string[2]` (`stringarray.old.root`); the
+  same framing gap makes the reader skip `fArr[2]` in `ttree/split-stl-pointer`,
+  with a misleading reason.
+- `TBranch` 11.9 in `tree/friend/dat_00{1,2,3}.root` (4.04/02, plain `TBranch`):
+  slot 11 holds an embedded basket while `fBasketSeek[11]` points at a real
+  `TBasket` record.
+- Structural labels in single files: `Splitting` 8.1, 8.3, 8.4; `TBranch` 11.3,
+  11.5, 11.6; `StreamerDriven` 10.5 (7 files); `Collections` 14.6 and 14.10;
+  `FileHeader` 10.9 and 10.10 (`foreignVec.root`); `ElementTypes` 11.1 (`fType`
+  521 in `varyingArray_51508.root`); `Auxiliary` 8.3.
+- `ReadingEntries` 8.1, 8.3 and 8.4 pass vacuously on a file whose baskets are all
+  embedded, such as `mksm.root`, because `Checker.entries_of` skips embedded
+  baskets.
+- A basket whose codec is missing, or whose check fails, leaves the `ENTRIES`
+  denominator rather than counting against it.
 
 ## 9. Known gaps
 
@@ -2278,7 +2330,8 @@ coverage is the `ENTRIES` line.
 
 180 files, **0 failures**, as of 2026-09-23. The probe: 32200 decoded, 785
 container, 6 partial, 178 blocked, 1 not walkable, plus 132 records whose LZ4
-codec is unavailable locally. Entries: 44441 of 44545 branch-baskets, 99.8%.
+codec is unavailable locally. Entries, with `lz4` installed: 46599 of 46703
+branch-baskets, 99.8% (44441 of 44545 without it, §8.16).
 
 Re-measured 2026-09-22 for `PLAN-corpus.md` C13, which added the 23-file RNTuple
 tier. The change comes from those files alone: the 157 files before it give 26410

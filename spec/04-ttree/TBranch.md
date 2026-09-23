@@ -94,7 +94,8 @@ The value in the file is therefore `max(fWriteBasket + 1, 10)`, and the three
 arrays have exactly that many elements. Elements at index `fWriteBasket + 1` and
 above are zero padding: the arrays are allocated zeroed and never written above
 `fWriteBasket` (`root/tree/tree/src/TBranch.cxx:311-319`,
-`root/tree/tree/src/TBranch.cxx:826-839`).
+`root/tree/tree/src/TBranch.cxx:826-839`). Two old `TBranchElement` constructors
+did not zero them, and a reader MUST NOT use those elements (§13.4).
 
 Because of the floor of 10, a tree with one basket per branch still has thirty
 array slots per branch. The value is not a hint about the number of baskets.
@@ -195,9 +196,12 @@ zero bytes each ([Buffer §6](../02-serialization/Buffer.md#6-object-slots)), an
 an embedded basket, which is the second form of
 [TBasket §4](TBasket.md#4-the-flag-byte-and-the-two-shapes-of-a-basket).
 
-An embedded basket is recognisable from the branch alone: it sits at index
-`fWriteBasket`, and `fBasketSeek[fWriteBasket]` is 0 because it was never given a
-file offset. Its layout is
+An embedded basket is recognisable from the branch alone: it is a non-null slot
+of `fBaskets` at index `fWriteBasket`, and `fBasketSeek[fWriteBasket]` is 0
+because it was never given a file offset. The slot is the authority, not the
+seek. In the branches of §13.4 the writer never assigned `fBasketSeek` at that
+index, so it holds whatever the heap held, and ROOT takes the basket from the slot
+without looking at it (`root/tree/tree/src/TBranch.cxx:1234-1236`). Its layout is
 [TBasket §4.1](TBasket.md#41-the-embedded-layout).
 
 > Demonstrated by `ttree/basket-embedded`. Both its branches have `fWriteBasket`
@@ -220,14 +224,32 @@ Two further points about the array, both measured over the two corpora of
   embedded basket at `fWriteBasket` whose first entry equals `fEntryNumber`, so
   it holds no entries: the branch was flushed and then written without another
   entry arriving. Its `fNevBuf` is 0 and invariant 6 still holds.
-- **A slot above `fWriteBasket` may hold a basket, and must be ignored.**
-  `alice_ESDs.root` (ROOT 5.34) writes two embedded baskets on each of its 19
-  collection count branches while `fWriteBasket` is 0. ROOT reads index
-  `fWriteBasket` down to 0 and never looks higher
-  (`root/tree/tree/src/TBranch.cxx:3002-3009`), so the second one is unreachable
-  by design, not corrupt. g4tools, Geant4's own ROOT writer, instead writes all
-  `fMaxBaskets` slots, with the unused ones null. No ROOT-written file available
-  does.
+- **A slot above `fWriteBasket` may hold a basket, and must be ignored.** Before
+  5.18/00, every `TBranchElement` constructor for a split `TClonesArray` or
+  collection created the branch's basket and then a second one "for the
+  leafcount", which nothing ever filled (`tree/src/TBranchElement.cxx` at tag
+  `v4-04-02`: lines 167-168 for the first, 221-222 and 277-278 for the second).
+  The streamer of the time wrote `fBaskets` as it stood (`tree/src/TBranch.cxx`
+  at the same tag, line 1544). The first flush overwrites slot 1 (lines
+  1569-1570 there), so the extra basket reaches the disk only on a count branch
+  whose `fWriteBasket` is still 0, and then always as an embedded basket with
+  `fNevBuf` 0. Root commit `4f4c18d4a7b` (2008-01-13) removed it; its first tag
+  is `v5-18-00`. ROOT reads indices `fWriteBasket` down to 0 and never higher
+  (`root/tree/tree/src/TBranch.cxx:3002-3009`), so the basket is unreachable by
+  design, not corrupt. g4tools, Geant4's own ROOT writer, writes all
+  `fMaxBaskets` slots instead, with the unused ones null.
+
+  > Measured over the fixtures, both corpora and `root/roottest/`: 344 branch
+  > records, 242 distinct branches, in 23 files written by 3.03/06 to 5.16/00
+  > (192 branches in 19 files once byte-identical copies are counted once),
+  > among them the 19 collection count branches of `alice_ESDs.root` (5.16/00)
+  > and 194 records in `EDM.root` (4.03/02). Every one is `fType` 3 or 4, has
+  > `fWriteBasket` 0 and holds an empty basket in slot 1. No file from 5.18/00 on
+  > has one. Seven count branches of `skim.root` (4.03/05) have `fWriteBasket` 0
+  > and a single slot. `TBranch::Reset`, which `TTree::CloneTree` calls, deletes
+  > the baskets and adds back one (`tree/src/TBranch.cxx` at tag `v4-03-04`,
+  > lines 1208-1235), which would explain it. How that file was made is not
+  > known.
 
 ## 6. `fEntryOffsetLen`
 
@@ -360,6 +382,8 @@ the wrong file. No fixture in this corpus exercises it.
 A split branch's interior nodes hold no data of their own; all of it is in their
 sub-branches. Such a node has an **empty `fLeaves`**, `fWriteBasket` 0 and no
 baskets, and exists only to give the sub-branches a parent and a name prefix.
+This describes interior nodes. A leafless branch with no sub-branches is the
+case of §9.2, and it can hold data.
 
 ROOT provides for this explicitly: `TBranch::Streamer` selects
 `TBranch::ReadLeaves0Impl` when `fNleaves` is 0
@@ -375,6 +399,41 @@ Together with §7 this is the shape of a split interior node: `fEntries` counted
 `fEntryNumber` 0, `fLeaves` empty, `fBaskets` empty, and all the data one level
 down.
 
+### 9.2 A leafless branch may still hold data
+
+Before 6.02/00 and 5.34/20, `TTree::Bronch` gave every base class of a top-level
+split object its own sub-branch, whether the base had data members or not
+(`tree/src/TTree.cxx` at tag `v4-04-02`, lines 1480-1495). For a base class with
+no data members this is a `TBranchElement` with `fType` 1, no leaf and no
+sub-branches, which still has baskets. The constructor always created a basket
+(`tree/src/TBranchElement.cxx` at the same tag, lines 167-168) and set `fType` 1
+for a base (line 185), and the fill path wrote element `fID` of the parent class's
+streamer info on every entry (line 1092). So each entry is one framed object of
+the base class: 10 bytes for an empty foreign class, which is a byte count of 6,
+a version word of 0 and the class's checksum
+([Buffer §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)).
+
+ROOT still reads these entries. For such a branch `TBranchElement` selects
+`ReadLeavesMember`, whatever its leaf count
+(`root/tree/tree/src/TBranchElement.cxx:5805-5812`), and that applies the
+element's read sequence (`root/tree/tree/src/TBranchElement.cxx:4619`). The empty
+`ReadLeaves0Impl` of §9.1 is the path of a plain `TBranch`.
+
+Nested levels have skipped an empty base since root commit `00087892a75`
+(2004-11-18, first tag `v4-01-04`). The top level was fixed by root commit
+`6698d9213bb` (2014-08-06, first tag `v6-02-00`) and its backport `df455e9c8d5`
+(first tag `v5-34-20`). Today the test is
+`root/tree/tree/src/TBranchElement.cxx:6187-6190`.
+
+> Measured over the fixtures, both corpora and `root/roottest/`: 16 branches, all
+> named `<top>.edm::EDProduct`, 15 in `cmsursula.root` and 1 in `mcpool.root`
+> (both 4.04/02). Each has `fType` 1, `fID` 0, `fWriteBasket` 0, `fTotBytes` 0 and
+> one embedded basket of 2 entries, each entry `40 00 00 06 00 00 0e 3a fc b6`.
+> The file's `edm::EDProduct` streamer info lists no elements and has checksum
+> `0x0e3afcb6`. ROOT 6.40.04 reads 10 bytes for each entry of
+> `HepMCProduct_PythiaInput__HepMC.edm::EDProduct` in `mcpool.root`. No other
+> file has a childless `fType` 1 or 2 branch.
+
 ## 10. Reading
 
 To read entry *e* of a branch:
@@ -388,11 +447,14 @@ To read entry *e* of a branch:
 3. `first = fBasketEntry[i]`. The basket's last entry is `fBasketEntry[i+1] - 1`,
    except when `i == fWriteBasket`, where it is `fEntryNumber - 1`
    (`root/tree/tree/src/TBranch.cxx:1377-1383`).
-4. If `fBasketSeek[i]` is non-zero, read the record there, of `fBasketBytes[i]`
-   bytes, from the file named by `fFileName` or the tree's own, and decode it per
-   [TBasket §8](TBasket.md#8-reading). If it is 0, basket *i* was never written to
-   disk: it is the object in slot *i* of `fBaskets`, in the embedded form of
-   [TBasket §4.1](TBasket.md#41-the-embedded-layout).
+4. If slot *i* of `fBaskets` holds a basket, that is basket *i*, in the embedded
+   form of [TBasket §4.1](TBasket.md#41-the-embedded-layout), whatever
+   `fBasketSeek[i]` says. ROOT returns the slot before it looks at `fBasketSeek`
+   (`root/tree/tree/src/TBranch.cxx:1234-1236`), and in the branches of §13.4
+   `fBasketSeek[i]` at an embedded slot was never assigned. Otherwise read the
+   record at `fBasketSeek[i]`, of `fBasketBytes[i]` bytes, from the file named by
+   `fFileName` or the tree's own, and decode it per
+   [TBasket §8](TBasket.md#8-reading).
 5. Entry *e* is the basket's entry `e - first`.
 6. Hand the resulting byte range to the leaves, in `fLeaves` order, per
    [TLeaf §5](TLeaf.md#5-reading-one-entry).
@@ -418,7 +480,8 @@ at index `fWriteBasket`.
    when the branch was flushed and then written without another entry (92
    branches measured, §5). Invariant 6 fixes the difference exactly.
 4. `fBasketBytes[i]`, `fBasketEntry[i]` and `fBasketSeek[i]` are 0 for every
-   `i > fWriteBasket`.
+   `i > fWriteBasket`, except in the branches of §13.4, where elements the writer
+   never assigned hold whatever the heap held. A reader MUST NOT use them.
 5. For `i < fWriteBasket` with `fFileName` empty: `fBasketSeek[i]` is the offset
    of a record whose class name is `TBasket`, and that record's `fNbytes` equals
    `fBasketBytes[i]`. `fBasketSeek[i]` is 0 exactly when slot *i* of `fBaskets`
@@ -431,27 +494,31 @@ at index `fWriteBasket`.
 8. `fEntries == fEntryNumber - fFirstEntry`, **unless the branch has
    sub-branches**, where `fEntryNumber` may be 0 while `fEntries` counts (§7).
 9. No slot of `fBaskets` holds a `TBasket` for which `fBasketSeek` is non-zero,
-   and no slot above `fWriteBasket` holds anything a reader may use: ROOT walks
-   indices `fWriteBasket` down to 0 and no further
-   (`root/tree/tree/src/TBranch.cxx:3002-3009`). The slot count is not fixed
-   by `fWriteBasket`. It is `fWriteBasket + 1` for 11 028 branches measured; one
-   or more less when the trailing slots are null and the writer's `TObjArray`
-   trimmed them; `fMaxBaskets` in the two g4tools files; and `fWriteBasket + 2`
-   in one ROOT 5 file that left a second embedded basket above the write index
-   (§5).
+   except in the branches of §13.4, where `fBasketSeek` at an embedded slot was
+   never assigned. A basket in a slot above `fWriteBasket` holds no entries, and
+   a reader MUST ignore it: ROOT walks indices `fWriteBasket` down to 0 and no
+   further (`root/tree/tree/src/TBranch.cxx:3002-3009`). The slot count is not
+   fixed by `fWriteBasket`. It is `fWriteBasket + 1` for 11 028 branches
+   measured; one or more less when the trailing slots are null and the writer's
+   `TObjArray` trimmed them; `fMaxBaskets` in the two g4tools files; and
+   `fWriteBasket + 2` on a split `TClonesArray` or collection count branch
+   (`fType` 3 or 4) written before 5.18/00 whose `fWriteBasket` is still 0,
+   where slot 1 holds an empty basket (§5).
 10. `fLeaves` is not empty, **unless the branch has sub-branches**, where it may
-    hold nothing at all (§9.1).
+    hold nothing at all (§9.1), **or is the empty-base branch of §9.2**.
 11. `fEntryOffsetLen` is 0 or at least 10, and is 0 only if no leaf of this branch
     has a leaf count and none is a `TLeafC`.
 
 Invariants 5 to 7 hold only for a branch whose baskets are in the same file.
 
-Invariants 9 and 10 are not corruption-testable in isolation: the slot count of a
-`TObjArray` is redundant with its byte count, so changing it breaks the framing
-layer first and the file is rejected by
+Invariant 10 and the slot count of invariant 9 are not corruption-testable in
+isolation: the slot count of a `TObjArray` is redundant with its byte count, so
+changing it breaks the framing layer first and the file is rejected by
 [Streamer-driven reading §10](../02-serialization/StreamerDriven.md#10-invariants).
 Invariant 9 can still be tested from the other side, by making `fWriteBasket`
-disagree with an intact slot count.
+disagree with an intact slot count. Its rule that a basket above `fWriteBasket`
+holds no entries is testable directly: giving the slot-1 basket of one of
+`alice_ESDs.root`'s count branches an `fNevBuf` of 1 makes it fail.
 
 ## 12. Errata
 
@@ -470,7 +537,10 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 9 | `ttree.md:45-64`: `fCompress` is "(=1 branch is compressed, 0 otherwise)" | It is `100 × algorithm + level`, the same encoding as everywhere else (`root/tree/tree/inc/TBranch.h:308-323`), and −1 means "inherit from the file". It describes new baskets only; each basket's actual codec is in its own record header |
 | 10 | *This document, until 2026-09-23*: `fMaxBaskets == max(fWriteBasket + 1, 10)` from class version 8, and a version-8 writer wrote all `fMaxBaskets` slots of `fBaskets` | ROOT wrote a flat 1000 at version 8, and `fWriteBasket + 1` slots. Both claims rested on two g4tools files, whose headers claim ROOT 4.00/00 (§13.2) |
 | 11 | *This document, until 2026-09-23*: a ROOT 4.00-era writer left `fBaskets` at `fMaxBaskets` slots (§5, invariant 9) | g4tools does; no ROOT-written file available does |
-| 10 | — | Nothing says a stored `fSplitLevel` of 0 means 1 when the branch has sub-branches (§2) |
+| 12 | — | Nothing says a stored `fSplitLevel` of 0 means 1 when the branch has sub-branches (§2) |
+| 13 | *This document, until 2026-09-23*: `fWriteBasket + 2` slots came from one ROOT 5 file, `alice_ESDs.root`, called ROOT 5.34 | The file is 5.16/00, and the extra slot is the leafcount basket every split `TClonesArray` or collection count branch got before 5.18/00: 242 branches in 23 files from 3.03/06 on (§5, invariant 9) |
+| 14 | *This document, until 2026-09-23*: the three arrays are 0 above `fWriteBasket`, an embedded slot has `fBasketSeek` 0, and Reading step 4 chose between record and embedded basket by `fBasketSeek` | Two `TBranchElement` constructors left the arrays unzeroed, before 3.10/02 and 5.21/02 (§13.4). The `fBaskets` slot decides, as in ROOT (§10 step 4) |
+| 15 | *This document, until 2026-09-23*: a branch with no leaves and no sub-branches does not occur | Before 6.02/00 and 5.34/20 an empty base class of a top-level split object got one, and its baskets hold one framed base-class object per entry (§9.2) |
 
 The `TLeaf::fOffset` comment, "Offset in ClonesArray object (if one)"
 (`root/tree/tree/inc/TLeaf.h:77`), is misleading in the same way from the other
@@ -614,6 +684,46 @@ misread such a file.
 
 `tools/rootfile.py` takes the width from the flag byte for every version below
 10, and §13.1 is the layout it reads.
+
+### 13.4 Two constructors left the basket arrays unzeroed
+
+The `TBranch` constructor has always zeroed the three arrays
+(`tree/src/TBranch.cxx` at tag `v3-04-02`, lines 162-170). Two `TBranchElement`
+constructors allocated them and set only `fBasketEntry[0]` and `fBasketBytes[0]`:
+
+| Constructor | Unzeroed at | Fixed by | First release with the fix |
+|---|---|---|---|
+| every `TBranchElement` constructor | `tree/src/TBranchElement.cxx` at tag `v3-04-02`, lines 146-151 and 317-322 | root commit `8bc05fa54d7` (2003-12-08) | 3.10/02 (lines 151-155 at tag `v3-10-02`). `git tag --contains` lists `v3-10-01`, but the file at that tag has no zeroing loop |
+| the top-level STL collection constructor, `TBranchElement(const char*, TVirtualCollectionProxy*, …)` | `tree/src/TBranchElement.cxx` at tag `v5-14-00`, lines 627-632 | root commit `f0127d321c7` (2008-08-12) | 5.21/02 (`tree/tree/src/TBranchElement.cxx` at tag `v5-21-02`, line 730) |
+
+The streamer wrote all `fMaxBaskets` elements (`tree/src/TBranch.cxx` at tag
+`v3-04-02`, line 1185), so the heap contents reached the file. `WriteBasket` assigns the slot it flushes and, at 3.04/02, zeroes the one it
+moves to (`tree/src/TBranch.cxx` at tag `v3-04-02`, lines 454-456). What stays
+unassigned is every element above `fWriteBasket`, and `fBasketSeek` at a slot
+whose basket was never flushed, which is an embedded one. At 5.14 `WriteBasket`
+also leaves `fBasketBytes` and `fBasketSeek` at the new `fWriteBasket`
+unassigned (`tree/src/TBranch.cxx` at tag `v5-14-00`, lines 1772-1796). Current
+ROOT zeroes all three arrays in `TBranchElement::Init`
+(`root/tree/tree/src/TBranchElement.cxx:954-961`).
+
+ROOT never reads these values. `GetBasketImpl` returns nothing for an index above
+`fWriteBasket`, and returns the `fBaskets` slot, when there is one, before it
+looks at `fBasketSeek` (`root/tree/tree/src/TBranch.cxx:1234-1236`); it did the
+same at 3.04/02 (`tree/src/TBranch.cxx` at that tag, lines 569-570). A reader
+MUST do the same (§10 step 4). Only the release in the file header identifies
+these branches, so a tree written into an older file by a newer ROOT would be
+exempted from invariants 4 and 9 wrongly, in the permissive direction.
+
+> Measured over the fixtures, both corpora and `root/roottest/`. Of 239
+> `TBranchElement`s written before 3.10/02, 181 have a non-zero element above
+> `fWriteBasket`, in 7 files: `digi.root` (3.04/02), where every such element
+> is −1163005939, `0xBAADF00D`, and the six `Event*` files of
+> `root/roottest/root/tree/friend/` (3.03/06, two distinct contents), where
+> `Event2a.root` has `fBasketSeek[0]` 3670392 at an embedded slot. Of 10 top-level collection
+> branches written before 5.21/02, 2 do, both in `AthenaCrossSection.root`
+> (5.14/00): `reco_ee_charge` has `fBasketBytes[1]` −1 at its embedded slot. No
+> other branch of 56 351 has one. ROOT 6.40.04 reads all 14 entries of
+> `digi.root`'s `m_timeStamp` while `GetBasketSeek(0)` returns −1163005939.
 
 ## 14. Reference files
 

@@ -1102,5 +1102,40 @@ class RefVariants(unittest.TestCase):
         self.assertEqual(rootfile.ref_exec_id(0x00000020), 0)
 
 
+class UnpromotedCounter(unittest.TestCase):
+    """ElementTypes.md 2.1: a counter need not be kCounter.
+
+    Only a counter whose code is below 6 is promoted to kCounter
+    (root/core/meta/src/TStreamerElement.cxx:99), so a UInt_t counter keeps
+    kUInt (13). TBits is the case in real files: fAllBits names fNbytes, which
+    is fType 13 (uproot-issue213.root, alice_ESDs.root, ttree/split-tbits).
+    """
+
+    #: TBits v1 with fNbits 3 and fNbytes 2: the frame, then the members.
+    BODY = (b"\x00\x00\x00\x03"             # fNbits = 3
+            b"\x00\x00\x00\x02"             # fNbytes = 2
+            b"\x01\x05\x00")                 # fAllBits: present, two bytes
+    FRAMED = b"\x40\x00\x00\x0d\x00\x01" + BODY
+
+    @staticmethod
+    def tbits(counter_type):
+        return info(element("fNbits", ftype=13, type_name="UInt_t"),
+                    element("fNbytes", ftype=counter_type, type_name="UInt_t"),
+                    element("fAllBits", cls="TStreamerBasicPointer", ftype=51,
+                            count_name="fNbytes", type_name="UChar_t"),
+                    name="TBits")
+
+    def test_every_integer_counter_code_gives_the_count(self):
+        for ftype in (3, 6, 13):
+            decoder = rootfile.Decoder(self.FRAMED, 0, [self.tbits(ftype)])
+            values = decoder.read_members("TBits", 1, 6, len(self.FRAMED))
+            self.assertEqual(values[2].end - values[2].start, 3, f"fType {ftype}")
+
+    def test_an_unframed_read_keeps_it_too(self):
+        # read_elements serves an unsplit branch's entry, ReadingEntries.md 3.3.
+        decoder = rootfile.Decoder(self.BODY, 0, [])
+        self.assertEqual(decoder.read_elements(self.tbits(13), 0), len(self.BODY))
+
+
 if __name__ == "__main__":
     unittest.main()

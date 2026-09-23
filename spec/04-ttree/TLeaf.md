@@ -249,6 +249,29 @@ leaf's data.** The counter is a different leaf, usually in a different branch, a
 a reader must read *that* branch's entry *e* first
 (`root/tree/tree/src/TLeafF.cxx:120-125`).
 
+The counter can also be an earlier leaf of the same branch, as in the leaflist
+`n/I:a[n]/F`. Its value is then in the same entry, before the leaves it counts.
+`GetLeafCounter` searches the branch's own leaves first
+(`root/tree/tree/src/TLeaf.cxx:286-290`). It runs in the leaf's constructor
+(`root/tree/tree/src/TLeaf.cxx:85`), before the leaf is added to its branch
+(`root/tree/tree/src/TBranch.cxx:429`), so it sees only the leaves built so far,
+and a counter in the same branch always comes before what it counts. ROOT reads
+the leaves in `fLeaves` order (`root/tree/tree/src/TBranch.cxx:2460-2466`), so
+the counter is already read when the counted leaf needs it.
+
+**Find the counter by following `fLeafCount`**, not by its name and not by
+`fIsRange` (§6). ROOT reads the count through `fLeafCount` and never consults
+`fIsRange` (`root/tree/tree/src/TLeafF.cxx:120-131`). Before ROOT 5.28 the name
+lookup was over the whole tree (§6), so a leaflist that repeats a counter name
+from an earlier branch, such as two branches `n/I:a[n]/F`, gets an `fLeafCount`
+into the earlier branch. The writer sized the data from that same pointer
+(`v3-05-07:tree/src/TLeafF.cxx:81`, through `GetLen` at
+`v3-05-07:tree/src/TLeaf.cxx:195-207`), so the pointer is right and a
+branch-first lookup by name would pick the wrong leaf. No file available to this
+project has that shape. A `TBranchElement` is the opposite case: its counter must
+be resolved by name
+([Reading entries §4.1](ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)).
+
 ROOT clamps `n` to the counter leaf's `fMaximum` and prints an error when it is
 exceeded (`root/tree/tree/src/TLeaf.cxx:410-413`). A reader need not, and arguably
 should not: the basket's entry-offset array gives the true extent independently,
@@ -282,6 +305,19 @@ that entry into values when the branch has more than one leaf.
 another leaf's counter*, and `TLeaf::GetLeafCounter` sets it on the counter
 (`root/tree/tree/src/TLeaf.cxx:309`). The header states this in the clause after
 the one the shipped documentation quotes (`root/tree/tree/inc/TLeaf.h:78`).
+
+**The converse does not hold: a counter can have `fIsRange` 0.** Before ROOT
+5.28, `GetLeafCounter` looked the counter's name up over the whole tree's leaf
+list and called `SetRange()` on whatever leaf it found
+(`v3-05-07:tree/src/TLeaf.cxx:145-149`). The lookup became branch-first in root
+commit `54e07f0d934`, first tagged `v5-28-00`. In
+`root/roottest/root/tree/friend/short0.root` (ROOT 3.05/07), every counted leaf
+points at a counter in its own branch, and 35 of the 215 counters have
+`fIsRange` 0: exactly those whose name a leaf in an earlier branch already had.
+`short1.root` is a byte-identical copy. Stock 3.05/07 would also have pointed those counted
+leaves at the earlier branch's leaf; how this writer set them otherwise is not
+known. ROOT reads both files correctly, because reading never consults
+`fIsRange` (§5.2). A reader must identify counters from `fLeafCount` alone.
 
 `fMaximum` is maintained only on integer leaves, only when `fIsRange` is set, and
 only from element 0: `if (IsRange()) { if (fValue[0] > fMaximum) fMaximum = fValue[0]; }`
@@ -468,7 +504,7 @@ Neither is where a string's length comes from.
    normalisation of §2, or −1, which means the dimension in the title named
    something the writer could not resolve (§4.2).
 2. `fIsRange` is true only on a leaf that some other leaf in the same tree names
-   as its `fLeafCount`.
+   as its `fLeafCount`. The converse is not an invariant (§6).
 3. A leaf with `fIsRange` true is an integer leaf (`TLeafO`, `TLeafB`, `TLeafS`,
    `TLeafI`, `TLeafL`, `TLeafG`) or a `TLeafElement`, which keeps the range in
    its `TBranchElement` instead (`root/tree/tree/inc/TLeaf.h:78`).
@@ -558,6 +594,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 12 | `root/tree/tree/src/TBranch.cxx:147-162` lists the leaflist codes | Accurate, but it never says only the first character is read, so `x/F16` silently produces a `TLeafF` (§2.1) |
 | 13 | `ttree.md:81` and `root/tree/tree/inc/TLeaf.h:75`: `fLen` is the "Number of fixed length elements in the leaf's data" | Not on a `TLeafC`: there it is the longest string written plus one, changed during writing, and used on read as the caller's buffer size. It can be smaller than the longest string in the file, and ROOT then truncates (§9.1) |
 | 14 | *This document, until 2026-09-23*: invariant 10.6 said a ROOT 4.00-era writer left `fEntryOffsetLen` at 1000 on a fixed-width branch | g4tools does. Every ROOT-written file available sets 0 there, back to 3.04/02 (§10, invariant 6) |
+| 15 | *This document, until 2026-09-23*: §6 read as if every counter has `fIsRange` set, and this project's reader found a same-branch counter by it | Before ROOT 5.28, a counter whose name an earlier branch had already used can have `fIsRange` 0. Find counters from `fLeafCount` (§5.2, §6) |
 
 `TLeafC::ReadBasketExport` is a second decoder, and a worse one
 (`root/tree/tree/src/TLeafC.cxx:175-192`). It is reached only through
@@ -616,3 +653,9 @@ The corpora cover two of §12's rows (`PLAN.md` §9.1):
   and both read with 0 failures.
 
 No file available to this project has a `TLeafObject` below version 4.
+
+No fixture has a counter in the counted leaf's own branch (§5.2). The two
+corpora and `root/roottest/` hold 431 plain-leaf counters of that kind: 361 with
+`fIsRange` 1, and the 70 of §6 with `fIsRange` 0: 35 in
+`root/roottest/root/tree/friend/short0.root` and the same 35 in `short1.root`,
+which is a byte-identical copy. Both files read with 0 failures.

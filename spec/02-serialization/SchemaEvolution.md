@@ -390,10 +390,11 @@ the last entry can silently decode objects with the wrong layout.
 
 **Which `fBits` differ is not fixed, and a reader MUST NOT key on any of them.**
 `fBits` is written wholesale through the `TNamed` base, so what reaches disk is
-the writing session's in-memory status. In every case measured this includes the
-`TObject` allocation bits `kIsOnHeap` and `kNotDeleted`
+the writing session's in-memory status. Before ROOT 6.30, in every case measured,
+this includes the `TObject` allocation bits `kIsOnHeap` and `kNotDeleted`
 (`root/core/base/inc/TObject.h:90-91`), which say only that the object was on the
-heap and had not been destructed.
+heap and had not been destructed. Since 6.30 they are masked off on write
+([Buffer §7](Buffer.md#7-the-tobject-base)).
 
 > Measured across `data/` and both corpora: three files have a duplicate of the
 > first kind, all of them `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`,

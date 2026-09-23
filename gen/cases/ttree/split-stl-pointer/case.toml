@@ -1,0 +1,282 @@
+id   = "ttree/split-stl-pointer"
+file = "data/ttree/split-stl-pointer.root"
+size = 20784
+
+description = """
+Collection members of a split object whose branch's fStreamerType is not the
+500 their streamer element stores: 71 for a pointer to a collection, 91 for an
+array of such pointers, and 320 for an array of collections.
+
+A `TStreamerSTL` writes fType 500 (kStreamer) whatever the member is
+(root/core/meta/src/TStreamerElement.cxx:2146). Its read path computes the code
+it uses: kSTLp (71) when the type name ends in `*`, else kSTL (300), plus
+kOffsetL (20) when fArrayLength is non-zero
+(root/core/meta/src/TStreamerElement.cxx:2124-2128). A member's branch copies
+the element's in-memory code when it is built
+(root/tree/tree/src/TBranchElement.cxx:351), so it records the computed code,
+and the element record in the same file says 500. `ttree/split-nested` has the
+plain 300 form; this case has the other three:
+
+    h             fType 0, fID -2      the split node
+    h/fPtr        fStreamerType 71     vector<PItem>*
+    h/fPtrArr[2]  fStreamerType 91     vector<PItem>*[2]
+    h/fArr[2]     fStreamerType 320    vector<PItem>[2]
+    h/fFlag       fStreamerType 18     Bool_t
+
+The same rule applies to both halves of a pointer's code. The element's
+fSTLtype is 41, kSTLvector plus kOffsetP (40), because the member is a pointer
+(root/core/meta/src/TStreamerElement.cxx:1806 and :1870).
+
+`fFlag` is the control: a `Bool_t` member that ROOT 6.40.04 records as 18 on
+both the branch and the element. Before 4.03/02 `kBool_t` was 11, the same code
+as `kUChar_t` (`v4-02-00:meta/inc/TDataType.h:37`), so both sides said 11.
+
+The entries. None of the three collection branches has sub-branches here, and
+each entry is framed once, with the version word 0x400a (kStreamedMemberWise
+plus 10) and `PItem`'s class version 1, then the collection bodies:
+
+- `fPtr`: one count, then a column per member of `PItem`. No pointer tag or
+  null marker comes before the frame.
+- `fPtrArr[2]` and `fArr[2]`: one frame for **both** array elements, then two
+  collection bodies back to back, each a count and its columns. The byte count
+  covers both bodies.
+
+Three entries, with collections of zero, one and two elements.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 234
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 334
+nbytes = 148
+class  = "TBasket"
+role   = "basket of 'fPtr'"
+[[records]]
+offset = 482
+nbytes = 166
+class  = "TBasket"
+role   = "basket of 'fPtrArr[2]'"
+[[records]]
+offset = 648
+nbytes = 163
+class  = "TBasket"
+role   = "basket of 'fArr[2]'"
+[[records]]
+offset = 811
+nbytes = 72
+class  = "TBasket"
+role   = "basket of 'fFlag'"
+[[records]]
+offset = 883
+nbytes = 3137
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 4020
+nbytes = 16472
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 20492
+nbytes = 179
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 20671
+nbytes = 113
+class  = "TFile"
+role   = "keys list / free segments"
+
+# --- the streamer elements: 500 on every collection -------------------------
+
+[[bytes]]
+name = "PHolder.fPtr: fType 500, kStreamer"
+offset = 5858
+type = "i32"
+value = 500
+
+[[bytes]]
+name = "PHolder.fPtr: fTypeName ends in '*'"
+offset = 5894
+type = "string"
+value = "vector<PItem>*"
+
+[[bytes]]
+name = "PHolder.fPtr: fSTLtype 41, kSTLvector + kOffsetP"
+offset = 5909
+type = "i32"
+value = 41
+
+[[bytes]]
+name = "PHolder.fPtrArr: fType 500"
+offset = 5982
+type = "i32"
+value = 500
+
+[[bytes]]
+name = "PHolder.fPtrArr: fArrayLength 2"
+offset = 5990
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "PHolder.fPtrArr: fSTLtype 41"
+offset = 6033
+type = "i32"
+value = 41
+
+[[bytes]]
+name = "PHolder.fArr: fType 500"
+offset = 6103
+type = "i32"
+value = 500
+
+[[bytes]]
+name = "PHolder.fArr: fArrayLength 2"
+offset = 6111
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "PHolder.fArr: fTypeName with no '*'"
+offset = 6139
+type = "string"
+value = "vector<PItem>"
+
+[[bytes]]
+name = "PHolder.fArr: fSTLtype 1, kSTLvector"
+offset = 6153
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "PHolder.fFlag: fType 18, kBool"
+offset = 6228
+type = "i32"
+value = 18
+
+# --- the branches: the computed codes ----------------------------------------
+
+[[bytes]]
+name = "h: the split node's fID sentinel"
+offset = 3923
+type = "i32"
+value = -2
+
+[[bytes]]
+name = "fPtr: fID 0"
+offset = 1906
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fPtr: fStreamerType 71, kSTLp -- not the element's 500"
+offset = 1914
+type = "i32"
+value = 71
+
+[[bytes]]
+name = "fPtrArr[2]: fID 1"
+offset = 2468
+type = "i32"
+value = 1
+
+[[bytes]]
+name = "fPtrArr[2]: fStreamerType 91, kSTLp + kOffsetL"
+offset = 2476
+type = "i32"
+value = 91
+
+[[bytes]]
+name = "fArr[2]: fID 2"
+offset = 3018
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fArr[2]: fStreamerType 320, kSTL + kOffsetL"
+offset = 3026
+type = "i32"
+value = 320
+
+[[bytes]]
+name = "fFlag: fStreamerType 18, the same as its element"
+offset = 3571
+type = "i32"
+value = 18
+
+# --- the entries -------------------------------------------------------------
+#
+# fPtr entry 2:
+# 40 00 00 18 | 40 0a | 00 01 | 00 00 00 02 | 00 00 00 14 00 00 00 15 | 00 00 00 00 3f 00 00 00
+# byte count    ver     PItem   count 2       fA: 20, 21                 fB: 0, 0.5
+
+[[bytes]]
+name = "fPtr entry 2: byte count 24"
+offset = 434
+type = "u32"
+value = 0x40000018
+
+[[bytes]]
+name = "fPtr entry 2: version word 0x400a, kStreamedMemberWise plus 10"
+offset = 438
+type = "u16"
+value = 0x400a
+
+[[bytes]]
+name = "fPtr entry 2: PItem's class version, then the count 2 -- no pointer tag"
+offset = 440
+type = "bytes"
+value = [0, 1, 0, 0, 0, 2]
+
+[[bytes]]
+name = "fPtr entry 2: the fA column, 20 and 21, then the fB column, 0 and 0.5"
+offset = 446
+type = "bytes"
+value = [0, 0, 0, 20, 0, 0, 0, 21, 0, 0, 0, 0, 0x3f, 0, 0, 0]
+
+# fPtrArr[2] entry 1: one frame, then fPtrArr[0] (count 0) and fPtrArr[1]
+# (count 1, fA 20, fB 1.5).
+
+[[bytes]]
+name = "fPtrArr[2] entry 1: one byte count, 20, for both array elements"
+offset = 572
+type = "u32"
+value = 0x40000014
+
+[[bytes]]
+name = "fPtrArr[2] entry 1: count 0, then count 1, fA 20, fB 1.5"
+offset = 576
+type = "bytes"
+value = [0x40, 0x0a, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 20, 0x3f, 0xc0, 0, 0]
+
+# fArr[2] entry 1: the same framing; fArr[0] holds (30, 2.5), fArr[1] is empty.
+
+[[bytes]]
+name = "fArr[2] entry 1: one byte count, 20, for both array elements"
+offset = 735
+type = "u32"
+value = 0x40000014
+
+[[bytes]]
+name = "fArr[2] entry 1: count 1, fA 30, fB 2.5, then count 0"
+offset = 739
+type = "bytes"
+value = [0x40, 0x0a, 0, 1, 0, 0, 0, 1, 0, 0, 0, 30, 0x40, 0x20, 0, 0, 0, 0, 0, 0]
+
+[[bytes]]
+name = "fFlag: one byte per entry, false, true, false"
+offset = 880
+type = "bytes"
+value = [0, 1, 0]

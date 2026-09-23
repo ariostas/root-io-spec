@@ -23,8 +23,9 @@ worth knowing:
   are not re-investigated.
 - **§8.15** records six "ROOT 4" behaviours that were really g4tools. A file's
   header names a ROOT release, not its writer.
-- **§8.16** is a consistency review of every document, and its open leads: failures
-  on ROOT-written pre-5 files in `root/roottest/` that no corpus exercises.
+- **§8.16** is a consistency review of every document. It also resolves the
+  failures on ROOT-written pre-5 files in `root/roottest/`, all of them legacy
+  layouts or reader gaps, and lists what a sweep of all of roottest still fails.
 
 The sub-plan that drove the survey, `PLAN-corpus.md`, is deleted, but code and
 text still cite its item numbers (C1–C19). Its lasting rule: keep a claim
@@ -92,8 +93,13 @@ The invariant checks run over the same corpus. That is where format errors have
 actually been found: fourteen so far, plus the legacy `CS` codec.
 
 ```sh
-tools/check_invariants.py --ignore gen/foreign/IGNORE.toml build/foreign/*.root
+uv run --no-project --with lz4 python3 tools/check_invariants.py \
+  --ignore gen/foreign/IGNORE.toml build/foreign/*.root
 ```
+
+Install `lz4` for corpus runs. Without it, eight LZ4-compressed files lose 2158
+branch-baskets from both sides of the `ENTRIES` ratio, so the ratio hides them.
+That is how the `uproot-issue213.root` failure of `PLAN.md` §8.16 went unseen.
 
 The provenance of these files is mixed. The source is uproot's regression corpus,
 which includes files uproot wrote, so a failure there is a lead, not evidence.
@@ -177,7 +183,8 @@ fixtures and `gen/foreign/`, which justifies the default.
 
 When a check cannot run, it prints `SKIPPED n branch-basket(s)` for each reason,
 and the run ends with an `ENTRIES` line giving the fraction it reached. Over the
-two corpora that is **46137 of 46241, 99.8%**, with 0 failures. All 104 skips are
+two corpora, with `lz4` installed, that is **48295 of 48399, 99.8%**, with 0
+failures. All 104 skips are
 things no reader could decode from the file, of two kinds:
 
 - a collection whose value class has no streamer info in the file.

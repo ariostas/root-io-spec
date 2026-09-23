@@ -1,0 +1,274 @@
+id   = "ttree/split-tbits"
+file = "data/ttree/split-tbits.root"
+size = 22217
+
+description = """
+An unsigned counter: `TBits::fNbytes` keeps `kUInt` (13) and is never
+`kCounter` (6), on the record, on an unsplit branch and on a split one.
+
+`TBits` declares `UInt_t fNbytes;` and `UChar_t *fAllBits; //[fNbytes]`
+(root/core/cont/inc/TBits.h:31-32). A counter is promoted to `kCounter` only
+when its code is below 6 (root/core/meta/src/TStreamerElement.cxx:99), so this
+one stays 13 in the streamer info. A reader that keeps a counter's value only
+for code 6 cannot read `fAllBits` on any of the three paths here.
+
+What this case covers:
+
+- The streamer element `fNbytes` is fType 13, and `fAllBits` is fType 51
+  (kOffsetP + kUChar) with fCountName `fNbytes`.
+- The `bits` record is a `TBits` object read element by element: byte count 24,
+  version 1, `TObject`, fNbits 20, fNbytes 3, the flag byte, then 08 00 02 for
+  bits 3 and 17.
+- The unsplit branch's entries are the members with no byte count and no
+  version word for `TBits` (ReadingEntries.md 3.3), and the counter comes
+  before the array it counts inside each entry.
+- Split, `fNbytes` is a counter branch with **fStreamerType 13**, and
+  `fAllBits`'s fBranchCount names it. This is the only counter branch in the
+  fixtures whose fStreamerType is not 6 (TBranchElement.md 10.9).
+- **fMaximum is 0 on that counter branch.** Only a branch whose fStreamerType
+  is `kCounter` is filled through `FillLeavesMemberCounter`
+  (root/tree/tree/src/TBranchElement.cxx:5900-5901), which is the one fill
+  procedure that updates fMaximum (root/tree/tree/src/TBranchElement.cxx:1758-1759).
+  Compare `ttree/split-counter`, whose `kCounter` branch records 3.
+- A default `TBits` has 8 bits in one byte (root/core/cont/inc/TBits.h:44), and
+  `SetBitNumber` past the end doubles the byte count it needs
+  (root/core/cont/inc/TBits.h:191-196). So the split branch's counts, for bits
+  0, 9 and 18, are 1, 4 and 4, and fNbits is 8, 10 and 19.
+- The `TObject` base splits into `fUniqueID` and `fBits`. `fBits` is kBits (15),
+  whose entries are 4 or 6 bytes (ElementTypes.md 2.3), so ROOT gives that
+  branch an offset array (root/tree/tree/src/TBranchElement.cxx:357-363)
+  although every entry here is 4 bytes.
+"""
+
+spec = [
+  "spec/02-serialization/ElementTypes.md",
+  "spec/02-serialization/StreamerDriven.md",
+  "spec/04-ttree/TBranchElement.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+
+[[records]]
+offset = 100
+nbytes = 188
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 288
+nbytes = 79
+class  = "TBits"
+role   = "'bits', a TBits of 20 bits with bits 3 and 17 set"
+[[records]]
+offset = 367
+nbytes = 154
+class  = "TBasket"
+role   = "basket of 'unsplit', three whole TBits"
+[[records]]
+offset = 521
+nbytes = 85
+class  = "TBasket"
+role   = "basket of 'fUniqueID'"
+[[records]]
+offset = 606
+nbytes = 101
+class  = "TBasket"
+role   = "basket of 'fBits', with an offset array"
+[[records]]
+offset = 707
+nbytes = 82
+class  = "TBasket"
+role   = "basket of 'fNbits'"
+[[records]]
+offset = 789
+nbytes = 83
+class  = "TBasket"
+role   = "basket of 'fNbytes', the counter"
+[[records]]
+offset = 872
+nbytes = 104
+class  = "TBasket"
+role   = "basket of 'fAllBits', the counted array"
+[[records]]
+offset = 976
+nbytes = 4709
+class  = "TTree"
+role   = "the tree and its branches"
+[[records]]
+offset = 5685
+nbytes = 16248
+class  = "TList"
+role   = "StreamerInfo"
+[[records]]
+offset = 21933
+nbytes = 194
+class  = "TFile"
+role   = "keys list / free segments"
+[[records]]
+offset = 22127
+nbytes = 90
+class  = "TFile"
+role   = "keys list / free segments"
+
+# --- the streamer info ------------------------------------------------------
+
+[[bytes]]
+name = "TBits.fNbytes: fType 13, kUInt -- not promoted to kCounter"
+offset = 6197
+type = "i32"
+value = 13
+
+[[bytes]]
+name = "TBits.fAllBits: fType 51, kOffsetP + kUChar"
+offset = 6339
+type = "i32"
+value = 51
+
+[[bytes]]
+name = "TBits.fAllBits: fCountName names the unsigned counter"
+offset = 6394
+type = "string"
+value = "fNbytes"
+
+# --- the record: element by element ------------------------------------------
+#
+# 40 00 00 18 | 00 01 | 00 01 00000000 00000000 | 00000014 | 00000003 | 01 | 08 00 02
+# byte count    TBits   TObject v1, id, bits      fNbits 20  fNbytes 3  flag  fAllBits
+
+[[bytes]]
+name = "bits: byte count 24, with bit 30 set"
+offset = 339
+type = "u32"
+value = 0x40000018
+
+[[bytes]]
+name = "bits: fNbits 20"
+offset = 355
+type = "u32"
+value = 20
+
+[[bytes]]
+name = "bits: fNbytes 3, the count of the array that follows"
+offset = 359
+type = "u32"
+value = 3
+
+[[bytes]]
+name = "bits: the flag byte, then three bytes: bit 3 in byte 0, bit 17 in byte 2"
+offset = 363
+type = "bytes"
+value = [1, 8, 0, 2]
+
+# --- the unsplit branch -------------------------------------------------------
+
+[[bytes]]
+name = "unsplit: fID -1, a whole object per entry"
+offset = 1822
+type = "i32"
+value = -1
+
+[[bytes]]
+name = "unsplit: fStreamerType -1"
+offset = 1830
+type = "i32"
+value = -1
+
+# Entry 0, 20 bytes: TObject (00 01, fUniqueID 0, fBits 0), fNbits 8,
+# fNbytes 1, the flag byte, bit 0. No byte count and no TBits version word.
+
+[[bytes]]
+name = "unsplit entry 0: the TObject version word first -- no TBits framing"
+offset = 438
+type = "i16"
+value = 1
+
+[[bytes]]
+name = "unsplit entry 0: fNbits 8, fNbytes 1, present, bit 0"
+offset = 448
+type = "bytes"
+value = [0, 0, 0, 8, 0, 0, 0, 1, 1, 1]
+
+[[bytes]]
+name = "unsplit entry 2: fNbits 11, fNbytes 4, present, bit 10 in byte 1"
+offset = 488
+type = "bytes"
+value = [0, 0, 0, 11, 0, 0, 0, 4, 1, 0, 4, 0, 0]
+
+# --- the split counter --------------------------------------------------------
+
+[[bytes]]
+name = "fNbytes: fID 2, the third element of TBits"
+offset = 4643
+type = "i32"
+value = 2
+
+[[bytes]]
+name = "fNbytes: fType 0, a member of a split object"
+offset = 4647
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fNbytes: fStreamerType 13, kUInt -- a counter branch that is not kCounter"
+offset = 4651
+type = "i32"
+value = 13
+
+[[bytes]]
+name = "fNbytes: fMaximum 0, because only a kCounter branch records the largest count"
+offset = 4655
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fNbytes: fEntryOffsetLen 0, one UInt_t per entry"
+offset = 4188
+type = "i32"
+value = 0
+
+[[bytes]]
+name = "fNbytes basket: the counts 1, 4, 4"
+offset = 860
+type = "bytes"
+value = [0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 4]
+
+# --- the counted array --------------------------------------------------------
+
+[[bytes]]
+name = "fAllBits: fStreamerType 51"
+offset = 5222
+type = "i32"
+value = 51
+
+[[bytes]]
+name = "fAllBits: fBranchCount, the tag naming fNbytes's branch at 976 + 3144 - 2 = 4118"
+offset = 5230
+type = "u32"
+value = 3144
+
+[[bytes]]
+name = "fAllBits: fEntryOffsetLen 12"
+offset = 4748
+type = "i32"
+value = 12
+
+[[bytes]]
+name = "fAllBits entries: 01 01 | 01 00 02 00 00 | 01 00 00 04 00 for bits 0, 9, 18"
+offset = 944
+type = "bytes"
+value = [1, 1, 1, 0, 2, 0, 0, 1, 0, 0, 4, 0]
+
+# --- the TObject base's fBits -------------------------------------------------
+
+[[bytes]]
+name = "fBits: fStreamerType 15, kBits"
+offset = 3260
+type = "i32"
+value = 15
+
+[[bytes]]
+name = "fBits: fEntryOffsetLen 12 -- a kBits entry has no fixed width"
+offset = 2799
+type = "i32"
+value = 12

@@ -104,8 +104,12 @@ the writing machine, and it is transient: declared `//!` and absent from
 Two element kinds take their length from another element rather than from the
 stream, so the loop MUST retain values as it goes:
 
-- **`kOffsetP + T` (40 + T)** takes its count from the `kCounter` element named in
-  `fCountName` (`root/io/io/src/TStreamerInfoReadBuffer.cxx:87-105`).
+- **`kOffsetP + T` (40 + T)** takes its count from the integer element named in
+  `fCountName` (`root/io/io/src/TStreamerInfoReadBuffer.cxx:87-105`). That is
+  usually a `kCounter` (6), but an unsigned counter keeps `kUInt` (13)
+  ([Element types §2.1](ElementTypes.md#21-kcounter-6)). ROOT reads the count
+  as an `Int_t` whatever the counter's code, so a reader MUST retain every
+  element of code 3, 6 or 13.
 - **`kStreamLoop` (501)** does the same
   (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1462-1697`).
 
@@ -612,9 +616,10 @@ To read an object whose class, version and byte range are known:
        end of its byte count.
     6. Otherwise consume the fixed number of bytes
        [Element types](ElementTypes.md) specifies, taking any count from the
-       `kCounter` element named in `fCountName`.
-    7. Record the value, and if the element is a `kCounter`, retain it for later
-       elements.
+       element named in `fCountName`.
+    7. Record the value. If the element's code is 3, 6 or 13, retain it for
+       later elements: any of the three can be a counter
+       ([Element types §2.1](ElementTypes.md#21-kcounter-6)).
 4. Compare the position reached with the end implied by the object's byte count.
 5. If they differ, the file and the description disagree; report it.
 6. Seek to the end implied by the byte count regardless.
@@ -676,6 +681,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/objects` | Nested objects through embedded members and through pointers |
 | `serialization/streamer-info` | The element list the loop is driven by |
 | `container/file-minimal` | The top-level entry point, and invariant 1 on a whole record |
+| `ttree/split-tbits` | A counter of code 13: `TBits::fNbytes` is a `UInt_t`, so it is never promoted to `kCounter` (§3.2) |
 
 `tools/rootfile.py` implements this procedure and `tools/check_invariants.py`
 applies invariants 1 and 2 to every record of every reference file, and 3 to 6 to

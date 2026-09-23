@@ -123,8 +123,27 @@ Over all 6736 branches in the corpora, with no exceptions:
 | 3, 4 | exactly 1, **always a back-reference** | yes — 16/21 and 69/84 have baskets |
 
 `fType` 1 and 2 are pure interior nodes: no leaf, no basket, no data. A reader
-descends through them to their children. [`TBranch` §7](TBranch.md) already
-describes this shape from the `TBranch` side.
+descends through them to their children.
+[`TBranch` §9.1](TBranch.md#91-a-branch-may-have-no-leaves) already describes
+this shape from the `TBranch` side.
+
+**One exception, before 5.34/20 and 6.02/00: an empty base class.** `TTree::Bronch`
+then gave every base class of a top-level split object its own sub-branch, empty
+or not (`v4-04-02:tree/src/TTree.cxx:1480-1495`). A base class with no data
+members becomes an `fType` 1 branch with no leaf and no sub-branches that still
+has a basket, and each entry is element `fID` of the parent's info written as a
+base: one framed object of the base class
+(`v4-04-02:tree/src/TBranchElement.cxx:1092`). ROOT reads it with
+`ReadLeavesMember`, as the `fType <= 2` rows of §8 select whatever `fNleaves` is
+(`root/tree/tree/src/TBranchElement.cxx:5805-5812`). Root commit `6698d9213bb`
+(first tag `v6-02-00`) and its backport `df455e9c8d5` (`v5-34-20`) stopped making
+these branches (`root/tree/tree/src/TBranchElement.cxx:6187-6190`). Neither
+corpus has one; `cmsursula.root` and `mcpool.root` in `root/roottest/` (4.04/02)
+have 16 between them, all named `<top>.edm::EDProduct`.
+[`TBranch` §9.2](TBranch.md#92-a-leafless-branch-may-still-hold-data) describes the entries. On those 16, `fWriteBasket`
+and `fTotBytes` are 0 only because nothing was flushed: the basket is embedded
+in the `TTree` record. So an `fType` 1 branch with no children is not
+necessarily empty. The test is whether it has baskets holding entries.
 
 The count branches need care. On all 105 `fType` 3 and 4 branches in the
 corpora, `fLeaves` holds exactly one entry, and that entry is **not the leaf
@@ -229,6 +248,37 @@ The second row is a different case. −1 is `kNoType`: the branch declares no
 element type, so there is nothing to agree with. A reader should treat −1 as
 "use `fType` instead", not as a type code.
 
+Three more rows occur in ROOT's own test files (`root/roottest/`), which neither
+corpus includes:
+
+| Branch `fStreamerType` | Element `fType` | Count | What it is |
+|---|---|---|---|
+| 71 (`kSTLp`) | 500 (`kStreamer`) | 4 | an STL member declared as a pointer, `vector<T>*`: `RefTest.root` (4.04/02), two branches in each of two tree cycles |
+| 320 (`kSTL + kOffsetL`) | 500 (`kStreamer`) | 3 | a fixed-size array of STL objects, `std::string[2]`: `stringarray.old.root` (6.25/01) |
+| 11 (`kUChar`) | 11 on disk, 18 (`kBool`) after the fixup | 42 | a `Bool_t` or `bool` member written before 4.03/02: 5 files from 3.04/02 to 4.02/00, `mksm.root` among them |
+
+The first two are the same mechanism as the 300 row. The code the branch samples
+is the one `TStreamerSTL::Streamer` computes on read: `kSTLp` for a pointer,
+otherwise `kSTL`, plus `kOffsetL` for an array
+(`root/core/meta/src/TStreamerElement.cxx:2124-2128`). Neither is legacy: ROOT
+6.40.04 writes 71 for a `std::vector<T>*` member and 320 for a `std::string[2]`
+against a stored 500. `ttree/split-stl-pointer` has 71, 320 for a
+`vector<T>[2]`, and a third code no corpus file has: 91 (`kSTLp + kOffsetL`)
+for an array of pointers to a collection.
+
+The third is not a divergence on disk. Before `kBool` existed, `Bool_t` was code
+11 (`kBool_t = 11` at `v4-00-08:meta/inc/TDataType.h:37`; `bool` also mapped to
+`kUChar_t`, `v4-00-08:meta/src/TDataType.cxx:223-225`), so the branch and the
+element both stored 11. Code 18 first appears in 4.03/02
+(`v4-03-02:meta/inc/TDataType.h:37`). The element's read-time fixup of
+[Streamer information §7.2](../02-serialization/StreamerInfo.md#72-read-time-fixups)
+turns its 11 into 18 (`root/core/meta/src/TStreamerElement.cxx:566`).
+`TBranchElement::Streamer` has no matching fixup for `fStreamerType`
+(`root/tree/tree/src/TBranchElement.cxx:6027-6044`), so in ROOT's memory too an
+old branch says 11 while its element says 18. Both are one byte on disk, so the
+difference is harmless. A branch at 11 is consistent only with an element that
+*stored* 11, not with one that stored 18.
+
 **`fStreamerType` cannot be looked up in the
 [element-type table](../02-serialization/ElementTypes.md#1-the-type-codes)
 without this caveat.** That table says code 300 never reaches a file, which is
@@ -262,6 +312,13 @@ Measured over all 6736:
   (`root/core/meta/inc/TVirtualStreamerInfo.h:132`). This is the classic
   `Int_t N; Short_t Slice[N];` shape, and the two dispatch rows
   `ReadLeavesMemberBranchCount` and `ReadLeavesMemberCounter` exist for it.
+  An unsigned counter is not promoted and keeps `fStreamerType` 13, `kUInt`
+  ([Element types §2.1](../02-serialization/ElementTypes.md#21-kcounter-6);
+  `root/core/meta/src/TStreamerElement.cxx:99`); `TBits::fNbytes` is one. ROOT
+  dispatches that counter branch to `ReadLeavesMember` rather than
+  `ReadLeavesMemberCounter` (`root/tree/tree/src/TBranchElement.cxx:5807-5812`),
+  and the counted branch still takes its count from `fBranchCount->GetValue`
+  (`root/tree/tree/src/TBranchElement.cxx:4649`), whatever the counter's type.
 
 In the second case the relationship is recorded twice. In
 `uproot-small-evnt-tree-fullsplit.root` the branch `SliceI16` has
@@ -288,6 +345,13 @@ the 4220 `fType` 0. A zero `fMaximum` on a count branch means every entry's
 collection was empty, and the bound check then rejects any non-zero count. A
 reader should therefore apply the check as ROOT does rather than as a hard
 invariant.
+
+On an `fType` 0 counter branch, only a `kCounter` (6) branch keeps `fMaximum`.
+`FillLeavesMemberCounter` is the only fill procedure that updates it
+(`root/tree/tree/src/TBranchElement.cxx:1758-1759`), and it is chosen only for
+`fStreamerType` 6 (`root/tree/tree/src/TBranchElement.cxx:5900-5901`). An
+unpromoted counter of code 3 or 13 (§6) has `fMaximum` 0 whatever it counted, as
+in `ttree/split-tbits`.
 
 ## 8. The read procedure is selected by four fields, not one
 
@@ -331,6 +395,9 @@ below add what to do with the eleven fields.
 2. Read `fType` and `fID`. If `fType` is 0, use §3.2 to decide which of the three
    cases it is.
 3. If `fType` is 1 or 2, the branch holds nothing. Descend into `fBranches`.
+   The exception is an `fType` 1 branch with no sub-branches but with baskets,
+   the empty base class of §4: each entry is one framed object of that base
+   class.
 4. Otherwise resolve `fClassName` to a streamer info, matching by
    `fClassVersion` when it is non-zero and by `fCheckSum` when it is 0.
    If `fID ≥ 0`, element `fID` of that info is the member this branch holds.
@@ -367,10 +434,16 @@ content of each procedure in step 7 is in `ReadingEntries.md`.
    named by `fClassName` and selected by `fClassVersion` or `fCheckSum`.
 9. `fBranchCount`, when set, refers to a branch written earlier in the same
    record which is either `fType` 3 or 4, or `fType` ≤ 2 with `fStreamerType` 6
-   (`kCounter`).
+   (`kCounter`), 13 (`kUInt`) or 3 (`kInt`). A counter that was not promoted
+   keeps 13 or 3 (§6; [Element types §2.1](../02-serialization/ElementTypes.md#21-kcounter-6)):
+   an unsigned counter such as `TBits::fNbytes` always does.
 10. If `fID ≥ 0` and `fStreamerType` is not −1, it equals the `fType` of the
-    element it indexes, except `fStreamerType` 300 against an element `fType`
-    of 500, which is the STL divergence of §5.2.
+    element it indexes, with two exceptions, both in-memory codes (§5.2).
+    Against an STL element, whose `fType` is stored as 500, it is the code the
+    element's read path computes: `kSTLp` (71) if `fTypeName` ends in `*`, else
+    `kSTL` (300), plus `kOffsetL` (20) if `fArrayLength > 0`
+    (`root/core/meta/src/TStreamerElement.cxx:2124-2128`). Against a `Bool_t`
+    element that stored 11, it may be 11 though the fixup reads 18.
 
 ## 11. Errata
 
@@ -379,7 +452,7 @@ content of each procedure in step 7 is in `ReadingEntries.md`.
 | 1 | `root/tree/tree/inc/TBranchElement.h:72`: "`fID==-1` for the former" | Incomplete. `fID` has two negative sentinels, and the one the header omits — −2, the split node — occurs on 176 branches in the corpora. ROOT's own code tests for it at `root/tree/tree/src/TBranchElement.cxx:2279` and `root/tree/tree/src/TBranchElement.cxx:3812` |
 | 2 | `root/tree/tree/inc/TBranchElement.h:75-78`: `fType` 3 and 4 are "branch count of a split TClonesArray / STL Collection" | Correct but incomplete: those branches hold the count *in their own baskets*, and their one leaf is a back-reference that the read procedure does not use (§4). Every other data-bearing branch in a tree has its leaf written in place |
 | 3 | The name `fBranchCount` suggests a pointer to a branch | It is a four-byte buffer back-reference, like `fLeaves` and `fLeafCount`. Nothing in the header says so |
-| 4 | `root/tree/tree/inc/TBranchElement.h:79`: "branch streamer type" — implying the type code the file records | It is the code the element had **in memory**, which for an STL member differs from the one the same file's streamer info gives (§5.2). 1988 branches in the corpora disagree with their element this way, and none of them is an error |
+| 4 | `root/tree/tree/inc/TBranchElement.h:79`: "branch streamer type" — implying the type code the file records | It is the code the element had **in memory**, which for an STL member differs from the one the same file's streamer info gives: 300, 71 or 320 against a stored 500 (§5.2). 1988 branches in the corpora disagree with their element this way, and none of them is an error |
 
 ## 12. Class versions
 
@@ -489,6 +562,8 @@ begins with its parent's.
 | `ttree/split-stl-toplevel` | `fType` 4 with `fID` −1, where `fClassName` is the collection type and `fStreamerType` is −1 |
 | `ttree/split-ptr-collection` | `fSplitLevel` ≥ 100 and a `TBranchSTL`; see [Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) |
 | `ttree/split-double32` | Five truncated-float members behind identical `TLeafElement` leaves, whose widths differ and are recoverable only from the streamer element's title |
+| `ttree/split-stl-pointer` | The §5.2 divergences a current ROOT writes: `fStreamerType` 71, 91 and 320 against a stored 500, with a `Bool_t` member at 18 on both sides as the control |
+| `ttree/split-tbits` | §6's unpromoted counter: a split `TBits` whose `fNbytes` branch has `fStreamerType` 13 (`kUInt`), which invariant 9 accepts, and `fMaximum` 0 on it (§7) |
 | `ttree/branch-clones` | §13 in full: the only `TBranchClones` here, under the only `TBranchObject`, with its ten hand-written `TBranch` fields, its pointer-streamed `fBranchCount`, and the lost name prefix of §13.3 |
 
 Seven of the eight `fType` values have a fixture, and so do `TBranchClones` and

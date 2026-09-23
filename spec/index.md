@@ -43,7 +43,7 @@ every known gap.
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-The checks: **84 reference files with 2151 byte-level assertions, 1670 source
+The checks: **86 reference files with 2203 byte-level assertions, 1698 source
 citations checked against the pinned ROOT tree across 49 documents**, and the
 invariants of every layer run over 252 files this project did not write (ROOT
 2.24/00 to 6.38/00) with **0 failures**.

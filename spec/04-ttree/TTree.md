@@ -65,7 +65,7 @@ Class version 20 (`root/tree/tree/inc/TTree.h:757`). In streamer-info order:
 | 5 | `fEntries` | 16 | `Long64_t` | entry count, maintained by `TTree::Fill` (§3) |
 | 6 | `fTotBytes` | 16 | `Long64_t` | uncompressed size of every basket of every branch (§4) |
 | 7 | `fZipBytes` | 16 | `Long64_t` | on-disk size of the same |
-| 8 | `fSavedBytes` | 16 | `Long64_t` | `fZipBytes` as of the last `AutoSave` (§6.3) |
+| 8 | `fSavedBytes` | 16 | `Long64_t` | `fZipBytes` as of the last `AutoSave`; `fTotBytes` before 5.27/02 (§6.3) |
 | 9 | `fFlushedBytes` | 16 | `Long64_t` | `fZipBytes` as of the last automatic flush (§6.3) |
 | 10 | `fWeight` | 8 | `Double_t` | a weight for `TTree::Draw`; no I/O meaning |
 | 11 | `fTimerInterval` | 3 | `Int_t` | " |
@@ -313,6 +313,25 @@ tests for "nothing has been flushed yet"
 (`root/tree/tree/src/TTree.cxx:4739-4742`), and it lets a reader tell a rewritten
 `fAutoFlush` from an original one.
 
+Before 5.27/02, `AutoSave` stored `fTotBytes` in `fSavedBytes` instead
+(`tree/src/TTree.cxx` at tag `v4-04-02`, line 747; `tree/tree/src/TTree.cxx` at
+tag `v5-26-00`, line 1003), and its trigger compared uncompressed bytes,
+`fTotBytes-fSavedBytes > fAutoSave` (line 2540 at tag `v4-04-02`). Root commit
+`fa3ad228d72` (2010-03-08) made it `fZipBytes`. Its first tag is `v5-27-02`, and
+it was never backported to 5.26. The `TTree` class version does not mark the
+change, because version 18 spans it, so only the release in the file header tells
+a reader which meaning a file uses. The reading path of class version 4 and below
+still sets `fSavedBytes = fTotBytes` in memory
+(`root/tree/tree/src/TTree.cxx:9884`).
+
+> Measured over the 634 `TTree` records of the fixtures, both corpora and
+> `root/roottest/`: 28 records written before 5.27/02 have a non-zero
+> `fSavedBytes`, all at most `fTotBytes` and 19 equal to it. 26 of them exceed
+> `fZipBytes`, in twelve roottest files from 4.03/02 to 5.26/00, among them
+> `RefTest.root` (`Events`: `fTotBytes` 72075, `fZipBytes` 6915, `fSavedBytes`
+> 72075), `EDM.root` and `cmsursula.root`. The 41 non-zero values written from
+> 5.27/02 on are all at most `fZipBytes`.
+
 > `ttree/tree` has both defaults intact and `fFlushedBytes` 0. `ttree/clusters`
 > has `fAutoFlush` 5, `fAutoSave` 3703700 and `fFlushedBytes` 401: the
 > generator asked for `SetAutoFlush(4)`, then 3, then 5, and never set
@@ -415,7 +434,9 @@ To read a tree:
    `fZipBytes` are the sums of the like-named members over every branch of the
    tree at every depth: `fBranches` recursively, **plus `fBranchRef` when the
    tree has one**, which is not in `fBranches` (§4).
-2. `0 <= fSavedBytes <= fZipBytes` and `0 <= fFlushedBytes <= fZipBytes`.
+2. `0 <= fFlushedBytes <= fZipBytes` and `0 <= fSavedBytes <= fTotBytes`. In a
+   file whose header names 5.27/02 or later, also `fSavedBytes <= fZipBytes`
+   (§6.3).
 3. `fNClusterRange >= 0`; `fClusterRangeEnd` and `fClusterSize` each hold exactly
    `fNClusterRange` values; and each one's *is present* flag is set if and only if
    `fNClusterRange` is non-zero (§6.1).
@@ -461,6 +482,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 10 | — | Nothing says ROOT deletes `fIndex`/`fIndexValues` on read, with a warning (§8.1) |
 | 11 | `ttree.md:27-29` lists `fIndexValues`, `fIndex` and `fFriends` consecutively | The three are separated in the current layout by `fAliases`, and `fTreeIndex` sits between `fIndex` and `fFriends`; the order in the old table cannot be used to locate them (§2) |
 | 12 | *This document, until 2026-09-23*: ROOT 4.00/00 wrote `TTree` class version 11 | Version 10. Version 11 is first at tag `v4-00-02` (§13) |
+| 13 | *This document, until 2026-09-23*: `fSavedBytes <= fZipBytes` (§11 invariant 2) | Only from 5.27/02. Before, `AutoSave` stored `fTotBytes`, so `fSavedBytes` is bounded by `fTotBytes` alone; twelve ROOT-written roottest files break the old bound (§6.3) |
 
 ## 13. Class versions
 

@@ -47,6 +47,11 @@ nodes: `fWriteBasket` is 0, `fTotBytes` is 0, and `fLeaves` is an empty
 ([TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference))
 and is asserted byte for byte in `ttree/split-object` and `ttree/split-nested`.
 
+Files written before 5.34/20 and 6.02/00 have one exception: a base class with no
+data members still got its own `fType` 1 branch, with no children and no leaf but
+with a basket of framed, empty base-class objects
+([TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference)).
+
 An empty `fLeaves` does **not** by itself mean a branch holds nothing; see §5.
 
 ## 2. Which classes are split
@@ -249,8 +254,9 @@ a streamer info. It is a `TBranch` with five added persistent members
 otherwise only be inferred from the child branches.
 
 **A `TBranchSTL` has baskets full of data and no leaf.** `fLeaves` has `nobjects`
-0 while `fWriteBasket` is 1. This is the only shape in a tree where an empty leaf
-list does not mean an empty branch, and it is why
+0 while `fWriteBasket` is 1. This is the only shape current ROOT writes where an
+empty leaf list does not mean an empty branch (the other, before 5.34/20 and
+6.02/00, is the empty base class of §1.1), and it is why
 [TLeaf §10](TLeaf.md#10-invariants) limits its invariants 5 to 7 to branches
 that have leaves.
 
@@ -317,7 +323,8 @@ does with the result:
 1. Walk `fBranches` recursively. The nesting is the structure (§3.4).
 2. At each branch, read `fType` and `fID`
    ([TBranchElement §3](TBranchElement.md#3-ftype-and-fid)). `fType` 1 and 2 are
-   interior nodes with nothing to read; descend.
+   interior nodes with nothing to read; descend. A childless `fType` 1 branch
+   with baskets is the empty base class of §1.1 and is read.
 3. A branch with `fBranches` non-empty *and* baskets of its own is a count
    branch (`fType` 3 or 4) or a `TBranchSTL`. Read its entries as well as
    descending.
@@ -331,7 +338,9 @@ does with the result:
 
 1. A branch with `fID` −2 has a non-empty `fBranches`.
 2. A branch with `fType` 1 or 2 has a non-empty `fBranches`: an interior node
-   with no children would describe nothing.
+   with no children would describe nothing. The exception is an `fType` 1 branch
+   whose element is a base class whose streamer info lists no elements, which
+   ROOT before 5.34/20 and 6.02/00 wrote as a childless branch with data (§1.1).
 3. A count branch's title is its name with a trailing dot removed and `_`
    appended.
 4. Every member branch of a split container (`fType` 31 or 41) has a title of
