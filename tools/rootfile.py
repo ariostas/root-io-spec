@@ -4187,6 +4187,9 @@ class TreeReader:
     part, and a caller normally caches it already.
     """
 
+    #: How many basket decoders to keep; see decoder_for.
+    DECODER_CACHE = 16
+
     def __init__(self, buf: bytes, tree: Tree, infos: list[StreamerInfo],
                  fetch=None, tolerant: bool = False,
                  custom: "set[str] | None" = None,
@@ -4284,11 +4287,18 @@ class TreeReader:
         block and not to the TTree record that holds it.
         """
         key = (rec.offset, embedded)
-        if key not in self._decoders:
-            self._decoders[key] = Decoder(payload, rec.offset, self.infos,
-                                          tolerant=self.tolerant,
-                                          custom=self.custom)
-        return self._decoders[key]
+        decoder = self._decoders.pop(key, None)
+        if decoder is None:
+            decoder = Decoder(payload, rec.offset, self.infos,
+                              tolerant=self.tolerant, custom=self.custom)
+            # A decoder keeps its buffer alive, and the buffer of a compressed
+            # basket is a copy of the file up to that basket (object_data), so
+            # keeping one per basket costs the file size times the basket count.
+            # Keep only the most recently used.
+            while len(self._decoders) >= self.DECODER_CACHE:
+                del self._decoders[next(iter(self._decoders))]
+        self._decoders[key] = decoder
+        return decoder
 
     def count_at(self, br: Branch, entry: int) -> int:
         """The Int_t a count or counter branch holds for `entry`.

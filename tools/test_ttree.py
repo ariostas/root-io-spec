@@ -1056,5 +1056,25 @@ class UnpromotedCounterBranch(unittest.TestCase):
         self.assertEqual(len(self.failures(5)), 1)
 
 
+class DecoderCacheIsBounded(unittest.TestCase):
+    """TreeReader keeps a bounded number of basket decoders. Each one holds its
+    buffer, which for a compressed basket is a copy of the file up to that
+    basket, so keeping one per basket grew past 2.9 GB on a 15 MB file."""
+
+    def test_old_decoders_are_dropped(self):
+        reader = rootfile.TreeReader(b"", tree(branches=[]), [])
+        n = rootfile.TreeReader.DECODER_CACHE
+        for offset in range(3 * n):
+            rec = rootfile.Record(offset=offset, nbytes=0, key_len=0)
+            reader.decoder_for(rec, bytes(offset + 1))
+        self.assertEqual(len(reader._decoders), n)
+
+    def test_a_recent_decoder_is_reused(self):
+        reader = rootfile.TreeReader(b"", tree(branches=[]), [])
+        rec = rootfile.Record(offset=7, nbytes=0, key_len=0)
+        first = reader.decoder_for(rec, bytes(8))
+        self.assertIs(reader.decoder_for(rec, bytes(8)), first)
+
+
 if __name__ == "__main__":
     unittest.main()

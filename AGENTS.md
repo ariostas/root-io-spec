@@ -101,6 +101,12 @@ Install `lz4` for corpus runs. Without it, eight LZ4-compressed files lose 2158
 branch-baskets from both sides of the `ENTRIES` ratio, so the ratio hides them.
 That is how the `uproot-issue213.root` failure of `PLAN.md` §8.16 went unseen.
 
+Run one checker process at a time. A single one peaks at 1.7 GB, on
+`io/evolution/Event_2.root` in roottest, and several at once have exhausted a
+32 GB machine. Until 2026-09-23 `TreeReader` kept a decoder per basket, each
+holding a copy of the file up to its basket, so memory grew with baskets times
+file size: `sm.root` (15 MB) passed 2.9 GB and kept growing.
+
 The provenance of these files is mixed. The source is uproot's regression corpus,
 which includes files uproot wrote, so a failure there is a lead, not evidence.
 Diagnose it against the pinned source and resolve it to one of four causes: a
