@@ -12,8 +12,9 @@ this produces: [File header](../01-container/FileHeader.md),
 their field tables; it says which value to put in each field and when.
 
 Scope, per [the layer's index](index.md#4-what-is-not-specified): a file created
-from nothing, in the small-file layout, with one directory. Nothing here updates an
-existing file.
+from nothing in the small-file layout, with any number of directories (§1 to §12),
+and an existing file reopened and added to (§13), including an update that crosses
+2 GB (§13.8). Two writers updating one file at once are out of scope (§13.10).
 
 > **Notation: `sizeof(s)` is a counted string's size on disk, not its character
 > count**: `len(s) + 1`, or `len(s) + 5` when `len(s) > 254`
@@ -697,7 +698,7 @@ Written last. Every field, with the source of its value:
 | `fCompress` | `algorithm × 100 + level` (`root/io/io/inc/TFile.h:477-485`), 0 for none | free |
 | `fSeekInfo`, `fNbytesInfo` | the `StreamerInfo` record's offset and length, or 0 for none (§7) | derived |
 | UUID | a `u16` 1 followed by 16 bytes (`root/io/io/src/TFile.cxx:2706`) | free |
-| 63…100 | not written | — |
+| 63…99 | not written | — |
 
 ### 10.1 What `fVersion` commits a writer to
 
@@ -843,7 +844,7 @@ record first:
    ([§13.7](#137-the-streamerinfo-record-is-usually-not-rewritten));
 2. **each directory's key list**, which **always reallocates**: `WriteKeys`
    frees its old record before it sizes the new one
-   (`root/io/io/src/TDirectoryFile.cxx:2200-2202`);
+   (`root/io/io/src/TDirectoryFile.cxx:2201-2203`);
 3. **each directory's header**, rewritten **in place**
    ([§13.6](#136-what-an-update-rewrites-in-place));
 4. **the free-segment record**, which also frees its own old span first
@@ -874,9 +875,10 @@ when the new one is allocated, and that determines three visible outcomes:
 | the new cycle | old + 1 | unchanged | old + 1 |
 | keys of that name afterwards | one more | the same number | the same number |
 
-Each fixture measures one case in this table. In `data/written/reopen-reuse.root`,
-`overwrite` on `tail` put the replacement at **493**, the address its first
-version had, with `fCycle` still **1** and a 13-byte remainder behind it. In
+Each fixture measures one column of this table. In
+`data/written/reopen-reuse.root`, `overwrite` on `tail` put the replacement at
+**493**, the address its first version had, with `fCycle` still **1** and a
+13-byte remainder behind it. In
 `data/written/reopen-add.root`, `WriteDelete` on `two` put the replacement at
 1259, away from the 1042 it freed, with `fCycle` **2**.
 
@@ -964,7 +966,8 @@ is 63. `TFile::WriteHeader` allocates `fBEGIN` bytes for it
 (`root/io/io/src/TFile.cxx:2674`) and then writes however many it produced
 (`:2709`). `fBEGIN` is read from the file (`:737`), and **files with an `fBEGIN`
 of 64 exist**: four of them in the corpora this specification is checked against,
-including `pippa.root` at ROOT 2.24/00 and `uproot-from-geant4.root` at 4.00.
+including `pippa.root` at ROOT 2.24/00 and `uproot-from-geant4.root`, which
+g4tools wrote under a header claiming 4.00.
 Updating one of those past 2 GB would write 75 bytes into a 64-byte buffer and
 over the first eleven bytes of the file's first record. This is derived from the
 source and the arithmetic, and has not been observed here, because observing it
@@ -1055,15 +1058,15 @@ The update of §13 adds no allocation obligations of its own: every invariant ab
 is checked the same way on a file that was written once and on a file that was
 reopened eleven times, because nothing in the result records which it was.
 
-Items 1, 2, 5, 6, 7 and 9 to 17 are the ones ROOT does not detect at all (§15),
-and all of the new ones are checked by `tools/check_invariants.py`, as
+Items 1, 2, 5, 6, 7 and 9 to 17 are the ones ROOT does not detect at all (§15).
+Items 9 to 15 and 17 are checked by `tools/check_invariants.py`, as
 [Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, 12
 and 14, as
 [Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7 and 10,
 and as [File header §10](../01-container/FileHeader.md#10-invariants) 11.
-Number 16 is the exception and is checked in the writer itself: it is a property
-of the *act* of writing rather than of the file, since a finished file cannot say
-which of two overlapping records was meant to be live. The remaining obligation in
+Item 16 is checked in the writer itself: it is a property of the *act* of
+writing rather than of the file, since a finished file cannot say which of two
+overlapping records was meant to be live. The remaining obligation in
 §5.4 is not a property of a file and so is not among them: a directory left with
 `fSeekKeys` 0 while it owns records produces keys nothing can reach, and
 `tools/rootwrite.py` refuses it rather than checking for it afterwards.

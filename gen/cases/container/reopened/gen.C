@@ -14,7 +14,8 @@
 ///     (TDirectoryFile.cxx:1986, :2004-2007). The new record cannot land on the
 ///     old one's bytes, and its key is appended while the old key is still in
 ///     the list, so the cycle advances. `overwrite` is the same two operations
-///     in the other order and is what `container/gap-reused` shows.
+///     in the other order; `container/gap-reused` shows it, and
+///     `container/reopen-gap` shows it in an update, with the opposite result.
 ///
 /// The main subject of the case is what the close then does: the key list and
 /// the free-segment record are both reallocated, each freeing its old span

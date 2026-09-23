@@ -77,7 +77,7 @@ and title.
 | `TNamed` | `fName` and `fTitle`. Every constructor that takes a point count sets **both to `Graph`** (`root/hist/hist/src/TGraph.cxx:202`); the default constructor leaves both **empty** (`:125`), which ROOT's own class documentation denies — erratum 1 | free |
 | `TObject::fBits` | **`0x400`**, `TGraph::kClipFrame` — §3.1 | fixed by ROOT's constructor |
 | `TAttLine` | 1, 1, 1 | free — §3.1 |
-| `TAttFill` | 0, **1000** | free — §3.1 |
+| `TAttFill` | 0, **1000** | fixed by ROOT's constructor — §3.1 |
 | `TAttMarker` | 1, 1, 1.0 | free — §3.1 |
 | `fNpoints` | the number of points, and the length of every counted array in the record | derived |
 | `fX`, `fY` | the points, in the order the writer supplies them (§3.2) | free |
@@ -99,11 +99,12 @@ through different accessors, and a graph sets its fill attributes to constants:
 | `fMarkerColor`, `fMarkerStyle`, `fMarkerSize` | 1, 1, 1.0 | 1, 1, 1.0 |
 | `fBits` | `0x8`, `kMustCleanup` | **`0x400`**, `kClipFrame` |
 
-`TAttFill` is **fixed**: every `TGraph` constructor carries the mem-initialiser
-`TAttFill(0, 1000)` (`root/hist/hist/src/TGraph.cxx:125`, `:136`, `:147`, `:202`),
-so 0 and 1000 do not depend on the style at all. `TAttLine` and `TAttMarker` are
-default-constructed, and those constructors do read `gStyle`, but through the
-general accessors `GetLineColor` and `GetMarkerColor`
+`TAttFill` is **fixed by ROOT's constructor**: every `TGraph` constructor carries
+the mem-initialiser `TAttFill(0, 1000)` (`root/hist/hist/src/TGraph.cxx:125`,
+`:136`, `:147`, `:202`), so 0 and 1000 do not depend on the style at all.
+`TAttLine` and `TAttMarker` are default-constructed, and those constructors do
+read `gStyle`, but through the general accessors `GetLineColor` and
+`GetMarkerColor`
 (`root/core/base/src/TAttLine.cxx:142-148`,
 `root/core/base/src/TAttMarker.cxx:210-216`), where `TH1` reads
 `GetHistLineColor`. In ROOT's default `Modern` style the general pair is 1 and the
@@ -115,10 +116,10 @@ histogram's colours, and a user has to call it
 
 `fBits` also differs: `TGraph::CtorAllocate` sets `kClipFrame`
 (`root/hist/hist/src/TGraph.cxx:838`) and **nothing sets `kMustCleanup`**, which a
-histogram in the same directory does have. None of these five values is required,
-since they are drawing attributes, but reproducing them keeps a diff against a
-ROOT-written file empty, and a wrong `fBits` is the first difference a byte
-comparison finds.
+histogram in the same directory does have. None of these values is required by
+the format, since they are drawing attributes, but reproducing them keeps a diff
+against a ROOT-written file empty, and a wrong `fBits` is the first difference a
+byte comparison finds.
 
 ### 3.2 The points are two counted arrays, and nothing is sorted
 
@@ -363,7 +364,7 @@ rest of that chain.
 | 2 | `root/hist/hist/inc/TGraph.h:46`: `fNpoints` is the "Number of points <= fMaxSize" | True in memory and misleading on disk: `fMaxSize` is transient, so `fNpoints` is exactly the length of every array in the record, and a read assigns `fMaxSize = fNpoints` (§3.2) |
 | 3 | `TGraph::SetMinimum`'s documentation does not mention `fHistogram` | It calls `GetHistogram()`, so setting a y range writes a whole `TH1F` into the record — 245 bytes becomes 1213 (§3.4) |
 | 4 | — | Nothing anywhere says that a graph whose `fHistogram` is **null** writes *more* streamer infos than one whose `fHistogram` is real, or that a graph file is where the three `TArray` element lists are cheapest to obtain (§5) |
-| 5 | — | Nothing says a `TGraph`'s line and marker attributes come from `gStyle`'s *general* accessors where a `TH1`'s come from its histogram ones, so a writer generalising from `TH1` gets five values wrong (§3.1) |
+| 5 | — | Nothing says a `TGraph`'s line and marker attributes come from `gStyle`'s *general* accessors where a `TH1`'s come from its histogram ones, so a writer generalising from `TH1` gets them wrong (§3.1) |
 | 6 | `root/io/doc/TFile/` | Silent on `TGraph` altogether, and on the two encodings a graph record is mostly made of: the flag byte in front of a counted array and the four zero bytes of a null object pointer |
 
 ## 9. Reference files

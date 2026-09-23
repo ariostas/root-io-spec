@@ -18,7 +18,7 @@ knowledge. A writer also needs the content of every field, including a dozen tha
 have no obvious value, and the streamer infos themselves, which a reader gets from
 the file and a writer has to produce.
 
-All of this document is checked by byte comparison against ROOT. Seven records,
+All of this document is checked by byte comparison against ROOT. Eight records,
 in two pairs of files:
 
 | What | Bytes | From |
@@ -30,13 +30,13 @@ in two pairs of files:
 | a `TH2D` record with variable edges on **both** axes | 887 | same |
 | a `TProfile` record | 708 | same |
 | a `TProfile` with a Y range and a populated `fBinSumw2` | 713 | same |
-| its `StreamerInfo` record — eighteen infos, up to the `listOfRules` ROOT appends ([§8.6](#86-root-appends-a-listofrules-a-writer-cannot-use)) | 11574 | same |
+| its `StreamerInfo` record — eighteen infos and the `listOfRules` ROOT appends ([§8.6](#86-root-appends-a-listofrules-a-writer-cannot-use)) | 11789 | same |
 
 Each ROOT-written file has a counterpart this project produced —
 `data/written/histogram.root` and `data/written/th2-profile.root` — and
-`tools/test_write.py` asserts every comparison above. The files differ only in
-the directory record, the key timestamps, and the one `StreamerInfo` entry a
-writer cannot use.
+`tools/test_write.py` asserts every comparison above. Outside those records the
+files differ in the file's own name, title and UUIDs, in the key timestamps, and
+in the offsets that a longer title shifts.
 
 ## 2. The chain
 
@@ -494,7 +494,7 @@ rules of every class in the list and appends that entry when there are any.
 A file written at version 7 cannot use the rule, so a writer **may** omit it with
 no loss of information; ROOT never reads the list back. `tools/rootwrite.py`
 emits it anyway, so that `data/written/th2-profile.root`'s `StreamerInfo` record
-is byte-identical to ROOT's, all 11853 bytes.
+is byte-identical to ROOT's, all 11789 bytes of its payload.
 [Writing an object §8.6](WritingObjects.md#86-listofrules-is-optional-and-this-is-what-it-costs)
 is the general treatment, and `TTree` has the same entry
 ([Writing trees §8.1](WritingTrees.md#81-root-appends-two-rules-that-a-new-file-cannot-use)).
@@ -554,7 +554,7 @@ obvious:
   `tools/rootwrite.py` has them in `KNOWN_CHECKSUMS`, and they are the only two
   magic numbers in the histogram path.
 - **A `TProfile` brings a nineteenth entry that is not an info**, the
-  `listOfRules` of §8.6. A writer omits it, and a reader must tolerate it.
+  `listOfRules` of §8.6. A writer may omit it, and a reader must tolerate it.
 
 `TH1`'s own checksum, `0x1c3740c4`, *is* computable, but only with the enum rule:
 `fBinStatErrOpt` and `fStatOverflows` each fold an extra 1
@@ -628,5 +628,5 @@ writer reading the class definition for its member list.
 | `data/classes/histogram.root` | ROOT's: a `TH1F` with fixed bins and `Sumw2`, a `TH1D` with variable edges and weighted fills, and the fifteen infos. 73 assertions |
 | `data/written/histogram.root` | this project's, holding the same two histograms. Every object-bearing record is byte-identical to ROOT's |
 | `data/classes/th2-profile.root` | ROOT's: a `TH2F` with a fill out of range in each axis, a `TH2D` with variable edges on both, and two `TProfile`s that differ in `fBinSumw2`, `fErrorMode` and the Y range. 71 assertions |
-| `data/written/th2-profile.root` | this project's, holding the same four. All four data records are byte-identical to ROOT's, and the `StreamerInfo` record is up to the `listOfRules` |
+| `data/written/th2-profile.root` | this project's, holding the same four. All four data records are byte-identical to ROOT's, and so is the `StreamerInfo` record, `listOfRules` included |
 | `data/classes/tarray-histogram.root` | a `TH2F` inside a `TTree` branch, which is what makes a concrete `TArray` info appear |

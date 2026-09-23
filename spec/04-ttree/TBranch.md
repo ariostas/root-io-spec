@@ -49,7 +49,7 @@ Class version 13 (`root/tree/tree/inc/TBranch.h:304`). In streamer-info order:
 | 15 | `fZipBytes` | 16 | `Long64_t` | on-disk size of all baskets |
 | 16 | `fBranches` | 61 | `TObjArray` | sub-branches, empty unless split |
 | 17 | `fLeaves` | 61 | `TObjArray` | the leaves, at least one |
-| 18 | `fBaskets` | 61 | `TObjArray` | **always all null on a closed file** (§5) |
+| 18 | `fBaskets` | 61 | `TObjArray` | **all null** after `TTree::Write`; may hold an embedded basket (§5) |
 | 19 | `fBasketBytes` | 43 | `Int_t*` | `[fMaxBaskets]`, counted pointer |
 | 20 | `fBasketEntry` | 56 | `Long64_t*` | `[fMaxBaskets]`, counted pointer |
 | 21 | `fBasketSeek` | 56 | `Long64_t*` | `[fMaxBaskets]`, counted pointer |
@@ -98,6 +98,7 @@ above are zero padding: the arrays are allocated zeroed and never written above
 
 Because of the floor of 10, a tree with one basket per branch still has thirty
 array slots per branch. The value is not a hint about the number of baskets.
+Below class version 9, ROOT wrote a flat 1000 instead (§13.2).
 
 > Demonstrated by `ttree/branch`, whose single branch has `fWriteBasket` 3 and
 > `fMaxBaskets` 10, with entries 4 to 9 of all three arrays zero. Also by
@@ -204,8 +205,9 @@ file offset. Its layout is
 > one non-null slot in `fBaskets` holding the basket. The file contains no
 > `TBasket` record.
 
-> **Not a corner case.** The probe of `PLAN.md` §9.8 found embedded baskets in
-> files written by ROOT 4.00 and 5.34, one of them with eighty in a single tree.
+> **Not a corner case.** The probes of `PLAN.md` §9.8 and §9.9 found embedded
+> baskets in files written by ROOT 3.04/02 (`mlpHiggs.root`), 4.00/07
+> (`stock.root`, eighty of them) and 5.34.
 
 > This is distinct from [TBasket §10](TBasket.md#10-errata) erratum 8, where the
 > shipped documentation claims that one basket per branch is *normally*
@@ -223,8 +225,9 @@ Two further points about the array, both measured over the two corpora of
   collection count branches while `fWriteBasket` is 0. ROOT reads index
   `fWriteBasket` down to 0 and never looks higher
   (`root/tree/tree/src/TBranch.cxx:3002-3009`), so the second one is unreachable
-  by design, not corrupt. A ROOT 4.00-era writer instead wrote all
-  `fMaxBaskets` slots, with the unused ones null.
+  by design, not corrupt. g4tools, Geant4's own ROOT writer, instead writes all
+  `fMaxBaskets` slots, with the unused ones null. No ROOT-written file available
+  does.
 
 ## 6. `fEntryOffsetLen`
 
@@ -404,9 +407,8 @@ at index `fWriteBasket`.
 
 1. `fMaxBaskets >= max(fWriteBasket + 1, 10)`, and the three counted pointers each
    have `fMaxBaskets` elements with their *is present* flag set. Equality holds
-   for every branch produced by a writer from ROOT 4.00 on (12 125 of them
-   measured) but not for older ones: at class version 7 the writer allocated a
-   flat 1000 however few baskets it filled (§13.2).
+   at class version 9 and above, but not below: at versions 7 and 8 ROOT wrote
+   a flat 1000 however few baskets it filled (§13.2).
 2. `0 <= fWriteBasket < fMaxBaskets`.
 3. `fBasketEntry[0] == fFirstEntry` and `fBasketEntry` is non-decreasing over
    `[0, fWriteBasket]`. `fBasketEntry[fWriteBasket] == fEntryNumber` **when slot
@@ -434,7 +436,7 @@ at index `fWriteBasket`.
    (`root/tree/tree/src/TBranch.cxx:3002-3009`). The slot count is not fixed
    by `fWriteBasket`. It is `fWriteBasket + 1` for 11 028 branches measured; one
    or more less when the trailing slots are null and the writer's `TObjArray`
-   trimmed them; `fMaxBaskets` for a ROOT 4.00-era writer; and `fWriteBasket + 2`
+   trimmed them; `fMaxBaskets` in the two g4tools files; and `fWriteBasket + 2`
    in one ROOT 5 file that left a second embedded basket above the write index
    (§5).
 10. `fLeaves` is not empty, **unless the branch has sub-branches**, where it may
@@ -460,12 +462,14 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 1 | `ttree.md:45-64` gives the `TBranch` member list at class version 7 | Version **13**. `fEntryNumber`, `fEntries`, `fTotBytes` and `fZipBytes` are `Long64_t` rather than `Int_t`/`Stat_t`; `fBasketEntry` and `fBasketSeek` are code 56, not 43; and `fIOFeatures`, `fFirstEntry` and the `TAttFill` base are missing from it (§2) |
 | 2 | — | Nothing says `fMaxBaskets` on disk is `max(fWriteBasket + 1, 10)` rather than the writer's value, so a reader that treats it as a basket count is wrong on every file (§3) |
 | 3 | — | Nothing says `fBasketEntry[fWriteBasket]` is the total entry count rather than a basket's first entry. Without it the last basket's extent is unknown (§4.1) |
-| 4 | — | Nothing says `fBaskets` is on disk, is always all-null, and must still be consumed (§5) |
+| 4 | — | Nothing says `fBaskets` is on disk, is normally all null but may hold an embedded basket, and must still be consumed (§5) |
 | 5 | — | Nothing says `fEntryOffsetLen` describes the *next* basket, not the ones already written (§6) |
 | 6 | `ttree.md` describes `fOffset` as "Offset of this branch" | It is an offset inside a C++ object, has no meaning in the file, and is 0 on every leaflist branch. `TLeaf` has an `fOffset` too, and that one *is* a file quantity (§7.1) |
 | 7 | — | `fIOFeatures` is a class with no version, so it has a checksum where a version word would be; this is the first place an ordinary file uses that path (§8) |
 | 8 | — | Nothing mentions `fFileName`, so a reader of a tree whose baskets are in another file silently reads garbage (§9) |
 | 9 | `ttree.md:45-64`: `fCompress` is "(=1 branch is compressed, 0 otherwise)" | It is `100 × algorithm + level`, the same encoding as everywhere else (`root/tree/tree/inc/TBranch.h:308-323`), and −1 means "inherit from the file". It describes new baskets only; each basket's actual codec is in its own record header |
+| 10 | *This document, until 2026-09-23*: `fMaxBaskets == max(fWriteBasket + 1, 10)` from class version 8, and a version-8 writer wrote all `fMaxBaskets` slots of `fBaskets` | ROOT wrote a flat 1000 at version 8, and `fWriteBasket + 1` slots. Both claims rested on two g4tools files, whose headers claim ROOT 4.00/00 (§13.2) |
+| 11 | *This document, until 2026-09-23*: a ROOT 4.00-era writer left `fBaskets` at `fMaxBaskets` slots (§5, invariant 9) | g4tools does; no ROOT-written file available does |
 | 10 | — | Nothing says a stored `fSplitLevel` of 0 means 1 when the branch has sub-branches (§2) |
 
 The `TLeaf::fOffset` comment, "Offset in ClonesArray object (if one)"
@@ -539,27 +543,41 @@ one desynchronises the parse rather than producing a wrong value:
 
 The recorded streamer info agrees with this element for element on all 116
 legacy branches in the two corpora: `mlpHiggs.root` at version 7,
-`uproot-from-geant4.root` at 8 and `stock.root` at 9. That is a measurement, not
+`uproot-from-geant4.root` at 8 (written by g4tools, not ROOT) and `stock.root` at
+9. That is a measurement, not
 a rule. The two can disagree on one member (§13.3), at version 9, where a reader
 is most likely to trust the info.
 
 > `tools/rootfile.py` reads these versions from the order above rather than from
 > the info, and checks that the parse ends on the branch's byte count. All 116
 > do. No reference file covers this section, and none can, because the writers
-> are ROOT 3.04 and 4.00. The evidence is the three corpus files named above, and
+> are ROOT 3.04 and 4.00/07 and g4tools. The evidence is the three corpus files
+> named above, and nine files in `root/roottest/` that ROOT 3.05 to 3.10 wrote
+> at version 8, and
 > `tools/test_ttree.py` pins the version gates and the width selector against a
 > synthetic buffer.
 
 ### 13.2 What the legacy writers did differently
 
-Two writer conventions that invariants §11.1 and §11.9 state for current files
-do not hold for the older versions. Both were measured, not derived:
+Invariant §11.1 states a writer convention for current files that does not hold
+for the older versions:
 
 | Version | Convention | Measured |
 |---|---|---|
-| 7 | `fMaxBaskets` is a flat **1000**, whatever `fWriteBasket` is, so the three arrays are 1000 elements long and all but the first few are zero | `mlpHiggs.root`, 14 branches, `fWriteBasket` 0 and 12 003 bytes of arrays each |
-| 8 | `fBaskets` holds **`fMaxBaskets`** slots, not `fWriteBasket + 1`, with the unused ones null | `uproot-from-geant4.root`, 22 branches with 10 slots and one basket |
-| 8 and above | `fMaxBaskets == max(fWriteBasket + 1, 10)` | 12 125 branches, every version from 8 to 13 |
+| 7 and 8 | `fMaxBaskets` is a flat **1000**, whatever `fWriteBasket` is, so the three arrays are 1000 elements long and all but the first few are zero | version 7: `mlpHiggs.root`, 14 branches, `fWriteBasket` 0 and 12 003 bytes of arrays each. Version 8: 1 303 branches in nine `root/roottest/` files from ROOT 3.05/05 to 3.10/02 |
+| 9 and above | `fMaxBaskets == max(fWriteBasket + 1, 10)` | every branch at version 9 to 13 in both corpora |
+
+The write path has recomputed `fMaxBaskets` from the number of slots in
+`fBaskets`, with a floor of 10, since root commit `aa25e85cb34` (2004-01-07),
+during 4.00/00 development and after class version 9; at tag `v4-00-01` it is
+`fMaxBaskets = fBaskets.GetEntriesFast(); if (fMaxBaskets < 10) fMaxBaskets=10;`
+in `TBranch::Streamer`. Before that the in-memory capacity was written, and the
+constructor sets it to 1000.
+
+g4tools writes version 8 with the current conventions: `fMaxBaskets` of 10, and
+all ten slots of `fBaskets` present with the unused ones null
+(`uproot-from-geant4.root`, 22 branches with one basket each). A reader MUST NOT
+use `fMaxBaskets` or the slot count to tell the writer's release.
 
 ### 13.3 At version 9 the streamer info is not authoritative
 
@@ -602,7 +620,7 @@ misread such a file.
 | Case | Exercises |
 |---|---|
 | `ttree/branch` | Three baskets in one branch: `fWriteBasket` 3 against `fMaxBaskets` 10, the `fBasketEntry` terminator, and `fTotBytes`/`fZipBytes` as sums over records |
-| `ttree/basket` | Two branches, one with `fEntryOffsetLen` 0 and one with 1000, and a leaf count spanning them |
+| `ttree/basket` | Two branches, one with `fEntryOffsetLen` 0 and one with 12, constructed with 1000 and retuned at flush (§6), and a leaf count spanning them |
 | `ttree/leaf` | One branch with thirteen leaves, for `fLeaves` order |
 | `ttree/basket-embedded` | A branch whose only basket is still in memory: `fWriteBasket` 0, the arrays and `fTotBytes`/`fZipBytes` all zero, a non-null `fBaskets` slot, and no terminator in `fBasketEntry` |
 | `ttree/branch-first-entry` | A sub-branch created part way through the tree: `fFirstEntry` 2 against the tree's 4 entries (§7), and `fSplitLevel` decrementing across a `TBranchSTL` |

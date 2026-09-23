@@ -19,20 +19,20 @@ files and three large Open Data files. Two gaps closed with new specification:
 `StreamerDriven.md` §7.1, for an object with no byte count, and
 `Collections.md` §11.2, for a class that is itself a collection.
 
-Measured, 2026-09-21, by the checks in `tools/`:
+Measured, 2026-09-23, by the checks in `tools/`:
 
 | | |
 |---|---|
-| Specification documents | 48, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 76 / 1981, 0 failures |
-| Files this project wrote / assertions | 9 / 432, 0 failures |
-| Source citations checked | 1536, 0 failures |
-| Class versions checked against `ClassDef` | 55 |
+| Specification documents | 49, plus the tracked RNTuple copy |
+| Reference files / byte assertions | 84 / 2151, 0 failures |
+| Files this project wrote / assertions | 14 / 493, 0 failures |
+| Source citations checked | 1670, 0 failures |
+| Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 85 files, 0 failures |
-| Invariants over both corpora | 227 files, ROOT 2.24/00 – 6.36/02, 0 failures |
-| Entries decoded and checked | 28059 of 28126 branch-baskets, 99.8% |
-| Unit tests | 334 |
+| Invariants over the fixtures and the written files | 98 files, 0 failures |
+| Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
+| Entries decoded and checked | 46137 of 46241 branch-baskets, 99.8% |
+| Unit tests | 495 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register: every gap the written documents record, so that each can be picked up
@@ -166,13 +166,13 @@ pinned submodule into `spec/99-appendix/HandWrittenStreamers.md`, CI-checked, wi
 every class resolved in `streamers.toml`. A submodule bump that adds or drops a
 hand-written `Streamer` therefore fails until someone classifies it.
 
-There are 185 hand-written `Streamer` definitions, sorted by what the reading
+There are 187 hand-written `Streamer` definitions, sorted by what the reading
 branch does:
 
 | | Count | What a reader has to do |
 |---|---|---|
-| `delegating` | 32 | nothing — `ReadClassBuffer` with no version test and no reads after it |
-| `guarded` | 89 | nothing for a current file: `ReadClassBuffer` above a version threshold, a legacy layout below. Those legacy layouts are §9.1 |
+| `delegating` | 35 | nothing — `ReadClassBuffer` with no version test and no reads after it |
+| `guarded` | 86 | nothing for a current file: `ReadClassBuffer` above a version threshold, a legacy layout below. Those legacy layouts are §9.1 |
 | `extending` | 3 | know the bytes that follow the streamer-info-driven ones, at every version — `TMatrixTSym`, `TPointSet3D`, `ROOT::RNTuple` |
 | `custom` | 63 | know the layout; the streamer info describes the bytes at no version |
 
@@ -187,8 +187,9 @@ wrappers `TGraphEdge`, `TGraphNode` and `TGraphStruct` have `Streamer`s with
 empty bodies, so each one's specification is "nothing", and `Buffer.md` §2.3
 says so (`PLAN-corpus.md` C3). The gaps are `TASImage`, `TClassTree`,
 `TMaterial`, `TMixture`, `TPolyLine3D`, `TPolyMarker3D`, `TPointSet3D`, and five
-RooFit classes: `RooWorkspace::CodeRepo`, which blocks the two `RooWorkspace`
-records of `stressRooFit_v534_ref.root`, and the four `RooCFunctionNRef`, which
+RooFit classes: `RooWorkspace::CodeRepo`, which leaves the one `RooWorkspace`
+record in each `stressRooFit_*` file partly decoded, and the four
+`RooCFunctionNRef`, which
 nothing in either corpus reaches. All are of narrow reach. Only `CodeRepo` is
 something a physics file is likely to hold, and none of them is in the MVP (§8).
 
@@ -397,7 +398,7 @@ something no fixture and no other listed file does.
 | | Files | Reach | Provenance |
 |---|---|---|---|
 | `gen/cern/` | 72 — 24 core, 46 geometry, 2 physics (+11 more by range request, 3 of them from CERN Open Data) | ROOT 2.24/00 – 6.35/01 | published by the ROOT team at <https://root.cern/files/>, so a failure is evidence |
-| `gen/foreign/` | 180 | ROOT 4.00 – 6.38/00 | uproot's regression corpus, which includes files uproot wrote, so a failure is a lead |
+| `gen/foreign/` | 180 | ROOT 5.23/02 – 6.38/00, plus two g4tools files whose headers claim 4.00/00 | uproot's regression corpus, which includes files uproot wrote, so a failure is a lead |
 
 A lead must be diagnosed against the pinned source and resolved to one of four
 things: a spec error, a missing format fact, a reader gap, or a file at fault.
@@ -440,7 +441,7 @@ used to be wired behind `hashFiles(...) != ''` and therefore never ran.
 | `coverage_probe.py` | Not a CI check: how much of an arbitrary file the specification covers, and what blocks the rest |
 | `rootcite.py` | Markdown extension turning a citation into a link at the pinned commit |
 | `fetch_cern.py`, `fetch_foreign.py` | The corpora; `--headers` for the large files |
-| `test_*.py` | 187 unit tests, run in both workflows |
+| `test_*.py` | 495 unit tests, run in both workflows |
 
 Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 `coverage.py`, all three in service of generated member tables (§2.4).
@@ -452,7 +453,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Conventions | ✅ |
 | Container | ✅ all six documents |
 | Serialization | ✅ all seven documents |
-| Standard classes | ✅ the divergent set, except seven narrow classes (§2.4) |
+| Standard classes | ✅ the divergent set, except twelve narrow classes (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
 | RNTuple | ◐ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; one form left (collection proxy) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
@@ -462,7 +463,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 
 The phase numbering the earlier drafts used (0 skeleton, 1 foundations, 2 object
 layer, 3 bootstrap classes, 4 standard classes, 5 `TTree`, 6 RNTuple, 7 legacy)
-is retired. Phases 0–3 and 5 are complete, 4 is complete except the seven narrow
+is retired. Phases 0–3 and 5 are complete, 4 is complete except the twelve narrow
 classes, and what is left of 6 and 7 is listed in §8 by value rather than by
 phase.
 
@@ -478,13 +479,13 @@ phase.
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims reading for files written by ROOT 4.00 and later, and M4 measured that it works back to 3.04/02. The floor is a property of the file rather than a release number: object decoding needs streamer infos, and a file old enough has none. One corpus file is in that state, `pippa.root` (ROOT 2.24/00), and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
 | 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope; **revised 2026-09-21: RooFit is in**) | Four groups. First, the frameworks inside ROOT that define their own persistent classes: the SQL backend, PROOF, both event displays, SOFIE, each with its reason in `streamers.toml`. RooFit was on that list and was removed on the demand argument of §8.13: rootfilespec asked for it rather than reverse-engineer it, the strongest signal this project has had about what to write next. Second, what `TGeo*` fields *mean*, its classes being streamer-info driven anyway. Third, the compression algorithms themselves, as against ROOT's framing of them. Fourth, on the write side, what decision 3 leaves out after its 2026-09-18 revision and its 2026-09-21 extension: earlier class versions, two writers on one file at once, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all: they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
-| 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and no changelog.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document that describes somebody else's format. The number that matters is ROOT's; it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. Releases are therefore `YYYY.MM.DD`, tagged when the specification reaches a milestone. They exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` was deleted the same day and restored a few hours later, and the reason for the reversal is worth recording. The argument for deleting it was that the git log records what changed and also how each fact was established, so a changelog keeps only the weaker half. That holds for a per-commit changelog but not for this one: a commit body says what was *found*, a changelog entry says what a reader should now do differently, and the 69 entries under `## Unreleased` were the second kind. A dated tag also needs release notes, and generating them from 500 commit bodies at tag time is not the same as writing them when the change is fresh. The changelog stays, scoped to releases and to reader-facing changes only (`AGENTS.md` says which). One release exists under the old scheme, `v0.1.0`, and it stays where it is. |
+| 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and a changelog scoped to releases.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document that describes somebody else's format. The number that matters is ROOT's; it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. Releases are therefore `YYYY.MM.DD`, tagged when the specification reaches a milestone. They exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` was deleted the same day and restored a few hours later, and the reason for the reversal is worth recording. The argument for deleting it was that the git log records what changed and also how each fact was established, so a changelog keeps only the weaker half. That holds for a per-commit changelog but not for this one: a commit body says what was *found*, a changelog entry says what a reader should now do differently, and the 69 entries under `## Unreleased` were the second kind. A dated tag also needs release notes, and generating them from 500 commit bodies at tag time is not the same as writing them when the change is fresh. The changelog stays, scoped to releases and to reader-facing changes only (`AGENTS.md` says which). One release exists under the old scheme, `v0.1.0`, and it stays where it is. |
 | 10 | **Third-party files** (✅ decided 2026-09-23) | **Never committed.** roottest and rntuple-validation are LGPL-2.1, which `data/`'s BSD-3-Clause cannot include, and every other corpus is kept out for the same provenance reason: the corpora are read in place or fetched, and only manifests of digests are committed. A fact one of them teaches becomes a fixture by writing a generator that reproduces it. `LICENSE` states the rule and `tools/test_provenance.py` enforces it: a tracked `.root` with no case, or any tracked file identical to a roottest file, fails |
 
 ## 7. Open items
 
 1. **When to approach the ROOT I/O team.** The condition (a concrete artifact
-   rather than an intention) has been met for some time. The six RNTuple errata
+   rather than an intention) has been met for some time. The ten RNTuple errata
    are against a document the ROOT team owns and maintains, which makes them a
    friendlier first contact than §7.1's bug candidates, and they can bring those
    along. Deliberately deferred until the MVP is out (§8 item M10).
@@ -622,10 +623,11 @@ reported** (§8 item M10).
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
-The specification is already more complete than anything else available, and the
-checks behind it are sound. What stops it being a book a third party can adopt is
-a small, nameable set of things: one published claim that is wrong, three
-missing on-ramp documents, an unstated scope, and no licence.
+When this section was written, on 2026-09-17, the specification was already more
+complete than anything else available, and the checks behind it were sound. What
+stopped it being a book a third party could adopt was a small, nameable set of
+things: one published claim that was wrong, three missing on-ramp documents, an
+unstated scope, and no licence. All four were resolved the same day (§8.1).
 
 ### 8.1 Release criteria
 
@@ -773,9 +775,10 @@ What the measurement changed about the plan's own expectations:
 - **Here the streamer info is correct, only unframed.**
   `TStreamerInfo::Build` skips every data member of a version-0 class
   (`root/io/io/src/TStreamerInfo.cxx:552-554`), so a modern info lists exactly
-  the bases the streamer writes. Two ROOT 4.00/00 files show the older
-  behaviour, listing `TSeqCollection::fSorted`, a member no forwarding streamer
-  has ever written.
+  the bases the streamer writes. Two g4tools files whose headers claim ROOT
+  4.00/00 list `TSeqCollection::fSorted`, a member no forwarding streamer has
+  ever written; all 50 ROOT-written files older than ROOT 5 that carry the info
+  list the base alone (corrected 2026-09-23, §8.15).
 
 `rootfile.py` hardcodes the three and reads them by the published procedure, so
 `aod_flushed.root`'s `TTreePerfStats` now decodes: its `TVirtualPerfStats` base
@@ -913,8 +916,8 @@ out to be half specification and half an overstated coverage number.*
 
 `TBranch.md` gained §13.1, the member order below class version 10, and
 `rootfile.py` reads it. The three reproducers all decode: `mlpHiggs.root`
-(ROOT 3.04/02, version 7), `uproot-from-geant4.root` (4.00/00, version 8) and
-`stock.root` (4.00/07, version 9). That is 116 legacy branches, each parse ending
+(ROOT 3.04/02, version 7), `uproot-from-geant4.root` (g4tools, header 4.00/00,
+version 8) and `stock.root` (4.00/07, version 9). That is 116 legacy branches, each parse ending
 exactly on its byte count, and 17 tree records that had been `PARTIAL` since the
 corpora were added. `coverage_probe.py` no longer names `TBranch` anywhere, which
 leaves **`TASImage` as the only specification gap either corpus hits**.
@@ -941,10 +944,10 @@ case the invariant was at fault, not the files:
 
 | Invariant | Was | Is, and the witness |
 |---|---|---|
-| `TBranch` 11.1 | `fMaxBaskets == max(fWriteBasket + 1, 10)` | `>=`, with equality from class version 8 on — 12 125 branches. At version 7 the writer allocated a flat **1000**: `mlpHiggs.root`, 12 003 bytes of arrays per branch |
+| `TBranch` 11.1 | `fMaxBaskets == max(fWriteBasket + 1, 10)` | `>=`, with equality from class version 9 on. At version 7 the writer allocated a flat **1000**: `mlpHiggs.root`, 12 003 bytes of arrays per branch. Version 8 was first put with 9, on a g4tools file; ROOT writes 1000 there too (corrected 2026-09-23, §8.15) |
 | `TBranch` 11.3 | with an embedded basket, `fBasketEntry[fWriteBasket]` is **below** `fEntryNumber` | **at most**: an embedded basket may be empty, 92 branches in three files |
-| `TBranch` 11.9 | `fBaskets` holds `fWriteBasket + 1` slots | the slot count is not fixed by `fWriteBasket` — a ROOT 4.00-era writer wrote `fMaxBaskets` slots (22 branches), `alice_ESDs.root` writes one *more* than `fWriteBasket + 1` and ROOT never reads it, and a trimmed trailing null makes it fewer |
-| `TLeaf` 10.6 | a branch whose leaves are all fixed-size has no entry-offset array | only when its `fEntryOffsetLen` is 0. `uproot-issue-250.root` (ROOT 4.00) leaves it at the default 1000 on a `TLeafD` branch and its baskets have offsets 8 bytes apart |
+| `TBranch` 11.9 | `fBaskets` holds `fWriteBasket + 1` slots | the slot count is not fixed by `fWriteBasket` — g4tools writes `fMaxBaskets` slots (22 branches), `alice_ESDs.root` writes one *more* than `fWriteBasket + 1` and ROOT never reads it, and a trimmed trailing null makes it fewer |
+| `TLeaf` 10.6 | a branch whose leaves are all fixed-size has no entry-offset array | only when its `fEntryOffsetLen` is 0. `uproot-issue-250.root` (g4tools) leaves it at the default 1000 on a `TLeafD` branch and its baskets have offsets 8 bytes apart |
 
 **The coverage number.** The four invariants above were reachable only because
 refusing version 10 had also refused `alice_ESDs.root`, a ROOT 5.34 file whose
@@ -1120,7 +1123,7 @@ the document specifies, ROOT does not implement and JSROOT does, so two readers 
 one repository disagree about the type set. Deferred to the end by standing
 decision, and the natural opening for open item 1.
 
-**Not in the MVP, deliberately**: the seven narrow `custom`/`extending` classes (§2.4);
+**Not in the MVP, deliberately**: the twelve narrow `custom`/`extending` classes (§2.4);
 `TGeo*` hand-review; `gen/legacy/`; the pre-ROOT-4 object layouts (decision 7);
 semantic `case.toml` assertions; `TBranchSTL` entry decoding and `kStreamLoop`
 values (§9.11). `WriterInvariants.md` is no longer on this list: it became §8.4
@@ -1726,8 +1729,8 @@ than additions:
   `fName` on update, so keys written by an update record the path it was *opened*
   as while the directory record has the path it was *created* as;
 - **the large file header is 75 bytes and `TFile::WriteHeader` allocates `fBEGIN`
-  of them**, and four corpus files, from ROOT 2.24/00 to 4.00, have `fBEGIN` of
-  64. Updating one past 2 GB writes over its own first record. `FileHeader 10.11`;
+  of them**, and four corpus files have `fBEGIN` of 64, two from ROOT 2.24/00
+  and 3.04/02 and two from g4tools. Updating one past 2 GB writes over its own first record. `FileHeader 10.11`;
 - **ROOT silently reads nothing for a top-level object of a `TObject`-derived class
   it has no dictionary for.** `TKey::ReadObj` streams it with `tobj->Streamer()`,
   which resolves to `TObject::Streamer`: ten bytes and stop. Witnessed on a file
@@ -1886,8 +1889,8 @@ What the four turned into:
 | 7 `RooLinkedList` | **confirmed, and worse.** No byte count at all, and the info names a member that is not on disk; `RooFit.md` §3 |
 
 Two classes the review did not mention had to be specified with them, because
-every `RooAbsArg` reaches both: `RooAbsBinning` and `RooRefArray` (`RooFit.md`
-§4). `spec/03-classes/RooFit.md`, `gen/cases/classes/roofit` and
+every `RooRealVar` reaches both: `RooAbsBinning` through its `_binning` member,
+and `RooRefArray` as the `_proxyList` of every `RooAbsArg` (`RooFit.md` §4). `spec/03-classes/RooFit.md`, `gen/cases/classes/roofit` and
 `tools/test_roofit.py` are the result; 272 of the 274 RooFit records in the two
 corpora now decode. The reader can now decode six classes it could not before:
 `RooRealVar`, `RooLinkedList`, `RooAbsBinning`, `RooRefArray`, `RooCategory`
@@ -2077,6 +2080,88 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 2. **When to cut the first CalVer release.** The survey's corrections landed
    under `## Unreleased`; cutting now makes them part of the first release.
 
+### 8.15 "ROOT 4" was g4tools (2026-09-23)
+
+Six claims attributed behaviour to ROOT 4 on the evidence of two files,
+`uproot-from-geant4.root` and `uproot-issue-250.root`. Their headers say
+`fVersion` 40000, but g4tools wrote them, with keys dated 2018-2020, which
+`Buffer.md` §2.3 and `gen/foreign/IGNORE.toml` already said. No ROOT-written file
+in `root/roottest/` or `gen/cern/` shows any of the six:
+
+| Claim | ROOT-written files older than ROOT 5 |
+|---|---|
+| an STL element stores 300 (`StreamerInfo.md` §10.1) | 134 elements in twelve files, 3.04/02 to 4.04/02, all 500. The write path forces 500 from tag `v4-00-01` |
+| `nfree` is 0 (`FileHeader.md` §5.4) | 55 files, 2.23/12 to 4.04/02, all equal to the entry count |
+| a `TArray` counter is `fType` 3 (`ElementTypes.md` §2.1) | 417 counters, all 6 or 13 |
+| a `TSeqCollection` info lists `fSorted` (`ForwardingStreamers.md` §1.2) | 50 files, all list the base alone |
+| `fEntryOffsetLen` 1000 on a fixed-width branch (`TLeaf.md` 10.6) | 867 branches in fifteen files, all 0 |
+| `fBaskets` holds `fMaxBaskets` slots at `TBranch` version 8 (`TBranch.md` §13.2) | none; 1 303 version-8 branches in nine files hold `fWriteBasket + 1` |
+
+The two release exemptions in `check_invariants.py` (`root_version < 5` for the
+STL codes and for `nfree`) became per-file entries in `gen/foreign/IGNORE.toml`.
+
+Measuring the version-8 branches found one more error, the other way round:
+`TBranch` 11.1 required `fMaxBaskets == max(fWriteBasket + 1, 10)` from class
+version 8, on the strength of the same g4tools file. ROOT wrote a flat 1000 at
+version 8 as at 7; the recomputation arrived in root commit `aa25e85cb34`
+(2004-01-07), after version 9. The check was never run on a ROOT-written
+version-8 file, because none is in either corpus; all nine are in
+`root/roottest/`.
+
+Also corrected on the way: `TTree.md` said ROOT 4.00/00 wrote `TTree` version 11.
+It wrote 10.
+
+### 8.16 A consistency review (2026-09-23)
+
+Rewriting every document for plain language (commit `a02c012`) meant reading
+all of it closely, and the agents doing it listed about 130 statements that
+disagreed with a neighbouring statement, a table, a fixture or the source. Each
+was then checked against the submodule and the bytes. Most were real, and all of
+those are fixed. They fall into four kinds:
+
+- **Cross-references to the wrong section**, several dozen, many wrong since the
+  file was created: a section renumbered and the "§n" pointing at it not.
+- **Counts that disagree with the list beside them**: "seven records" over an
+  eight-row table, "thirty-one classes" for thirty-five, "six RooFit classes"
+  for five.
+- **Claims that went stale when something else landed**: the `listOfRules` entry
+  the writer now emits, fixtures that now exist, corpus figures from a smaller
+  corpus, a module docstring from before `rootfile.py` decoded objects.
+- **Claims that were wrong**, which are what the review was for. Among them:
+  `TClonesArray`'s `nobjects` described backwards; count branches said to have
+  no leaf; a displacement array said to be impossible in current ROOT when a
+  fixture of current ROOT has one; `fType` 365 said to occur on disk; the
+  `TStreamerInfo` version-9 boundary one release early; §8.15 in full.
+
+Two tool defects surfaced too. `element_lists.py` never rendered two of its
+blocks, so `ElementLists.md` §8 and §9 were published empty while `--check`
+passed; blocks are now built from the group list, and a group without a block
+fails. And four test classes in `test_streamer_driven.py` sat after the
+`__main__` guard.
+
+The lesson for the tooling: nothing checks a "§n" reference against the heading
+it names, or a spelled-out count against the list it introduces, and those were
+the largest group.
+
+**Leads, not yet diagnosed.** Running `check_invariants.py` on individual
+pre-ROOT-5 files of `root/roottest/` for §8.15 shows failures on other labels:
+`TTree` 11.2 in seven files, `TBranch` 11.4 (39) and 11.9 (12) in `digi.root`,
+`TBranchElement` 10.10 in `mksm`, `RefTest` and `digi`, `TBranch` 11.10 and
+`Splitting` 8.2 in `cmsursula` and `mcpool`, `ReadingEntries` 8.5 in `mksm`, and
+`TLeaf` 10.7 in `short0.root` and `short1.root`. `TBranch` invariant 9 says
+`fWriteBasket + 2` slots occur in one ROOT 5 file; roottest has 53 such branches
+in files from 3.03 to 4.04. These files are ROOT-written, so each failure is
+evidence of a legacy layout the documents do not yet describe, or of an
+invariant scoped too widely.
+
+One more lead is in the corpus itself. With the `lz4` package installed, the
+corpus run reaches 48294 of 48398 branch-baskets (99.8%) rather than 46137 of
+46241, and fails once: `uproot-issue213.root`, `ReadingEntries` 8.5, branch
+`fGenInfo`, where `fAllBits` names the counter `fNbytes` before it is seen. The
+same failure occurs at `83d6977`, so it predates this review. Without `lz4` the
+file's baskets are skipped as a missing codec, which is why the quoted figures
+never showed it. The figures quoted elsewhere are without `lz4`.
+
 ## 9. Known gaps
 
 Every gap the written documents record. None is a hole in the prose: in every
@@ -2093,7 +2178,7 @@ Reframed by §9.10: most of these are not blocked on `gen/legacy/` after all.
 | Gap | Document | Available in |
 |---|---|---|
 | Directory record versions 1, 3, 4 | `Directory.md` | ✅ read; no fixture, and version 2 occurs nowhere (M4), nor in `root/roottest/`'s 273 files, whose smallest witnesses of 1, 3 and 4 (9 227, 1 199 and 1 225 bytes) are now listed in `gen/cern/README.md`. The 3.03/02 one refuted §7's release boundaries, now read from tags (`PLAN-corpus.md` C11) |
-| `TBranch` class versions 6–9 | `TBranch.md` §13.1 | ✅ closed by M6: specified, read, and 116 legacy branches decoded in `mlpHiggs.root` (7), `uproot-from-geant4.root` (8) and `stock.root` (9) |
+| `TBranch` class versions 6–9 | `TBranch.md` §13.1 | ✅ closed by M6: specified, read, and 116 legacy branches decoded in `mlpHiggs.root` (7), `uproot-from-geant4.root` (8, g4tools) and `stock.root` (9); ROOT-written version 8 is in nine `root/roottest/` files |
 | `TStreamerElement` at base version 2 | `StreamerInfo.md` | ✅ 979 elements, §9.10 — M6 |
 | Collection layouts below `TStreamerInfo` version 8 | `Collections.md` | ✅ info versions 2, 4, 5, 6 present — M6 |
 | The version-3 `TStreamerElement` form with `fXmin`/`fXmax`/`fFactor` | `StreamerInfo.md` | ✅ `root/roottest/root/io/evolution/skim.root`, ROOT 4.03/05: 223 elements, 24 bytes each, all of them available. **No release wrote this version**; it lived three days on the 4.03/05 trunk (C8) |
@@ -2174,7 +2259,7 @@ version in the writing ROOT (9 in practice, 10 only from 6.36.00), and a
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ☐ worth adding as a complement; not MVP |
 | Four fixtures were not digest-portable between macOS and Linux | ✅ three fixed by masks, one exempted with a reason; the causes are in §3.3 |
 | `classes/roofit` was pushed without the container loop of §3.3 and CI caught it | ✅ 2026-09-21. `generate.py --check` cannot see a cross-platform drift, because it does not regenerate; only the ROOT-having job can, so a green local suite is not evidence about a **new** case |
-| Eight upstream bug candidates banked, not reported | ☐ §7.1, M10 |
+| Thirteen upstream bug candidates banked, not reported | ☐ §7.1, M10 |
 
 ### 9.7 What the coverage probe measures
 
@@ -2191,9 +2276,9 @@ coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-180 files, **0 failures**. The probe: 32200 decoded, 785 container, 6 partial,
-178 blocked, 1 not walkable, plus 132 records whose LZ4 codec is unavailable
-locally. Entries: 43468 of 44545 branch-baskets, 97.6%.
+180 files, **0 failures**, as of 2026-09-23. The probe: 32200 decoded, 785
+container, 6 partial, 178 blocked, 1 not walkable, plus 132 records whose LZ4
+codec is unavailable locally. Entries: 44441 of 44545 branch-baskets, 99.8%.
 
 Re-measured 2026-09-22 for `PLAN-corpus.md` C13, which added the 23-file RNTuple
 tier. The change comes from those files alone: the 157 files before it give 26410
@@ -2203,11 +2288,11 @@ info by design, and anchors, which `read_rntuple` reads instead and which every
 new file's anchor passes. Of the 1010 new skips, 975 are one ATLAS file's `This`
 element (C19) and 35 are hand-written streamers.
 
-Re-measured 2026-09-23 after C18 and C19: entries 44441 of 44545, 99.8%, and the
-probe unchanged. The whole change is two files. The ATLAS file's 975 now decode
-(`Collections.md` §11.2), and `uproot-issue475.root`'s two `nEXO::SmartRef`
-baskets, which had passed by a coincidence of lengths, are skipped by name
-(`StreamerDriven.md` §7.1).
+Re-measured 2026-09-23 after C18 and C19: entries 44441 of 44545, 99.8%, up from
+43468 (97.6%), and the probe unchanged. The whole change is two files. The ATLAS
+file's 975 now decode (`Collections.md` §11.2), and `uproot-issue475.root`'s two
+`nEXO::SmartRef` baskets, which had passed by a coincidence of lengths, are
+skipped by name (`StreamerDriven.md` §7.1).
 
 Earlier that day, for C9: go-hep's `leaves.root`, the manifest's first file
 from outside scikit-hep-testdata, gave +49 decoded, +3 container and +47
@@ -2234,7 +2319,8 @@ found eleven specification errors, each one published, wrong and reader-facing
 - a basket with no offset array is not fixed-length when its flag is 80;
 - the last offset may equal `fLast` exactly, on an empty last entry;
 - `fMaxIndex[1]` is the base checksum or 0, on every file ROOT 5 wrote;
-- an STL element's `fType` is 500 on ROOT 5 and later but 300 on ROOT 4;
+- an STL element's `fType` is 500 on ROOT 5 and later but 300 on ROOT 4
+  (itself wrong: the 300s are g4tools', §8.15);
 - a counter may sit in the base class its `fCountClass` names;
 - a counter's `fType` is any integer basic type, not only 6;
 - a base that is an STL container is a `TStreamerSTL` and may precede a base;
@@ -2279,15 +2365,15 @@ header should be.
 ### 9.9 Standing result over `gen/cern/`
 
 72 files, ROOT 2.24/00 – 6.35/01, **0 failures** since 2026-09-17, and 180 files
-(4.00/00 – 6.38/00) at 0 on the other side (§9.8). The probe: 1396 decoded, 264
-container, 515 partial, 205 blocked. Of the blocked, 197 are RooFit classes in
-two `stressRooFit_*` files (out of scope, decision 8) and the rest are RNTuple's
-`RBlob` and anchor; of the partial, 468 are `pippa.root`, a ROOT 2.24 file with
-no streamer infos at all (out of scope for objects, decision 7).
+(5.23/02 – 6.38/00, and two g4tools files) at 0 on the other side (§9.8). The probe, as of 2026-09-23:
+1623 decoded, 264 container, 480 partial, 13 blocked. Of the partial, 468 are
+`pippa.root`, a ROOT 2.24 file with no streamer infos at all (out of scope for
+objects, decision 7).
 
-Re-measured 2026-09-21, after `spec/03-classes/RooFit.md`: 1623 decoded, 264
-container, 480 partial, 13 blocked. 197 of the 205 were RooFit and every one of
-them now decodes. What is left blocked is RNTuple's four `RBlob` records and its
+Before `spec/03-classes/RooFit.md` (2026-09-21) the probe gave 1396 decoded, 264
+container, 515 partial and 205 blocked, and 197 of the blocked were RooFit
+classes in two `stressRooFit_*` files, then out of scope (decision 8). Every one
+of them now decodes. What is left blocked is RNTuple's four `RBlob` records and its
 anchor, seven collections whose value class has no streamer info in the file
 (`Collections.md` §9), and one slot referencing a class position that is not in
 its buffer.
@@ -2335,7 +2421,7 @@ the threshold the collection layouts turn on.
 **`TStreamerElement` base versions**: 4 (31186) and 2 (979). Version 3, the form
 that persists `fXmin`/`fXmax`/`fFactor`, does not occur.
 
-> Re-measured 2026-09-22 with `root/roottest/` added, whose 274 files the pinned
+> Re-measured 2026-09-22 with `root/roottest/` added, whose 273 files the pinned
 > submodule ships: 4 (60 835), 2 (8 364) and **3 (223, all in `skim.root`)**.
 > Directory version 2 still occurs nowhere. `PLAN-corpus.md` C8–C11.
 

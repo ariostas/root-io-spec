@@ -433,6 +433,44 @@ class ConfusingTheAxesIsCaught(unittest.TestCase):
         self.assertTrue(all("Record 8.6" in f for f in bad), bad)
 
 
+class NfreeMustMatchTheList(unittest.TestCase):
+    """FileHeader.md invariant 7, with no exemption by release.
+
+    Every ROOT-written file available, back to 2.23/12, has `nfree` equal to its
+    free list's entry count. The exemption for "ROOT 4" rested on two g4tools
+    files, which are now in gen/foreign/IGNORE.toml instead. `nfree` is at
+    offset 24 in the small header.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/container/file-minimal.root"
+
+    def failures(self, nfree, version=None):
+        buf = bytearray(self.PATH.read_bytes())
+        self.assertEqual(struct.unpack_from(">i", buf, 24)[0], 1)
+        struct.pack_into(">i", buf, 24, nfree)
+        if version is not None:
+            struct.pack_into(">i", buf, 4, version)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(bytes(buf))
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return checker.failures
+
+    def test_the_fixture_itself_passes(self):
+        self.assertEqual(self.failures(1), [])
+
+    def test_a_wrong_count_is_caught(self):
+        bad = self.failures(2)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("FileHeader 10.7", bad[0])
+
+    def test_zero_is_caught_even_under_a_root_4_header(self):
+        bad = self.failures(0, version=40000)
+        self.assertTrue(bad)
+        self.assertTrue(all("FileHeader 10.7" in f for f in bad), bad)
+
+
 CORPUS = Path(__file__).resolve().parents[1] / "build"
 
 

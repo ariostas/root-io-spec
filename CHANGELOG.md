@@ -11,6 +11,85 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Correction: six "ROOT 4" behaviours were g4tools.** Two files in the foreign
+  corpus have headers claiming ROOT 4.00/00 but were written by g4tools, Geant4's
+  own ROOT writer, and six claims rested on them alone. No ROOT-written file
+  shows any of them, so each is now attributed to g4tools as something a reader
+  should accept from a third-party writer: an STL element storing `fType` 300
+  ([`StreamerInfo.md` §10.1](spec/02-serialization/StreamerInfo.md); ROOT has
+  forced 500 on write since 4.00/01), `nfree` 0 in the header, `TArray` counters
+  stored as `fType` 3, a `TSeqCollection` info listing `fSorted`,
+  `fEntryOffsetLen` 1000 on a fixed-width branch, and `fBaskets` written at
+  `fMaxBaskets` slots. Checking them found two more errors: `TBranch` invariant
+  11.1 applies from class version 9, not 8, because ROOT 3.05 to 3.10 wrote
+  version 8 with a flat `fMaxBaskets` of 1000; and ROOT 4.00/00 wrote `TTree`
+  version 10, not 11.
+
+- **Corrections from a consistency review of every document.** Each was checked
+  against the pinned source and the bytes. Wrong section references and counts
+  that disagreed with their own tables were also fixed, and are not listed.
+  - [`Collections.md`](spec/02-serialization/Collections.md): a `TClonesArray`'s
+    `nobjects` includes the empty slots before the last occupied one and excludes
+    the free slots after it; the text had it the other way round. The set/multimap
+    order changed while `TStreamerSTL` stayed at element version 3, so nothing in
+    the element tells the two orders apart and the repair applies to every file.
+  - [`ElementTypes.md`](spec/02-serialization/ElementTypes.md): a counter's
+    `fType` is 6, 3 or 13, not any integer type, so a counter is always 4 bytes.
+    `TStreamerInfo` class version 9 first shipped in 5.27/02, not 5.26, and the
+    version word of a 500/501 frame reads 8 or less before that. No release writes
+    365 as an `fType`. 500 on a `TStreamerSTLstring` is a collection, as on a
+    `TStreamerSTL`.
+  - [`StreamerInfo.md` §9.2](spec/02-serialization/StreamerInfo.md): in
+    `hades.root` the base whose `fBaseVersion` fallback fails is `TGeoMaterial`,
+    not `TGeoVolume`.
+  - [`HandWrittenStreamers.md`](spec/99-appendix/HandWrittenStreamers.md),
+    [`Bootstrap.md`](spec/99-appendix/Bootstrap.md) and
+    [`StreamerDriven.md` §7](spec/02-serialization/StreamerDriven.md): a byte-count
+    check does not always catch a class whose streamer info does not describe its
+    bytes. `TArray*` and `TRef` write no byte count, an `extending` class's extra
+    bytes lie outside it, and a mismatch may show on the enclosing object.
+  - [`RooFit.md`](spec/03-classes/RooFit.md): five RooFit classes have a
+    `Streamer` of their own, not six. `RooAbsBinning` does derive from `TNamed`
+    and its streamer writes its declared bases; what most files lack is a
+    `RooAbsBinning` info. It is reached from every `RooRealVar`, not every
+    `RooAbsArg`. A `RooRealVar` info consumes 380 of the 440 bytes in
+    `classes/roofit`, and following `RooLinkedList`'s info misreads `_size` as
+    `_hashThresh`, not the `TObject` base. `RooWorkspace::CodeRepo` leaves a
+    record partial rather than blocked.
+  - [`TBasket.md`](spec/04-ttree/TBasket.md): a displacement array (`flag > 40`)
+    does occur in files from current ROOT, from a circular tree
+    (`MoveEntries`) or an object branch filled through `SetBufferAddress`, and
+    shows in the flag only when embedded. `fIOBits` came with class version 3.
+    With `kGenerateOffsetMap` a stored array reads as 0 followed by entry sizes.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md): `fBaskets` is all null only after
+    `TTree::Write`; it can hold an embedded basket.
+  - [`TBranchElement.md`](spec/04-ttree/TBranchElement.md): count branches of
+    `fType` 3 and 4 have one leaf, a back-reference the read procedure ignores.
+  - [`TLeaf.md`](spec/04-ttree/TLeaf.md): four leaf classes, not three, have an
+    `fLenType` that differs from the on-disk width.
+    [`ReadingEntries.md` §5.2](spec/04-ttree/ReadingEntries.md) now says how many
+    members of `ttree/split-double32` each wrong width source misreads.
+  - [`TTree.md`](spec/04-ttree/TTree.md): `fBranchRef`, `fFriends`, `fTreeIndex`
+    and `fUserInfo` are not always null; three fixtures and `alice_ESDs.root`
+    have them set.
+  - [`Buffer.md` §6](spec/02-serialization/Buffer.md): ROOT 6.40.04 always writes
+    a byte count before a new object in a slot; the two slot forms without one
+    must still be accepted.
+  - [`Conventions` §5.1.1](spec/00-conventions.md): `TString` and `TStringLong`
+    differ in their length prefix at every length, not only below 255.
+  - The writing documents: the `StreamerInfo` records of the histogram and tree
+    cases now match ROOT's in full, `listOfRules` included. Emitting the rules
+    stays optional. `WritingFiles.md`'s scope covers subdirectories and updating
+    a file, and the unwritten header bytes are 63 to 99. `TGraph`'s `TAttFill`
+    values are fixed by its constructor.
+  - Corpus figures re-measured over the current corpora: free segments,
+    directory records and cycles, the forwarding-streamer table, and
+    `ElementTypes.md` invariant 3's counts.
+
+- **Fix: `ElementLists.md` §8 and §9 were empty.** The element lists of
+  `TObjString`, `TGraph` and `TGraphErrors` were counted but never rendered;
+  they are published now ([`ElementLists.md`](spec/06-writing/ElementLists.md)).
+
 - **Correction: ROOT does not write bare version words at the top of a record.**
   [`Buffer.md` §2.3](spec/02-serialization/Buffer.md) said a record from a file
   older than ROOT 5 may open an ordinary class with bare version words. Its only

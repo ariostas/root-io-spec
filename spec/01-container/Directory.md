@@ -297,7 +297,7 @@ with `TKey::Sizeof` (`:2211`). The image is therefore a byte copy of the key as 
 would be written when the list is written, not of what was written when the
 record was created. For a directory these are not always the same bytes.
 
-Three places decide how a directory key spells its class, and until 2012 they did
+Four places decide how a directory key spells its class, and until 2012 they did
 not agree:
 
 | Where | Current ROOT | Before 5.34 |
@@ -368,8 +368,7 @@ dates. The same commit series gave the file header its UUID (FileHeader §8).
 
 > `root/roottest/root/io/arrayobject/Event.3.2.0.root`, written by ROOT 3.03/02,
 > holds a version 1 root directory: 30 bytes, no UUID, and its file header's UUID
-> bytes are zero. Until 2026-09-22 this table said version 1 ended at 3.02 and
-> version 2 began at 3.03/01, which this file refutes.
+> bytes are zero.
 
 Reading the UUID therefore depends on `version mod 1000`
 (`root/io/io/src/TDirectoryFile.cxx:1792-1796`):
@@ -423,7 +422,7 @@ version, and only there, the record is the same length in both layouts.
 > `pippa.root` (ROOT 2.24/00) supplies the 30; `mlpHiggs.root` and
 > `H1display.root` the 48, both with `fVersion` below 40000 and so without
 > reserved bytes; and the two g4tools files the 42, the combination ROOT does not
-> write. 438 records in `data/` and the corpora supply the 60. Over all 471
+> write. 475 records in `data/` and the corpora supply the 60. Over all 503
 > directory records in `data/` and both corpora, the table predicts the payload
 > exactly, with no exceptions (invariant 15).
 
@@ -487,15 +486,15 @@ Do not use `fSeekParent` in step 3 (§4.3).
     order resolves every unqualified name to the oldest copy, with no diagnostic,
     as measured in
     [Writing a file §8.1](../06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets).
-    Real files rarely exercise this: across both corpora and `data/`, 462
-    directories hold 2395 keys, and only six name groups have more than one
-    cycle, all six in descending order. `data/written/cycles-3.root` is the main
+    Real files rarely exercise this: across both corpora and `data/`, 502 key
+    lists hold 2506 keys, and only 15 name groups have more than one cycle, all
+    15 in descending order. `data/written/cycles-3.root` is the main
     test of the invariant. No corpus file has a negative `fCycle`, so none
     demonstrates the keep flag. A negative `fCycle` is the keep flag and counts as
     its magnitude (§3.8 of [Records](Record.md#38-fcycle)).
 15. The payload, `fObjlen` less the `fNbytesName - fKeylen` prefix, is exactly the
     length §7.1 gives for its class version, its offset width and the file
-    header's version. Measured on all 471 directory records of `data/` and both
+    header's version. Measured on all 503 directory records of `data/` and both
     corpora.
 
     This invariant checks §3.1's class-version axis: a record whose version
@@ -534,6 +533,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | 12 | — | Up to 8 bytes of uninitialized slack inside `fObjlen` when `fEND > 2 GB` (§6.1) |
 | 13 | — | `fNbytesKeys` counts the whole record, key included (§4.1) |
 | 14 | `keyslist.md` presents each entry as a copy of the record's key, so its length is `fKeylen` | A directory entry written before ROOT 5.34 is 4 bytes longer than the `fKeylen` it reports, and spells its class `TDirectoryFile` where the record spells it `TDirectory` (§6.5). Both spellings occur in one file |
+| 15 | *This document, until 2026-09-22*: §7's table ended version 1 at 3.02 and began version 2 at 3.03/01 | Version 1 runs to 3.03/06 and version 2 is 3.03/07 only, by `ClassDef` at the release tags. `Event.3.2.0.root`, written by 3.03/02, has a version 1 root directory (§7) |
 
 ## 11. Reference files
 
@@ -547,10 +547,10 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `written/reopen-add` | The same file written here, and `fDatimeM` refreshed while `fDatimeC` is not |
 
 No fixture covers a version 1, 2 or 3 directory record, and none can, because no
-ROOT this project can run writes one; `data/` is version 5 throughout, 99 records
-across 88 files. The legacy corpus supplies them instead, and every payload size
-in §7 is confirmed there. `pippa.root` (ROOT 2.24/00) holds 24 version 1 records,
-23 of them subdirectories of exactly 30 bytes. `mlpHiggs.root` (3.04/02) and
+ROOT this project can run writes one; `data/` is version 5 throughout, 104 records
+across 98 files. The legacy corpus supplies them instead, and §7.1 says which
+file measures each payload size. `pippa.root` (ROOT 2.24/00) holds 24 version 1
+records, 23 of them subdirectories of exactly 30 bytes. `mlpHiggs.root` (3.04/02) and
 `H1display.root` (3.05/07) hold one version 3 record each, 48 bytes after the name
 and title copy, with no reserved bytes. Five further files have version 4.
 

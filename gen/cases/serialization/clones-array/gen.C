@@ -7,7 +7,7 @@
 /// kStreamedMemberWise bit. Clear means one Char_t presence flag per slot,
 /// followed by the object in full when the flag is 1.
 ///
-/// fSecond leaves slot 0 empty to show that an empty slot still costs its flag
+/// `plain` leaves slot 0 empty to show that an empty slot still costs its flag
 /// byte, which the shipped documentation omits.
 ///
 /// Pt comes from classes.h and is compiled first; see gen/common/README.md. It

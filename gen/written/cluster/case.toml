@@ -35,8 +35,9 @@ This case covers what the single-basket `written/tree` cannot:
   from the bytes written so far. Neither is required of a writer, and both are
   needed to compare records byte for byte.
 
-Only the `StreamerInfo` record differs from ROOT's, by the one `listOfRules` entry
-a file written at `TTree` version 20 cannot use (`WritingTrees.md` 8.1).
+The `StreamerInfo` record matches ROOT's too, all 14121 bytes of its payload,
+including the `listOfRules` entry a file written at `TTree` version 20 never uses
+(`WritingTrees.md` 8.1).
 """
 
 spec = [

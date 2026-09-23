@@ -371,7 +371,7 @@ the same strings would be 46. See [TBasket](../04-ttree/TBasket.md).
 
 **Baskets always use the large key layout.** Both fixture keys have `fVersion`
 1004 and 8-byte `fSeekKey` and `fSeekPdir` in an 18 kB file, so the large form is
-not due to file size here (§3.5).
+not due to file size here (§7).
 
 ## 4. Cycles
 
@@ -448,7 +448,7 @@ raw byte payloads and are not subject to the byte-count limit.
 For a key with `fVersion == 1` (ROOT 1.x and 2.x), the payload was written
 without object-map registration, so back-references and class tags behave
 differently (`root/io/io/src/TKey.cxx:868`, `:1174`). See
-`02-serialization/Buffer.md`.
+[Buffer framing](../02-serialization/Buffer.md).
 
 `TBasket` keys are always written in the large layout
 (`root/tree/tree/src/TBasket.cxx:71`), regardless of file size. Baskets are the
@@ -512,6 +512,6 @@ should follow `TKey`.
 | `container/cycles` | Three cycles of one name |
 | `container/directories` | `fSeekPdir` chains, the `"TDirectory"` class name |
 | `container/gap` | A negative `fNbytes` free span in the chain |
+| `ttree/basket` | Large keys (`fVersion` 1004) in a small file, and an `fKeylen` longer than its strings (§3.11) |
 
-No fixture yet covers a large key or a non-zero `fPidOffset`. A `TBasket` fixture
-will supply the former, since baskets always use the large layout.
+No fixture covers a non-zero `fPidOffset`.

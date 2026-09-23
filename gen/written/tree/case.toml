@@ -14,10 +14,10 @@ title are chosen to match: both paths are 22 characters, so the root directory
 record is the same length in both files and every offset after it lines up.
 `tools/test_write.py` asserts the comparison.
 
-Only the `StreamerInfo` record differs, by one entry. ROOT appends a
-`listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and
-<= 18; a file written at version 20 cannot use them, so this writer does not emit
-them.
+The `StreamerInfo` record matches ROOT's too, all 14584 bytes of its payload,
+including the `listOfRules` entry ROOT appends: two I/O customization rules for
+`TTree` versions <= 16 and <= 18, which a file written at version 20 never uses.
+This writer emits them anyway (`WritingTrees.md` 8.1).
 
 What the case fixes that no reading fixture does: the basket key's version of
 1004, which `TBasket` sets whatever the file's size; `fCycle` as the basket

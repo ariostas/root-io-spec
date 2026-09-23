@@ -205,7 +205,7 @@ Hand-written (`root/io/io/src/TStreamerInfo.cxx:5608`). Current version 10
 | byte count | `u32` with `kByteCountMask` | |
 | version | `i16` | 10 currently |
 | `TNamed` base | nested record | `fName` is the **described class**; `fTitle` its comment |
-| `fCheckSum` | `u32` | §10 |
+| `fCheckSum` | `u32` | §11 |
 | `fClassVersion` | `i32` | written as its absolute value |
 | `fElements` | object slot | a `TObjArray` of elements |
 
@@ -239,7 +239,7 @@ Values at `root/core/meta/inc/TVirtualStreamerInfo.h:74`.
 > `0x00010000`, i.e. `kIsCompiled` alone.
 
 A `FIXME` in ROOT claims these bits are never saved to the file
-(`root/io/io/src/TStreamerInfo.cxx:1400-1405`). That comment is wrong; see §12,
+(`root/io/io/src/TStreamerInfo.cxx:1400-1405`). That comment is wrong; see §14,
 erratum 9.
 
 ### 6.1 Version-dependent reader behaviour
@@ -471,8 +471,8 @@ and the version is merely stale.
 
 **The second case breaks the fallback of §9.1.** These are ROOT 5 files, so
 `fBaseCheckSum` is 0 and §9.1 falls back to `fBaseVersion`, which is 4 while the
-file's only `TGeoVolume` info is version 5. The fallback finds nothing, so §9.1's
-instruction needs a third step:
+file's only info for the base (`TGeoVolume` or `TGeoMaterial`) is version 5.
+The fallback finds nothing, so §9.1's instruction needs a third step:
 
 1. `fBaseCheckSum`, when it is non-zero;
 2. otherwise `fBaseVersion`, when the file has an info for the base at that
@@ -480,17 +480,18 @@ instruction needs a third step:
 3. **otherwise the info the file does have for that class**, which is the only
    description of the base available. These four files require this step.
 
-A reader that stops after step 2 finds no layout for `TGeoVolume` and cannot
-decode a `TGeoVolumeMulti` in four files published by the ROOT team.
-`tools/rootfile.py` reaches step 3 because it never consults `fBaseVersion`, which
-is why it decodes the corpora. That is a side effect of its design, not a
-recommendation; step 3 is the rule.
+A reader that stops after step 2 finds no layout for the base, and so cannot
+decode a `TGeoVolumeMulti` in three files published by the ROOT team or a
+`TGeoMixture` in the fourth. `tools/rootfile.py` reaches step 3 because it never
+consults `fBaseVersion`, which is why it decodes the corpora. That is a side
+effect of its design, not a recommendation; step 3 is the rule.
 
 ## 10. `TStreamerSTL` stores a type code it does not mean
 
 > **On disk, every `TStreamerSTL` and `TStreamerSTLstring` has
-> `fType = 500` (`kStreamer`).** No file written by ROOT 5 or ROOT 6 contains the
-> real code. §10.1 describes the exception.
+> `fType = 500` (`kStreamer`).** Every ROOT-written file available stores 500
+> there, back to ROOT 3.04. §10.1 covers the exceptions: releases before 4.00/01
+> in one case, and third-party writers.
 
 The write path builds a default-constructed temporary, copies the fields it needs,
 sets `fType = kStreamer`, and writes the temporary; a comment says this is for
@@ -527,21 +528,35 @@ The read path also reconstructs two fields:
   (`root/core/foundation/inc/ESTLType.h:28-50`); older ROOT had them the other way
   round.
 
-### 10.1 ROOT 4 wrote the real code
+### 10.1 Where the stored code is not 500
 
-Older files store the real value: `fType` 300 (`kSTL`) for a `TStreamerSTL`, and
-the other real codes where they apply. Writing 500 instead is a
-forward-compatibility measure that makes an older reader treat the member as
-custom-streamed, and it was not always done.
+The write path has stored 500 unconditionally since ROOT 4.00/01. Root commit
+`2b412e44cbd` (2004-01-10), which introduced the current collection I/O, added the
+override and its forward-compatibility comment to `TStreamerSTL::Streamer`; it is
+at tag `v4-00-01` (`meta/src/TStreamerElement.cxx`, lines 1427-1433 there).
 
-The read path overwrites `fType` from `fSTLtype` and `fCtype` whatever was stored,
-so this does not affect a reader that follows it. But an invariant that requires
-500 will reject a valid file, and a reader that switches on the stored code will
-take a different path on an old one.
+Before that the element was written as it stood in memory. The constructor set
+`kSTL` (300), and `TStreamerSTL::SetStreamer` replaced it with 500 whenever the
+class's dictionary supplied a streamer function for the member, which is the
+usual case for a compiled class (`meta/src/TStreamerElement.cxx` at tag
+`v3-10-02`, lines 1161 and 1283-1292). A release before 4.00/01 could therefore
+store 300 for an STL member that had no such function. No available file shows
+it.
 
-> Measured across the foreign corpus of `PLAN.md` §9.8: the two ROOT 4.00/00 files
-> have nine `TStreamerSTL` elements each, all with `fType` 300. All of the other
-> 152 files, from ROOT 5.23/02 to 6.36/02, have only 500.
+Third-party writers do store the real code. g4tools, Geant4's own ROOT writer,
+writes 300 for a `TStreamerSTL`
+([Buffer framing §2.3](Buffer.md#23-a-records-object-data-does-not-always-begin-with-one) identifies its
+files). The read path overwrites `fType` from `fSTLtype` and `fCtype` whatever was
+stored, so a reader that follows it reads these files correctly. A reader that
+switches on the stored code takes a different path on them, and SHOULD accept 300
+here as meaning the same as 500.
+
+> Measured over `root/roottest/`, `gen/foreign/` and `gen/cern/`: 134 STL
+> elements in twelve files written by ROOT before 5, from 3.04/02 to 4.04/02, all
+> store 500, as does every element written by ROOT 5 or 6. The only other value
+> is 300, on 18 `TStreamerSTL` elements, nine each in `uproot-from-geant4.root`
+> and `uproot-issue-250.root`. Their headers claim ROOT 4.00/00, but g4tools
+> wrote them, with keys dated 2018-2020.
 
 ## 11. Checksums
 
@@ -725,8 +740,9 @@ element list it is about to emit. See
    comparing it with whichever info a lookup by name returns is wrong. It is 0 on
    every file written before ROOT 6 (§9.1).
 8. A `TStreamerBase` has `fTypeName` `"BASE"`, and `fType` is 0, 66, 67 or -1.
-9. Every `TStreamerSTL` and `TStreamerSTLstring` has `fType == 500` on disk,
-   on a file written by ROOT 5 or later. ROOT 4 wrote the real code (§10.1).
+9. Every `TStreamerSTL` and `TStreamerSTLstring` has `fType == 500` on disk.
+   This holds on every ROOT-written file available, from ROOT 3.04 on; a
+   third-party writer may store the real code (§10.1).
 10. A `TStreamerBasicPointer` or `TStreamerLoop` has a non-empty `fCountName`,
     and the info named by its `fCountClass` (this one, or a base) has an element
     of that name. `TArrayD`'s `fArray` names `fN` in `TArray`, its base
@@ -765,6 +781,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 14 | `fSize` is "size of built in type or of pointer to built in type, 0 otherwise" | It is non-zero for every element class and is the writer's `sizeof`: 24 for a `TString`, 16 for a `TObject` base (§7) |
 | 15 | — | The key is removed from the directory's key list, so the record can only be found through `fSeekInfo` (§2) |
 | 16 | — | No checksum algorithm is given, and the eight variants needed to match older files are not mentioned (§11) |
+| 17 | *This document, until 2026-09-23*: ROOT 4 wrote the real code, 300, for an STL element | Every ROOT-written file available stores 500, from ROOT 3.04 on. The two files the claim rested on were written by g4tools, whose headers claim 4.00/00 (§10.1) |
 
 ## 15. Reference files
 
@@ -777,6 +794,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/collections` | `TStreamerSTL` in seven shapes, and the only `TStreamerSTLstring` in the corpus |
 
 No fixture covers `TStreamerLoop`, `TStreamerArtificial` (which cannot occur;
-§14), or any `TStreamerElement` version below 4, which needs a ROOT this project
-cannot build. The corpora and `root/roottest/` cover the last: version 2 in 41
-files, from ROOT 3.03 to 4.03, and version 3 in only one, `skim.root` (§7.1).
+§8, invariant 5), or any `TStreamerElement` version below 4, which needs a ROOT
+this project cannot build. The corpora and `root/roottest/` cover the last:
+version 2 in 41 files, from ROOT 3.03 to 4.03, and version 3 in only one,
+`skim.root` (§7.1).

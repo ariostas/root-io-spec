@@ -473,13 +473,12 @@ def render_counts(published: dict) -> list[str]:
 
 def rebuild(published: dict) -> str:
     lines = DOCUMENT.read_text().splitlines()
+    # Every group gets its block, taken from GROUPS itself: a group added there
+    # without a block in the document stops the run below. Listing them by hand
+    # left the objstring and graph blocks empty from the day they were added.
     blocks = {
         "counts": render_counts(published),
-        "shared": render_group(published, "shared"),
-        "histogram": render_group(published, "histogram"),
-        "derived": render_group(published, "derived"),
-        "tree": render_group(published, "tree"),
-        "arrays": render_group(published, "arrays"),
+        **{group: render_group(published, group) for group in GROUPS},
         "order": render_order(published),
         "versions": render_versions(published),
     }

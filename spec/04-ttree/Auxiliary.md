@@ -7,7 +7,7 @@ subclasses.
 Prerequisites: [TTree](TTree.md), [TBranch](TBranch.md).
 
 **Seven of the nine appear in no file of either corpus** (`PLAN.md` §9.8 and
-§9.9, 178 files from ROOT 4.00 to 6.36). Only `TBranchRef` and `TRefTable` do,
+§9.9, 178 files from ROOT 2.24/00 to 6.36). Only `TBranchRef` and `TRefTable` do,
 and only because every tree file contains their streamer info whether or not an
 object exists. Everything here is therefore specified from the source and from
 fixtures written for the purpose, and the invariants are weaker than elsewhere in
@@ -58,7 +58,8 @@ order:
 **The three arrays have no is-present flag.** They are written with
 `WriteFastArray` (`root/tree/treeplayer/src/TTreeIndex.cxx:657-659`), so the
 values follow `fN` immediately. A streamer-info `[fN]` member is preceded by a
-one-byte flag; compare `TEventList` in §5.3, in the same fixture, which has one.
+one-byte flag; compare `TEventList` in §5.3, in `ttree/tree-entrylist`, which
+has one.
 
 From `ttree/tree-index`, a ten-entry tree indexed on `Run` and `Event`:
 
@@ -244,8 +245,8 @@ as 32-bit `Int_t` and had no `fReapply`
 (`root/tree/tree/src/TEventList.cxx:411-424`).
 
 `fList` does have the one-byte is-present flag of an ordinary `[fN]` member,
-unlike the arrays of `TTreeIndex` (§2). Both are in
-`ttree/tree-entrylist` and `ttree/tree-index` respectively, three records apart.
+unlike the arrays of `TTreeIndex` (§2). The two are in `ttree/tree-entrylist`
+and `ttree/tree-index` respectively.
 
 ## 6. `TNtuple` and `TNtupleD`
 

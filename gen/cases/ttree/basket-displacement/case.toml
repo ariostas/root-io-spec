@@ -3,10 +3,10 @@ file = "data/ttree/basket-displacement.root"
 size = 18447
 
 description = """
-A displacement array, in both of the forms it takes. TBasket.md 4 said `flag > 40`
-"requires `TBasket::Update` to be called with a skip count, which happens only for
-a branch filled entry-by-entry out of order or for a circular tree". A circular
-tree is the reachable one, and only half of that statement turned out true.
+A displacement array, in both of the forms it takes. Two functions build one
+(TBasket.md 4): `TBasket::Update` with a skip count, reached only from
+`TBranch::FillEntryBuffer`, and `TBasket::MoveEntries`, for a circular tree. A
+circular tree is the reachable one.
 
 `TTree::SetCircular(3)` then seven fills makes `TTree::KeepCircular` call
 `TBasket::MoveEntries`, which saves each entry's pre-move offset into

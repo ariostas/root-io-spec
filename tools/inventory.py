@@ -501,7 +501,7 @@ def forwarding() -> tuple[list[tuple[str, str]], list[str]]:
     matter: `+` routes the class through `ReadClassBuffer`, which writes a version
     word of 0 rather than nothing, and `-` means the class supplies its own
     `Streamer`. `TCollection` is version 3 with a `-`, `TSeqCollection` is
-    version 0 and plain, and the two sit four lines apart in the same LinkDef
+    version 0 and plain, and the two sit twenty lines apart in the same LinkDef
     (`root/core/cont/inc/LinkDef.h:29`, `root/core/cont/inc/LinkDef.h:49`).
 
     A class selected both plainly and with `+`, or whose `ClassDef` version is

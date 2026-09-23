@@ -118,7 +118,8 @@ The second is a writer's capacity, unrelated to `fNevBuf`; a reader needs
 
 ### 2.2 The sign of `fNevBufSize` carries `fIOBits`
 
-> This is how ROOT added a field without bumping the class version.
+> ROOT bumped the class version to 3 for this field (§11), but the version is not
+> how a reader detects it: the sign of `fNevBufSize` is the only signal.
 
 If the `fNevBufSize` read is negative, negate it and read a `u8` `fIOBits`
 (`root/tree/tree/src/TBasket.cxx:997-1000`). Otherwise `fIOBits` is 0 and no byte
@@ -238,8 +239,8 @@ Four things differ from a record, and three of them mislead a reader that
 assumes otherwise:
 
 - **The leading count of the entry-offset array is `fNevBuf`, not `fNevBuf + 1`**
-  (`root/tree/tree/src/TBasket.cxx:1154`, checked on read at
-  `root/tree/tree/src/TBasket.cxx:1053-1060`). §5.1's extra trailing element
+  (`root/tree/tree/src/TBasket.cxx:1155`, checked on read at
+  `root/tree/tree/src/TBasket.cxx:1053-1063`). §5.1's extra trailing element
   belongs to the record form only, and is produced by `WriteBuffer`'s
   offset-to-size conversion.
 - **The raw block is `fLast` bytes taken from the start of the basket's own
@@ -256,7 +257,7 @@ assumes otherwise:
 One more trap: **when `fNevBuf` is 0, no offset array is written even if the flag
 says there is one.** Both the write and the read side check `fNevBuf`
 independently of the flag
-(`root/tree/tree/src/TBasket.cxx:1153`, `root/tree/tree/src/TBasket.cxx:1046-1071`),
+(`root/tree/tree/src/TBasket.cxx:1154`, `root/tree/tree/src/TBasket.cxx:1046-1071`),
 so an empty basket can have flag 1 or 11 with the raw block directly after the
 header. A reader that trusts the flag alone reads the first four bytes of the
 reserved key area as a count.
@@ -271,18 +272,20 @@ offsets agree between the two forms.
 > offsets are `65, 69, 77`, the same three values the record form writes. Both
 > have `fObjlen` 31935, which is `fBufferSize − fKeylen` and has no meaning.
 
-Two of the flag ranges cannot occur in a file written by a current ROOT:
+One of the flag ranges cannot occur in a file written by a current ROOT, and
+another is rare:
 
 - **`20 < flag < 40`** is the pre-2000 packing, where each entry offset had a
   displacement in its top byte. Nothing writes it now, and the read path
   masks those bits off and discards them
   (`root/tree/tree/src/TBasket.cxx:1073-1077`) rather than recovering the
   displacement.
-- **`flag > 40`**, a displacement array, requires `TBasket::Update` to be called
-  with a skip count, which happens only for a branch filled entry-by-entry out of
-  order or for a circular tree (`root/tree/tree/src/TBasket.cxx:311-352`). An
-  ordinary `TBranch::Fill` never produces one.
->
+- **`flag > 40`** means a displacement array. `TBasket::MoveEntries` builds one
+  for a circular tree (`root/tree/tree/src/TBasket.cxx:311-352`), and
+  `TBasket::Update` for a branch filled from an entry buffer
+  (`root/tree/tree/src/TBasket.cxx:1192-1198`). An ordinary `TBranch::Fill`
+  never produces one, and the flag shows it only in the embedded form (§5.3).
+
 > Demonstrated by `ttree/basket`, where **both** baskets have `flag` 0 and only
 > one has an offset array.
 
@@ -317,7 +320,7 @@ count:i32   count × i32
 
 The embedded form of §4 writes `count == fNevBuf` instead
 (`root/tree/tree/src/TBasket.cxx:1155`), and the read path there checks for
-that value (`root/tree/tree/src/TBasket.cxx:1053-1061`).
+that value (`root/tree/tree/src/TBasket.cxx:1053-1063`).
 
 ### 5.2 With `kGenerateOffsetMap`, the array holds sizes
 
@@ -333,9 +336,9 @@ When `fIOBits` bit 0 is set, one of the following holds
   `entryOffset[i] -= entryOffset[i-1]` for *i* descending, and `entryOffset[0]` set
   to 0. A reader recovers the offsets by accumulating from `fKeylen`.
 
-> A reader that ignores `fIOBits` and reads the array as offsets gets a sequence
-> that begins at 0 and rises by the entry sizes. It is plausible and monotonic,
-> and wrong by `fKeylen` at every entry.
+> A reader that ignores `fIOBits` and reads the array as offsets gets 0 followed
+> by entry sizes. It places the first entry at the start of the key, and every
+> later boundary is wrong.
 
 #### 5.2.1 Regenerating the offsets
 
@@ -394,11 +397,23 @@ count:i32 (= fNevBuf)       count × i32        embedded
 
 A displacement array holds each entry's offset **as it was before the entries
 were moved within the buffer**, and it is written directly after the entry-offset
-array in the same count-prefixed form. It comes from `TBasket::MoveEntries`
-(`root/tree/tree/src/TBasket.cxx:311-352`), which is reached from a circular tree
-(`root/tree/tree/src/TTree.cxx:6527-6533`) or a branch filled out of order. It is
-built only when there is an entry-offset array: a fixed-width branch in the same
-tree never gets one.
+array in the same count-prefixed form. Two functions build it. One is
+`TBasket::MoveEntries` (`root/tree/tree/src/TBasket.cxx:311-352`), which a
+circular tree reaches once `TTree::Fill` passes `fMaxEntries`
+(`root/tree/tree/src/TTree.cxx:4728-4729`), through `TTree::KeepCircular` and
+`TBranch::KeepCircular` (`root/tree/tree/src/TTree.cxx:6527-6533`,
+`root/tree/tree/src/TBranch.cxx:2283-2286`). The other is `TBasket::Update`, when
+its skip count differs from the offset
+(`root/tree/tree/src/TBasket.cxx:1192-1198`). Only `TBranch::FillEntryBuffer`
+passes a skip count (`root/tree/tree/src/TBranch.cxx:999`), and it runs only for
+an unsplit object branch that has been given a `TBuffer` through
+`TBranch::SetBufferAddress` (`root/tree/tree/src/TBranch.cxx:885-886`,
+`root/tree/tree/src/TBranch.cxx:2757-2770`), which nothing in ROOT calls. The
+circular tree is therefore the path a file is likely to show, and the one
+`ttree/basket-displacement` uses. Either way the array is built only when there
+is an entry-offset array (`root/tree/tree/src/TBasket.cxx:320`,
+`root/tree/tree/src/TBasket.cxx:1172`): a fixed-width branch in the same tree
+never gets one.
 
 Every displacement exceeds its offset by the same constant, the number of bytes
 the surviving entries moved down.
@@ -584,9 +599,9 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 2 | the form this document describes, minus `fIOBits` |
 | 3 | current: the negated-`fNevBufSize` extension of §2.2 |
 
-A version-3 basket with no IO features set is byte-identical to a version-2 one,
-and **a reader detects `fIOBits` from the sign of `fNevBufSize`**, not from the
-version (§2.2).
+A version-3 basket with no IO features set is byte-identical to a version-2 one
+except for its version word, and **a reader detects `fIOBits` from the sign of
+`fNevBufSize`**, not from the version (§2.2).
 
 ## 12. Reference files
 
@@ -599,4 +614,7 @@ version (§2.2).
 | `ttree/basket-compressed` | A compressed basket with its offset array inside the payload, beside one ROOT gave up compressing (§7) |
 | `ttree/basket-multiblock` | Two compression blocks, the first capped at `kMAXZIPBUF` (§7) |
 
-Every claim in this document has a fixture behind it.
+No fixture covers the pre-2000 packing of `20 < flag < 40`, a basket below class
+version 3, or the size-array form of §5.2, in which `kGenerateOffsetMap` is set
+but the offsets cannot be regenerated. Version-2 basket records occur in both
+corpora of `PLAN.md` §9.8 and §9.9.

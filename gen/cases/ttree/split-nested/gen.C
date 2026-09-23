@@ -19,7 +19,8 @@
 ///   leaf titles name it in brackets: `fId[fHits_]`. That is the only place
 ///   the count relationship is written in a form a human can read; the
 ///   machine-readable form is each member branch's fBranchCount.
-/// - fSplitLevel decrements with depth, so the same tree has several values.
+/// - fSplitLevel is not a depth counter: fDet/fHits has 97 and fDet/fNo, at the
+///   same depth, has 0 (Splitting.md section 4.2).
 ///
 /// Three entries with collections of three different sizes, one of them empty,
 /// and compression off.

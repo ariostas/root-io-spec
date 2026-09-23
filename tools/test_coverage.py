@@ -31,7 +31,7 @@ class Parsing(unittest.TestCase):
         self.labels = {label for label, _, _ in self.entries}
 
     def test_it_finds_the_documents_with_invariants(self):
-        # 32 documents, which WriterInvariants.md's own count is derived from.
+        # 33 documents, the count WriterInvariants.md quotes.
         self.assertEqual(len({doc for _, doc, _ in self.entries}), 33)
 
     def test_a_dotted_heading_is_read(self):

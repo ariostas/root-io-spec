@@ -4,7 +4,8 @@ Every other layer of this specification answers the reader's question: what do
 these bytes mean? This layer answers the writer's: given a histogram and a tree,
 which bytes are emitted, in what order, and what will ROOT complain about?
 
-It is deliberately smaller than the reading side, and §3 says why.
+It is deliberately smaller than the reading side, and §4 says what it leaves out
+and why.
 
 ## 1. Why it is separate
 

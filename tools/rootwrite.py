@@ -12,8 +12,9 @@ Three properties are deliberate:
   clock, so a file is byte-reproducible and `data/written/` needs no digest
   normalization (`tools/normalize.py` exists for the ROOT-written fixtures,
   which cannot be).
-* **Create-only.** Nothing here updates an existing file, so free-space reuse and
-  key cycles never arise (`spec/06-writing/index.md` 4).
+* **Creates and updates.** `FileWriter.reopen` adds to a file that already
+  exists (`spec/06-writing/WritingFiles.md` 13), so free-space reuse and key
+  cycles are implemented, as ROOT does them (`WritingFiles.md` 2 and 13.5).
 * **Small-file layout only.** A file this writer produces is refused if it would
   cross 2 GB, rather than written in a layout that has not been exercised here.
 
@@ -169,7 +170,8 @@ def tobjstring(s: str) -> bytes:
 
 #: The largest uncompressed block, and the cap of the 24-bit size fields.
 MAX_ZIP_BUF = 0xFFFFFF
-#: Below this ROOT does not attempt compression at all (TKey.cxx:262-264).
+#: At or below this length ROOT does not attempt compression at all: it tests
+#: `fObjlen > 256` (TKey.cxx:262-264).
 MIN_COMPRESS = 256
 
 
@@ -490,8 +492,9 @@ class Directory:
     is `TDirectory`; and its key-list record is keyed by its own name rather than
     the file's.
 
-    Nothing here is created lazily: `FileWriter.to_bytes` fills in `seek_dir`,
-    `seek_keys` and `nbytes_keys` as it walks the layout, which is why a
+    `seek_dir`, `seek_keys` and `nbytes_keys` start at 0, and
+    `FileWriter.to_bytes` fills them in as it walks the layout. The record's
+    payload is filled in after the key lists are placed, which is why a
     directory's record can be placed before its key list exists.
     """
 
@@ -2108,7 +2111,7 @@ class Hist2D(_Histogram):
 class Profile(_Histogram):
     """A `TProfile` (version 7), which is a `TH1D` plus four parallel arrays.
 
-    Its three per-cell arrays are not bin contents and not errors:
+    Its four per-cell arrays are not bin contents and not errors:
 
     * `cells` is the `TH1D`'s `TArrayD` base and holds **sum(w * y)**;
     * `sumw2` is `TH1::fSumw2` and holds **sum(w * y * y)**, and unlike a

@@ -82,13 +82,13 @@ name and the UUIDs.
 | Container — header, records, directories, compression, free list, the >2 GB layout | written |
 | Serialization — framing, streamer info, element types, reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes — the divergent set, except seven narrow classes | written |
+| Standard classes — the divergent set, except twelve narrow classes | written |
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file, writing for a reader at another class version | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**84 reference files, 2151 byte-level assertions, and 1655 source citations
+**84 reference files, 2151 byte-level assertions, and 1670 source citations
 checked against the pinned submodule across 49 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also run over 252
 files this project did not write: 180 from uproot's regression corpus and 72

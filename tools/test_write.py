@@ -635,11 +635,10 @@ class Trees(unittest.TestCase):
                  for e in theirs[name].elements], name)
 
     def test_streamer_info_entries_are_identical(self):
-        """All eighteen infos, byte for byte, against ROOT's own record.
+        """All eighteen infos and the `listOfRules` entry, byte for byte.
 
-        The two records cannot be compared whole: ROOT's has a nineteenth
-        entry of I/O rules that a file written at version 20 cannot use
-        (below). Everything before it is identical. This is stricter than the
+        The whole record is compared against ROOT's own, including the
+        nineteenth entry of I/O rules (below). This is stricter than the
         element-by-element comparison above because it also covers the
         subclass tail of every element, where `tools/element_lists.py` found
         four wrong values that nothing else checked.
@@ -677,12 +676,13 @@ class Trees(unittest.TestCase):
         self.assertEqual(rw.i32(18), mine[17:21])
 
     def test_root_appends_two_obsolete_io_rules(self):
-        """The one difference between the two StreamerInfo records.
+        """ROOT's nineteenth entry, which the writer reproduces.
 
         ROOT's list has a nineteenth entry, a `listOfRules` of two read rules
         for `TTree` versions <= 16 and <= 18. A file written at version 20
-        cannot use them, so the writer omits them, and only this record
-        differs between the two files.
+        cannot use them, and ROOT never reads the entry back. The writer emits
+        them anyway, from `KNOWN_RULES`, so that the record matches ROOT's;
+        `FileWriter(emit_rules=False)` drops them.
         """
         buf, _, records = rootfile.load(REPO / "data/ttree/basket.root")
         header = rootfile.read_header(buf)
@@ -987,7 +987,7 @@ class LeafC(unittest.TestCase):
                 f"{cls} {name} record")
 
     def test_streamer_info_matches_up_to_the_rules(self):
-        """Eighteen infos against eighteen, TLeafC's checksum included."""
+        """Eighteen infos and the `listOfRules`, byte for byte, TLeafC's checksum included."""
         root_data, root_rec, theirs = streamer_infos(REPO / self.ROOTS)
         mine_data, mine_rec, ours = streamer_infos(REPO / self.MINE)
         self.assertEqual([i.name for i in ours], [i.name for i in theirs])

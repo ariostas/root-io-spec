@@ -236,11 +236,12 @@ elements and their flag is always 1.
 > `fAutoFlush` 5 and `fEntries` 19 — three ranges: entries 0–7 in clusters of 4,
 > 8–13 in clusters of 3, and 14–18 in clusters of 5.
 
-> Nothing in the 154-file foreign corpus has a non-zero `fNClusterRange`, which
-> is why `ttree/clusters` exists. Variable cluster size is produced mainly by
-> fast-merging trees with different settings (`TTree::ImportClusterRanges`,
-> `root/tree/tree/src/TTree.cxx:6484-6516`), so a reader will most likely meet it
-> in a merged production file.
+> No tree in the 180-file foreign corpus of `PLAN.md` §9.8 or in `gen/cern/` has
+> a non-zero `fNClusterRange` (232 of the former's 233 trees read, and all 30 of
+> the latter's), which is why `ttree/clusters` exists. Variable cluster size is
+> produced mainly by fast-merging trees with different settings
+> (`TTree::ImportClusterRanges`, `root/tree/tree/src/TTree.cxx:6484-6516`), so a
+> reader will most likely meet it in a merged production file.
 
 ### 6.2 Enumerating clusters
 
@@ -347,10 +348,14 @@ null:
 | `fUserInfo` | a `TList` of anything the writer attached |
 | `fBranchRef` | a `TBranchRef`, the branch supporting a `TRefTable` |
 
-None of them affects how the entries of this tree are decoded, and all five are
-null in every one of the 187 trees measured for this document. Their contents
-are left to `Auxiliary.md`. Here it is enough that the slots exist, sit between
-`fLeaves` and the end of the record, and must be consumed.
+None of them affects how the entries of this tree are decoded, and they are
+rarely set. Over the fixtures, the foreign corpus of `PLAN.md` §9.8 and
+`gen/cern/` (37, 232 and 30 readable trees), only five trees have one: the three
+fixtures made for them (`fBranchRef` in `ttree/tree-branchref`, `fFriends` in
+`ttree/tree-friend`, `fTreeIndex` in `ttree/tree-index`) and both trees of
+`alice_ESDs.root`, which set `fUserInfo`. No tree has a non-null `fAliases`.
+Their contents are left to `Auxiliary.md`. Here it is enough that the slots
+exist, sit between `fLeaves` and the end of the record, and must be consumed.
 
 ### 8.1 `fIndexValues` and `fIndex`
 
@@ -455,10 +460,11 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 9 | — | Nothing says `fNClusterRange` being 0 makes the two counted pointers *absent*, one zero byte each rather than a flag and an array (§6.1) |
 | 10 | — | Nothing says ROOT deletes `fIndex`/`fIndexValues` on read, with a warning (§8.1) |
 | 11 | `ttree.md:27-29` lists `fIndexValues`, `fIndex` and `fFriends` consecutively | The three are separated in the current layout by `fAliases`, and `fTreeIndex` sits between `fIndex` and `fFriends`; the order in the old table cannot be used to locate them (§2) |
+| 12 | *This document, until 2026-09-23*: ROOT 4.00/00 wrote `TTree` class version 11 | Version 10. Version 11 is first at tag `v4-00-02` (§13) |
 
 ## 13. Class versions
 
-Measured from the streamer infos in the 154-file foreign corpus of `PLAN.md` §9.8,
+Measured from the streamer infos in the 180-file foreign corpus of `PLAN.md` §9.8,
 cross-checked against the submodule's history:
 
 | Version | Difference | First release |
@@ -485,9 +491,9 @@ give; nothing in the corpus is below 5.
 > **A version word of 5 does not prove the writer was ROOT.** Two files in the
 > corpus, `uproot-from-geant4.root` and `uproot-issue-250.root`, have `TTree`
 > records at class version 5 with a matching streamer info, and headers claiming
-> ROOT 4.00/00. ROOT 4.00/00 wrote version 11, so no ROOT release produced that
-> combination: they are third-party output. The layout is still readable,
-> because the file's streamer info describes it.
+> ROOT 4.00/00. ROOT 4.00/00 wrote version 10, so no ROOT release produced that
+> combination: g4tools, Geant4's own ROOT writer, wrote them. The layout is still
+> readable, because the file's streamer info describes it.
 
 ## 14. Reference files
 
@@ -498,7 +504,10 @@ give; nothing in the corpus is below 5.
 | `ttree/ntuple` | A tree whose record is class `TNtuple`, with `TTree` as a base class and `fNvar` after it |
 | `ttree/branch` | A tree whose `fTotBytes` sums three basket records of one branch |
 
-No fixture covers a non-null `fAliases`, `fTreeIndex`, `fFriends`, `fUserInfo` or
-`fBranchRef`, a non-empty `fIndex`, a tree whose `fEntries` disagrees with its
-branches, or a `TTree` at class version 4 or below. The foreign corpus of
-`PLAN.md` §9.8 has a file for the third of those and none for the others.
+A non-null `fBranchRef`, `fFriends` and `fTreeIndex` are covered by
+`ttree/tree-branchref`, `ttree/tree-friend` and `ttree/tree-index`, which
+`Auxiliary.md` describes. No fixture covers a non-null `fAliases` or `fUserInfo`,
+a non-empty `fIndex`, a tree whose `fEntries` disagrees with its branches, or a
+`TTree` at class version 4 or below. The foreign corpus of `PLAN.md` §9.8 has a
+file for the disagreeing `fEntries`, `gen/cern/`'s `alice_ESDs.root` has a
+non-null `fUserInfo`, and neither has any of the others.

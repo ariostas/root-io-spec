@@ -43,8 +43,8 @@ stores `fEntryOffset[fNevBuf] = offset` and *then* increments `fNevBuf`
 (`root/tree/tree/src/TBasket.cxx:1190-1203`), so after the final entry the slot at
 `fNevBuf` still holds whatever it held before, which is 0 in a fresh buffer. A
 reader taking `fEntryOffset[j+1]` for the last entry gets an end of 0 and a
-negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and §8
-step 8 say the same.
+negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and
+step 8 of [TBasket §8](TBasket.md#8-reading) say the same.
 
 Which of the two cases applies is decided when the branch is created. For a
 `TBranchElement`, `fEntryOffsetLen` is 0 (no offset array) unless the branch is a
@@ -152,7 +152,7 @@ from `fX`'s entry (`root/tree/tree/src/TBranchElement.cxx:4649`).
 (`root/tree/tree/src/TBranchElement.cxx:4712`). By ROOT's convention it begins
 with a four-byte byte count with bit 30 set and a two-byte version, but this
 specification cannot say more: `fType` −1 means that the class does not follow
-the streamer-info layout. No fixture covers it; see §8.
+the streamer-info layout. No fixture covers it; see §10.
 
 ### 3.6 A `std::bitset`: an ordinary collection, or nothing at all
 
@@ -279,9 +279,16 @@ A `Double32_t` or `Float16_t` member's width comes from the **element's** title,
 parsed as in
 [ElementTypes §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16).
 Nothing on the branch records it: `ttree/split-double32` has five such members
-with two distinct `fStreamerType` values, identical `TLeafElement` leaves and
-identical `fEntryOffsetLen`, whose entries are 4, 4, 4, 4 and 3 bytes. A reader
-that takes the width from the branch or the leaf gets four of the six wrong.
+with two distinct `fStreamerType` values, `TLeafElement` leaves that differ only
+by that type, and identical `fEntryOffsetLen`, whose entries are 4, 4, 4, 4 and 3
+bytes. A reader that sizes a member by its `fStreamerType` as an in-memory type,
+8 bytes for `Double32_t` and 4 for `Float16_t`, gets four of the case's six
+widths wrong: `fPlain`, `fRange`, `fBits` and `fHBits`. One that uses the leaf's
+`fLenType`, which is 4 for `Double32_t` and 2 for `Float16_t` whatever the title
+(`root/tree/tree/src/TLeafElement.cxx:69-76`), gets two wrong, `fHalf` and
+`fHBits`. Applying ElementTypes §5 to an empty title, the most the branch
+supports, gets only `fHalf`'s width wrong, but decodes `fRange` and `fBits` as
+plain floats. The sixth member, an `Int_t`, is right every way.
 
 ### 5.3 A per-element header is sometimes per *entry*
 

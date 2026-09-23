@@ -13,8 +13,8 @@ The three strings are the three cases: the short counted form, an empty one that
 occupies no bytes at all, and one long enough to need the 255-escape. The empty
 one is in the middle, so the offset array has two equal entries in it.
 
-Only the `StreamerInfo` record differs, by the one `listOfRules` entry ROOT
-appends for `TTree` and a file written at version 20 cannot use
+The `StreamerInfo` record matches too, including the `listOfRules` entry ROOT
+appends for `TTree`, which a file written at version 20 never uses
 (`WritingTrees.md` 8.1).
 """
 

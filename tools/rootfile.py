@@ -1,10 +1,14 @@
-"""Minimal pure-Python ROOT file structure reader.
+"""Pure-Python ROOT file reader, written from `spec/` rather than from ROOT.
 
-Implements only what `spec/01-container/` specifies: the file header and the
-record chain. It keeps the fixture tooling independent of ROOT and gives the
-container specification an independent implementation. It deliberately does NOT decode object payloads.
+It reads the file header, the record chain, directory records and key lists,
+decompression, the buffer framing layer, the StreamerInfo record, the
+streamer-driven read of object payloads, collections, references,
+`TClonesArray`, and `TTree` baskets and entries. It keeps the fixture tooling
+independent of ROOT and gives the specification an independent implementation.
 
-No third-party dependencies.
+zlib and lzma come from the standard library. zstd needs Python 3.14 or the
+`zstandard` package, and LZ4 the `lz4` package; a record whose codec is missing
+raises `MissingCodec`.
 """
 
 from __future__ import annotations
@@ -827,7 +831,6 @@ def read_tlist(buf: bytes, rec: Record) -> list[Slot]:
 ELEMENT_HAS_RANGE = 1 << 6       # kHasRange: the title carries a Double32/Float16 range
 ELEMENT_DO_NOT_DELETE = 1 << 13  # kDoNotDelete
 
-# The subclass tail after the TStreamerElement base, as (member, reader) pairs.
 # ---------------------------------------------------------------------------
 # The hand-written containers: TMap, TExMap, TBtree (03-classes/Containers.md).
 #
@@ -952,6 +955,7 @@ def read_tbtree(buf: bytes, rec: Record) -> BTree:
                  leaf_max=shape[5], collection=collection, end=frame.end)
 
 
+# The subclass tail after the TStreamerElement base, as (member, reader) pairs.
 # Empty for the subclasses that add nothing.
 _ELEMENT_TAILS = {
     "TStreamerBase": [("fBaseVersion", "i32")],
@@ -1242,7 +1246,7 @@ CUSTOM_STREAMER = {
     "TStringLong",
     # Derives from TBranch and streams a TNamed plus ten hand-picked TBranch
     # fields instead of a TBranch base. No file has an info for it, as with
-    # TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 12.1.
+    # TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 13.1.
     "TBranchClones",
     # `extending`: calls ReadClassBuffer with TMatrixTBase's TClass and then
     # reads the upper-right triangle, outside the byte count. The name in a file
@@ -1969,7 +1973,7 @@ class Decoder:
 
     #: What TBranchClones::Streamer writes after the TNamed, in order. Ten of
     #: TBranch's fields, hand-picked: it derives from TBranch and never streams a
-    #: TBranch base. TBranchElement.md 12.1.
+    #: TBranch base. TBranchElement.md 13.1.
     BRANCH_CLONES_FIELDS = (
         ("fCompress", 3, 4), ("fBasketSize", 3, 4), ("fEntryOffsetLen", 3, 4),
         ("fMaxBaskets", 3, 4), ("fWriteBasket", 3, 4),
@@ -1978,7 +1982,7 @@ class Decoder:
     )
 
     def read_branch_clones(self, offset: int) -> Value:
-        """A TBranchClones. TBranchElement.md 12.1.
+        """A TBranchClones. TBranchElement.md 13.1.
 
         No file has a streamer info for it, so this is the only way to read one,
         as with TBasket and TTreeIndex.

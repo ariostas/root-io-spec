@@ -360,7 +360,6 @@ class Checker:
     def bad(self, where: str, message: str) -> None:
         self.failures.append(f"{self.path.name}: {where}: {message}")
 
-    # -- FileHeader.md 10 ---------------------------------------------------
     def data(self, rec):
         """The file buffer with `rec`'s object data uncompressed in place.
 
@@ -438,6 +437,7 @@ class Checker:
             self.bad("StreamerInfo 13.12", f"could not parse the record: {exc}")
             return (None, None, None)
 
+    # -- FileHeader.md 10 ---------------------------------------------------
     def check_header(self) -> None:
         h, size = self.header, len(self.buf)
         if self.buf[:4] != b"root":
@@ -462,12 +462,13 @@ class Checker:
                     self.bad("FileHeader 10.6",
                              f"fNbytesFree {h.nbytes_free} != fNbytes at fSeekFree ({got})")
             segments = rootfile.read_free_segments(self.buf, h)
-            # nfree is advisory and ROOT 4 wrote 0: FileHeader.md 5.4.
-            advisory = h.root_version[0] < 5
-            if h.nfree != len(segments) and not advisory:
+            # nfree is advisory (FileHeader.md 5.4), but every ROOT release
+            # available writes it correctly, back to 2.23/12. The two g4tools
+            # files that write 0 are in gen/foreign/IGNORE.toml.
+            if h.nfree != len(segments):
                 self.bad("FileHeader 10.7",
                          f"nfree {h.nfree} != {len(segments)} entries in the free list")
-            if h.nfree < 1 and not advisory:
+            if h.nfree < 1:
                 self.bad("FileHeader 10.7", "nfree is 0 for a closed file")
 
         if h.seek_info > h.begin:
@@ -611,7 +612,7 @@ class Checker:
         "RooWorkspace::CodeRepo":
             "the code repository inside a RooWorkspace: a hand-written streamer "
             "this specification does not describe "
-            "(root/roofit/roofitcore/src/RooWorkspace.cxx:2427). The other six "
+            "(root/roofit/roofitcore/src/RooWorkspace.cxx:2427). The other five "
             "RooFit streamers are spec/03-classes/RooFit.md",
         "ROOT::RNTuple":
             "an RNTuple anchor: ReadClassBuffer and then an 8-byte XXH3-64 "
@@ -897,15 +898,13 @@ class Checker:
                 where = f"{si.name}.{e.name}"
                 if e.cls not in self.ELEMENT_CLASSES:
                     self.bad("StreamerInfo 13.5", f"{where}: element class {e.cls}")
-                # ROOT 4 wrote the real STL codes where later releases write
-                # 500: ElementTypes.md 11, StreamerInfo.md 10.1.
-                legacy_stl = (self.header.root_version[0] < 5
-                              and e.cls in ("TStreamerSTL", "TStreamerSTLstring")
-                              and e.ftype in (300, 365))
-                if not self._on_disk_type(e.ftype) and not legacy_stl:
+                # No ROOT release writes 300 or 365 here, back to 3.04: the two
+                # g4tools files that do are in gen/foreign/IGNORE.toml.
+                # ElementTypes.md 11, StreamerInfo.md 10.1.
+                if not self._on_disk_type(e.ftype):
                     self.bad("ElementTypes 11.1",
                              f"{where}: fType {e.ftype} is not an on-disk code")
-                if e.ftype in self.FORBIDDEN_TYPES and not legacy_stl:
+                if e.ftype in self.FORBIDDEN_TYPES:
                     self.bad("ElementTypes 11.2",
                              f"{where}: fType {e.ftype} cannot occur on disk")
 
@@ -939,15 +938,15 @@ class Checker:
                     # need not be the version of the base's own info in the same
                     # file: five files in the two corpora disagree, and all five
                     # are correct (StreamerInfo.md 9.2).
-                    # 13.6 of ElementTypes: -1 only for a suppressed TObject base
+                    # ElementTypes 11.6: -1 only for a suppressed TObject base
                     if e.ftype == -1 and e.name != "TObject":
                         self.bad("ElementTypes 11.6",
                                  f"{where}: fType -1 on a base named {e.name!r}")
 
-                # 13.9: 500 on any file ROOT 5 or later wrote; ROOT 4 wrote the
-                # real code. StreamerInfo.md 10.1.
+                # 13.9: 500 on every ROOT-written file available, from 3.04
+                # on. StreamerInfo.md 10.1.
                 if (e.cls in ("TStreamerSTL", "TStreamerSTLstring")
-                        and e.ftype not in (500, 300, 365)):
+                        and e.ftype != 500):
                     self.bad("StreamerInfo 13.9",
                              f"{where}: STL element fType {e.ftype}, expected 500")
 
@@ -1034,7 +1033,7 @@ class Checker:
                              f"{where}: fType {e.ftype} on a {e.cls} of type "
                              f"{e.type_name!r}")
 
-    # -- Compression.md 9 ---------------------------------------------------
+    # -- StreamerDriven.md 10 -----------------------------------------------
     def check_streamer_driven(self) -> None:
         """StreamerDriven.md invariants 1-6: applying the streamer info to a
         record's object data consumes exactly its length, and to a nested object
@@ -2012,8 +2011,8 @@ class Checker:
                          f"{where} has {name} {got}, but fOrder {btree.order} "
                          f"gives {want}")
 
-    #: The six RooFit classes of spec/03-classes/RooFit.md 1. RooLinkedList is
-    #: the one with no byte count of its own.
+    #: The five RooFit classes of spec/03-classes/RooFit.md 1 with a Streamer of
+    #: their own. RooLinkedList is the one with no byte count of its own.
     ROOFIT_CLASSES = ("RooRealVar", "RooLinkedList", "RooAbsBinning",
                       "RooRefArray", "RooCategory")
 
@@ -2172,7 +2171,7 @@ class Checker:
                 self.bad("TBasket 9.1", str(exc))
                 continue
 
-            # 6.2 cannot be corruption-tested in isolation: lowering the key
+            # 9.2 cannot be corruption-tested in isolation: lowering the key
             # version shifts fSeekKey and fSeekPdir by 8 bytes, so the record
             # chain and the class name break first and the file is rejected by
             # Record 8.1/8.3/8.6 before reaching here.
@@ -2238,7 +2237,7 @@ class Checker:
                              f"bytes and no offset array")
                 want = basket.nev_buf * basket.nev_buf_size
                 if basket.generated:
-                    want = rec.obj_len      # 6.6 does not apply, TBasket.md 5.2
+                    want = rec.obj_len      # 9.6 does not apply, TBasket.md 5.2
                 if rec.obj_len != want:
                     self.bad("TBasket 9.6",
                              f"basket at {rec.offset} has fObjlen {rec.obj_len}, "
@@ -2262,6 +2261,7 @@ class Checker:
                              f"{start}..{end}, outside {basket.data_start}.."
                              f"{basket.data_end}")
 
+    # -- Compression.md 9 ---------------------------------------------------
     def check_raw_is_not_a_block(self, rec, data) -> None:
         """Compression 9.7: a raw payload never looks like a compression block.
 
@@ -3197,8 +3197,11 @@ class Checker:
         """The lowest TBranch class version any info in this file describes.
 
         Which writer's conventions apply is a property of the file, not of the
-        branch: fMaxBaskets is exactly max(fWriteBasket + 1, 10) from version 8
-        on and a flat 1000 below it. TBranch.md 11.1, 13.2.
+        branch: fMaxBaskets is exactly max(fWriteBasket + 1, 10) from version 9
+        on and a flat 1000 below it. Version 8 was gated in with 9 until
+        2026-09-23, on the strength of two g4tools files; the nine roottest
+        files ROOT 3.05-3.10 wrote at version 8 all have 1000. TBranch.md 11.1,
+        13.2.
         """
         _, _, infos = self.streamer_infos()
         versions = [i.class_version for i in (infos or []) if i.name == "TBranch"]
@@ -3211,7 +3214,7 @@ class Checker:
             self.bad("TBranch 11.1",
                      f"{name}: fMaxBaskets {br.max_baskets} is below "
                      f"max(fWriteBasket + 1, 10) = {want}")
-        elif br.max_baskets != want and self.branch_class_version() >= 8:
+        elif br.max_baskets != want and self.branch_class_version() >= 9:
             self.bad("TBranch 11.1",
                      f"{name}: fMaxBaskets {br.max_baskets}, expected {want} for "
                      f"fWriteBasket {br.write_basket}")
@@ -3265,8 +3268,8 @@ class Checker:
                      f"{name}: fEntries {br.entries} != fEntryNumber - fFirstEntry "
                      f"({br.entry_number} - {br.first_entry})")
 
-        # The slot count is not fixed by fWriteBasket: a ROOT 4.00-era writer
-        # wrote fMaxBaskets slots and alice_ESDs.root writes one more than
+        # The slot count is not fixed by fWriteBasket: g4tools writes
+        # fMaxBaskets slots and alice_ESDs.root writes one more than
         # fWriteBasket + 1, leaving a basket ROOT never reads. What must hold is
         # that the array cannot run past the arrays that index it, and that no
         # slot pairs an embedded basket with a non-zero fBasketSeek.
@@ -3450,8 +3453,8 @@ class Checker:
                          f"leaf is variable-size")
             if not variable and not br.entry_offset_len:
                 # fEntryOffsetLen is the writer's decision and the baskets follow
-                # it: a ROOT 4.00-era writer left it at 1000 on a fixed-width
-                # branch and wrote offsets anyway. TLeaf.md 10.6.
+                # it: g4tools leaves it at 1000 on a fixed-width branch and
+                # writes offsets anyway. TLeaf.md 10.6.
                 if basket.has_offsets:
                     self.bad("TLeaf 10.6",
                              f"{name}: basket {i} has an entry-offset array though "

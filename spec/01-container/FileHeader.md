@@ -214,8 +214,8 @@ outside `[10, 10000]` (`root/io/io/src/TFile.cxx:841-844`).
 Reading either as a payload length is the most common off-by-a-key error in a
 reimplementation.
 
-`nfree` is the number of `TFree` entries in the list. In a file written by ROOT 5
-or later it is never zero: the list always ends with a sentinel segment running to
+`nfree` is the number of `TFree` entries in the list. In a file written by ROOT
+it is never zero: the list always ends with a sentinel segment running to
 `kStartBigFile` (`root/io/io/src/TFile.cxx:691`), so an otherwise empty file has
 `nfree == 1`.
 
@@ -226,10 +226,13 @@ or later it is never zero: the list always ends with a sentinel segment running 
 > is rebuilt by walking from `fSeekFree` instead, so a file whose `nfree` disagrees
 > with its list is read correctly.
 >
-> Both ROOT 4.00/00 files in the foreign corpus of `PLAN.md` §9.8 have `nfree`
-> 0 with a free list of two entries, and ROOT opens them without complaint. A
-> reader that uses `nfree` as a count instead of walking the list gets these files
-> wrong.
+> Every ROOT-written file available agrees with its list: 55 files older than
+> ROOT 5 in `root/roottest/` and `gen/cern/`, from 2.23/12 to 4.04/02, and every
+> later one. Third-party writers do not always. The two g4tools files in the
+> foreign corpus of `PLAN.md` §9.8, whose headers claim ROOT 4.00/00 (§8.1), have
+> `nfree` 0 with a free list of two entries, and ROOT opens them without
+> complaint. A reader that uses `nfree` as a count instead of walking the list
+> gets these files wrong.
 
 `fSeekFree == 0` marks a file whose free list was never written: one created and
 abandoned before any close or `TFile::Write`. The implication runs one way only. A
@@ -368,9 +371,9 @@ A reader MUST treat the padding as "don't care" and MUST NOT rely on it being ze
 
 The UUID boundary is set by release tags: `TFile.cxx` has no `fUUID` at
 `v3-03-06` and writes one at `v3-03-07`, the same release that added the UUID to
-directories ([Directory §7](Directory.md#7-version-history)). Until 2026-09-22 the
-table put it at 3.03/00. `root/roottest/root/io/arrayobject/Event.3.2.0.root`,
-written by 3.03/02, has `fBEGIN` 64 and zeros at bytes 45-63.
+directories ([Directory §7](Directory.md#7-version-history)).
+`root/roottest/root/io/arrayobject/Event.3.2.0.root`, written by 3.03/02, has
+`fBEGIN` 64 and zeros at bytes 45-63.
 
 Field order, offsets, widths and byte order have been stable since 3.05. The
 large-file layout cannot occur in a file older than 3.05, since the flag did not
@@ -448,9 +451,8 @@ make the data ambiguous.
    non-zero, `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes`
    of the record at `fSeekFree`. `tools/check_invariants.py` checks this
    direction.
-7. In a file written by ROOT 5 or later, `nfree` equals the number of entries in
-   the free list at `fSeekFree` and is at least 1. It is advisory (§5.4), and
-   ROOT 4 wrote 0.
+7. `nfree` equals the number of entries in the free list at `fSeekFree` and is
+   at least 1. It is advisory (§5.4): g4tools writes 0.
 8. `fSeekInfo` is either `<= fBEGIN` (no streamer info) or satisfies
    `fBEGIN < fSeekInfo < fEND` with `fNbytesInfo` equal to the `fNbytes` of the
    record there.
@@ -479,7 +481,7 @@ zero.
 ROOT's own checks, which a reader can reuse, are at
 `root/io/io/src/TFile.cxx:714-730` (magic and minimum length),
 `:760-766` (`fBEGIN`/`fEND`), `:781-788` (directory record fits),
-`:841-844` (`fNbytesName` range) and `:881-887` (truncation).
+`:841-844` (`fNbytesName` range) and `:881-889` (truncation).
 
 ## 11. Errata
 
@@ -496,11 +498,13 @@ Against `root/io/doc/TFile/header.md` in the pinned submodule:
 | 7 | `NbytesFree` / `NbytesInfo` are "Number of bytes in" the record | Specifically `TKey::fNbytes`, including the key (§5.4) |
 | 8 | — | `fBEGIN` is not flagged as never widening despite being 64-bit in memory (§1) |
 | 9 | *This document, until 2026-09-18*: invariant 6 made `fSeekFree == 0` an **iff** for "never closed" | One-way only. `TFile::Write` writes the free list and header mid-job, so a crashed job leaves a non-zero `fSeekFree` in a file that was never closed (§5.4) |
-| 8 | — | No statement anywhere that the byte order is big-endian |
-| 9 | — | Bytes 96-99 are required to be zero by the registered media type (§4) |
-| 10 | — | Reproducible mode zeroes the UUID (§6) |
-| 11 | — | The header UUID is write-only; the authoritative one is in the directory record (§6) |
-| 12 | Two historical layouts are given (3.02.06 and 6.22.06) | A third exists: `fBEGIN = 64` **with** a UUID, from 3.03/07 to 3.04 (§8) |
+| 10 | — | No statement anywhere that the byte order is big-endian |
+| 11 | — | Bytes 96-99 are required to be zero by the registered media type (§4) |
+| 12 | — | Reproducible mode zeroes the UUID (§6) |
+| 13 | — | The header UUID is write-only; the authoritative one is in the directory record (§6) |
+| 14 | Two historical layouts are given (3.02.06 and 6.22.06) | A third exists: `fBEGIN = 64` **with** a UUID, from 3.03/07 to 3.04 (§8) |
+| 15 | *This document, until 2026-09-22*: §8's table put the header UUID's first release at 3.03/00 | 3.03/07. `TFile.cxx` has no `fUUID` at `v3-03-06`, and `Event.3.2.0.root`, written by 3.03/02, has no UUID (§8) |
+| 16 | *This document, until 2026-09-23*: ROOT 4 wrote `nfree` 0 | No available ROOT release does. The two files the claim rested on were written by g4tools, whose headers claim 4.00/00; every ROOT-written file available, back to 2.23/12, has `nfree` equal to its entry count (§5.4) |
 
 ## 12. Reference files
 

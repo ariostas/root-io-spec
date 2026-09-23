@@ -6,7 +6,7 @@
 ///
 ///   ce        fType 0, fID -2   the split node
 ///   ce/fN     fType 0, fStreamerType 6 (kCounter), no fBranchCount
-///   ce/fX     fType 0, fStreamerType 41 (kOffsetP + kFloat), fBranchCount -> fN
+///   ce/fX     fType 0, fStreamerType 45 (kOffsetP + kFloat), fBranchCount -> fN
 ///   ce/fTail  fType 0, fStreamerType 3
 ///
 /// The dispatch of TBranchElement.md section 8 sends fN to ReadLeavesMemberCounter

@@ -27,9 +27,13 @@ Examples are `TClonesArray`, `TArray*` and `TRef`. **This set is not closed**;
 see §6.
 
 A reader that skips group A cannot start. A reader that skips group B starts and
-runs, but gets the classes it meets wrong. The error shows up as a byte-count
-mismatch on the first object of the class, not as corrupt values
+runs, but gets the classes it meets wrong. The error usually shows up as a
+byte-count mismatch on the first object of the class, or on the object holding
+it when the class writes no byte count, rather than as corrupt values
 ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)).
+It does not when the misreading consumes the right number of bytes, or when the
+class reads bytes outside its byte count, as an `extending` class does
+([Hand-written streamers §3](HandWrittenStreamers.md#3-extending-the-streamer-info-describes-a-prefix-and-stops)).
 
 ## 2. The start-up sequence
 

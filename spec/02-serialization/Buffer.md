@@ -128,14 +128,6 @@ byte count.
   concatenated entry data of one branch, and the branch determines how each entry
   is framed, if at all. See [TBasket](../04-ttree/TBasket.md).
 
-> `TDatime` was missing from this list until 2026-09-22, although
-> [Record §3.7](../01-container/Record.md#37-fdatime) described its bytes and this
-> project's reader already decoded it. A `TDatime` stored as a record in a
-> ROOT-written file of go-hep's test corpus was rejected by the framing check for
-> having no byte count. Reviewing every hand-written `Streamer`, rather than
-> adding only that name, found `TStringLong` and `TQObject` in the same position,
-> and found that the reader itself misread `TObject` (`PLAN-corpus.md` C3).
-
 > Demonstrated by `serialization/references`: the `TRef` record at 537 has
 > `fObjlen` 12 and its payload begins `00 01`, the `TObject` version word, where
 > every other object record in that file begins `40 00`. Also by
@@ -168,11 +160,10 @@ version word with or without a byte count in front of it
 > other has hard-coded a class instead of implementing the rule.
 
 **ROOT itself does not do this at the top of a record, at any available
-release.** Until 2026-09-23 this paragraph said it did ("on a file older than
-ROOT 5"), based on those two files, which ROOT did not write. Over every record
-of every available ROOT-written file, the 72 of `gen/cern/` and the 273 of
-`root/roottest/`, all 2 025 payloads of any other class begin with a byte count:
-472 of them written by ROOT 2, 61 by ROOT 3 and 324 by ROOT 4. (Not counted: an
+release.** Over every record of every available ROOT-written file, the 72 of
+`gen/cern/` and the 273 of `root/roottest/`, all 2 025 payloads of any other class
+begin with a byte count: 472 of them written by ROOT 2, 61 by ROOT 3 and 324 by
+ROOT 4. (Not counted: an
 STL collection stored as a record, which is bare, and an RNTuple blob, which is
 not a streamed object.) ROOT 4.00's generated streamers already requested one,
 as today's do (`TClass::WriteBuffer` calls `WriteVersion(this, kTRUE)` at tag
@@ -405,10 +396,14 @@ positions 0 and 1 are reserved and `kMapOffset` is 2
 (`root/io/io/src/TBufferFile.cxx:56`): position 0 would be indistinguishable
 from a null pointer.
 
-> All four appear in the fixtures. `serialization/objects` has a null pointer at
-> 407 (four zero bytes, nothing else) and byte-count-plus-class-record pointers
-> at 371 and 411. `serialization/object-tags` has the object reference, `81` at
-> offset 500.
+> The fixtures show the null pointer, the byte-count form with each kind of class
+> record, and the object reference. `serialization/objects` has a null pointer at
+> 407 (four zero bytes, nothing else) and byte-count-plus-new-class pointers at
+> 371 and 411. `serialization/object-tags` has a byte count followed by a class
+> back-reference at 467, and the object reference, `81` at offset 500. Neither
+> no-byte-count form is in a fixture: `TBufferFile::WriteObjectClass` reserves a
+> byte count before every new object it writes
+> (`root/io/io/src/TBufferFile.cxx:2700-2702`).
 
 ### 6.1 Object references
 
@@ -598,10 +593,10 @@ To read a version word at the current position:
 10. Every `TObject` base's version word is 1 (§7).
 
 > Invariant 10 holds on every record and every entry of every available file: the
-> fixtures, `gen/cern/`, `gen/foreign/` and `root/roottest/`. Before 2026-09-23,
-> every `TObject` base with another value found in those files was a misreading:
-> 20 in `uproot-issue475.root` and 2 in `skim.root`, each a version word taken
-> for a `TObject` or the reverse
+> fixtures, `gen/cern/`, `gen/foreign/` and `root/roottest/`. Every `TObject` base
+> with another value found in those files has been a misreading: 20 in
+> `uproot-issue475.root` and 2 in `skim.root`, each a version word taken for a
+> `TObject` or the reverse
 > ([Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)).
 
 Invariant 9 can legitimately fail in the wild: a class whose hand-written
@@ -627,6 +622,8 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 11 | `dobject.md`: the two byte counts are given identical wording | They have different owners and different extents: the outer one spans the class record **and** the object, the inner one only the version and members (§2, §5) |
 | 12 | — | Not every record's object data starts with a byte count: a `TRef` record's starts with a version word (§2.3) |
 | 13 | `streamerinfo.md`: the `StreamerInfo` list is "always compressed at level 1 (even if compression level 0)" | Not so: in `container/file-minimal` the file is uncompressed and `fNbytes - fKeylen == fObjlen` for that record, so it is stored uncompressed |
+| 14 | *This document, until 2026-09-22*: §2.3's list of records with no leading byte count omitted `TDatime`, `TStringLong` and `TQObject` | All three are stored as records with no byte count (§2.3). A `TDatime` record in a ROOT-written file of go-hep's test corpus was the case that showed it |
+| 15 | *This document, until 2026-09-23*: ROOT wrote records with no byte count at the top "on a file older than ROOT 5" | No available ROOT release does; the claim rested on two g4tools files. Every payload of a class not listed in §2.3, over every ROOT-written record available, begins with a byte count (§2.3) |
 
 ## 11. Reference files
 

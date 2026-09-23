@@ -21,9 +21,9 @@ is most likely to get wrong:
 
 Every fSize is asserted, because it is the writer's sizeof and so the only field
 here that could differ between platforms. There is no std::string member for
-that reason (sizeof is 24 with libc++ and 32 with libstdc++), so
-TStreamerSTLstring has no reference file. TStreamerBase is covered by
-serialization/object-tags.
+that reason (sizeof is 24 with libc++ and 32 with libstdc++);
+serialization/collections has the TStreamerSTLstring. TStreamerBase is covered
+by serialization/object-tags.
 """
 
 spec = [

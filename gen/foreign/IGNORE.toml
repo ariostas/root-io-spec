@@ -143,12 +143,34 @@ root/io/io/src/TDirectoryFile.cxx:751-759), and every ROOT-written directory
 record available agrees with that rule, so this is the writer's choice rather
 than a ROOT behaviour. A reader that sizes by the version word, as Directory.md 3
 requires, reads it correctly.
+
+Its nine TStreamerSTL elements store fType 300, the real code, where ROOT stores
+500 (StreamerInfo.md 10.1). That fails ElementTypes 11.1 and 11.2 and
+StreamerInfo 13.9 once per element. ROOT has forced 500 on write since 4.00/01,
+and every ROOT-written file available stores 500, 134 elements in twelve files
+older than ROOT 5 among them, from 3.04/02 to 4.04/02. These files were exempted
+by release ("before ROOT 5") until 2026-09-23, which hid that no ROOT file needed
+it.
+
+Its header has nfree 0 over a free list of two entries, FileHeader 10.7, twice:
+the count disagrees and it is 0. ROOT never reads nfree, so a reader that walks
+the list is unaffected (FileHeader.md 5.4). Every ROOT-written file available,
+55 of them older than ROOT 5 back to 2.23/12, has nfree equal to its entry count.
+This too was a release exemption until 2026-09-23.
 """
-skip = ["StreamerDriven 10.5", "LargeFiles 8.7"]
+skip = [
+  "StreamerDriven 10.5", "LargeFiles 8.7",
+  "ElementTypes 11.1", "ElementTypes 11.2", "StreamerInfo 13.9",
+  "FileHeader 10.7",
+]
 
 ["uproot-issue-250.root"]
 reason = """
-The same writer and the same two failures as uproot-from-geant4.root; see that
-entry for the diagnosis.
+The same writer and the same failures as uproot-from-geant4.root, nine STL
+elements at 300 and nfree 0 included; see that entry for the diagnosis.
 """
-skip = ["StreamerDriven 10.5", "LargeFiles 8.7"]
+skip = [
+  "StreamerDriven 10.5", "LargeFiles 8.7",
+  "ElementTypes 11.1", "ElementTypes 11.2", "StreamerInfo 13.9",
+  "FileHeader 10.7",
+]

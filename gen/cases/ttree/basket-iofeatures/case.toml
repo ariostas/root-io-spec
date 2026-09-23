@@ -14,9 +14,8 @@ What this case shows:
 
 - fNevBufSize is written negated with a fIOBits byte after it, so the basket
   header is 20 bytes rather than 19 and fKeylen is 66 rather than 65. The class
-  version does not show it: a version-3 basket with no features set is
-  byte-identical to a version-2 one, and the sign of fNevBufSize is the only
-  signal.
+  version does not show it: every basket ROOT writes now is version 3, with or
+  without features, and the sign of fNevBufSize is the only signal.
 - Branch n keeps flag 0 and a real fNevBufSize of -4: its entries are fixed-size
   and need no offsets, so the feature changes only the header.
 - Branch a writes flag 80 and no entry-offset array at all. Its fObjlen, 24,

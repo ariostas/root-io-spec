@@ -21,6 +21,10 @@ worth knowing:
 - **§8.14** is the corpus survey of 2026-09-22/23. It lists ten more wrong or
   under-scoped claims, how each was found, and the confirmed dead ends, so they
   are not re-investigated.
+- **§8.15** records six "ROOT 4" behaviours that were really g4tools. A file's
+  header names a ROOT release, not its writer.
+- **§8.16** is a consistency review of every document, and its open leads: failures
+  on ROOT-written pre-5 files in `root/roottest/` that no corpus exercises.
 
 The sub-plan that drove the survey, `PLAN-corpus.md`, is deleted, but code and
 text still cite its item numbers (C1–C19). Its lasting rule: keep a claim
@@ -119,14 +123,14 @@ tools/check_invariants.py build/cern/*.root
 
 `gen/cern/README.md` says why each file is listed and what gaps it exposes.
 
-The ~40 `TGeoManager` demos were once excluded for being near-identical.
-Since 2026-09-21 they are the `geometry` tier: four of them turned out to hold all
-of `StreamerInfo.md` §9.2's `fBaseVersion` table, and nothing had recorded that
-the corpus used for measurements was bigger than the one the manifest defined
-(`PLAN.md` §8.13). The rule now is that a file the specification cites is in the
-corpus whether the manifest lists it or not, and it is checked:
-`check_citations.py` fails on a cited `.root` that no fixture and no manifest
-accounts for.
+The 46 `TGeoManager` demos were once excluded for being near-identical.
+Since 2026-09-21 they are the `geometry` tier: four of them turned out to be
+witnesses in `StreamerInfo.md` §9.2's `fBaseVersion` table (four of its five
+files), and nothing had recorded that the corpus used for measurements was bigger
+than the one the manifest defined (`PLAN.md` §8.13). The rule now is that a file
+the specification cites is in the corpus whether the manifest lists it or not,
+and it is checked: `check_citations.py` fails on a cited `.root` that no fixture
+and no manifest accounts for.
 
 `--headers` reads large files by HTTP range request. root.cern serves
 `Accept-Ranges: bytes`, so the header, free-segment record, top directory record
@@ -139,7 +143,7 @@ interleaved 10-byte/18-byte `TFree` entries of `FreeSegments.md` §2.1 on
 `rootfile.py` change is a cheap regression check on the container layer.
 
 `root/roottest/` needs no fetch. ROOT's own test suite ships inside the pinned
-submodule: 274 ROOT-written files from 2.23/12 to 6.41/01. The ones the
+submodule: 273 ROOT-written files from 2.23/12 to 6.41/01. The ones the
 specification cites are listed in a table in `gen/cern/README.md` that
 `check_citations.py` reads. Run the tools on a listed path directly, not on the
 whole directory: `root/tree/basket/corrupted.root` is damaged on purpose.
@@ -372,7 +376,7 @@ labels the tools report, and requires anything left over to be accounted for in
 `write-gate`, `not-checkable` or `unchecked`. It was written because the one
 invariant this project published that was outright false was also one nobody had
 wired up (`PLAN.md` §8.13); wiring up the rest found two more wrong
-(`ElementTypes` 11.3 and 11.4) within the hour. There are 259 entries, 191 with a
+(`ElementTypes` 11.3 and 11.4) within the hour. There are 267 entries, 199 with a
 check. The `unchecked` reason is a worklist, not an excuse, and it should stay
 short.
 
@@ -417,7 +421,7 @@ the direction of "a reader needs nothing".
 cited line exists but cannot prove the line still says what the citing sentence
 claims, as `spec/00-conventions.md` §7 admits. For a class version that gap can
 be closed completely, because the answer is an integer in a `ClassDef` macro.
-Sixteen are checked. It prints `NARROWED` for a table row that names classes it
+63 are checked, across 12 documents. It prints `NARROWED` for a table row that names classes it
 does not spell, a row it can only partly check, so a silent narrowing is as
 visible as a `SKIPPED`.
 

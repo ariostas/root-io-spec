@@ -10,9 +10,10 @@ Prerequisites: [TBranch](TBranch.md), [TLeaf](TLeaf.md),
 [Element types](../02-serialization/ElementTypes.md).
 
 In the two corpora of `PLAN.md` §9.8 and §9.9 (178 files written by ROOT
-releases from 4.00 to 6.36), 6736 of 11157 branches are `TBranchElement`, spread
-over 56 files. A reader that handles only `TBranch` can walk a physics file and
-find the right basket for an entry, but cannot interpret any of its bytes.
+releases from 2.24/00 to 6.36), 6736 of 11157 branches are not a plain `TBranch`,
+spread over 56 files: 6734 are `TBranchElement` and 2 are `TBranchObject`. A
+reader that handles only `TBranch` can walk a physics file and find the right
+basket for an entry, but cannot interpret any of its bytes.
 
 ## 1. The record needs no special reading
 
@@ -376,7 +377,7 @@ content of each procedure in step 7 is in `ReadingEntries.md`.
 | # | Claim | Correction |
 |---|---|---|
 | 1 | `root/tree/tree/inc/TBranchElement.h:72`: "`fID==-1` for the former" | Incomplete. `fID` has two negative sentinels, and the one the header omits — −2, the split node — occurs on 176 branches in the corpora. ROOT's own code tests for it at `root/tree/tree/src/TBranchElement.cxx:2279` and `root/tree/tree/src/TBranchElement.cxx:3812` |
-| 2 | `root/tree/tree/inc/TBranchElement.h:75-78`: `fType` 3 and 4 are "branch count of a split TClonesArray / STL Collection" | Correct but incomplete: those branches hold the count *in their own baskets*, and they have no leaf. Every other data-bearing branch in a tree is described by a leaf |
+| 2 | `root/tree/tree/inc/TBranchElement.h:75-78`: `fType` 3 and 4 are "branch count of a split TClonesArray / STL Collection" | Correct but incomplete: those branches hold the count *in their own baskets*, and their one leaf is a back-reference that the read procedure does not use (§4). Every other data-bearing branch in a tree has its leaf written in place |
 | 3 | The name `fBranchCount` suggests a pointer to a branch | It is a four-byte buffer back-reference, like `fLeaves` and `fLeafCount`. Nothing in the header says so |
 | 4 | `root/tree/tree/inc/TBranchElement.h:79`: "branch streamer type" — implying the type code the file records | It is the code the element had **in memory**, which for an STL member differs from the one the same file's streamer info gives (§5.2). 1988 branches in the corpora disagree with their element this way, and none of them is an error |
 
@@ -420,8 +421,9 @@ Nothing in ROOT's modern interface produces a `TBranchClones`. `TTree::Branch`
 gives a `TBranchElement`; the only constructor call in the codebase is in
 `TTree::BranchOld`, for a data member that is a pointer to a `TClonesArray`, at
 a split level other than 2 (`root/tree/tree/src/TTree.cxx:2216-2227`). `BranchOld`
-also makes the parent a `TBranchObject`, so one call produces both of the classes
-the corpora lack.
+also makes the parent a `TBranchObject`, so one call produces both a
+`TBranchClones`, which the corpora lack, and a `TBranchObject`, of which they
+have two.
 
 ### 13.1 It derives from `TBranch` and does not stream a `TBranch` base
 

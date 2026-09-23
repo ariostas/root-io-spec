@@ -2,14 +2,16 @@
 /// TH1F and TH1D with the whole TH1 -> TAxis -> TAttAxis hierarchy, plus the
 /// fourteen streamer infos ROOT records for it.
 ///
-/// Two histograms, because they differ in two places (the TArray base and the
-/// class version word) and because the second uses variable bin edges, which is
-/// the only way to get a non-empty TAxis::fXbins into a file.
+/// Two histograms, because they differ in the TArray base (TArrayF against
+/// TArrayD; both class version words are 3) and because the second uses
+/// variable bin edges, which is the only way to get a non-empty TAxis::fXbins
+/// into a file.
 ///
 /// Sumw2 is called on the first so fSumw2 is a populated TArrayD rather than an
-/// empty one; the second leaves it empty. Two fills land outside the range, so
-/// the underflow and overflow cells are not zero and fEntries differs from the
-/// sum of the in-range weights.
+/// empty one; the second is filled with weights, which populates fSumw2 with no
+/// Sumw2 call. Two fills of the first land outside the range, so the underflow
+/// and overflow cells are not zero and fEntries differs from the sum of the
+/// in-range weights.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "the histogram chain", 0);

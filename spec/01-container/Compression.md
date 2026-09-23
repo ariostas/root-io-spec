@@ -351,8 +351,8 @@ The checksum is appended after compression and counted outside `fObjLen`:
 Page checksums are on by default.
 
 A sealed page's block chain therefore stops 8 bytes short of its payload, which
-invariant 1 as written forbids. Two shapes are well formed, and a reader may check
-both:
+is why invariant 1 allows an `RBlob` 8 bytes more. Two shapes are well formed, and
+a reader may check both:
 
 | The blob holds | The chain ends | Because |
 |---|---|---|
@@ -400,7 +400,7 @@ Against the pinned submodule:
 | `container/compress-none-fallback` | Raw storage despite `fCompress` requesting zlib |
 | `container/file-minimal` | Raw storage via the `fObjlen <= 256` threshold |
 
-All five compressed cases hold the same 8221-byte payload, so their block sizes
+The four compressed cases hold the same 8221-byte payload, so their block sizes
 can be compared directly:
 
 | Algorithm | Compressed size | Record `fNbytes` |

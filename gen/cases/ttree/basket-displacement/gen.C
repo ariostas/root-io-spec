@@ -1,8 +1,8 @@
 /// A displacement array, in both of the forms it takes.
 ///
-/// TBasket.md 4 says flag > 40 "requires TBasket::Update to be called with a
-/// skip count, which happens only for a branch filled entry-by-entry out of
-/// order or for a circular tree". A circular tree is the reachable one:
+/// Two functions build one (TBasket.md 4): TBasket::Update with a skip count,
+/// reached only from TBranch::FillEntryBuffer, and TBasket::MoveEntries, for a
+/// circular tree. A circular tree is the reachable one:
 /// TTree::KeepCircular calls TBranch::KeepCircular, which calls
 /// TBasket::MoveEntries, which builds fDisplacement out of the entry offsets
 /// that are about to be rewritten.

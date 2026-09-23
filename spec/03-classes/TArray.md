@@ -150,9 +150,10 @@ from until the *enclosing* object's byte count ends.
 Invariant 2 is checked through the enclosing object's byte count (§4): a wrong
 width shifts everything after it, and the enclosing count catches it.
 
-There is deliberately no invariant about the recorded streamer info of §2. No
-reference file contains one, so any such check would pass vacuously; the
-observation is recorded as an erratum with its measurement instead.
+There is deliberately no invariant about the recorded streamer info of §2. It is
+a fact about what ROOT writes, not a rule a file must obey: an info that described
+the bytes correctly would break nothing. It is recorded as erratum 4 instead, and
+`classes/tarray-histogram` asserts both halves of it, the info and the 200 bytes.
 
 ## 6. Errata
 

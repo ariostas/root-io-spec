@@ -24,10 +24,10 @@ characters it is `TString` that costs one byte more. Above that length the two
 encodings differ in nothing but that byte.
 
 The case needs a compiled dictionary, hence `classes.h`. Both members are of
-standard-library-independent width, so the digest is portable, but note that
-`sizeof(TString)` differs between standard libraries and `tools/normalize.py`
-masks every `fSize` for that reason, so the two `fSize` values in this file's
-streamer info are not asserted.
+standard-library-independent width, so the digest is portable. The two `fSize`
+values in this file's streamer info (24 each) are not asserted, and
+`tools/normalize.py` masks every `fSize`; `serialization/streamer-info` asserts
+`sizeof(TString)`.
 """
 
 spec = [

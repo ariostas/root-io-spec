@@ -17,16 +17,16 @@ tools/check_invariants.py build/cern/*.root
 
 ## Why this corpus and not just `gen/foreign/`
 
-`gen/foreign/` is uproot's regression suite. It spans ROOT 4.00 to 6.38 and is
-valuable for that, but **it contains files uproot wrote**, so a failing invariant
+`gen/foreign/` is uproot's regression suite. Its ROOT-written files span ROOT
+5.23/02 to 6.38, which is valuable, but **it contains files uproot wrote**, so a failing invariant
 there is a lead that has to be traced to a writer before it is evidence. That
 ambiguity took up most of the triage recorded in `PLAN.md` §9.8.
 
 Everything here was written by ROOT and published by the ROOT team. A failure is
 evidence about the format.
 
-This corpus also reaches further back. `gen/foreign/` starts at ROOT 4.00, and its
-two ROOT-4-labelled files turned out not to be ROOT's output at all
+This corpus also reaches further back. The two files in `gen/foreign/` whose
+headers claim ROOT 4.00 were written by g4tools, not by ROOT
 ([TTree §13](../../spec/04-ttree/TTree.md#13-class-versions)). This corpus covers
 **ROOT 2.24/00 through 6.35/01**, about twenty-five years, with known provenance
 throughout.
@@ -46,7 +46,7 @@ Each file below covers something no fixture and no other listed file does. The
 | `pippa.root` | **2.24/00** | The oldest file available, by fifteen years. 517 records, **24 nested directories**, **zero streamer infos** (it predates schema evolution entirely), and every payload in the legacy `CS` codec, which this file led to specifying. Found [FileHeader erratum 2](../../spec/01-container/FileHeader.md#11-errata): four bytes past `fEND` in a cleanly closed file |
 | `mlpHiggs.root` | 3.04/02 | `TTree` records from before automatic schema evolution; `CS` |
 | `H1display.root` | 3.05/07 | ROOT 3.05 at 8.5 KB |
-| `stock.root` | 4.00/07 | Ten `TTree` records at **`TBranch` class version 9**, the only sub-10 branches available. Byte-verified [TBranch §13.1](../../spec/04-ttree/TBranch.md#131-at-version-9-the-streamer-info-is-not-authoritative): `fBasketSeek`'s flag byte is a width selector |
+| `stock.root` | 4.00/07 | Ten `TTree` records at **`TBranch` class version 9**, the only sub-10 branches available. Byte-verified [TBranch §13.3](../../spec/04-ttree/TBranch.md#133-at-version-9-the-streamer-info-is-not-authoritative): `fBasketSeek`'s flag byte is a width selector |
 | `lhcb_mag.root` | 4.03/04 | ROOT 4.03 |
 | `galaxy.root` | 5.01/01 | ROOT 5.01; a `TASImage` payload |
 | `linearIO.root` | 5.05/01 | `TMatrixT<float>` and `TMatrixTSym<float>` in 3.8 KB: the divergent classes `PLAN.md` §9.8 named, in a very small file |
@@ -162,7 +162,7 @@ are the same bytes, so it is listed once.
 ## `root/roottest/` — 5 files, already on disk
 
 ROOT's own regression suite has been inside `root-project/root` since April 2025,
-so the pinned submodule ships it: 274 `.root` files from ROOT 2.23/12 to 6.41/01,
+so the pinned submodule ships it: 273 `.root` files from ROOT 2.23/12 to 6.41/01,
 written by ROOT and published by the ROOT team, the same grade of evidence as the
 rest of this corpus. They need no fetch and no manifest, because the submodule
 pin (`tools/check_pin.py`) fixes every byte of them.
@@ -193,28 +193,31 @@ Run 2026-09-21, tier `all`:
   in them decoded (1696 of 1696). Each `NOT CHECKED` reason names a class or a
   codec rather than passing anything over. Re-measured 2026-09-21 with the
   `geometry` tier listed: 46 more files and one more branch-basket.
-- `tools/coverage_probe.py`: the great majority of blocked records are RooFit
-  classes in the two `stressRooFit_*` files, and the partial ones are
-  overwhelmingly ROOT 2.x histograms in files with no streamer infos. That is the version floor of
+- `tools/coverage_probe.py`, re-measured 2026-09-23: 1623 decoded, 264
+  container, 480 partial, 13 blocked. The partial ones are overwhelmingly ROOT
+  2.x histograms in files with no streamer infos. That is the version floor of
   [the scope statement](../../spec/index.md#how-far-back-it-reads) rather than a
-  gap in it.
+  gap in it. The RooFit records of the two `stressRooFit_*` files, once most of
+  the blocked ones, decode since [RooFit](../../spec/03-classes/RooFit.md), except
+  the two `RooWorkspace` records below, which are partial; what is still blocked
+  is listed in `PLAN.md` §9.9.
+- `tools/fetch_cern.py --headers`: **11 files, 0 failures**, re-run 2026-09-22 with
+  the three Open Data rows.
 
 > Re-measured 2026-09-18, when `aod_flushed.root` and `gallery.root` were added.
 > Both were cited by the specification as corpus files and were in neither this
 > table nor `MANIFEST.sha256`, so `fetch_cern.py` did not fetch them and the
 > witnesses they carry could not be reproduced.
-- `tools/fetch_cern.py --headers`: **11 files, 0 failures**, re-run 2026-09-22 with
-  the three Open Data rows.
 
 ## Known gaps this corpus exposes
 
-- **`TBranch` class versions 6 to 9** are not specified. `stock.root` (ROOT
-  4.00/07) has ten trees at v9 and is the reproducer. `TBranch.md` §13.1 gives the
-  fact that makes the generic algorithm inapplicable there, byte-verified on this
-  file. `tools/rootfile.py` refuses them by name.
-- `RooAbsCollection` and `ROOT::RNTuple` are hand-written streamers this
-  specification does not describe; both are named in `check_invariants.py`'s
-  `NOT CHECKED` output rather than counted as failures.
+- `RooWorkspace::CodeRepo` is a hand-written streamer this specification does not
+  describe. It leaves the one `RooWorkspace` record in each `stressRooFit_*` file
+  partly decoded. The other RooFit classes these files hold are
+  [RooFit](../../spec/03-classes/RooFit.md).
+- `ROOT::RNTuple`'s anchor is read by `rootfile.read_rntuple_anchor` rather than
+  by the streamer-driven path, so `check_invariants.py` names it in its
+  `NOT CHECKED` output rather than counting it as a failure.
 - `RBlob`, RNTuple's page container, has no streamer info by design. It belongs to
   `spec/05-rntuple/`.
 - ROOT 2.x and 3.x files carry **no streamer infos at all**, so their `TH1F`/`TH2F`
@@ -222,6 +225,11 @@ Run 2026-09-21, tier `all`:
   [StreamerDriven §6](../../spec/02-serialization/StreamerDriven.md)'s case, not a
   gap in this specification. `pippa.root` is the file `PLAN.md` §9.1 wanted for
   the `BuildEmulated` path.
+
+**`TBranch` class versions 6 to 9** used to be on this list too. `stock.root`
+(ROOT 4.00/07), with ten trees at v9, was the reproducer; they are now
+[TBranch §13.1](../../spec/04-ttree/TBranch.md#131-the-layout-below-version-10),
+and `tools/rootfile.py` reads them.
 
 The legacy `CS` codec used to be on this list. It turned out to be plain raw
 DEFLATE, written up as

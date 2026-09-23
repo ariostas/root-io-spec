@@ -19,13 +19,18 @@ gen/cases/<group>/<case>/
 
 An interpreted class has no `Streamer` method, so `TClass::IsForeign()` is true
 for it and ROOT writes **a version word of 0 followed by a checksum** instead of a
-version number. Most of the format is unaffected by this, so the other twenty
-cases here need no compiler. Three things are affected:
+version number. Most of the format is unaffected by this, so 63 of the 84 cases
+here need no compiler. Three things are affected:
 
 - `TClonesArray`, which records its element class as the text `"<class>;<version>"`;
 - a member-wise collection whose value class is versioned, where the second
   version word is a plain `Version_t` rather than 0 plus a checksum;
 - a `#pragma read` schema rule, which only a dictionary can carry.
+
+Other cases compile one for a reason their `classes.h` states: the split `ttree/`
+cases, the comment annotations `//[fN]` and `//[min,max,bits]`, which only a
+dictionary reads, and the `rntuple/` cases, whose user classes RNTuple serializes
+through a dictionary.
 
 ### The two-step load
 

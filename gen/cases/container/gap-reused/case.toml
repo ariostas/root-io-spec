@@ -9,8 +9,9 @@ the three a writer has to implement:
 
 * **an exact fit.** `exact` is written at 290 with a 128-character payload,
   overwritten with a short one, then overwritten again with the original string.
-  The second overwrite frees 125 bytes that coalesce with the 88 already free,
-  giving back the 213 the record needs, so the `TFree` entry is removed and
+  The first overwrite places the 90-byte short record in the 213 bytes it
+  freed, leaving 123 free. The second frees the 90 bytes, which coalesce with the
+  123 into the 213 the record needs, so the `TFree` entry is removed and
   `exact` ends up at the same offset as its first version, with nothing left
   over;
 * **a partial fit by an unrelated record.** `snug` is written long and

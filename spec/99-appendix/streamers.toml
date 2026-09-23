@@ -258,7 +258,7 @@ note = "TMVA SOFIE"
 
 [class.RooAbsBinning]
 status = "specified"
-spec = "[RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-a-tnamed-it-does-not-declare)"
+spec = "[RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-its-bases-and-usually-no-info-describes-them)"
 
 [class.RooRealVar]
 status = "specified"
@@ -274,7 +274,7 @@ spec = "[RooFit §4.2](../03-classes/RooFit.md#42-roorefarray-writes-a-trefarray
 
 [class."RooWorkspace::CodeRepo"]
 status = "gap"
-note = "RooFit — the code repository nested inside a workspace; it blocks two records in stressRooFit_v534_ref.root"
+note = "RooFit — the code repository nested inside a workspace; it leaves one RooWorkspace record partial in each of stressRooFit_v522_ref.root and stressRooFit_v534_ref.root"
 
 [class.RooCFunction1Ref]
 status = "gap"

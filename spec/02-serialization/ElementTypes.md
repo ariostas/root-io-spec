@@ -125,13 +125,17 @@ really use" (`root/io/io/src/TStreamerInfo.cxx:2967-2972`), and the same code
 treats the two as one on-file format. A counter declared as an unsigned integer
 keeps `kUInt` (13); `TBits::fNbytes` is one.
 
-A reader resolving `fCountName` must therefore accept any integer basic type, not
-only 6. All of them are a 4-byte value on disk, and the code describes the writing
-class, not the bytes.
+A reader resolving `fCountName` must therefore accept 3 and 13 as well as 6.
+`TStreamerInfo::Build` discards a counted member whose counter is of any other
+type (`root/io/io/src/TStreamerInfo.cxx:624-627`), so all three are a 4-byte value
+on disk, and the code describes the writing class, not the bytes.
 
-> Seen on real files: `TArrayD.fArray` names `fN` with `fType` 3 on both ROOT
-> 4.00/00 files of the foreign corpus, where a modern file writes 6; and
-> `TBits.fAllBits` names `fNbytes` with `fType` 13 (`PLAN.md` §9.8).
+> Seen on real files: `TBits.fAllBits` names `fNbytes` with `fType` 13
+> (`PLAN.md` §9.8). A third-party writer may also store 3 where ROOT stores 6:
+> g4tools does for `TArray::fN`, the counter of `TArrayD`, `TArrayF` and
+> `TArrayI`, in both of its files in the foreign corpus. Every counter in a
+> ROOT-written file available is 6 or 13, including the 417 in files older than
+> ROOT 5.
 
 ### 2.2 `kCharStar` (7)
 
@@ -535,7 +539,8 @@ opaque, and the only correct action is to seek past it using the byte count.
 > Every `TStreamerSTL` and `TStreamerSTLstring` stores 500
 > ([Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)).
 > A reader MUST first check the element's concrete class: 500 on a `TStreamerSTL`
-> is a collection, and 500 on anything else is a genuine custom streamer.
+> or `TStreamerSTLstring` is a collection, and 500 on anything else is a genuine
+> custom streamer.
 
 **`kStreamLoop` (501)** is a counted array of objects
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1462-1697`):
@@ -573,13 +578,14 @@ the ROOT that wrote the file, and that number has changed:
 | Written by | `ver` |
 |---|---|
 | ROOT 6.36.00 and later | 10 |
-| ROOT 5.26 to 6.35 | 9 |
+| ROOT 5.27/02 to 6.35 | 9 |
 | earlier | 8 or less |
 
 Version 10 arrived in `a5d03de7e67` (2024-11-25), first released in 6.36.00;
-version 9 in `40d8dd3552d`. All three appear in the corpora: 8 in a 5.21 file, 9
-in files from 5.34 to 6.26, and 10 only in the one 6.36 file and in the fixtures.
-**Every real-world file predating 6.36 therefore has 9 or 8, not 10.**
+version 9 in `40d8dd3552d` (2010-04-24), first released in 5.27/02. All three
+appear in the corpora: 8 in a 5.21 file, 9 in files from 5.34 to 6.26, and 10
+only in the one 6.36 file and in the fixtures. **Every real-world file predating
+6.36 therefore has 9 or less, not 10.**
 
 > **A reader MUST mask `kStreamedMemberWise` and treat the rest as a version
 > number, never compare the word to 10.** The same applies to the 85/86/87 form
@@ -605,7 +611,8 @@ When it is set, a second version word, for the value class, follows for
 sufficiently recent `TStreamerInfo` versions
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1168`,
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1273`). When it is clear, the
-collection is written object-wise and `ver` is `TStreamerInfo`'s version 10.
+collection is written object-wise and `ver` is the writer's `TStreamerInfo` class
+version (§8.1).
 
 The stored `fType` is 500, and `fSTLtype` and `fCtype` are the element's trailing
 members.
@@ -639,15 +646,11 @@ two as separate skip and convert paths, but they change no bytes.
 1. Every element's `fType` is in the on-disk set of §1.
 2. No element has `fType` in the `kSkip`, `kConv`, `kCache` or `kArtificial`
    families, or equal to 71, 300 or 365.
-
-Invariants 1 and 2 hold on a file written by ROOT 5 or later. **ROOT 4 wrote 300
-and 365**, the real STL codes, where later releases write 500
-([Streamer information §10.1](StreamerInfo.md#101-root-4-wrote-the-real-code)).
 3. `fType` **500** belongs to a `TStreamerSTL` or a `TStreamerSTLstring`, and
    **501** to a `TStreamerLoop`, the counted pointer to objects of §8. Measured
-   over `data/` and both corpora: 1137, 213 and 13 elements, with no other element
-   class carrying either code, and the 18 that carry the legacy 300 are all
-   `TStreamerSTL`.
+   over `data/` and both corpora: 1264, 226 and 13 elements, with no other element
+   class carrying either code. The 18 elements that carry 300 instead are all
+   `TStreamerSTL`, and all written by g4tools.
 4. `fArrayLength` is the **fixed** extent and nothing else, so it is positive for
    a `kOffsetL` code in `[20, 39]` and **0** for a `kOffsetP` code in `[40, 59]`,
    whose length is its counter's value at read time. It is 0 for a scalar, with
@@ -664,6 +667,14 @@ and 365**, the real STL codes, where later releases write 500
    exactly `TObject` or `TNamed`.
 8. `kHasRange` is set only on an element whose `fType` is 9 or 19, modulo
    `kOffsetL` and `kOffsetP`.
+
+Invariants 1 and 2 hold on every ROOT-written file available, from ROOT 3.04 on.
+A third-party writer may break them: g4tools stores 300, the real STL code, where
+ROOT stores 500
+([Streamer information §10.1](StreamerInfo.md#101-where-the-stored-code-is-not-500)).
+No release writes 365 as an `fType`: `TStreamerSTLstring`'s constructor sets
+`kSTL` (or `kSTLp` for a pointer) and puts 365 in `fSTLtype` and `fCtype`
+(`root/core/meta/src/TStreamerElement.cxx:2186-2194`).
 
 ## 12. Errata
 
@@ -682,6 +693,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 9 | "6: an array dimension (counter)" | Correct, but nothing says the counter's value is the only source of length for the members naming it, and that no length is ever written for them (§2.1, §4) |
 | 10 | — | Nothing describes `kDouble32`/`kFloat16` at all: that their width is 3 or 4 bytes, that it depends on parsing the comment string, or that a `Double32_t` annotated `[0,0,15]` silently degrades to a plain float while a `Float16_t` does not (§5.3) |
 | 11 | — | Nothing distinguishes `->` from an ordinary pointer, though the byte layouts differ completely (§7) |
+| 12 | *This document, until 2026-09-23*: ROOT 4 wrote 300 for an STL element, and wrote a `TArray` counter as 3 | Both came from two files written by g4tools, whose headers claim ROOT 4.00/00. Every ROOT-written file available stores 500 there, and 6 or 13 for a counter (§2.1, §11) |
 
 ## 13. Reference files
 

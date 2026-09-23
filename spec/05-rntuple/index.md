@@ -21,13 +21,14 @@ project's contribution is an audit of it: a field-by-field check against
 `tools/sync_rntuple.py --check` runs in CI and fails if the copy drifts from the
 submodule, so the copy cannot quietly become a fork.
 
-The audit rests on eight fixtures, one per form. `gen/cases/rntuple/anchor` is an
-RNTuple written by the pinned ROOT with compression off, and the errata are
-asserted against its bytes; before it existed, every byte in them came from one
-file in the CERN corpus written by an older release. `fundamental-types` has one
-field per fundamental C++ type and pins the column each lands in, and
-`collections`, `user-class`, `projected`, `untyped`, `streamed` and `soa` each pin
-one area of the type mapping.
+The audit rests on ten fixtures. `gen/cases/rntuple/anchor` is an RNTuple
+written by the pinned ROOT with compression off, and the errata are asserted
+against its bytes; before it existed, every byte in them came from one file in the
+CERN corpus written by an older release. `fundamental-types` has one field per
+fundamental C++ type and pins the column each lands in, and `collections`, `map`,
+`user-class`, `projected`, `untyped`, `streamed` and `soa` each pin one area of
+the type mapping. `compressed` is the only one written with compression on, so
+the only one whose pages go through a codec.
 
 `tools/rootfile.py` reads an RNTuple anchor and header envelope independently of
 ROOT. It is written from the tracked copy, so a disagreement between the two is

@@ -8,13 +8,15 @@ Truncated floats inside a split branch, where no TLeafD32 is involved.
 ttree/leaf-truncated covers Double32_t and Float16_t reached through a leaflist,
 where the leaf class is TLeafD32 or TLeafF16 and the annotation is in the leaf's
 title. A split branch never produces those classes: every leaf of a
-TBranchElement is a TLeafElement, and a TLeafElement records no width at all
+TBranchElement is a TLeafElement, whose only width is an fLenType derived from
+the element type: 4 for Double32_t and 2 for Float16_t, whatever the title
 (TLeaf.md section 8).
 
 For a split Double32_t member the width can therefore only come from the
 **streamer element's** title in the file's StreamerInfo record. This case has six
-members, five of them truncated floats, all behind identical TLeafElement leaves,
-with nothing in the branch or the leaf distinguishing them.
+members, five of them truncated floats, behind TLeafElement leaves that differ
+only by element type, with nothing in the branch or the leaf distinguishing
+members of one type.
 
   member   element title   fStreamerType   bytes per entry
   fPlain   (empty)         9               4
@@ -30,9 +32,11 @@ fStreamerType 19 and differ in width. The basket payloads (three entries each,
 compression off) are 12, 12, 12, 12, 9 and 12 bytes, the only place the
 difference shows without reading the StreamerInfo record.
 
-A reader that takes the width of a split member from the branch, or from the
-leaf, will get four of these six wrong. The rule is ElementTypes.md section 5,
-applied to the element fID indexes.
+A reader that sizes a split member by its fStreamerType as an in-memory type
+(8 bytes for Double32_t, 4 for Float16_t) gets four of these six widths wrong:
+fPlain, fRange, fBits and fHBits. One that uses the leaf's fLenType gets two
+wrong, fHalf and fHBits. The rule is ElementTypes.md section 5, applied to the
+element fID indexes.
 """
 
 spec = [

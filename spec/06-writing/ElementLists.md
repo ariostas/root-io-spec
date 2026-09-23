@@ -40,7 +40,7 @@ in ([StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums)).
 | `fTitle` | the member's declaration comment, verbatim |
 
 The `Extra` column holds the subclass tail in one of three forms, and none of
-these thirty-one classes needs a fourth:
+these thirty-five classes needs a fourth:
 
 - `TStreamerBase`: `fBaseVersion`, and the base's own checksum, which is stored
   in `fMaxIndex[1]`
@@ -82,7 +82,7 @@ there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all thirty-one, and in all **743** streamer
+The info's own `fTitle` is empty in all thirty-five, and in all **743** streamer
 infos in this repository's reference files.
 [Writing an object §7.1](WritingObjects.md#71-the-nesting) describes it as the
 class's comment, but the value to write there is an empty string.
@@ -95,9 +95,10 @@ member of a version-0 class (`root/io/io/src/TStreamerInfo.cxx:552-554`) while
 the checksum still folds them. Their infos list only their bases, so a writer has
 to carry `0xcc7e49c1` and `0xfc6c3bc6` as constants
 ([StreamerInfo §11.2](../02-serialization/StreamerInfo.md#112-what-cannot-be-recomputed)).
-Every other checksum in §4 to §10 is reproduced exactly by §12's algorithm applied
-to the table printed beside it, and `tools/element_lists.py` fails if that stops
-being true in either direction.
+Every other checksum in §4 to §10 is reproduced exactly by
+[StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums)'s algorithm
+applied to the table printed beside it, and `tools/element_lists.py` fails if
+that stops being true in either direction.
 
 **These lists describe only the current versions**, the versions in §12, which
 are the ones the pinned ROOT compiles. A file written with them is readable by
@@ -106,7 +107,7 @@ offers a writer no way to produce an *older* layout
 ([Overview §3.1](index.md#31-what-the-current-version-means)).
 
 **They cover only the classes these procedures need.** A split branch, a
-`TGraph`, a `TH3` or a user-defined class needs infos this document does not
+`TGraph2D`, a `TH3` or a user-defined class needs infos this document does not
 have. The element list for any of them can be read from a file with
 [StreamerInfo §12](../02-serialization/StreamerInfo.md#12-reading), and
 [Overview §4](index.md#4-what-is-not-specified) lists what the writing layer does
@@ -142,7 +143,7 @@ record needs them:
 A writer can therefore get this column wrong without consequence. `fSize` is also
 why a fixture's normalized digest is masked at all (`tools/normalize.py`), since
 `sizeof(std::string)` and `sizeof(std::map<int,int>)` differ between standard
-libraries. No member of these thirty-one classes is affected: the only STL member
+libraries. No member of these thirty-five classes is affected: the only STL member
 among them is
 `TRefTable::fProcessGUIDs`, a `vector<string>`, and `sizeof(std::vector<T>)` is
 24 with both.
@@ -580,6 +581,14 @@ directory levels, so that file can be reproduced from this document rather than
 from `tools/rootwrite.py`.
 
 <!-- BEGIN GENERATED: objstring -->
+### `TObjString`
+
+Class version **1**, `fCheckSum` **`0x9c8e4800`**. 2 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TObject` | 66 `kTObject` | 0 | `BASE` | base version 1; base checksum `0x901bc02d` | `Basic ROOT object` |
+| 2 | `TStreamerString` | `fString` | 65 `kTString` | 24 | `TString` |  | `wrapped TString` |
 <!-- END GENERATED -->
 
 ## 9. A graph file: the other two
@@ -597,11 +606,39 @@ For the same reason this is the only set here that also includes §10's three
 name it (erratum 1). `fFunctions` is `fType` **64** where `TH1::fFunctions` is
 63, so it is written as a pointer slot with a class record rather than in place.
 Every one of the four counted arrays gives `TGraph` as its `fCountClass`,
-including `TGraphErrors`'s own `fEX` and `fEY`: `fNpoints` is declared two
-classes up, and the field names the class that declares the counter, not the one
+including `TGraphErrors`'s own `fEX` and `fEY`: `fNpoints` is declared in the
+base class, and the field names the class that declares the counter, not the one
 that declares the array (§1).
 
 <!-- BEGIN GENERATED: graph -->
+### `TGraph`
+
+Class version **5**, `fCheckSum` **`0xb932984f`**. 12 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TNamed` | 67 `kTNamed` | 0 | `BASE` | base version 1; base checksum `0xdfb74a3c` | `The basis for a named object (name, title)` |
+| 2 | `TStreamerBase` | `TAttLine` | 0 `kBase` | 0 | `BASE` | base version 2; base checksum `0x94074549` | `Line attributes` |
+| 3 | `TStreamerBase` | `TAttFill` | 0 `kBase` | 0 | `BASE` | base version 2; base checksum `0xffd92a92` | `Fill area attributes` |
+| 4 | `TStreamerBase` | `TAttMarker` | 0 `kBase` | 0 | `BASE` | base version 3; base checksum `0x291d8bec` | `Marker attributes` |
+| 5 | `TStreamerBasicType` | `fNpoints` | 6 `kCounter` | 4 | `int` |  | `Number of points <= fMaxSize` |
+| 6 | `TStreamerBasicPointer` | `fX` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fNpoints` in `TGraph` at version 5 | `[fNpoints] array of X points` |
+| 7 | `TStreamerBasicPointer` | `fY` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fNpoints` in `TGraph` at version 5 | `[fNpoints] array of Y points` |
+| 8 | `TStreamerObjectPointer` | `fFunctions` | 64 `kObjectP` | 8 | `TList*` |  | `Pointer to list of functions (fits and user)` |
+| 9 | `TStreamerObjectPointer` | `fHistogram` | 64 `kObjectP` | 8 | `TH1F*` |  | `Pointer to histogram used for drawing axis` |
+| 10 | `TStreamerBasicType` | `fMinimum` | 8 `kDouble` | 8 | `double` |  | `Minimum value for plotting along y` |
+| 11 | `TStreamerBasicType` | `fMaximum` | 8 `kDouble` | 8 | `double` |  | `Maximum value for plotting along y` |
+| 12 | `TStreamerString` | `fOption` | 65 `kTString` | 24 | `TString` |  | `Options used for drawing the graph` |
+
+### `TGraphErrors`
+
+Class version **3**, `fCheckSum` **`0xbdadb119`**. 3 elements.
+
+| # | Element class | `fName` | `fType` | `fSize` | `fTypeName` | Extra | `fTitle` |
+|---|---|---|---|---|---|---|---|
+| 1 | `TStreamerBase` | `TGraph` | 0 `kBase` | 0 | `BASE` | base version 5; base checksum `0xb932984f` | `Graph graphics class` |
+| 2 | `TStreamerBasicPointer` | `fEX` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fNpoints` in `TGraph` at version 5 | `[fNpoints] array of X errors` |
+| 3 | `TStreamerBasicPointer` | `fEY` | 48 `kDouble + kOffsetP` | 8 | `double*` | counter `fNpoints` in `TGraph` at version 5 | `[fNpoints] array of Y errors` |
 <!-- END GENERATED -->
 
 ## 10. Three classes a histogram file does not describe

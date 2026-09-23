@@ -3,12 +3,14 @@
 /// ttree/leaf-truncated covers Double32_t and Float16_t reached through a
 /// leaflist, where the leaf class is TLeafD32 or TLeafF16 and the annotation is
 /// in the leaf's title. A split branch never produces those classes: every leaf
-/// of a TBranchElement is a TLeafElement, which records no width.
+/// of a TBranchElement is a TLeafElement, whose fLenType is 4 for Double32_t
+/// and 2 for Float16_t whatever the annotation.
 ///
 /// The width of a split Double32_t member can therefore only come from the
 /// streamer element's title in the file's StreamerInfo record. This case has
-/// five members whose on-disk widths differ, all behind identical TLeafElement
-/// leaves, with nothing in the branch or the leaf to tell them apart.
+/// five truncated-float members, behind TLeafElement leaves that differ only by
+/// element type, with nothing in the branch or the leaf to tell members of one
+/// type apart.
 ///
 ///   fPlain   no annotation   4 bytes, a plain float
 ///   fRange   [0,100]         4 bytes, factor-scaled

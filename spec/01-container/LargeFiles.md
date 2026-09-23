@@ -308,8 +308,8 @@ sentinel rule has changed. The four ranges cost about 1.5 KB a file.
 | `071ab81e…root` (CMS Run2024F RAW) | 6.30/03 | 3 274 820 145 | 2 wide | the newest writer, and a `TStorageFactoryFile` free record above the boundary; Open Data |
 | `00041836_00008626_1.ew.dst` (LHCb) | 5.34/21 | 5 786 425 072 | 1 wide | the last ROOT 5 series; Open Data |
 
-The top directory and its key list (read since 2026-09-23) give access to
-ordinary keys, which the free record does not:
+The top directory and its key list give access to ordinary keys, which the free
+record does not:
 
 | File | Directory record | Top keys | Wide | Largest `fSeekKey` |
 |---|---|---|---|---|
@@ -367,7 +367,8 @@ narrow at 1.997 GB under 5.22/00 and all wide at 3.27 GB under 6.30/03.
 
 Checked by `tools/fetch_cern.py --headers` over the eleven files of §6. Except
 for invariant 7, which both tools check, they are not checked by
-`tools/check_invariants.py`, which has no file large enough.
+`tools/check_invariants.py`, which has no file large enough. Invariant 1 is in
+its code, as part of FileHeader invariant 9, but no file it reads can fail it.
 
 1. `fVersion >= 1000000` **if** `fEND > 2000000000`; the reverse holds on every
    known file but is not guaranteed, because the flag is never cleared once set
@@ -391,10 +392,13 @@ for invariant 7, which both tools check, they are not checked by
    (`root/io/io/src/TDirectoryFile.cxx:751-759`). Three of the eleven files are
    large and still have a narrow record by this rule. Unlike the rest of this
    list it needs no large file to fail, so `tools/check_invariants.py` also
-   checks it on every directory record of every file. Of the 820 available in
-   `data/`, both corpora and `root/roottest/`, the only two that disagree are the
-   two g4tools files of `gen/foreign/`, each of which writes its root directory
-   at version 1001 with every offset under 200 KB.
+   checks it on every directory record of every file. There are 815 it can
+   read: 104 in `data/`, 303 in 179 of the 180 `gen/foreign/` files (the record
+   chain of `uproot-issue261.root` cannot be walked), 96 in the 72 `gen/cern/`
+   files, and 312 in the 272 files of `root/roottest/` other than the one in
+   `root/tree/basket/` that is damaged on purpose. The only two that disagree
+   are the two g4tools files of `gen/foreign/`, each of which writes its root
+   directory at version 1001 with every offset under 200 KB.
 
 Each invariant has a mutation test in `tools/test_large_files.py`, which takes
 the measured reading of `volume.root` as the good case and breaks one invariant

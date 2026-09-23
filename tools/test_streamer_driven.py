@@ -95,7 +95,7 @@ class ElementListInvariants(unittest.TestCase):
     def test_an_unmarked_integer_counter_is_allowed(self):
         # kCounter replaces kInt only when the class that USES the member as a
         # length is built, so a counter may be plain kInt or kUInt.
-        # ElementTypes.md 2.1; seen on ROOT 4 files and on TBits.
+        # ElementTypes.md 2.1; seen on the g4tools files and on TBits.
         for ftype in (3, 6, 13):
             si = info(element("fN", ftype=ftype),
                       element("fVar", cls="TStreamerBasicPointer", ftype=43,
@@ -851,6 +851,48 @@ class RemovingAnInfoIsCaught(unittest.TestCase):
         self.assertIn("TH1: base class TAttLine", bad[0])
 
 
+class StlElementStoresFiveHundred(unittest.TestCase):
+    """StreamerInfo.md invariant 9 and ElementTypes.md invariants 1-2.
+
+    Every ROOT-written file available stores 500 on an STL element, back to
+    ROOT 3.04; the 300 that used to be exempted for "ROOT 4" came from two
+    g4tools files, which are now in gen/foreign/IGNORE.toml instead
+    (StreamerInfo.md 10.1). So 300 must fail on a file whose header names
+    ROOT 6, and the checks must not depend on the header's version at all.
+    `data/serialization/streamer-info.root` has `fVec`'s fType at 841,
+    uncompressed.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/serialization/streamer-info.root"
+    FTYPE = 841
+
+    def failures(self, ftype, version=None):
+        buf = bytearray(self.PATH.read_bytes())
+        self.assertEqual(struct.unpack_from(">i", buf, self.FTYPE)[0], 500)
+        struct.pack_into(">i", buf, self.FTYPE, ftype)
+        if version is not None:
+            struct.pack_into(">i", buf, 4, version)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(bytes(buf))
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return sorted({f.split(": ")[1] for f in checker.failures})
+
+    def test_the_fixture_itself_passes(self):
+        self.assertEqual(self.failures(500), [])
+
+    def test_the_real_code_is_caught(self):
+        self.assertEqual(self.failures(300),
+                         ["ElementTypes 11.1", "ElementTypes 11.2",
+                          "StreamerInfo 13.9"])
+
+    def test_a_header_claiming_root_4_exempts_nothing(self):
+        self.assertEqual(self.failures(300, version=40000),
+                         ["ElementTypes 11.1", "ElementTypes 11.2",
+                          "StreamerInfo 13.9"])
+
+
 class PointerContentIsNotADoubledFrame(unittest.TestCase):
     """Collections.md 3.1, against `data/serialization/pointer-collection.root`.
 
@@ -921,10 +963,6 @@ class PointerContentIsNotADoubledFrame(unittest.TestCase):
         el = self.element("fPtrs")
         with self.assertRaises((rootfile.FormatError, struct.error)):
             self.decoder().read_collection(el, 407)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 def elem(name, ftype, cls="TStreamerElement", type_name="int",
@@ -1062,3 +1100,7 @@ class RefVariants(unittest.TestCase):
 
     def test_no_action_is_zero(self):
         self.assertEqual(rootfile.ref_exec_id(0x00000020), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

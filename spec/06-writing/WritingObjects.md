@@ -380,11 +380,10 @@ Because the exempt set is published, the closure can be checked. It is
 and `tools/check_invariants.py` reads the exempt set from those two appendix
 documents rather than from the submodule, so the check runs without one. Over
 `data/` and both corpora it holds on every file but two, and those two were
-written by g4tools, not ROOT. An earlier draft of this paragraph named `TAtt3D` as
-a sixth legitimately absent base on the strength of those two files, and that was
-wrong: `TAtt3D` is `ClassDef(TAtt3D,1)`, on neither list, and 48 ROOT-written files
-in the corpora do contain its info, including four of the six that describe a
-`TH3` at all. A file not written by ROOT is a lead, not evidence.
+written by g4tools, not ROOT. Both lack an info for `TAtt3D`, which is not
+exempt: it is `ClassDef(TAtt3D,1)`, on neither list, and 48 ROOT-written files in
+the corpora do contain its info, including four of the six that describe a `TH3`
+at all.
 
 The file-local companion is invariant 7 of
 [Streamer information §13](../02-serialization/StreamerInfo.md#13-invariants):
@@ -392,9 +391,9 @@ when a base *does* have an info, the element's `fBaseCheckSum` is either that
 info's `fCheckSum` or 0. That holds over the 731 base elements here whose base has
 an info, and all 731 record a non-zero checksum.
 
-**The same does not hold for `fBaseVersion`.** This document first claimed it did
-and made it an invariant; five files in the two corpora failed it within a minute,
-and all five are correct files, listed in
+**The same does not hold for `fBaseVersion`.** Five correct files in the two
+corpora have a base element whose `fBaseVersion` is not the version of the info
+beside it, listed in
 [§9.2](../02-serialization/StreamerInfo.md#92-fbaseversion-may-name-a-version-the-file-does-not-contain).
 A writer should still emit the version it actually built against, but a *reader*
 must not rely on it.

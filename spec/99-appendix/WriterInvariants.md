@@ -1,7 +1,7 @@
 # A writer's invariants
 
 Every layer of this specification ends with an `Invariants` section stating what
-a conforming file satisfies, whatever wrote it. There are 259 entries across 32
+a conforming file satisfies, whatever wrote it. There are 267 entries across 33
 documents, counting the numbered items in every section titled `Invariants`.
 Those sections are organised for a reader, by layer. This page organises the same
 material for a writer, in the order in which a file is produced, and adds the
@@ -186,7 +186,7 @@ Several of them are caught by `tools/check_invariants.py` (the column defined in
    reader that is not ROOT needs the info.
 
 Items 1, 2, 3, 4, 6, 7 and 9 are checked by `tools/check_invariants.py`, so run it
-over your own output. Item 2 has been checked since 2026-09-18, as
+over your own output. Item 2 is
 [Directories §9](../01-container/Directory.md#9-invariants) invariant 11, which
 compares a key image against the key of the record it points at. ROOT never makes
 that comparison.

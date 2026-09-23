@@ -11,9 +11,9 @@ and every offset after it lines up. A branch stores its baskets' offsets, so a
 shift of one byte would change the `TTree` record. `tools/test_write.py` asserts
 the comparison.
 
-Only the `StreamerInfo` record differs, by one entry: ROOT appends a
-`listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and
-<= 18. A file written at version 20 cannot use them (`WritingTrees.md` 8.1).
+The `StreamerInfo` record matches too, including the `listOfRules` entry ROOT
+appends: two I/O customization rules for `TTree` versions <= 16 and <= 18, which
+a file written at version 20 never uses (`WritingTrees.md` 8.1).
 """
 
 from __future__ import annotations

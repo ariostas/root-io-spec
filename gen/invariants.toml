@@ -50,7 +50,7 @@ a version word to 1005.
 
 [invariant."FreeSegments 8.3"]
 by = "alias"
-reason = "Checked as FileHeader 10.7, which compares `nfree` with the entry count and knows ROOT 4 wrote 0."
+reason = "Checked as FileHeader 10.7, which compares `nfree` with the entry count."
 
 [invariant."FreeSegments 8.4"]
 by = "alias"

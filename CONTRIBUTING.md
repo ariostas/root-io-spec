@@ -6,7 +6,7 @@ The project rests on one rule:
 > `path:line` citation into the pinned release. Once against real bytes, in a
 > committed reference file with assertions that a third party can check.
 
-A claim with only one of the two is not finished. Eighteen errors in this
+A claim with only one of the two is not finished. Nineteen errors in this
 specification were found by one witness disagreeing with the other; `PLAN.md`
 §9.8 and §9.9 list them.
 

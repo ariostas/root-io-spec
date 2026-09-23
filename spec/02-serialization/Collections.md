@@ -55,10 +55,9 @@ RVec 14      kSTLany 300     kSTLstring 365
 >
 > `uproot-issue283.root` (ROOT 5.28/00) has a third case, a `set<long>` at 5,
 > and it is the one that matters: a reader that takes 5 at face value reads a set
-> as a multimap and consumes two values per element. `tools/rootfile.py` did so
-> until 2026-09-21, although this document already stated the rule; invariant 10
-> now checks it. The pointer forms are not repaired: ROOT tests for 5 and 6 only,
-> so a `set<T>*` at 45 keeps whatever it was given.
+> as a multimap and consumes two values per element. Invariant 10 checks that a
+> reader applies the repair. The pointer forms are not repaired: ROOT tests for 5
+> and 6 only, so a `set<T>*` at 45 keeps whatever it was given.
 
 **`fType` on disk is always 500**
 ([Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)),
@@ -100,8 +99,8 @@ explains.
 > `fHits` at 395 reads `40 0a`.
 
 > **The `0A` is not part of the format.** It is `TStreamerInfo`'s class version in
-> the ROOT that wrote the file: 9 from ROOT 5.26 until 6.35, and 8 before that.
-> A frame written by any release before 6.36.00 therefore reads `00 09` or
+> the ROOT that wrote the file: 9 from ROOT 5.27/02 until 6.35, and 8 or less
+> before that. A frame written by 5.27/02 to 6.35 therefore reads `00 09` or
 > `40 09`. **Mask `kStreamedMemberWise` and read the rest as a version number;
 > never compare the word to 10.**
 > [Element types §8.1](ElementTypes.md#81-the-version-word-is-not-a-constant)
@@ -151,7 +150,7 @@ The pointer row above differs from the others because an object slot is not a
 member. It is a byte count, a class record and then the object, and the object has
 the byte count and version word of every streamer-info-driven class. A collection
 of pointers to a class whose own members include a collection therefore reads as
-three frames nested inside each other:
+four frames nested inside each other:
 
 ```
 bc  ver=0x000A  count        the collection frame (§2)
@@ -160,12 +159,14 @@ bc  ver=0x000A  count        the collection frame (§2)
       bc  ver=0x000A  count  a collection *inside* the content class
 ```
 
-**Only the outer and the innermost frames are collection frames.** The one
-between them is a class frame, and its version word is the content class's
-`ClassDef` version rather than `TStreamerInfo`'s 10. Telling them apart by the
-version word alone fails as soon as a content class is at class version 10, so
-use the nesting instead: a collection frame is one reached from a `TStreamerSTL`
-element, and a class frame is one reached from an object slot.
+**Only the outer and the innermost frames are collection frames.** Between them
+are the object slot and a class frame, and the class frame's version word is the
+content class's `ClassDef` version rather than `TStreamerInfo`'s 10. When the
+collection is the content class's first member, as below, the class frame and
+the inner collection frame are the two in a row: `bc ver bc ver`. Telling them
+apart by the version word alone fails as soon as a content class is at class
+version 10, so use the nesting instead: a collection frame is one reached from a
+`TStreamerSTL` element, and a class frame is one reached from an object slot.
 
 > Demonstrated by `serialization/pointer-collection`: `fPtrs` is a
 > `vector<PtrItem*>`, `PtrItem` holds a `vector<double>`, and the four frames
@@ -276,9 +277,8 @@ base whose class declares no version (`fBaseVersion` −1) can be found at all.
 > member-wise, and `ElementLink`'s one element is the base `ElementLinkBase`
 > (`fBaseVersion` −1) with two `unsigned int` members. Four links read
 > `40 00 00 2c | 40 09 | 00 00 69 77 75 53 | 00 00 00 04 | 00 00 00 00 ×4 | ff ff ff ff ×4`:
-> every `m_persKey`, then every `m_persIndex`. The table above said "once per
-> element" until 2026-09-22, and a reader following it failed on 1 005
-> branch-baskets of that file.
+> every `m_persKey`, then every `m_persIndex`. A reader that reads the base once
+> per element fails on 1 005 branch-baskets of that file.
 
 ### 4.3 An empty member-wise collection writes no columns at all
 
@@ -337,8 +337,10 @@ For a file, this gives:
 | `vector<MyClass*>` | object-wise | `HasPointers` |
 | `bitset<N>` | object-wise | no value class |
 
-> All seven rows are demonstrated by `serialization/collections`, which contains
-> one member from each except the pointer and bitset rows.
+> Five rows are demonstrated by `serialization/collections`, which contains one
+> member from each. The pointer row is `serialization/pointer-collection`, whose
+> `fPtrs` has the version word `00 0a` at 385, and the bitset row is
+> `ttree/split-bitset`, whose entry 0 has it at 455.
 
 ## 6. Older files
 
@@ -542,10 +544,10 @@ string of §3.
 
 ### 10.1 A `std::string` object has no frame either
 
-The three-byte-different case that catches readers: when a `std::string` is the
-whole object (a record of its own, a member of a pointer-to-object type, or one
-half of a `pair`), it is again the **bare counted string**, with no byte count and
-no version word.
+The case that catches readers: when a `std::string` is the whole object (a
+record of its own, a member of a pointer-to-object type, or one half of a
+`pair`), it is again the **bare counted string**, with no byte count and no
+version word. That is six bytes fewer than the same string as a member.
 
 `std::string`'s `TClass` has a hand-written streamer registered outside the
 class (`root/core/base/src/String.cxx:36`), and that streamer is
@@ -691,9 +693,9 @@ up across classes, and §8.2 shows that doing so can find the wrong one.
 > `xAOD::CutBookkeeper_v1`'s checksum and 4 is the count. There are no columns,
 > because that class's only member is a base whose own base has no elements. ROOT
 > 6.40.04 without ATLAS's libraries reads the same 4 elements from it.
-> Until 2026-09-23 this project's reader declined the 975 whose type name has no
-> template argument, and read the other 35 by taking `DataVector<X>`'s first
-> argument, which was right only because ATLAS's value class is that argument.
+> Of the 1 010, 975 have a type name with no template argument. In the other 35,
+> taking `DataVector<X>`'s first argument gives the right class only because
+> ATLAS's value class is that argument.
 
 ## 12. `TClonesArray`
 
@@ -740,8 +742,10 @@ base deliberately so that the encoding is self-describing
 > then a present one), followed by one fully framed object.
 
 `nobjects` is the last occupied index plus one, not the number of objects present,
-so it counts trailing-free but not interior-empty slots
-(`root/core/cont/src/TClonesArray.cxx:886`, `root/core/cont/inc/TObjArray.h:58-60`).
+so it counts the empty slots before the last occupied one but not the free slots
+after it (`root/core/cont/src/TClonesArray.cxx:886`,
+`root/core/cont/inc/TObjArray.h:58-60`). `serialization/clones-array`'s non-bypass
+array has `nobjects` 2 with slot 0 empty.
 
 ## 13. Reading
 
@@ -823,7 +827,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 1 | — | **Nothing in the shipped documentation describes STL streaming.** "STL" does not occur in `README.md`: no byte count, no version word, no `kStreamedMemberWise`, no transposition. This is the largest gap in ROOT's documentation of its own format |
 | 2 | `streamerinfo.md`: "`TStreamerSTL`: For an STL container (not yet used??)" | Used for every STL member of every class since long before 6.x (§1) |
 | 3 | `streamerinfo.md`: the class is named `TStreamerSTLString` | It is `TStreamerSTLstring`, and that spelling is what appears in the class tag (§10) |
-| 4 | `streamerinfo.md`: "`fSTLtype` … 5:set, 6:multimap, 7:multiset" | 5 is multimap and 6 is set. The order was standardised at element version 4 and ROOT still repairs old files (§1) |
+| 4 | `streamerinfo.md`: "`fSTLtype` … 5:set, 6:multimap, 7:multiset" | 5 is multimap and 6 is set. The order was standardised in 5.34/13 while the element version stayed 3, so ROOT repairs a 5 or 6 in any file on read (§1) |
 | 5 | `streamerinfo.md`: the `fSTLtype` list stops at 7 | Missing 8 to 14, and missing the `+40` a pointer member adds (§1) |
 | 6 | `streamerinfo.md`: "`fCtype` = same values as `fType`, plus 365" | It is 61 for a collection of any class, `TObject`-derived or not; 63 for pointers; 0 for `bitset`. And it does not determine the layout (§7) |
 | 7 | `tclonesarray.md`: describes the non-bypass body as the objects streamed sequentially | Omits the one-byte presence flag before each object, including for empty slots (§12) |
@@ -843,7 +847,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/clones-array` | Both `TClonesArray` encodings, an empty slot, and a versioned element class from a compiled dictionary |
 | `serialization/pairs` | The six shapes a `pair<K,V>` member takes (§8.1), the empty member-wise collection (§4.3), and three distinct pairs sharing one checksum (§8.2) |
 | `serialization/collection-forms` | `std::array` of a scalar and of a class (§11), a fixed array of collections (§11.1), and a member-wise collection whose value class has a `ClassDef` (§4) |
-| `serialization/pointer-collection` | Pointer content (§3.1): the three frames in a row, and all three object-slot forms — a class name, a null pointer, and a class back-reference — in one collection |
+| `serialization/pointer-collection` | Pointer content (§3.1): the four nested frames, and all three object-slot forms — a class name, a null pointer, and a class back-reference — in one collection |
 
 Two more cases cover collections from the `TTree` side. `ttree/split-bitset` has
 a `std::bitset` as a member of a split branch; it is an ordinary object-wise

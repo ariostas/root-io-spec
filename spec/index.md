@@ -37,13 +37,13 @@ every known gap.
 | Container — all of it, including the >2 GB layout | written |
 | Serialization — framing, streamer info, element types, the reading algorithm | written |
 | Serialization — collections, schema evolution, references | written |
-| Standard classes — the divergent set, except seven narrow classes | written |
+| Standard classes — the divergent set, except twelve narrow classes | written |
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file, schema evolution | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
 
-The checks: **84 reference files with 2151 byte-level assertions, 1655 source
+The checks: **84 reference files with 2151 byte-level assertions, 1670 source
 citations checked against the pinned ROOT tree across 49 documents**, and the
 invariants of every layer run over 252 files this project did not write (ROOT
 2.24/00 to 6.38/00) with **0 failures**.

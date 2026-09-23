@@ -137,8 +137,8 @@ matrix is symmetric, and because it is the only class whose bytes continue past
 its own byte count.
 
 If the files you care about are workspaces, plots or fit results, also do
-[RooFit](../03-classes/RooFit.md) early: six classes, two of which every
-`RooAbsArg` reaches. Until those two are read, nothing else in such a file can
+[RooFit](../03-classes/RooFit.md) early: five classes, two of which every
+`RooRealVar` reaches. Until those two are read, nothing else in such a file can
 be.
 
 ## 6. Read an unsplit tree
@@ -209,13 +209,13 @@ Four checks, in increasing order of strength:
 3. **Consumption.** Decode an object and compare where you stopped against the
    byte count, and an entry against its span in the basket. Most
    misunderstandings show up here as an offset that is wrong by two or four bytes.
-4. **Files you did not choose.** This project's two corpora, 227 files spanning
-   ROOT 2.24/00 to 6.36/02, found errors in this specification that its own
+4. **Files you did not choose.** This project's two corpora, 252 files spanning
+   ROOT 2.24/00 to 6.38/00, found errors in this specification that its own
    fixtures did not, because a fixture tests what its author already understood.
    A failure means different things in the two: the 72 files of `gen/cern/` were
-   published by the ROOT team, so a failure there is evidence. The 155 of
-   `gen/foreign/` come from uproot's regression suite and include files uproot
-   itself wrote, so a failure there is a lead to be traced to a writer.
+   published by the ROOT team, so a failure there is evidence. The 180 of
+   `gen/foreign/` come almost all from uproot's regression suite and include
+   files uproot itself wrote, so a failure there is a lead to be traced to a writer.
 
 ## 10. What you can leave out
 

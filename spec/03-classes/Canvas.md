@@ -107,7 +107,7 @@ would list.
 > declaration order, where `fCatt` is the first member
 > (`root/graf2d/gpad/inc/TCanvas.h:32`), not the last.
 
-## 3. Three empty base classes, three different byte counts
+## 3. Three empty base classes, three different reasons
 
 A `TCanvas` record contains, next to each other, both cases that make "an empty
 base occupies nothing" false as a general rule; the third case is in
@@ -179,6 +179,6 @@ raised by the reader.
 
 | File | What it pins |
 |---|---|
-| `classes/canvas` | §1 in full at version 8, §2.1's seven trailing bytes, and §3: `TQObject` at zero bytes and `TAttBBox2D` at six, six bytes apart. 49 KB of the record is the `TPad`'s primitives and the 800-entry list of colours a canvas holds, all of it read through streamer infos |
+| `classes/canvas` | §1 in full at version 8, §2.1's eight trailing bytes, and §3: `TQObject` at zero bytes and `TAttBBox2D` at six, six bytes apart. 49 KB of the record is the `TPad`'s primitives and the 800-entry list of colours a canvas holds, all of it read through streamer infos |
 | `H1display.root` (`gen/cern/`) | a ROOT 3.05 canvas, whose `TQObject` info is present and empty. Not decodable here: its `TPad` is below class version 6 |
 | — | `TCanvas` versions 1 to 3: needs a pre-ROOT-4 file (`PLAN.md` §9.1) |

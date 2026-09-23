@@ -1,9 +1,11 @@
 /// Every fixed-width scalar element type, in one streamer-info-driven class.
 ///
 /// The class is defined in this macro, so ROOT builds its TStreamerInfo from
-/// the interpreter's view of it. Class version is 1 and no base class is
-/// present, which keeps the record down to a byte count, a version word and the
-/// members back to back.
+/// the interpreter's view of it. It has no ClassDef and so is foreign: the
+/// object's version word is 0 and a checksum follows it, while the streamer info
+/// records class version 1. No base class is present, which keeps the record
+/// down to a byte count, a version word, a checksum and the members back to
+/// back.
 ///
 /// Values are chosen so that every byte of every member is distinct and the
 /// big-endian ordering is visible.

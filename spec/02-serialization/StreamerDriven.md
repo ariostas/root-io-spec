@@ -11,8 +11,9 @@ recursion into base classes, the dependence of one element on another, and what
 to do when the description and the bytes disagree.
 
 It covers every class whose streamer is generated from its member list, which is
-most of them, including all user-defined classes. The classes with a hand-written
-`Streamer` are covered in §7 and `03-classes/`.
+most of them, including user-defined classes unless they declare their own
+`Streamer`. The classes with a hand-written `Streamer` are covered in §7 and
+`03-classes/`.
 
 ## 1. Scope of the algorithm
 
@@ -182,10 +183,10 @@ needs both:
 2. The info's own `fBits` carries `kIgnoreTObjectStreamer`, bit 13
    ([Streamer information §6](StreamerInfo.md#6-tstreamerinfo)).
 
-> This is the one case where an element is present in the description and absent
-> from the bytes. A reader that treats `fElements` as a one-to-one map onto the
-> stream desynchronises here, and silently: the following member reads the wrong
-> bytes.
+> Here an element is present in the description and absent from the bytes, as
+> with a `TQObject` base (§4.4); unlike that case, `fType` -1 says so. A reader
+> that treats `fElements` as a one-to-one map onto the stream desynchronises here,
+> and silently: the following member reads the wrong bytes.
 
 ### 4.3 A base class that is an STL container
 
@@ -196,7 +197,7 @@ type**. Its class is the same as an ordinary collection member's; only its equal
 
 Its bytes are the collection's, framed as
 [Collections §2](Collections.md#2-the-frame) describes, and a reader that treats it
-as a member reads it correctly. It affects element *ordering*, not decoding: §3's
+as a member reads it correctly. It affects element *ordering*, not decoding: §4's
 "bases first" is a statement about `TStreamerBase` elements only.
 
 > Seen in both `uproot-issue433-splitlevel*` files of the foreign corpus
@@ -377,8 +378,8 @@ MUST NOT require its declared type to be described.
 >   `gen/foreign/IGNORE.toml` records it;
 > - 489 inline members name a class with no info; all are exempt;
 > - 289 nullable-pointer members name a class with no info, which is why the
->   last row of the table is *no*. Five declared types account for them:
->   `TVirtualIndex` (`TTree::fTreeIndex`, 145 files), `TArray`,
+>   `kObjectP`/`kAnyP` row of the table is *no*. Five declared types account for
+>   them: `TVirtualIndex` (`TTree::fTreeIndex`, 145 files), `TArray`,
 >   `TGeoPatternFinder`, `TF1AbsComposition` and one user class. The four of
 >   ROOT's own are abstract (`root/tree/tree/inc/TVirtualIndex.h:38`,
 >   `root/core/cont/inc/TArray.h:48`,
@@ -464,9 +465,13 @@ A reader that meets an unknown class therefore has to accept that its info may b
 fiction, and report the mismatch rather than guess (§8). For the ordinary case, a
 class with a generated `Streamer`, the streamer info is authoritative.
 
-> In practice, getting this wrong shows up as a byte-count mismatch on the first
-> object of the class, not as corrupt values: the loop consumes the wrong number
-> of bytes and §8 catches it.
+> Getting this wrong usually shows up as a byte-count mismatch rather than as
+> corrupt values: the loop consumes the wrong number of bytes and §8 catches it,
+> on the first object of the class or, when the class writes no byte count, on
+> the object holding it. It does not when the misreading happens to consume the
+> right number of bytes, or when the bytes the info omits lie outside the byte
+> count, as an `extending` class's do
+> ([Hand-written streamers §3](../99-appendix/HandWrittenStreamers.md#3-extending-the-streamer-info-describes-a-prefix-and-stops)).
 
 `TList` is a good example. Its recorded streamer info lists a `TSeqCollection`
 base, which in turn lists a `TCollection` base holding `fName` and `fSize`.
@@ -553,13 +558,10 @@ the object as a hand-written `Streamer` its info does not describe. Neither test
 is enough on its own: `SmartRef`'s version-first reading passes the second and
 fails the first, and a version word of 1 can pass the first as a `TObject`'s.
 
-> This project's reader passed `uproot-issue475.root` for the wrong reason until
-> 2026-09-23. It read every unframed object version first, which happened to land
-> on each `SmartRef`'s end, and it failed `skim.root`, which ROOT reads correctly.
-> `PLAN-corpus.md` C18 stayed open because applying ROOT's rule everywhere moved
-> the failure from one file to the other, until the second file turned out not to
-> be decodable at all. `tools/check_invariants.py` now reports its two
-> `SimHeader`/`ElecHeader` baskets as skipped, under that reason.
+> `tools/rootfile.py` reads unframed objects this way, and
+> `tools/check_invariants.py` reports `uproot-issue475.root`'s two
+> `SimHeader`/`ElecHeader` baskets as skipped, as a hand-written `Streamer` its
+> info does not describe.
 
 ## 8. Resynchronisation
 

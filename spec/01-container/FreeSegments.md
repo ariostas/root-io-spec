@@ -112,10 +112,11 @@ ROOT's comment there notes that the marker may be absent on disk, in which case
 only recovery suffers. A reader that walks the chain and finds a key where the free
 list says there is a gap SHOULD trust the free list.
 
-> **ROOT's writers do write it, with one historical exception.** In both corpora
-> as of 2026-09-21, 15 of 225 files had interior free space, 139 gaps in all:
-> 4 bytes at the smallest, 63 at the median and 10908 at the largest. In all 15
-> files the markers and the free list agreed on offset and on length. On the
+> **ROOT's writers do write it, with one historical exception.** In both corpora,
+> 17 of 252 files have interior free space, 149 gaps in all: 4 bytes at the
+> smallest, 64 at the median and 10908 at the largest. In 16 of the 17 files the
+> markers and the free list agree on offset and on length; the seventeenth is the
+> exception below. On the
 > write side the marker is **fixed**
 > ([Writing a file §2.3](../06-writing/WritingFiles.md#23-updating-the-free-list-and-the-three-outcomes)),
 > and invariant 6 requires it rather than merely allowing it.
@@ -137,10 +138,10 @@ unmarked remainder.
 > Witnessed by `uproot-physlite-rntuple_v1-0-0-0.root` of the foreign corpus
 > (`gen/foreign/MANIFEST.sha256`), an ATLAS file written by ROOT 6.34/04 whose
 > `RBlob` keys are the historical exception of
-> [Records §3.6](Record.md#36-fseekpdir-and-the-packed-fpidoffset). Six of its
-> seven interior free entries are marked. The seventh, `(200897, 200923)`, begins
-> where the 126-byte `RBlob` at 200771 ends: a 153-byte slot, a 126-byte blob and
-> 27 bytes left over. The four bytes at 200897 are stale (`03 10 dc 00`), and a
+> [Records §3.6](Record.md#36-fseekpdir-and-the-packed-fpidoffset). Seven of its
+> eight interior free entries are marked. The unmarked one, `(200897, 200923)`,
+> begins where the 126-byte `RBlob` at 200771 ends: a 153-byte slot, a 126-byte
+> blob and 27 bytes left over. The four bytes at 200897 are stale (`03 10 dc 00`), and a
 > marker-only walk reads them as a 51 MB record.
 
 ### 4.3 Directories are never freed
@@ -215,9 +216,9 @@ To read the list:
 1. `fEND` equals the last entry's `fFirst`.
 2. The last entry's `fLast > fEND`, and is at least 2000000000. Above that it is a
    multiple of 1000000000.
-3. `nfree` in the header equals the number of entries. This is advisory only:
-   ROOT 4.00 wrote 0 for a two-entry list (`FileHeader.md` §5.4), so
-   `tools/check_invariants.py` exempts files written before ROOT 5.
+3. `nfree` in the header equals the number of entries. This is advisory only
+   (`FileHeader.md` §5.4): every ROOT-written file available satisfies it, but
+   g4tools writes 0 for a two-entry list.
 4. `fSeekFree` equals the free record's own `fSeekKey`, and `fNbytesFree` its
    `fNbytes`.
 5. Entries are in strictly ascending order, non-overlapping and non-adjacent;
@@ -232,7 +233,7 @@ To read the list:
 10. Every interior entry is at least four bytes long. ROOT's allocator takes a
     span only when it fits exactly or has more than three bytes to spare
     (`root/io/io/src/TFree.cxx:137`), so a remainder is never 1, 2 or 3 bytes.
-    Four bytes is what the §4 marker needs. Measured over 142 interior segments
+    Four bytes is what the §4 marker needs. Measured over 159 interior segments
     across both corpora and `data/`, the smallest is four bytes.
 
 Invariants 6 and 7 can legitimately fail, because a `MakeFree` write may have been
@@ -255,6 +256,7 @@ Against `root/io/doc/TFile/freesegments.md` and `gap.md`:
 | 8 | — | A second producer exists: `TKey::Create` marks the remainder of a partially reused gap (§4.1) |
 | 9 | — | Deleting the last record shrinks `fEND`; the marker write is unchecked and may be absent; the span's remaining bytes are stale, not cleared; directory records are never freed (§4.2, §4.3, §6) |
 | 10 | *This document, until 2026-09-22*: "in practice it is never missing" | ROOT 6.34's RNTuple writer left it out after every `RBlob` it placed in a larger free slot, fixed in 6.36.00 (§4.2) |
+| 11 | *This document, until 2026-09-23*: invariant 3 said ROOT 4.00 wrote `nfree` 0 | g4tools does; every ROOT-written file available has the right count (`FileHeader.md` §5.4) |
 
 ## 10. A suspected bug in recovery
 

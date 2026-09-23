@@ -148,7 +148,7 @@ streamer writes only the count and the characters, so the form is bare wherever 
 appears, like §5.1's. The count is signed. Each character is written one at a time
 rather than as a block, which makes no difference on disk.
 
-The two encodings differ only below 255 characters:
+The two encodings differ in the length prefix at every length:
 
 | Length | `TString` | `TStringLong` |
 |---|---|---|
@@ -268,7 +268,7 @@ A reference to a document that has **not been written yet** is written as inline
 code instead, because the site build treats a link to a missing page as an error:
 
 ```markdown
-See [Buffer framing](02-serialization/Buffer.md) for the byte-count encoding.
+See `02-serialization/Buffer.md` for the byte-count encoding.
 ```
 
 Such a reference MUST be converted to a link when its target is written. The
@@ -277,17 +277,20 @@ missing.
 
 ### 6.6 Generated content
 
-Blocks between these markers are produced by `tools/gen_tables.py` from the pinned
-submodule and MUST NOT be hand-edited; CI fails when they are stale:
+Blocks between these markers are produced by a tool and MUST NOT be hand-edited;
+CI runs each tool with `--check` and fails when they are stale:
 
 ```
 <!-- BEGIN GENERATED: <what> -->
 <!-- END GENERATED -->
 ```
 
-Notes that need human judgement go in the sibling `<class>.notes.yaml`, which the
-generator merges in, so that they survive regeneration. Everything outside the
-markers is hand-written.
+`tools/inventory.py` writes the blocks in `spec/99-appendix/` from the pinned
+submodule, and `tools/element_lists.py` writes those in
+`spec/06-writing/ElementLists.md` from the ROOT-written fixtures. Notes that need
+human judgement go in a file the generator merges in, so that they survive
+regeneration: for `inventory.py` that is `spec/99-appendix/streamers.toml`.
+Everything outside the markers is hand-written.
 
 ## 7. Citing the reference implementation
 

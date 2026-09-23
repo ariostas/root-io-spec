@@ -7,11 +7,11 @@
 ///   * an **exact fit**, where the freed span is the same length as the record
 ///     that replaces it, so the TFree entry disappears and nothing is left
 ///     behind. `exact` ends up at the same offset as its first version;
-///   * a **partial fit**, where the record is shorter than the span, so the
-///     remainder keeps its own negative-fNbytes marker. `snug` is written long,
-///     then overwritten short, and the leftover stays;
-///   * the **free-segment record itself** taking a partial fit, because it is
-///     allocated by the same code path as any other record and is written last.
+///   * a **partial fit by an unrelated record**, where the record is shorter
+///     than the span. `snug` is written long, then overwritten short, and
+///     `lodger` is placed in the span it released;
+///   * the **remainder**, which keeps its own negative-fNbytes marker, written
+///     by the new record's key immediately after its payload.
 ///
 /// The "overwrite" option makes this controllable: it frees the old key before
 /// allocating the new one (TDirectoryFile.cxx:1977-1985), so the space
@@ -37,9 +37,10 @@ void gen(const char *out)
    TObjString tail("a record after both, so neither is at the end of the file");
    f.WriteTObject(&tail, "tail", "");
 
-   // exact: shrink, then restore. The shrink frees 248 bytes and uses 125 of
-   // them; the restore frees those 125 back, they coalesce into the original
-   // 248, and 248 is what it needs, so the entry is removed.
+   // exact: shrink, then restore. The shrink frees 213 bytes and uses 90 of
+   // them; the restore frees those 90 back, they coalesce with the 123 left
+   // over into the original 213, and 213 is what it needs, so the entry is
+   // removed.
    TObjString shrunk("short");
    f.WriteTObject(&shrunk, "exact", "overwrite");
    TObjString restored(big);

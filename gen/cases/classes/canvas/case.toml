@@ -25,12 +25,12 @@ Without the `TQObject` rule the read goes out of step at once and cannot
 recover; `tools/rootfile.py` then reports
 `version word 0 for TAttCanvas with checksum 0x0`.
 
-The last seven bytes are not members. `kMoveOpaque`, `kResizeOpaque`,
-`kShowEventStatus`, `kAutoExec` and `kMenuBar` are bits of `fBits` written as
-individual `Bool_t`s, and `fBatch` at 49671 is written and then discarded on read.
-The trailing region is seven fields but eight bytes: fHighLightColor is an i16,
-and it is the only one of the seven that is a persistent data member.
-`TCanvas`'s streamer info ends at `fCatt` and mentions none of them.
+The last eight bytes are seven fields, and six of the eight are not members.
+`kMoveOpaque`, `kResizeOpaque`, `kShowEventStatus`, `kAutoExec` and `kMenuBar`
+are bits of `fBits` written as individual `Bool_t`s, and `fBatch` at 49671 is
+written and then discarded on read. The other two bytes are `fHighLightColor`, an
+i16 at 49669 and the only one of the seven that is a persistent data member. The
+file has no `TCanvas` streamer info to describe any of them. Canvas.md 2.1.
 
 The member names in the source do not reach the file. The streamer is written
 as `b.ClassMember("fDoubleBuffer", "Int_t"); b >> fDoubleBuffer;`, and

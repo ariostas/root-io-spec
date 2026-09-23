@@ -10,9 +10,11 @@ file for, and the entry-to-basket search at its boundaries.
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import check_invariants  # noqa: E402
 import rootfile  # noqa: E402
 
 
@@ -575,6 +577,47 @@ class LegacyBranchLayout(unittest.TestCase):
         decoder = self.Stubbed(buf, 0, [])
         with self.assertRaises(rootfile.FormatError):
             decoder.read_legacy_branch(9, 0, len(buf) - 1)
+
+
+class MaxBasketsByClassVersion(unittest.TestCase):
+    """TBranch.md invariant 11.1 and section 13.2.
+
+    ROOT wrote a flat fMaxBaskets of 1000 at class versions 7 and 8, and
+    max(fWriteBasket + 1, 10) from version 9 on. Version 8 used to be held to
+    the current rule, on the evidence of a g4tools file; the nine roottest files
+    ROOT 3.05-3.10 wrote at version 8 all have 1000.
+    """
+
+    def failures(self, class_version, max_baskets):
+        c = check_invariants.Checker.__new__(check_invariants.Checker)
+        c.path = Path("stub.root")
+        c.failures = []
+        c.branch_class_version = lambda: class_version
+        br = SimpleNamespace(
+            name="b", write_basket=0, max_baskets=max_baskets,
+            basket_bytes=[0] * max_baskets, basket_entry=[0] * max_baskets,
+            basket_seek=[0] * max_baskets, basket_slots=1, branches=[],
+            embedded={}, entries=0, entry_number=0, first_entry=0,
+            entry_offset_len=0, file_name="", leaves=[], tot_bytes=0,
+            zip_bytes=0)
+        c.check_branch(None, br)
+        return [f for f in c.failures if "TBranch 11.1:" in f]
+
+    def test_the_current_rule_passes_everywhere(self):
+        for version in (7, 8, 9, 13):
+            self.assertEqual(self.failures(version, 10), [], version)
+
+    def test_a_flat_1000_passes_at_versions_7_and_8(self):
+        self.assertEqual(self.failures(7, 1000), [])
+        self.assertEqual(self.failures(8, 1000), [])
+
+    def test_a_flat_1000_fails_from_version_9(self):
+        bad = self.failures(9, 1000)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("expected 10", bad[0])
+
+    def test_below_the_floor_fails_at_any_version(self):
+        self.assertEqual(len(self.failures(7, 5)), 1)
 
 
 class CountedPointerWidth(unittest.TestCase):

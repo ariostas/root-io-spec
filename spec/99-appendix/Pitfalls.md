@@ -137,7 +137,7 @@ later wrote. The code says `kStreamer`, but the layout is an STL collection
 anyway. [Streamer information §10](../02-serialization/StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
 
 **The version word inside a 500/501 frame is not the constant 10.** It is
-`TStreamerInfo`'s own class version in the writing ROOT: 8 or less before 5.26,
+`TStreamerInfo`'s own class version in the writing ROOT: 8 or less before 5.27/02,
 9 until 6.35, 10 from 6.36. [Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)
 
 **The order of infos in the `StreamerInfo` record is not a property of the file.**

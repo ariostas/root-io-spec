@@ -14,7 +14,7 @@ their nesting records that they belong together.
 
 In short: **take the structure from `fBranches`, the meaning from
 `fType`/`fID`/`fClassName`, and the counts from `fBranchCount`.** Names, titles
-and `fSplitLevel` are all unreliable for structure, as §4 and §5 show.
+and `fSplitLevel` are all unreliable for structure, as §3 and §4 show.
 
 ## 1. The branch tree
 
@@ -53,7 +53,7 @@ An empty `fLeaves` does **not** by itself mean a branch holds nothing; see §5.
 
 A reader never has to make this decision, because the file records the outcome.
 It does have to know that the outcome can be "not split" even when a high split
-level was requested, which is §7. The rule is `TClass::CanSplit`
+level was requested, which is §6. The rule is `TClass::CanSplit`
 (`root/core/meta/src/TClass.cxx:2326`). A class is **not** split when any of
 these holds:
 
@@ -215,7 +215,7 @@ members of the content at `fSplitLevel` 100, which selects
 ([TBranchElement §8](TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)).
 
 **No file in either corpus does this.** Across the 178 files of `PLAN.md` §9.8
-and §9.9, written by ROOT releases from 4.00 to 6.36, the maximum `fSplitLevel`
+and §9.9, written by ROOT releases from 2.24/00 to 6.36, the maximum `fSplitLevel`
 is 99. `ttree/split-ptr-collection` is the only evidence this specification has;
 everything in this section rests on it and the source.
 
@@ -231,10 +231,11 @@ pc                      TBranchElement   fSplitLevel 199   fType 0, fID -2
 
 Three things in it are new.
 
-**This arrangement produces a `TBranchSTL`.** It is the only branch class in
-ROOT that appears in no file of either corpus. It is a `TBranch` with five added
-persistent members (`root/tree/tree/inc/TBranchSTL.h:71-77`) and no `fType`, so
-nothing in [TBranchElement](TBranchElement.md) applies to it:
+**This arrangement produces a `TBranchSTL`.** It and `TBranchClones` are the
+only branch classes in ROOT that appear in no file of either corpus, not even in
+a streamer info. It is a `TBranch` with five added persistent members
+(`root/tree/tree/inc/TBranchSTL.h:71-77`) and no `fType`, so nothing in
+[TBranchElement](TBranchElement.md) applies to it:
 
 | Member | Type | Value in `ttree/split-ptr-collection` |
 |---|---|---|

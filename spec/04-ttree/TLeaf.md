@@ -172,7 +172,7 @@ given.
 
 ### 4.1 `fLenType` is not the on-disk width
 
-For every fixed-width type the two agree, and for three classes they do not:
+For every fixed-width type the two agree, and for four classes they do not:
 
 | Class | `fLenType` | On disk |
 |---|---|---|
@@ -456,11 +456,11 @@ Neither is where a string's length comes from.
 > next entry's first byte as the length.
 >
 > A branch `x/I:c/C` with `x` = `0x02414243` and the strings `"ab"`, `""`, `"cd"`
-> makes ROOT return `"AB"` for the second entry, the first two bytes of the third
-> entry's `x`. The error is not always visible: a following byte of 0 gives the
-> right answer by accident, and a large one is refused by a length check in
-> `TBufferFile`. That is why the arrangement in `ttree/leaf` round-trips. See
-> `PLAN.md` §7.1.
+> makes ROOT return `"AB"` for the second entry: it takes the first byte of the
+> third entry's `x`, 0x02, as the length, and the next two bytes as the string.
+> The error is not always visible: a following byte of 0 gives the right answer
+> by accident, and a large one is refused by a length check in `TBufferFile`.
+> That is why the arrangement in `ttree/leaf` round-trips. See `PLAN.md` §7.1.
 
 ## 10. Invariants
 
@@ -482,11 +482,12 @@ Neither is where a string's length comes from.
    `TLeafC`, **and whose `fEntryOffsetLen` is 0**, the sum of `width × fLen` over
    its leaves equals the basket's `fNevBufSize`, and the basket has no
    entry-offset array. The baskets follow `fEntryOffsetLen`, which is the
-   writer's decision: a current writer sets it to 0 on such a branch, but a ROOT
-   4.00-era writer left it at the default 1000, and its baskets then do have an
-   offset array for fixed-width leaves. An example is `uproot-issue-250.root`,
-   whose `TLeafD` branches have `fEntryOffsetLen` 1000, `fNevBufSize` 1000 and
-   offsets 8 bytes apart.
+   writer's decision. ROOT sets it to 0 on such a branch, and every ROOT-written
+   file available agrees, including 867 such branches in fifteen files older
+   than ROOT 5. g4tools leaves it at the default 1000, and its baskets then do
+   have an offset array for fixed-width leaves: `uproot-issue-250.root`'s
+   `TLeafD` branches have `fEntryOffsetLen` 1000, `fNevBufSize` 1000 and offsets
+   8 bytes apart.
 7. For any branch, the sum over its leaves of that entry's bytes equals the length
    of the entry's byte range.
 8. `fOffset` of the first leaf of a branch is 0, unless the branch is under a
@@ -556,6 +557,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 11 | `root/tree/tree/inc/TLeaf.h:77`: `fOffset` is the "Offset in ClonesArray object (if one)" | Its usual meaning is a position within a basket entry; the `TClonesArray` reading is the rarest of three (§3.2) |
 | 12 | `root/tree/tree/src/TBranch.cxx:147-162` lists the leaflist codes | Accurate, but it never says only the first character is read, so `x/F16` silently produces a `TLeafF` (§2.1) |
 | 13 | `ttree.md:81` and `root/tree/tree/inc/TLeaf.h:75`: `fLen` is the "Number of fixed length elements in the leaf's data" | Not on a `TLeafC`: there it is the longest string written plus one, changed during writing, and used on read as the caller's buffer size. It can be smaller than the longest string in the file, and ROOT then truncates (§9.1) |
+| 14 | *This document, until 2026-09-23*: invariant 10.6 said a ROOT 4.00-era writer left `fEntryOffsetLen` at 1000 on a fixed-width branch | g4tools does. Every ROOT-written file available sets 0 there, back to 3.04/02 (§10, invariant 6) |
 
 `TLeafC::ReadBasketExport` is a second decoder, and a worse one
 (`root/tree/tree/src/TLeafC.cxx:175-192`). It is reached only through

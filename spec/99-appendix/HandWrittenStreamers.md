@@ -6,7 +6,10 @@ in the file describes the bytes, and a reader needs no per-class knowledge to
 decode them. The exception is a class that replaces the `Streamer` its `ClassDef`
 would have generated, and **nothing in the file says which classes those are**.
 A reader that trusts the streamer info decodes such a class into plausible
-garbage, with no error and no byte count mismatch to warn it.
+garbage, and a byte count check does not always warn it. Some of these classes
+write no byte count of their own: `TArrayF::Streamer` writes a count and the
+values, unframed (`root/core/cont/src/TArrayF.cxx:147`). The extra bytes an
+`extending` class reads lie outside its byte count (§3).
 
 The set therefore has to come from ROOT's source rather than from a file. This
 page lists it, extracted from the pinned submodule by `tools/inventory.py` and
@@ -14,8 +17,8 @@ checked in CI, so a class that gains or loses a hand-written `Streamer` in a lat
 release cannot go unnoticed.
 
 A generated `Streamer` can also diverge, in one specific way: for a class whose
-version is 0 and which was selected with a plain `#pragma link`, `rootcling`
-writes a body that calls its bases and returns. Those classes are listed by the
+version is 0 and which was selected with a plain `#pragma link`, with no `+`,
+`rootcling` writes a body that calls its bases and returns. Those classes are listed by the
 same tool in [Forwarding streamers](ForwardingStreamers.md).
 
 <!-- BEGIN GENERATED: summary -->
@@ -61,9 +64,8 @@ what the reading branch does, the definitions fall into four kinds:
     streamer that delegates unconditionally and then consults the version only
     to repair a title or a filename is `delegating`, not `guarded`, because
     there is no legacy layout for a reader to implement. `TEntryList`,
-    `TLeafF16` and `TLeafD32` have that shape; `tools/inventory.py` classified
-    them as `guarded` until 2026-09-18. `TH2F` takes the generated path at class
-    version 3 and above and has two legacy shapes below it
+    `TLeafF16` and `TLeafD32` have that shape. `TH2F` takes the generated path
+    at class version 3 and above and has two legacy shapes below it
     (`root/hist/hist/src/TH2.cxx:3977`). Every version a ROOT 6 file contains is
     on the generated side, so these cost a reader nothing for current files. The
     legacy layouts need a pre-6 ROOT to test against and are tracked as gaps in
@@ -87,7 +89,7 @@ fails on one that is not. `gap` is the worklist.
 |---|---|---|---|
 | `REveTrans` | `root/graf3d/eve7/src/REveTrans.cxx:941` | out-of-scope | the ROOT 7 event display |
 | `RModel` | `root/tmva/sofie/src/RModel.cxx:1914` | out-of-scope | TMVA SOFIE |
-| `RooAbsBinning` | `root/roofit/roofitcore/src/RooAbsBinning.cxx:117` | specified | [RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-a-tnamed-it-does-not-declare) |
+| `RooAbsBinning` | `root/roofit/roofitcore/src/RooAbsBinning.cxx:117` | specified | [RooFit §4.1](../03-classes/RooFit.md#41-rooabsbinning-writes-its-bases-and-usually-no-info-describes-them) |
 | `RooCFunction1Ref` | `root/roofit/roofit/inc/RooCFunction1Binding.h:145` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
 | `RooCFunction2Ref` | `root/roofit/roofit/inc/RooCFunction2Binding.h:161` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
 | `RooCFunction3Ref` | `root/roofit/roofit/inc/RooCFunction3Binding.h:165` | gap | RooFit — a persistent reference to a compiled C function, by index into a registry; no file in either corpus contains one |
@@ -95,7 +97,7 @@ fails on one that is not. `gap` is the worklist.
 | `RooLinkedList` | `root/roofit/roofitcore/src/RooLinkedList.cxx:891` | specified | [RooFit §3](../03-classes/RooFit.md#3-roolinkedlist) |
 | `RooRealVar` | `root/roofit/roofitcore/src/RooRealVar.cxx:1252` | specified | [RooFit §2](../03-classes/RooFit.md#2-roorealvar) |
 | `RooRefArray` | `root/roofit/roofitcore/src/RooAbsArg.cxx:2195` | specified | [RooFit §4.2](../03-classes/RooFit.md#42-roorefarray-writes-a-trefarray) |
-| `RooWorkspace::CodeRepo` | `root/roofit/roofitcore/src/RooWorkspace.cxx:2427` | gap | RooFit — the code repository nested inside a workspace; it blocks two records in stressRooFit_v534_ref.root |
+| `RooWorkspace::CodeRepo` | `root/roofit/roofitcore/src/RooWorkspace.cxx:2427` | gap | RooFit — the code repository nested inside a workspace; it leaves one RooWorkspace record partial in each of stressRooFit_v522_ref.root and stressRooFit_v534_ref.root |
 | `TASImage` | `root/graf2d/asimage/src/TASImage.cxx:6080` | gap | graf2d; an embedded image |
 | `TArrayC` | `root/core/cont/src/TArrayC.cxx:147` | specified | [TArray](../03-classes/TArray.md) |
 | `TArrayD` | `root/core/cont/src/TArrayD.cxx:148` | specified | [TArray](../03-classes/TArray.md) |
@@ -177,9 +179,8 @@ Every row is resolved in `streamers.toml`, like `custom`.
 <!-- END GENERATED -->
 
 A reader that treats these as `delegating` stops at the end of the framed part
-and reports no error. This page classified them that way until 2026-09-17, and
-the corpora showed the consequence throughout: five `TMatrixTSym<double>` records
-in one file, each decoding 48 bytes of 3528 or 13736 and passing every
+and reports no error. In one corpus file, that reading decodes 48 bytes of each
+of five `TMatrixTSym<double>` records of 3528 or 13736 bytes, and passes every
 consistency check (`PLAN.md` §9.8).
 
 ## 4. `guarded` — hand-written below a version threshold

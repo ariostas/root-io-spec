@@ -71,7 +71,7 @@ this section says what the two situations *mean*.
 
 **Version 0 means transient, but for data members only.**
 `TStreamerInfo::Build` skips the data-member loop entirely when the class version
-is 0 (`root/io/io/src/TStreamerInfo.cxx:548-550`). Base classes are collected by
+is 0 (`root/io/io/src/TStreamerInfo.cxx:552-554`). Base classes are collected by
 a separate, earlier loop (`root/io/io/src/TStreamerInfo.cxx:469`) and are not
 skipped, so a version-0 class with bases writes a full payload.
 
@@ -138,10 +138,11 @@ that 0, because it calls the single-argument overload and never sees `isvalid`
 (`root/io/io/src/TStreamerInfo.cxx:447`). The file therefore records a failure
 that the writing session was told about and that a reader cannot see.
 
-> Measured across `data/` and both corpora, 307 files carrying infos: two entries
-> have `fCheckSum` 0, both in `uproot-issue283.root` (ROOT 5.28/00):
-> `Sni3DataArray` and `I3Eval_t::ChannelContainer_t`, class version 1, no
-> elements.
+> Measured across `data/` and both corpora, 307 files carrying infos (the 306 of
+> [Streamer-driven reading §6.1](StreamerDriven.md#61-which-classes-the-file-must-describe)
+> and `uproot-issue283.root`): two entries have `fCheckSum` 0, both in
+> `uproot-issue283.root` (ROOT 5.28/00): `Sni3DataArray` and
+> `I3Eval_t::ChannelContainer_t`, class version 1, no elements.
 >
 > Their emptiness does not explain it. 247 other infos across those files also
 > have no elements, and each has the fold of its own class name:
@@ -394,9 +395,9 @@ the writing session's in-memory status. In every case measured this includes the
 (`root/core/base/inc/TObject.h:90-91`), which say only that the object was on the
 heap and had not been destructed.
 
-> Measured across `data/` and both corpora: three files have a duplicate, all of
-> them `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`, and the differing bit
-> is **not the same one**:
+> Measured across `data/` and both corpora: three files have a duplicate of the
+> first kind, all of them `ROOT::TIOFeatures` version 1, checksum `0x1aa12f10`,
+> and the differing bit is **not the same one**:
 >
 > | File | `fBits` | Differ in |
 > |---|---|---|
@@ -416,7 +417,7 @@ heap and had not been destructed.
 > it does not qualify under the rule in `gen/cern/README.md`. The count above is
 > what this project measured, not an estimate of how common the pattern is.
 >
-> The fourth duplicate in `data/` is of the other kind: `data/written/two-versions.root`
+> One file in `data/` has a pair of the second kind: `data/written/two-versions.root`
 > holds `Grown` at versions 1 and 2 with different checksums, where the two
 > entries describe genuinely different layouts and the version word chooses.
 
@@ -441,13 +442,14 @@ heap and had not been destructed.
    version word (§4), not by position in the list.
 
 **There is deliberately no uniqueness invariant.** Two entries for one class may
-share a `fClassVersion` and differ in `fCheckSum`, which §3 says is how an
+share a `fClassVersion` and differ in `fCheckSum`, which §4 says is how an
 unversioned class is disambiguated; and they may agree on both, which §8.1 shows
 ROOT writing. A reader must index the list in a way that tolerates either.
 Invariant 6 is the weaker statement that replaces uniqueness.
 
-Invariant 2 is what makes §4 step 2 well defined, and so gives checksums their
-role.
+Invariant 6 is what makes §4 step 2 well defined when more than one entry
+matches: entries that agree on both `fClassVersion` and `fCheckSum` have the same
+elements, so any of them will do.
 
 ## 10. Errata
 

@@ -34,7 +34,8 @@ timestamp is masked. `tools/test_write.py` asserts all three.
 | `data/written/cluster.root` | `data/ttree/clusters.root` | one branch, nineteen entries, **five baskets** and two closed cluster ranges (§7) |
 | `data/written/leafc.root` | `data/ttree/strings.root` | a `/C` string branch beside a fixed-width one: all three entry forms, the empty one included (§4.5) |
 
-In each pair only the `StreamerInfo` record differs, by one entry (§8.1).
+In each pair the `StreamerInfo` record is byte-identical too, including the
+`listOfRules` entry ROOT appends (§8.1).
 
 These comparisons are stricter than the histogram one, because a branch stores its
 baskets' offsets: a single byte's difference anywhere earlier in the file changes
@@ -127,7 +128,8 @@ byte count 7  ver 0   checksum      fIOBits
 The checksum is the class's own and is constant. Each `TBranch` holds one too.
 
 **Its streamer info must record `fClassVersion` 1**, not the 0 in the version word;
-§7 lists it that way, and
+[Element lists §7](ElementLists.md#7-a-flat-tree-file-the-other-ten) lists it that
+way, and
 [Writing an object §2](WritingObjects.md#2-a-version-word-of-0-and-when-a-writer-must-emit-one)
 says why getting it wrong costs every reader four bytes per tree and per branch.
 
@@ -187,9 +189,9 @@ basket found there reports the same `fSeekKey`
 Error("GetBasket","File: %s at byte:%lld, branch:%s, entry:%lld, badread=%d, …")
 ```
 
-Everything else fails silently:
+Everything else fails silently, except the first item below:
 
-- **`fBasketEntry[0]` must equal `fFirstEntry`.** It is the only value that
+- **`fBasketEntry[0]` must equal `fFirstEntry`.** It is the only other value that
   produces a message when wrong,
   `In the branch %s, no basket contains the entry %lld`
   (`root/tree/tree/src/TBranch.cxx:1374`), because the binary search returns
@@ -597,7 +599,7 @@ Three of them are there for reasons a writer would not guess:
 
 [Element lists](ElementLists.md) publishes all eighteen, member by member, with
 the checksum beside each. A writer that emits them in the order above produces a
-record **byte-identical** to ROOT's up to the one entry below
+record **byte-identical** to ROOT's, provided it also appends the entry below
 (`tools/test_write.py`).
 
 ### 8.1 ROOT appends two rules that a new file cannot use

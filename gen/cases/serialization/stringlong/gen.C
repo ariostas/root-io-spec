@@ -3,12 +3,12 @@
 ///
 /// Two objects, chosen so that every branch of both encodings appears:
 ///
-///   * `short`, six characters. `TString` writes `06` and the bytes;
+///   * `small`, six characters. `TString` writes `06` and the bytes;
 ///     `TStringLong` writes `00 00 00 06` and the bytes.
-///   * `long`, 300 characters. `TString` writes `ff` then `00 00 01 2c` then the
+///   * `big`, 300 characters. `TString` writes `ff` then `00 00 01 2c` then the
 ///     bytes (the 255 escape of Conventions 5.1), while `TStringLong` writes
-///     `00 00 01 2c` and the bytes, as before. Above 254 characters the
-///     two encodings agree in length and differ in nothing else.
+///     `00 00 01 2c` and the bytes, as before. Above 254 characters `TString` is
+///     one byte longer, the escape, and the two differ in nothing else.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "TStringLong against TString", 0);

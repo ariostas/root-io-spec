@@ -6,8 +6,10 @@
 /// fObjlen pins the element width.
 ///
 /// The values are chosen so that each array's bytes are distinguishable: the
-/// first element is the element width, the second is 0x7F repeated to fill the
-/// type, which also shows the signedness of the 1- and 2-byte forms.
+/// first element is the element width. The second is 0x7F repeated to fill the
+/// type for TArrayC, TArrayS and TArrayI, the largest signed value of each; a
+/// long decimal constant for TArrayL and TArrayL64; and 0.5 for TArrayF and
+/// TArrayD.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "the TArray classes", 0);

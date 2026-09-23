@@ -1,17 +1,17 @@
 # RooFit
 
-Six RooFit classes replace the `Streamer` their `ClassDef` would generate, and a
-file containing a workspace, a plot or a fit result holds all of them. Without
-them the rest of a RooFit file cannot be read: every `RooAbsArg` has a proxy list,
-every `RooRealVar` has a binning, and a reader that stops at one of these also
-stops at the object that contains it.
+Five RooFit classes replace the `Streamer` their `ClassDef` would generate, and
+a file containing a workspace, a plot or a fit result holds several of them.
+Without them the rest of a RooFit file cannot be read: every `RooAbsArg` has a
+proxy list, every `RooRealVar` has a binning, and a reader that stops at one of
+these also stops at the object that contains it.
 
 Between them they show every way a streamer info can be wrong.
 `RooRealVar` has no info in the file at all. `RooLinkedList` has one that names
 a member it never writes and omits most of its bytes. `RooCategory` has one that
-is right at class version 3 and wrong below it. `RooAbsBinning` writes a base
-class its own declaration does not have, and `RooRefArray` writes a different
-class entirely.
+is right at class version 3 and wrong below it. `RooAbsBinning` is named as a
+base by the info of every concrete binning but usually has no info of its own,
+and `RooRefArray` writes a different class entirely.
 
 > **None of them is `extending`.** Every byte each one writes is inside its byte
 > count, where it has one, so an object of any of these classes can still be
@@ -122,8 +122,9 @@ A file may still have one. An info is written for every class ROOT touches
 through the generated path, and a `RooRealVar` that also reaches a file as a
 `RooVectorDataStore`'s `_nativeReal` is such a class. Its absence therefore means
 nothing, and its presence does not make it usable: the info describes the first
-four members and stops, and following it consumes 369 of the 429 bytes a
-version-10 object claims.
+four members and stops. On `classes/roofit` following it stops at 917, 380
+bytes into the 440 the byte count claims, and leaves the 60-byte tail of §2.2
+unread.
 
 ## 3. `RooLinkedList`
 
@@ -166,10 +167,10 @@ classes reach it through the generated path. The info says:
 | the `_size` object slots | **absent** | yes, and they are most of the bytes |
 | `_name` | `TString` (from version 2) | yes |
 
-A reader that follows the info reads the version word and the first eight bytes
-of the `TObject` base as `_hashThresh`, and then stops four bytes into a stream
-of object slots. It desynchronises without any error, because there is no byte
-count to catch it.
+A reader that follows the info reads the version word and the `TObject` base
+correctly, then takes `_size` for `_hashThresh` and the first four bytes of the
+first object slot for `_size`, and reads `_name` from inside the slots. It
+desynchronises without any error, because there is no byte count to catch it.
 
 > The two errors nearly cancel. The info's prefix (`TObject`, `_hashThresh`,
 > `_size`) is 10 + 4 + 4 = 18 bytes, and the real prefix (version word,
@@ -181,25 +182,28 @@ count to catch it.
 > and it names three fields that are not there. `_hashThresh` is not in the
 > stream at any version.
 
-## 4. Two classes reached from every `RooAbsArg`
+## 4. Two classes reached from every `RooRealVar`
 
 Neither is ever the class of a record. Both are reached as members, and neither
-writes an info of its own, so a file that contains any `RooRealVar` contains two
-more classes it does not describe.
+`Streamer` writes an info, so a file that contains any `RooRealVar` usually
+contains two more classes it does not describe.
 
-### 4.1 `RooAbsBinning` writes a `TNamed` it does not declare
+### 4.1 `RooAbsBinning` writes its bases, and usually no info describes them
 
-`RooAbsBinning` derives from `TNamed` and `RooPrintable` in C++, and its
-`Streamer` writes that: a byte count, a version word, a `TNamed`, and
-`RooPrintable`'s empty six-byte frame
-(`root/roofit/roofitcore/src/RooAbsBinning.cxx:134-136`). At version 1 it wrote
-a bare `TObject` in place of the `TNamed` (`:125-129`); handling that schema
-change is why the custom streamer exists.
+`RooAbsBinning` derives from `TNamed` and `RooPrintable`
+(`root/roofit/roofitcore/inc/RooAbsBinning.h:33`), and its `Streamer` writes
+that: a byte count, a version word, a `TNamed`, and `RooPrintable`'s empty
+six-byte frame (`root/roofit/roofitcore/src/RooAbsBinning.cxx:134-136`). At
+version 1 it wrote a bare `TObject` in place of the `TNamed` (`:125-129`);
+handling that schema change is why the custom streamer exists.
 
 A concrete binning (`RooUniformBinning`, `RooRangeBinning`, `RooParamBinning`)
 is streamer-info driven, and its info has a `kBase` element naming
-`RooAbsBinning`. The base is thus declared present but never described, which is
-the case
+`RooAbsBinning`. The `Streamer` never calls `WriteClassBuffer`, so the base is
+usually declared present but not described. Of the five files in the fixtures,
+`gen/cern/` and `gen/foreign/` with an info for a concrete binning, only
+`stressRooFit_v522_ref.root` also has one for `RooAbsBinning`, and it lists the
+two bases correctly. That is the case
 [Streamer-driven reading §10](../02-serialization/StreamerDriven.md) invariant 5
 exempts for this reason.
 
@@ -254,8 +258,8 @@ At both versions the tail is inside the byte count and in no streamer info.
 
 ## 6. Reading
 
-1. Read the object's class as usual. If it is one of the six in §1, do not look
-   for a streamer info for it.
+1. Read the object's class as usual. If it is one of the five in §1 with a
+   `Streamer` of its own, do not look for a streamer info for it.
 2. `RooRealVar`: take the byte count and version word, read the
    `RooAbsRealLValue` base through its own info, then the members §2.1 gives for
    that version. The object ends where the byte count says, tail included.
@@ -271,8 +275,9 @@ At both versions the tail is inside the byte count and in no streamer info.
 
 ## 7. Invariants
 
-1. Every object of the six classes in §1 ends exactly where §6 says, and for
-   the five that have a byte count, exactly where that byte count says.
+1. Every object of the five classes in §1 with a `Streamer` of their own ends
+   exactly where §6 says, and for the four that have a byte count, exactly where
+   that byte count says.
 2. A `RooLinkedList`'s `_size` is not negative, and the `_size` object slots
    that follow it end inside the record that contains the list.
 3. A `RooRefArray` holds exactly one `TRefArray`, and its byte count ends where
@@ -293,7 +298,7 @@ byte count catches it.
 
 | # | Was claimed | Actually |
 |---|---|---|
-| 1 | `PLAN.md` decision 8, until 2026-09-21: RooFit is out of scope | Revised. The classes here are six, not the fifteen the decision counted, and four of them are reached from any `RooAbsArg` |
+| 1 | `PLAN.md` decision 8, until 2026-09-21: RooFit is out of scope | Revised. The classes here are five, not the fifteen the decision counted, and two of them are reached from any `RooRealVar` (§4) |
 | 2 | [Issue #1](https://github.com/ariostas/root-io-spec/issues/1) item 8: a `RooRealVar` is followed by a framed object **past its own byte count** | The object is there; the byte count covers it (§2.2). `RooRealVar` is `custom`, not `extending`, and the difference determines whether skipping it by its byte count works |
 | 3 | Issue #1 item 9: the extra frame is around `RooAbsCategory`'s members | It is `RooCategory`'s, one level up, and only below class version 3 (§5) |
 | 4 | Issue #1 item 7: `RooLinkedList` v3 is `TObject`, `Short_t _hashThresh`, `Int_t fSize`, then slots | The same bytes, three fields misnamed: the first two bytes are the version word, `_hashThresh` is never written, and a `TString` follows the slots (§3.2) |
@@ -313,10 +318,11 @@ The corpora cover every version this document names except `RooRealVar` 1–3 an
 `uproot-issue49.root` (6.04/16) and `uproot-issue-350.root` (6.24/00) have
 `RooLinkedList` at **3**. Between them they hold 274 records of a RooFit class,
 and 272 of them decode, each accounting for exactly its byte count. The two that
-do not are the `RooWorkspace` records, which are blocked by
-`RooWorkspace::CodeRepo`.
+do not are the `RooWorkspace` records, one in each stress file, which decode
+except for their `RooWorkspace::CodeRepo` member.
 
-`RooWorkspace::CodeRepo` is the only RooFit class with a hand-written `Streamer`
-that this document does not describe; it is recorded as a gap in
-`spec/99-appendix/streamers.toml` and blocks two records in
-`stressRooFit_v534_ref.root`.
+`RooWorkspace::CodeRepo` and the four `RooCFunctionNRef` classes have
+hand-written `Streamer`s that this document does not describe. They are recorded
+as gaps in `spec/99-appendix/streamers.toml`. `CodeRepo` leaves one `RooWorkspace` record partial in each of the two
+stress files, and no file in either corpus contains a
+`RooCFunctionNRef`.

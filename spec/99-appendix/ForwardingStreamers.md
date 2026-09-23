@@ -9,8 +9,8 @@ base classes.
 A reader cannot work this out from a file. The class has a streamer info like any
 other, and that info records a class version of 0 like any other version-0 class.
 The only thing that separates it from a version-0 class read the ordinary way is
-a `+` in a `LinkDef.h`, which no file contains. The list therefore has to be
-published, and this page publishes it.
+that its `#pragma link` line in a `LinkDef.h` has no `+`, and no file contains
+that line. The list therefore has to be published, and this page publishes it.
 
 ## 1. The rule
 
@@ -63,17 +63,19 @@ As a result:
 ### 1.2 The streamer info agrees, for a reason worth knowing
 
 `TStreamerInfo::Build` skips every data member of a class whose class version
-is 0 (`root/io/io/src/TStreamerInfo.cxx:552-554`). A modern info for one of
+is 0 (`root/io/io/src/TStreamerInfo.cxx:552-554`). An info for one of
 these classes therefore lists its base classes and nothing else, which matches
 the bytes. The info is correct about the content and wrong only about the
 framing.
 
-Older files differ. Two ROOT 4.00/00 files in `gen/foreign/` have a
-`TSeqCollection` info at class version 0 whose elements are the `TCollection`
-base **and `fSorted`**, a `Bool_t` that the forwarding streamer has never
-written. `fSorted` is still a persistent member today
-(`root/core/cont/inc/TSeqCollection.h:31`); the version-0 rule above, not the
-declaration, keeps it out of the info.
+Every ROOT-written file available agrees, back to ROOT 3.03: 50 files older
+than ROOT 5 carry a `TSeqCollection` info, and each lists the `TCollection` base
+alone. A third-party writer can get this wrong. The two g4tools files in
+`gen/foreign/`, whose headers claim ROOT 4.00/00, have a `TSeqCollection` info
+at class version 0 whose elements are the `TCollection` base and `fSorted`, a
+`Bool_t` that the forwarding streamer has never written. `fSorted` is still a
+persistent member today (`root/core/cont/inc/TSeqCollection.h:31`); the version-0
+rule above, not the declaration, keeps it out of the info.
 
 ## 2. The list
 
@@ -96,18 +98,18 @@ The exceptions are deliberate. ROOT's pure-subclass containers are here
 to the class they derive from. Writing only the bases is the intended behaviour,
 not a side effect.
 
-Across the 227 files of both corpora, ROOT 2.24/00 to 6.36/02, of which 219 have
-a `StreamerInfo` record: no record has one of these as its class, and only three
-are named by any streamer info.
+Across the 252 files of both corpora, ROOT 2.24/00 to 6.38/00, of which 249 have
+a `StreamerInfo` record `tools/rootfile.py` reads: no record has one of these as
+its class, and only three are named by any streamer info.
 
-| Class | Where it turns up | Files, of 219 |
+| Class | Where it turns up | Files, of 249 |
 |---|---|---|
-| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 211 |
-| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 79 |
+| `TSeqCollection` | a `kBase` of `TList` and `TObjArray`, whose own `Streamer`s are hand-written and never read it | 218 |
+| `THashList` | the type of `TAxis::fLabels` and `TGeoManager::fHashPNE`, so any labelled axis writes one | 80 |
 | `TVirtualPerfStats` | a `kBase` of `TTreePerfStats`, in `aod_flushed.root` | 1 |
 
-> The `THashList` count rose from 33 to 79 when `gen/cern/`'s geometry tier was
-> listed on 2026-09-21: 46 more `TGeoManager` files, each with an `fHashPNE`.
+> 44 of the 80 `THashList` files are `TGeoManager` files in `gen/cern/`'s
+> geometry tier, each with an `fHashPNE`.
 
 A reader can hardcode those three and keep the rest as a lookup table for
 unexpected files. `tools/rootfile.py` does this, and documents it.

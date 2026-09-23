@@ -9,8 +9,9 @@
 ///
 /// That hundreds component is then passed down to every sub-branch rather than
 /// decremented (root/tree/tree/src/TBranchElement.cxx:6279-6280), so the
-/// members of the collection's content end up with fSplitLevel above 100.
-/// SetReadLeavesPtr tests that to choose
+/// members of the collection's content end up with fSplitLevel at least 100;
+/// here it is exactly 100.
+/// SetReadLeavesPtr tests fSplitLevel >= 100 to choose
 /// ReadLeavesCollectionSplitVectorPtrMember over ReadLeavesCollectionMember
 /// (root/tree/tree/src/TBranchElement.cxx:5779-5787).
 ///
