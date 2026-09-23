@@ -1,9 +1,9 @@
 /// Gate 3 for `written/streamerinfo`.
 ///
-/// The decisive part is what is *not* printed: our TStreamerInfo carries the
+/// The main check is that nothing is printed: our TStreamerInfo has the
 /// checksum ROOT computes for its own TObjString, so TStreamerInfo::BuildCheck
-/// has nothing to say. tools/check_write.py fails the case on any ROOT
-/// diagnostic, so silence here is an assertion about the checksum algorithm.
+/// does not warn. tools/check_write.py fails the case on any ROOT diagnostic,
+/// so no output here is an assertion about the checksum algorithm.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -40,7 +40,7 @@ void verify(const char *path)
       // ElementTypes.md 3. ROOT reads back what we wrote.
       if (base->GetType() != TVirtualStreamerInfo::kTObject)
          printf("FAIL first element type %d\n", base->GetType());
-      // fBaseCheckSum rides in fMaxIndex[1].
+      // fBaseCheckSum is stored in fMaxIndex[1].
       if (base->GetMaxIndex(1) != (Int_t)0x901bc02d)
          printf("FAIL base checksum 0x%08x\n", base->GetMaxIndex(1));
    }
@@ -53,7 +53,7 @@ void verify(const char *path)
       if (k->GetObjlen() != 621) printf("FAIL key fObjlen %d\n", k->GetObjlen());
    }
 
-   // And the payload, which only comes back if the block header was right.
+   // The payload, which only comes back if the block header was right.
    TObjString *s = (TObjString *)f->Get("str");
    if (!s) {
       printf("FAIL no TObjString\n");

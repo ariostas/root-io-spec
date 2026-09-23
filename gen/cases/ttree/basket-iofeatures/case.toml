@@ -3,31 +3,31 @@ file = "data/ttree/basket-iofeatures.root"
 size = 16654
 
 description = """
-Baskets written with kGenerateOffsetMap, the one optional IO feature ROOT has.
+Baskets written with kGenerateOffsetMap, the only optional IO feature ROOT has.
 
-The same two branches as ttree/basket, so the three basket fixtures -- record,
-embedded, generated -- differ in one thing each. Both of the paths this file
-exercises had no reference file before, and both mislead a reader that ignores
+The same two branches as ttree/basket, so the three basket fixtures (record,
+embedded, generated) differ in one thing each. Neither of the paths this file
+exercises had a reference file before, and both mislead a reader that ignores
 fIOBits.
 
-What this case pins down:
+What this case shows:
 
-- fNevBufSize is written NEGATED with a fIOBits byte after it, so the basket
-  header is 20 bytes rather than 19 and fKeylen is 66 rather than 65. Nothing in
-  the class version says so: a version-3 basket with no features set is
-  byte-identical to a version-2 one, and the SIGN of fNevBufSize is the only
+- fNevBufSize is written negated with a fIOBits byte after it, so the basket
+  header is 20 bytes rather than 19 and fKeylen is 66 rather than 65. The class
+  version does not show it: a version-3 basket with no features set is
+  byte-identical to a version-2 one, and the sign of fNevBufSize is the only
   signal.
 - Branch n keeps flag 0 and a real fNevBufSize of -4: its entries are fixed-size
   and need no offsets, so the feature changes only the header.
-- Branch a writes flag 80 and NO entry-offset array at all. Its fObjlen, 24,
+- Branch a writes flag 80 and no entry-offset array at all. Its fObjlen, 24,
   equals fLast - fKeylen exactly, which is also what a fixed-length basket looks
-  like -- and its fNevBufSize is 1000, the array capacity. Multiplying that out
+  like, and its fNevBufSize is 1000, the array capacity. Multiplying that out
   would claim 3000 bytes of payload where there are 24. TBasket.md section 6's
   arithmetic must not be applied without testing fIOBits first.
 - The offsets a reader has to generate are 66, 70 and 78: fKeylen, then
   fLenType x the count from branch n at each entry. They land on the floats
   0.0 / 1.0 1.0 / 2.0 2.0 2.0, the same values ttree/basket stores explicitly.
-- Both branches carry fIOBits 1 in their own fIOFeatures, copied from the tree.
+- Both branches have fIOBits 1 in their own fIOFeatures, copied from the tree.
 
 A leaflist tree on purpose: kGenerateOffsetMap never reaches a TBranchElement,
 because its constructors do not copy the tree's features. See PLAN.md 7.1 item 3.

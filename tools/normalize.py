@@ -6,13 +6,13 @@ clock in `fDatime`, and every file gets a fresh `TUUID`. To still detect real
 format changes, we digest a *normalized* copy in which those fields are
 overwritten with zeros.
 
-Masking strategy (deliberately blunt, and stated here because it is a tradeoff):
+Masking strategy (deliberately blunt; the tradeoff is stated at the end):
 
   * the file header's 16 UUID bytes, located by parsing the header;
   * every record's `fDatime`, located by walking the record chain;
   * every directory record's own UUID and its `fDatimeC`/`fDatimeM`, located by
-    parsing the directory structure -- each directory carries a *distinct* UUID,
-    so the file-level one is not enough;
+    parsing the directory structure (each directory has a *distinct* UUID, so
+    the file-level one is not enough);
   * every further occurrence, anywhere in the file, of any UUID or `fDatime`
     value found above;
   * every canonical UUID *string*, found by pattern. A `TProcessID` record
@@ -20,19 +20,20 @@ Masking strategy (deliberately blunt, and stated here because it is a tradeoff):
     the payload, and that UUID is unrelated to the file's own;
   * every `TStreamerElement::fSize` in an uncompressed `StreamerInfo` record.
     `fSize` is `sizeof` on the *writing* machine, and it differs between standard
-    libraries for several ordinary types -- `sizeof(std::string)` is 24 with
+    libraries for several ordinary types: `sizeof(std::string)` is 24 with
     libc++ and 32 with libstdc++, `sizeof(std::map<int,int>)` 24 and 48. Without
     this, a fixture containing a `std::map` or `std::string` member drifts between
     macOS and Linux CI while every byte assertion passes and the file size is
     identical. A reader MUST NOT use `fSize` for anything, so masking it costs no
-    coverage of the format -- but it does stop the digest noticing if ROOT ever
+    coverage of the format. It does stop the digest noticing if ROOT ever
     changed *which* value it stores there, so cases SHOULD assert `fSize`
     directly for members whose `sizeof` is standard-library independent.
 
-The last rule catches further copies without this tool having to chase them. It
-can in principle mask a coincidentally equal run of payload bytes; for the small,
-hand-authored fixtures in `data/` that is acceptable, and a spurious mask is
-stable across runs so it cannot cause a false digest mismatch.
+The "every further occurrence" rule catches copies without this tool having to
+locate them. It can in principle mask a coincidentally equal run of payload
+bytes; for the small, hand-authored fixtures in `data/` that is acceptable, and
+a spurious mask is stable across runs so it cannot cause a false digest
+mismatch.
 """
 
 from __future__ import annotations
@@ -132,8 +133,8 @@ def normalize(buf: bytes) -> bytes:
 def record_digests(buf: bytes) -> list[tuple[int, str, str, str]]:
     """A digest per record of an already-normalized buffer.
 
-    Used to explain a drift: comparing these against another machine's tells you
-    which record differs, which is otherwise guesswork.
+    Used to explain a drift: comparing these against another machine's shows
+    which record differs.
     """
     header = rootfile.read_header(buf)
     out = []
@@ -152,21 +153,21 @@ KEY_DATIME_OFFSET = 10
 def _tree_volatile(buf: bytes, value, tree=None) -> list[tuple[int, int]]:
     """Byte ranges inside a decoded TTree record that are not portable.
 
-    Two of them, and neither is reachable by the record walk above:
+    Neither is reachable by the record walk above:
 
     * **An embedded basket's `TKey::fDatime`.** A basket streamed into another
-      buffer carries a whole key inside object data
-      (spec/04-ttree/TBasket.md section 4.1), so its fDatime is the fDatime of no
-      record. Its value depends on the writer's time zone -- it read
+      buffer holds a complete key inside object data
+      (spec/04-ttree/TBasket.md section 4.1), so its fDatime belongs to no
+      record. Its value depends on the writer's time zone: it read
       `2033-12-31 19:00:00` at UTC-5 against `2034-01-01 00:00:00` in a
-      container, which is one instant written two ways.
+      container, the same instant written two ways.
 
     * **`TBranchElement::fCheckSum`, but only when `fClassName` is an STL type.**
       A checksum folds in each member's resolved type name, and libc++ and
       libstdc++ spell those differently, so `vector<SHit>` hashes to 66eb45ed on
-      one and 01c8a81d on the other. Masked for those classes alone: for an
-      ordinary class the checksum is stable across both, and the digest should go
-      on watching it.
+      one and 01c8a81d on the other. Masked for those classes only: for an
+      ordinary class the checksum is stable across both, and the digest should
+      keep covering it.
     """
     spans: list[tuple[int, int]] = []
 
@@ -184,15 +185,15 @@ def _tree_volatile(buf: bytes, value, tree=None) -> list[tuple[int, int]]:
 
     walk(value)
     # The embedded baskets, through read_tree rather than by walking the value
-    # tree: the Value that carries the note is the object *slot*, and the key
-    # begins after the class record, which only the basket reader resolves.
+    # tree: the Value holding the note is the object *slot*, and the key begins
+    # after the class record, which only the basket reader resolves.
     for branch in (rootfile.walk_branches(tree.branches) if tree else []):
         for embedded in (branch.embedded or {}).values():
             spans.append((embedded.start + KEY_DATIME_OFFSET, 4))
             if embedded.block >= 0:
-                # And once more inside the raw buffer copy, which begins with
-                # the key all over again (spec/04-ttree/TBasket.md 4.1). Two
-                # fDatime per embedded basket, not one.
+                # The raw buffer copy begins with the key again
+                # (spec/04-ttree/TBasket.md 4.1), so each embedded basket has
+                # two fDatime.
                 spans.append((embedded.block + KEY_DATIME_OFFSET, 4))
     return spans
 
@@ -201,14 +202,14 @@ def member_lines(buf: bytes, want: str | None = None) -> list[str]:
     """One line per decoded member of every record, for explaining a drift.
 
     `record_digests` says which *record* differs; this says which member of it.
-    CI cannot diff against the other machine's bytes -- it only has the file it
-    just wrote -- so the report has to be a canonical dump that a human diffs
-    against the same command run elsewhere.
+    CI has only the file it just wrote, not the other machine's bytes, so the
+    report is a canonical dump that a human diffs against the same command run
+    elsewhere.
 
-    Offsets are deliberately absent: a member that grows shifts everything after
-    it, and a diff full of shifted offsets hides the one line that matters. Each
-    line carries the member's path, its type, its length, and its bytes when they
-    are short enough to read.
+    Offsets are left out: a member that grows shifts everything after it, and a
+    diff full of shifted offsets hides the line that matters. Each line gives the
+    member's path, its type, its length, and its bytes when they are short
+    enough to read.
 
     `want` limits the dump to records of one class. The buffer must already be
     normalized, so a masked field never shows up as a difference.

@@ -8,13 +8,13 @@ the same content as the ROOT-written fixture ttree/strings: an Int_t branch, a
 C-string branch, and the three strings "ab", "" and 300 x'es.
 
 Both basket records and the whole TTree record are byte-identical to ROOT's, keys
-included, once the fixed timestamp is masked -- which is what pins fEntryOffsetLen,
-the offset array with its repeated entry for the empty string, and the leaf's fLen
+included, once the fixed timestamp is masked. That fixes fEntryOffsetLen, the
+offset array with its repeated entry for the empty string, and the leaf's fLen
 and fMaximum high-water marks. The two paths are 23 characters each so that every
-offset lines up; a branch stores its baskets' offsets, so it has to.
+offset lines up, which is needed because a branch stores its baskets' offsets.
 
-The assertions below are the same offsets as the fixture's, and that is the point:
-the same numbers hold in a file this project wrote.
+The assertions below use the same offsets as the fixture's, so the same numbers
+hold in a file this project wrote.
 """
 
 spec = ["spec/06-writing/WritingTrees.md", "spec/04-ttree/TLeaf.md"]

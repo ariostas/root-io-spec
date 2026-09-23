@@ -1,15 +1,15 @@
-"""A file this project wrote, closed, and then **reopened and added to**.
+"""A file this project wrote, closed, and then reopened and added to.
 
 The write side of `spec/06-writing/WritingFiles.md` 13, and the counterpart of
 `data/container/reopened.root`, which ROOT produced from the same sequence of
-operations. The two file names are deliberately the same length -- 28 characters
--- because four records carry the file's name and two carry its offsets, so a
-name one byte longer would shift the whole file and make the comparison useless.
+operations. The two file names are deliberately the same length, 28 characters,
+because four records store the file's name and two store its offsets, so a name
+one byte longer would shift the whole file and make the comparison useless.
 
-The base is built here rather than read from `data/written/`, and that is the
-stronger form: the base's bytes are `FileWriter.reopen`'s only input, so if the
+The base is built here rather than read from `data/written/`, which makes the
+check stronger: the base's bytes are `FileWriter.reopen`'s only input, so if the
 two files agree then this writer reopened a file byte-identical to ROOT's and
-reached ROOT's answer from it.
+reached ROOT's result from it.
 
 Three writes follow the reopen, one for each way ROOT can write a name that may
 already exist: plain under a new name, plain under an existing one, and

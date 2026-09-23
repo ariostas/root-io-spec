@@ -3,28 +3,28 @@ file = "data/serialization/element-types.root"
 size = 2912
 
 description = """
-The four element type codes no other fixture reaches -- `kCharStar` (7),
-`kStreamLoop` (501), and the 81/82 fixed-array-of-object forms -- plus a negative
-result about a fifth.
+The four element type codes no other fixture reaches, plus a negative result
+about a fifth. The four are `kCharStar` (7), `kStreamLoop` (501), and the 81/82
+fixed-array-of-object forms.
 
 **`kCharStar` is not a counted string.** `fText` is `n:i32` then `n` raw bytes
 with no terminator and no `255` escape, so it is not the counted string of
-Conventions 5.1. `fNull` is the trap: a null `char*` and an empty string are both
-four zero bytes, and **nothing in the file distinguishes them**.
+Conventions 5.1. A null `char*` (`fNull`) and an empty string are both four zero
+bytes, and nothing in the file distinguishes them.
 
 **`kStreamLoop` stores no length.** The count comes from the counter member, the
 same rule as `kOffsetP`, and the frame is `bc ver` with `ver` = 10, which is
 `TStreamerInfo`'s own class version rather than the value class's. Three forms
-are here, and the type name decides between the first two
+are here, and the type name selects between the first two
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:700`):
 
 | Member | `fTypeName` | Payload |
 |---|---|---|
 | `fLoop` | `EPoint*` | *c* objects, each with its own byte count and version |
 | `fLoopP` | `EPoint**` | *c* object slots, with class records and back-references |
-| `fEmptyLoop` | `EPoint*` | a counter of 0 writes the frame and **nothing else** |
+| `fEmptyLoop` | `EPoint*` | a counter of 0 writes the frame and nothing else |
 
-`fEmptyLoop`'s byte count is 2 -- the version word alone -- because ROOT's writer
+`fEmptyLoop`'s byte count is 2, the version word alone, because ROOT's writer
 guards the whole loop with `if (vlen)`
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:730`).
 
@@ -34,16 +34,16 @@ each other directly, each carrying whatever framing its own class gives it:
 three `EPoint`s. A reader that expects the `bc ver` of the 85/86/87 form
 mis-reads the first four bytes as a byte count that is really an object's own.
 
-**`fPtrArr` is the negative result**, and it is the reason `fArrayLength` cannot
-be inferred from the code. It is `EPoint *fPtrArr[2]`, a fixed array, and its code
-is **69, not 89**: `TStreamerObjectAnyPointer::SetArrayDim` does not add
+**`fPtrArr` is the negative result**, and shows why `fArrayLength` cannot be
+inferred from the code. It is `EPoint *fPtrArr[2]`, a fixed array, and its code
+is 69, not 89: `TStreamerObjectAnyPointer::SetArrayDim` does not add
 `kOffsetL` (`root/core/meta/src/TStreamerElement.cxx:1681-1684`) the way the base
 class does (`root/core/meta/src/TStreamerElement.cxx:510-515`). Two object slots
 are still written. **A reader MUST take the element count from `fArrayLength` and
 not from whether the code carries `kOffsetL`.** ElementTypes.md 7.2.
 
-**`kAnyPnoVT` (70) is not here because it cannot be**, and this case is what
-settles it: `TStreamerObjectAnyPointer`'s constructor sets only 69 or 68
+**`kAnyPnoVT` (70) is not here because ROOT cannot produce it.**
+`TStreamerObjectAnyPointer`'s constructor sets only 69 or 68
 (`root/core/meta/src/TStreamerElement.cxx:1628-1630`), and no other line in ROOT
 constructs an element with `fType` 70. The code has a write path and no producer.
 ElementTypes.md 1.
@@ -169,7 +169,7 @@ value = 2
 
 # --- kStreamLoop (501), two stars: c object slots -------------------------
 #
-# The "**" in fTypeName is the whole difference: object slots, so a class
+# The "**" in fTypeName is the only difference: object slots, so a class
 # record for the first and a back-reference for the second.
 
 [[bytes]]

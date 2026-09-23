@@ -1,7 +1,6 @@
 # Conventions
 
-Preliminaries adopted once, so that every other document in `spec/` can be terse.
-Read this first.
+Conventions that every other document in `spec/` relies on. Read this first.
 
 ## 1. Status of this specification
 
@@ -22,19 +21,19 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
 **SHOULD**, **SHOULD NOT**, **RECOMMENDED**, **MAY** and **OPTIONAL** are to be
 interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
-They are used with a specific scope:
+Their meaning depends on what they apply to:
 
 - Applied to a **reader**, they describe what an implementation must do to read
   files ROOT writes.
 - Applied to a **file**, they describe an invariant ROOT's own output satisfies.
   A reader MAY check these and reject files that violate them, but SHOULD prefer
-  to be tolerant unless the violation makes the data ambiguous — real files in the
-  wild were written by a long tail of ROOT versions, some with known bugs.
+  to be tolerant unless the violation makes the data ambiguous. Real files were
+  written by many ROOT versions, some with known bugs.
 
-Writing is not specified as an algorithm. Each layer instead ends with an
-`Invariants` section listing what a conforming file satisfies, so that a writer can
-validate its own output without this specification prescribing ROOT's incidental
-choices. See `PLAN.md` §2.8.
+Writing is not specified as an algorithm. Each layer ends with an `Invariants`
+section listing what a conforming file satisfies. A writer can validate its own
+output against it, and ROOT's incidental choices are not prescribed. See
+`PLAN.md` §2.8.
 
 ## 3. Byte order
 
@@ -48,22 +47,22 @@ choices. See `PLAN.md` §2.8.
 | The `ROOT::RNTuple` anchor, because it is an ordinary `TKey` payload | **big-endian** |
 | The two size fields of a **compression block header** — 24-bit, at block offsets 3-5 and 6-8 | **little-endian** |
 
-Big-endian is unconditional and independent of the host: it is applied by the
-`tobuf`/`frombuf` helpers in `root/core/base/inc/Bytes.h`, which byte-swap on
-little-endian hosts. A reader MUST NOT assume host order anywhere.
+Big-endian order does not depend on the host. The `tobuf`/`frombuf` helpers in
+`root/core/base/inc/Bytes.h` apply it, byte-swapping on little-endian hosts. A
+reader MUST NOT assume host order anywhere.
 
 Unless a document says otherwise, every integer in `spec/01-container/`,
 `spec/02-serialization/`, `spec/03-classes/` and `spec/04-ttree/` is big-endian.
-`spec/05-rntuple/` states its own rules. The one exception inside the classic
-format is the compression block header, whose two 24-bit sizes are little-endian —
-[Compression §2](01-container/Compression.md#2-block-header) calls it the
-single most common mistake in a new implementation, so it is in the table above
-rather than left to that document alone.
+`spec/05-rntuple/` states its own rules. Within the classic format the only
+exception is the compression block header, whose two 24-bit sizes are
+little-endian. [Compression §2](01-container/Compression.md#2-block-header) calls
+this the most common mistake in a new implementation, so it is also listed in the
+table above.
 
 ## 4. Primitive types
 
 Widths are on-disk widths. Where the on-disk width differs from the in-memory
-width, that is called out — this is a live source of bugs.
+width, the table says so; this is a common source of bugs.
 
 | Type | On disk | Notes |
 |---|---|---|
@@ -79,12 +78,12 @@ width, that is called out — this is a live source of bugs.
 | `Seek_t` / file offsets | 4 or 8 | width depends on the large-file flag; see `01-container/FileHeader.md` |
 
 Floating-point values are written as the **host's bit pattern with the bytes
-reversed**; there is no conversion step and no assertion of a format anywhere in
-`root/core/base/inc/Bytes.h`. On every platform ROOT supports that pattern is IEEE
-754, so the on-disk form is IEEE 754 big-endian in practice — but it is an implicit
-property of the host, not something the format enforces.
+reversed**. `root/core/base/inc/Bytes.h` has no conversion step and does not check
+the format. On every platform ROOT supports that pattern is IEEE 754, so in
+practice the on-disk form is IEEE 754 big-endian, but this follows from the host
+and is not enforced by the format.
 
-Two traps around `Long_t`:
+`Long_t` has two traps:
 
 - Scalar `ULong_t` is written through the **signed** helper
   (`root/io/io/inc/TBufferFile.h:339`), so on a platform where `long` is 4 bytes a
@@ -95,19 +94,19 @@ Two traps around `Long_t`:
   (`root/io/io/src/TBufferFile.cxx:173-181`).
 
 `Double32_t` and `Float16_t` are **not** primitive types with fixed widths. They are
-`Double_t`/`Float_t` in memory and a configurable number of bits on disk, controlled
-by an annotation in the member's comment. See
+`Double_t`/`Float_t` in memory and a configurable number of bits on disk, set by an
+annotation in the member's comment. See
 [Element types §5](02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16) for
 the annotation grammar and the three encodings,
 [Leaves §7](04-ttree/TLeaf.md#7-tleaff16-and-tleafd32) for the leaf classes that
-carry them in a tree, and
+hold them in a tree, and
 [Reading entries §5.2](04-ttree/ReadingEntries.md#52-the-width-can-depend-on-a-title-the-branch-does-not-have)
 for the trap that the width is recorded only on the streamer element.
 
 ## 5. String encodings
 
-ROOT uses several distinct string encodings and they are routinely confused.
-Every document MUST name which one it means, using the terms defined here.
+ROOT uses several distinct string encodings, and they are easily confused. Every
+document MUST name which one it means, using the terms defined here.
 
 ### 5.1 Counted string
 
@@ -119,15 +118,15 @@ short form (n <= 254):   n:u8   payload:n bytes
 long form  (n >= 255):   255:u8   n:u32   payload:n bytes
 ```
 
-The escape triggers at length **> 254**, so a leading `0xFF` never means "255
-characters" — a 255-character string is always written in the long form. An empty
-string is a single `0x00` byte. Encoding is uninterpreted bytes, not Unicode: a
+The escape applies at length **> 254**, so a leading `0xFF` never means "255
+characters": a 255-character string is always written in the long form. An empty
+string is a single `0x00` byte. The payload is uninterpreted bytes, not Unicode; a
 reader SHOULD NOT assume UTF-8.
 
 Used by `TString` and by the `TKey` name, title and class-name fields.
 
-The counted string appears **bare** — with no preceding byte count and no version
-word — both in a `TKey` and when a `TString` is a data member. A byte count and a
+The counted string appears **bare**, with no preceding byte count or version
+word, both in a `TKey` and when a `TString` is a data member. A byte count and a
 class record appear only when a `TString` is written as a standalone object through
 a pointer, not by value.
 
@@ -144,10 +143,10 @@ a pointer, not by value.
 n:i32   payload:n bytes
 ```
 
-No length byte, no escape, **no version word and no byte count** — the whole
-streamer is a count and the characters, so it is bare wherever it appears, exactly
-as §5.1's form is. The count is signed, and each character is written one at a
-time rather than as a block, which changes nothing on disk.
+There is no length byte, no escape, and no version word or byte count. The
+streamer writes only the count and the characters, so the form is bare wherever it
+appears, like §5.1's. The count is signed. Each character is written one at a time
+rather than as a block, which makes no difference on disk.
 
 The two encodings differ only below 255 characters:
 
@@ -157,13 +156,13 @@ The two encodings differ only below 255 characters:
 | 6 | `06` + 6 | `00 00 00 06` + 6 |
 | 300 | `ff` + `00 00 01 2c` + 300 | `00 00 01 2c` + 300 |
 
-So above 254 characters `TString` costs one byte more, and below it `TStringLong`
-costs three. That is the whole difference, and it is why the class exists: it
-predates the 255 escape being added to `TString`.
+Above 254 characters `TString` costs one byte more; below that, `TStringLong`
+costs three more. The class exists because it predates the 255 escape in
+`TString`.
 
 **Nothing in ROOT uses it.** The only files naming `TStringLong` are its own
 header and source and a `LinkDef`, so it reaches a file only through a
-user-defined class — which is what `serialization/stringlong` does.
+user-defined class, as in `serialization/stringlong`.
 
 > `serialization/stringlong` puts both in one object: at offset 373 a
 > `TStringLong` writes `00 00 00 06` for `abcdef` and at 383 a `TString` writes
@@ -173,11 +172,11 @@ user-defined class — which is what `serialization/stringlong` does.
 ### 5.2 Null-terminated string
 
 Bytes up to and including a `0x00` terminator. Its main use is the class name in a
-`kNewClassTag` record — see [Buffer framing](02-serialization/Buffer.md#51-a-new-class)
-— but it is **not** exclusive to it: a hand-written streamer that does
-`buf << someCharPointer` produces this form too, because `WriteCharP` writes
+`kNewClassTag` record (see [Buffer framing](02-serialization/Buffer.md#51-a-new-class)),
+but it is not limited to that. A hand-written streamer that does
+`buf << someCharPointer` also produces this form, because `WriteCharP` writes
 `strlen + 1` bytes (`root/io/io/inc/TBufferFile.h:376`,
-`root/io/io/src/TBufferFile.cxx:3404-3407`). §5.4 notes the same thing.
+`root/io/io/src/TBufferFile.cxx:3404-3407`). §5.4 repeats this warning.
 
 ### 5.3 `std::string`
 
@@ -189,7 +188,7 @@ byteCount:u32 (| 0x40000000)   version:i16   counted string
 ```
 
 An empty `std::string` member is therefore 7 bytes, not 1. Details, including which
-class the version word actually refers to, are in
+class the version word refers to, are in
 [Collections](02-serialization/Collections.md).
 
 ### 5.4 `char*` members
@@ -201,21 +200,20 @@ A 4-byte signed length, then exactly that many bytes, with **no terminator and n
 n:i32   payload:n bytes
 ```
 
-This is not the counted string of §5.1, and the difference is a live source of
-bugs. A null pointer and an empty string are indistinguishable: both are four zero
-bytes. See `02-serialization/ElementTypes.md`, type code 7 (`kCharStar`).
+This is not the counted string of §5.1, and confusing the two is a common bug. A
+null pointer and an empty string are indistinguishable: both are four zero bytes.
+See `02-serialization/ElementTypes.md`, type code 7 (`kCharStar`).
 
-Note the related trap on the writing side: a hand-written streamer using
-`buf << someCharPointer` produces the **null-terminated** form of §5.2, not this
-one.
+On the writing side, a hand-written streamer using `buf << someCharPointer`
+produces the null-terminated form of §5.2, not this one.
 
 ## 6. Notation
 
 ### 6.1 Bit diagrams
 
-Fixed-layout records use the diagram style of the RNTuple specification, so the two
-halves of this repository read alike. Bit 0 is the most significant bit of the first
-byte, matching the big-endian byte order:
+Fixed-layout records use the diagram style of the RNTuple specification, so both
+halves of this repository look alike. Bit 0 is the most significant bit of the
+first byte, matching the big-endian byte order:
 
 ```
  0                   1                   2                   3
@@ -259,8 +257,8 @@ but with X different".
 ### 6.5 Cross-references
 
 A reference to another document in `spec/` is written as a **Markdown link** when
-that document exists, so that it is navigable in the published site and checked by
-the build:
+that document exists, so that it works in the published site and is checked by the
+build:
 
 ```markdown
 See [Buffer](../02-serialization/Buffer.md) for the byte-count encoding.
@@ -273,8 +271,8 @@ code instead, because the site build treats a link to a missing page as an error
 See [Buffer framing](02-serialization/Buffer.md) for the byte-count encoding.
 ```
 
-Such a reference MUST be converted to a link when its target is written. Forward
-references in inline code are therefore also the working list of what is still
+Such a reference MUST be converted to a link when its target is written. The
+remaining forward references in inline code are therefore a list of what is still
 missing.
 
 ### 6.6 Generated content
@@ -288,26 +286,24 @@ submodule and MUST NOT be hand-edited; CI fails when they are stale:
 ```
 
 Notes that need human judgement go in the sibling `<class>.notes.yaml`, which the
-generator merges in, so they survive regeneration. Everything outside the markers
-is hand-written.
+generator merges in, so that they survive regeneration. Everything outside the
+markers is hand-written.
 
 ## 7. Citing the reference implementation
 
-Claims are cited as a path relative to the repository root plus a line number, and
-always refer to the pinned submodule commit:
+Claims are cited as a path relative to the repository root plus a line number,
+always at the pinned submodule commit:
 
 > `root/io/io/src/TBufferFile.cxx:2751`
 
-Citations are **checked**, not merely promised. `tools/check_citations.py` verifies
-that every cited file exists in the pinned submodule and that every cited line
-number is within that file, and CI fails otherwise. `tools/check_pin.py` separately
-asserts that the commit the published site links to is the commit the submodule is
-pinned at.
+Citations are checked. `tools/check_citations.py` verifies that every cited file
+exists in the pinned submodule and that every cited line number is within that
+file, and CI fails otherwise. `tools/check_pin.py` checks that the commit the
+published site links to is the commit the submodule is pinned at.
 
-What is *not* checked is whether the cited lines still contain what the citing
-sentence claims. Line numbers drift when the submodule is bumped even where the
-file and length remain valid, so treat a citation whose content has moved as a bug
-report.
+No tool checks that the cited lines still contain what the citing sentence claims.
+Line numbers drift when the submodule is bumped even where the file and length
+remain valid, so a citation whose content has moved should be reported as a bug.
 
 In the published site these citations render as links into root-project/root at the
 pinned commit, via `tools/rootcite.py`.
@@ -320,9 +316,9 @@ Where a fixture demonstrates a claim, it is cited by case ID:
 
 `data/` holds small ROOT files generated by the macros in `gen/cases/`. Each case
 has a `case.toml` giving its record layout and a list of byte-level assertions.
-Those assertions are checkable with `tools/check_bytes.py`, which needs only Python
-— no ROOT, and no third-party packages — so a third-party implementation can use
-them directly as test vectors.
+`tools/check_bytes.py` checks those assertions with Python alone, without ROOT or
+third-party packages, so a third-party implementation can use them directly as
+test vectors.
 
 ```sh
 tools/generate.py --check     # verify fixtures against case.toml
@@ -331,23 +327,23 @@ tools/generate.py             # regenerate from gen/cases (needs ROOT)
 
 Files cannot be reproduced byte-for-byte, because `TKey::fDatime` records the wall
 clock and each file gets a fresh `TUUID`. `tools/normalize.py` masks those before
-digesting, so `data/MANIFEST.sha256` detects genuine format changes but not the
-passage of time.
+digesting, so `data/MANIFEST.sha256` detects format changes and ignores timestamps
+and UUIDs.
 
 ## 9. Terminology
 
 | Term | Meaning |
 |---|---|
-| **Record** | A `TKey` plus its payload, at one offset in the file. The unit the file is a sequence of. |
+| **Record** | A `TKey` plus its payload, at one offset in the file. A file is a sequence of records. |
 | **Key** | The fixed part of a record, describing where and what the payload is. |
 | **Payload** | The bytes of a record after the key. Possibly compressed. |
 | **Object data** | A payload after decompression, as consumed by the serialization layer. |
 | **Streamer** | The routine that serializes one class. Either generated from a `TStreamerInfo` or hand-written in C++. |
 | **Streamer info** | A `TStreamerInfo`: the recorded member list of one version of one class. Files carry their own. |
 | **Class version** | The small integer in a class's `ClassDef`, identifying which member layout was written. Not a ROOT version. |
-| **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because the description is made of it. Listed in [Bootstrap classes](99-appendix/Bootstrap.md). |
+| **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because streamer infos are themselves made of it. Listed in [Bootstrap classes](99-appendix/Bootstrap.md). |
 | **Free segment** | A byte range in the file not occupied by any record. |
 
 See [Glossary](99-appendix/Glossary.md) for the full list. RNTuple's own
-vocabulary is defined in ROOT's specification for that format and is not
-duplicated here; `PLAN.md` §2.6 records this project's audit of it.
+vocabulary is defined in ROOT's specification for that format and is not repeated
+here; `PLAN.md` §2.6 records this project's audit of it.

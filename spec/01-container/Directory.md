@@ -15,23 +15,22 @@ The root directory's record begins at `fBEGIN`, and its **fields** begin at:
 fBEGIN + fNbytesName
 ```
 
-The gap between the two is the record's key followed, **for the root directory
-only**, by a second copy of the file's name and title as counted strings. That
-copy is written by `TFile::Init` rather than by the directory streamer
-(`root/io/io/src/TFile.cxx:708`), because the object stored at `fBEGIN` is the
-`TFile` itself — so its image is a `TNamed` part followed by a `TDirectoryFile`
-part.
+Between the two lie the record's key and, for the root directory only, a second
+copy of the file's name and title as counted strings. That copy is written by
+`TFile::Init`, not by the directory streamer (`root/io/io/src/TFile.cxx:708`),
+because the object stored at `fBEGIN` is the `TFile` itself: its image is a
+`TNamed` part followed by a `TDirectoryFile` part.
 
-> ROOT never reads that copy back. Every reader jumps `fNbytesName` bytes from
-> `fSeekDir`, and `TFile::Init` reads the payload's class name and name into a
-> throwaway `TString` — twice into the same variable, with the comment *"file may
-> have been renamed"* — keeping only `fTitle`
-> (`root/io/io/src/TFile.cxx:836-839`). `fName` is never taken from the file at
-> all: it stays the path the caller passed to `TFile::Open`, which is what lets a
-> renamed file open.
+> ROOT never reads that copy back. Every reader skips `fNbytesName` bytes from
+> `fSeekDir`. `TFile::Init` reads the payload's class name and name into a
+> throwaway `TString` (twice into the same variable, with the comment *"file may
+> have been renamed"*) and keeps only `fTitle`
+> (`root/io/io/src/TFile.cxx:836-839`). `fName` is never taken from the file: it
+> stays the path the caller passed to `TFile::Open`, so a renamed file still
+> opens.
 
-A **subdirectory** record has no such prefix; its fields begin immediately after
-its key. Both cases are covered by one rule, because `fNbytesName` differs:
+A subdirectory record has no such prefix; its fields begin immediately after its
+key. One rule covers both cases, because `fNbytesName` differs:
 
 | Directory | `fNbytesName` |
 |---|---|
@@ -86,8 +85,8 @@ its key. Both cases are covered by one rule, because `fNbytesName` differs:
 | UUID | 16 bytes | 32 / 44 |
 | reserved | 12 bytes | 48 / — |
 
-Written by `root/io/io/src/TDirectoryFile.cxx:748-787`. The total is **60 bytes**
-in both layouts, which is the point of the reserved bytes — see §5.
+Written by `root/io/io/src/TDirectoryFile.cxx:748-787`. The total is 60 bytes in
+both layouts, which is what the reserved bytes are for (§5).
 
 The datime fields use the packing given in
 [Records §3.7](Record.md#37-fdatime). `fDatimeC` is the directory's creation
@@ -96,125 +95,124 @@ time, set once; `fDatimeM` is refreshed on every header rewrite
 
 ## 3. Three independent large-file flags
 
-> ROOT has **three separate** large-file switches, on three different structures,
-> with three different conditions. Confusing them is a reliable source of
+> ROOT has three separate large-file switches, on three different structures,
+> with three different conditions. Confusing them is a common cause of
 > mis-parsing.
 
 | Structure | Flag | Condition |
 |---|---|---|
 | File header | `fVersion >= 1000000` | `fEND > 2000000000` |
-| Key | `fVersion > 1000` | the file's `fEND` **when the key was built** `> 2000000000`, or a non-zero `fPidOffset` — *not* the key's own offset ([Large files §1.1](LargeFiles.md#11-a-keys-width-is-not-decided-by-where-the-key-is)) |
-| **Directory record** | **version `> 1000`** | **any of `fSeekDir`, `fSeekParent`, `fSeekKeys` `> 2000000000`** |
+| Key | `fVersion > 1000` | the file's `fEND` when the key was built `> 2000000000`, or a non-zero `fPidOffset`; not the key's own offset ([Large files §1.1](LargeFiles.md#11-a-keys-width-is-not-decided-by-where-the-key-is)) |
+| Directory record | version `> 1000` | any of `fSeekDir`, `fSeekParent`, `fSeekKeys` `> 2000000000` |
 
 A reader MUST take the directory layout from the **directory record's own version
-word**, never from the file header. All three of its offsets widen together; it
-is one flag, not per-field.
+word**, never from the file header. All three of its offsets widen together;
+there is one flag, not one per field.
 
-`TDirectoryFile::Streamer` is a second writer of the same record with a
-*different* condition — `fEND`, not the three offsets
-(`root/io/io/src/TDirectoryFile.cxx:1827`) — which matters to a writer and not to
-a reader. [Large files](LargeFiles.md) collects all five switches.
+`TDirectoryFile::Streamer` is a second writer of the same record, with a
+different condition: `fEND`, not the three offsets
+(`root/io/io/src/TDirectoryFile.cxx:1827`). This matters to a writer, not to a
+reader. [Large files](LargeFiles.md) collects all five switches.
 
-The combinations are not equivalent. A file larger than 2 GB can still hold
-small-layout directory records — the root directory's `fSeekDir` is `fBEGIN`,
-normally 100 — so the header flag being set tells you nothing about any given
-directory. The converse does hold: a directory offset beyond 2 GB implies
-`fEND` is too.
+The flags are not equivalent. A file larger than 2 GB can still hold
+small-layout directory records (the root directory's `fSeekDir` is `fBEGIN`,
+normally 100), so the header flag tells a reader nothing about any given
+directory. The converse does hold: a directory offset beyond 2 GB implies that
+`fEND` is beyond 2 GB as well.
 
 ### 3.1 The version word carries two independent things
 
 > **A directory record's class version and its offset width are separate axes,
-> and the version word is their sum.** `1000` is a flag added to whatever the
-> class version happens to be — `version = TDirectoryFile::Class_Version()`, then
-> `version += 1000` (`root/io/io/src/TDirectoryFile.cxx:750`, `:759`) — so
-> `version % 1000` is the class version and `version > 1000` is the width, and
-> neither implies anything about the other.
+> and the version word is their sum.** The width flag `1000` is added to the class
+> version: `version = TDirectoryFile::Class_Version()`, then `version += 1000`
+> (`root/io/io/src/TDirectoryFile.cxx:750`, `:759`). `version % 1000` is
+> therefore the class version and `version > 1000` the width, and neither implies
+> anything about the other.
 
-ROOT hides this, because it always writes the class version it was compiled with:
-6.40.04 emits 5 or 1005 and nothing else, so **every** wide record ROOT has ever
-written is 1004 or 1005, and §7's history reads as though the wide form arrived
-*with* class version 4. It did, in ROOT. It did not in the format.
+ROOT's own files do not show this, because ROOT always writes the class version it
+was compiled with. 6.40.04 emits 5 or 1005 and nothing else, and every wide record
+ROOT has ever written is 1004 or 1005, so §7's history reads as though the wide
+form arrived with class version 4. That is true of ROOT, but not of the format.
 
-A third-party writer using an older class version with the flag produces a
-combination ROOT never emits, and two files in the corpus do exactly that:
+A third-party writer that uses an older class version with the flag produces a
+combination ROOT never emits. Two files in the corpus do so:
 `uproot-from-geant4.root` and `uproot-issue-250.root`, both written by g4tools,
-carry **1001** — class version 1, so no UUID, with three 8-byte offsets. A reader
-that tests `version > 1` for the UUID rather than `version % 1000 > 1` reads
-sixteen bytes from past the end of the record; this specification's own reader did
-exactly that until 2026-09-21. ROOT reads them correctly, because both of its
-readers take the UUID from `version % 1000`
+have version 1001, which is class version 1 (no UUID) with three 8-byte offsets. A
+reader that tests `version > 1` for the UUID instead of `version % 1000 > 1` reads
+sixteen bytes from past the end of the record. ROOT reads these files correctly,
+because both of its readers take the UUID from `version % 1000`
 (`root/io/io/src/TFile.cxx:808`, `:823`;
 `root/io/io/src/TDirectoryFile.cxx:1792-1796`).
 
-So the payload length is a function of **both** axes, and of the file header's
-version besides: §7.1 tabulates it, and invariant 15 checks it.
+The payload length therefore depends on both axes and on the file header's
+version. §7.1 tabulates it, and invariant 15 checks it.
 
 ## 4. Fields
 
 ### 4.1 `fNbytesKeys`
 
-The **whole key-list record**, key header included — that is, the `fNbytes` of the
-key at `fSeekKeys` (`root/io/io/src/TDirectoryFile.cxx:2226`). It is used as a
-raw read length. Zero when there is no key list.
+The length of the **whole key-list record**, key header included: the `fNbytes`
+of the key at `fSeekKeys` (`root/io/io/src/TDirectoryFile.cxx:2226`). It is used
+as a raw read length. It is zero when there is no key list.
 
 ### 4.2 `fSeekDir`
 
-The offset of this directory's **own record**, so it is self-referential and a
+The offset of this directory's own record. Being self-referential, it is a
 useful corruption check. For the root directory it equals `fBEGIN`.
 
 ### 4.3 `fSeekParent` — do not use it for parentage
 
 > **`fSeekParent` changed meaning in ROOT 6.38.** Before commit
-> `06735e7655f` (2025-08-02, first released in 6.38.00) it held the **top**
-> directory's offset for *every* nested directory, not the mother's. From 6.38 it
+> `06735e7655f` (2025-08-02, first released in 6.38.00) it held the top
+> directory's offset for every nested directory, not the mother's. From 6.38 it
 > holds the mother's (`root/io/io/src/TDirectoryFile.cxx:155`).
 >
 > A reader MUST NOT reconstruct the directory tree from `fSeekParent`. Use the
 > key's `fSeekPdir`, or the containment implied by walking key lists. Files
-> written before 6.38 are extremely common and will report every directory as a
-> child of the root.
+> written before 6.38 are extremely common, and in them every directory appears
+> to be a child of the root.
 
 It is 0 for the root directory.
 
-> In `container/directories`, written by 6.40.04, `beta`'s `fSeekParent` is 401 —
-> `alpha`'s record — which is the post-6.38 behaviour. A pre-6.38 writer would
+> In `container/directories`, written by 6.40.04, `beta`'s `fSeekParent` is 401,
+> the offset of `alpha`'s record, as expected after 6.38. A pre-6.38 writer would
 > have put 100 there.
 
 ### 4.4 `fSeekKeys`
 
-The offset of the key-list record's key, or **0** when this directory has no key
-list. Zero is normal, not corrupt; see §6.
+The offset of the key-list record's key, or 0 when this directory has no key
+list. Zero is normal, not a sign of corruption (§6).
 
 ### 4.5 UUID
 
-A 2-byte version word, always 1, then 16 bytes in RFC 4122 wire layout — the same
+A 2-byte version word, always 1, then 16 bytes in RFC 4122 wire layout, the same
 encoding as the file header's UUID
 ([File header §6](FileHeader.md#6-uuid)).
 
-**Each directory carries its own, distinct UUID.** The root directory's matches
-the file header's, because both are written from the same value at creation, but
-subdirectories get fresh ones.
+Each directory has its own, distinct UUID. The root directory's matches the file
+header's, because both are written from the same value at creation; each
+subdirectory gets a fresh one.
 
-Version 2 records are the exception: they store the 16 bytes with **no version
-word** (§7).
+Version 2 records are the exception: they store the 16 bytes with no version word
+(§7).
 
 ## 5. The reserved bytes
 
-In the small layout, 12 zero bytes follow the UUID. They are slack, so that at the
-current class version the record is 60 bytes whether or not the three offsets are
-64-bit — which lets ROOT rewrite a directory header in place when a file grows
-past 2 GB (`root/io/io/src/TDirectoryFile.cxx:2177-2181`).
+In the small layout, 12 zero bytes follow the UUID. They are slack: at the
+current class version they make the record 60 bytes whether or not the three
+offsets are 64-bit, so ROOT can rewrite a directory header in place when a file
+grows past 2 GB (`root/io/io/src/TDirectoryFile.cxx:2177-2181`).
 
 A reader MUST NOT assume they are present or zero:
 
-- in the **large** layout they are not padding at all, they are the high halves of
-  the three offsets;
-- they are allocated on the **file header's** version, not the record's: for a
-  file written by ROOT 3 (`fVersion < 40000`) they are **absent entirely**
+- in the large layout they are not padding but the high halves of the three
+  offsets;
+- whether they are written depends on the file header's version, not the
+  record's: for a file written by ROOT 3 (`fVersion < 40000`) they are absent
   (`root/io/io/src/TDirectoryFile.cxx:785`), which is why a version-3 record is 48
-  bytes and not 60;
-- the equal-length property is a property of class versions 4 and 5 only. At
-  version 1 the small and wide forms are 30 and 42 bytes, and §7.1 has the rest.
+  bytes, not 60;
+- the equal length holds for class versions 4 and 5 only. At version 1 the small
+  and wide forms are 30 and 42 bytes, and §7.1 has the rest.
 
 The authoritative length is the record's `fObjlen`.
 
@@ -228,26 +226,26 @@ A key list is a record whose payload is a count followed by that many key images
 | 4 … | `count` key images | each a `TKey` header |
 
 Each image is normally byte-identical to the first `fKeylen` bytes of the record
-it describes, laid out exactly as in [Records §2](Record.md#2-key-layout). **Each
-image carries its own `fVersion`**, so small and large images may be interleaved
-in one list, and a reader must size each entry individually — by parsing it, not
-from its `fKeylen`, which §6.5 shows is a separate number that can disagree.
+it describes, laid out as in [Records §2](Record.md#2-key-layout). **Each image
+has its own `fVersion`**, so small and large images may be interleaved in one
+list. A reader must size each entry individually by parsing it, not from its
+`fKeylen`, which is a separate number that can disagree (§6.5).
 
 ### 6.1 The count is authoritative
 
 > A reader MUST iterate exactly `count` times, and MUST NOT parse until the
 > payload is exhausted. When `fEND > 2000000000`, ROOT allocates the payload 8
 > bytes larger than it writes (`root/io/io/src/TDirectoryFile.cxx:2209`), and that
-> slack is **uninitialized heap**. A length-driven parse will read garbage as an
+> slack is uninitialized heap. A length-driven parse will read garbage as an
 > entry.
 
 There is no trailing checksum and no terminator.
 
 ### 6.2 The key-list record cannot be identified from its key
 
-Its key carries the **containing directory's** name, title and class — `"TFile"`
-for the root directory, or `"TDirectory"` for a subdirectory
-(`root/io/io/src/TDirectoryFile.cxx:2213`). That makes it indistinguishable from
+Its key has the containing directory's name, title and class: `"TFile"` for the
+root directory, `"TDirectory"` for a subdirectory
+(`root/io/io/src/TDirectoryFile.cxx:2213`). It is therefore indistinguishable from
 the directory record itself and from the free-segment record.
 
 The only supported way to find it is `fSeekKeys` from the directory record.
@@ -269,14 +267,14 @@ free-segment record's key — none of which are ever appended — and the
 
 ### 6.4 Empty and unsaved directories
 
-Two distinct states, both legal:
+A directory can be in either of two states, both legal:
 
 | State | `fSeekKeys` | Key list |
 |---|---|---|
 | Saved, holds nothing | non-zero | a record whose payload is the 4-byte count `0` |
-| Never saved | **0** | none at all |
+| Never saved | 0 | none at all |
 
-A directory reaches the second state when it was created but never written —
+A directory is in the second state when it was created but never written, since
 `mkdir` writes only the directory record. A reader MUST treat `fSeekKeys == 0` as
 "no keys", not as corruption.
 
@@ -287,17 +285,17 @@ A directory reaches the second state when it was created but never written —
 ### 6.5 An image's length is what it parses to, never its `fKeylen`
 
 > A reader MUST advance from one image to the next by the bytes the image
-> occupies — 18 or 26 fixed bytes, then three counted strings — and MUST NOT add
-> `fKeylen` to the current offset. They are two different numbers: `fKeylen`
-> describes the **record**, and one shape of file has them four bytes apart.
+> occupies (18 or 26 fixed bytes, then three counted strings), and MUST NOT add
+> `fKeylen` to the current offset. The two numbers can differ: `fKeylen`
+> describes the record, and in one kind of file they are four bytes apart.
 
-Both the key at the head of a record and the image of that key inside a key list
-are produced by `TKey::FillBuffer` (`root/io/io/src/TKey.cxx:647-684`) — the key
-list's caller is `TDirectoryFile::WriteKeys`, which loops over the directory's
+Both the key at the head of a record and the image of that key in a key list are
+produced by `TKey::FillBuffer` (`root/io/io/src/TKey.cxx:647-684`). For the key
+list the caller is `TDirectoryFile::WriteKeys`, which loops over the directory's
 live keys (`root/io/io/src/TDirectoryFile.cxx:2221-2223`) and sizes its record
-with `TKey::Sizeof` (`:2211`). So the image is a byte copy of what the key *would*
-be written as **now**, not of what was written when the record was created. For a
-directory those are not always the same bytes.
+with `TKey::Sizeof` (`:2211`). The image is therefore a byte copy of the key as it
+would be written when the list is written, not of what was written when the
+record was created. For a directory these are not always the same bytes.
 
 Three places decide how a directory key spells its class, and until 2012 they did
 not agree:
@@ -309,69 +307,69 @@ not agree:
 | `TKey::FillBuffer`, on the way out | writes `"TDirectory"` when the bit is set (`root/io/io/src/TKey.cxx:676-679`) | wrote `fClassName` verbatim |
 | `TKey::Sizeof` | counts 11 for it, hard-coded (`root/io/io/src/TKey.cxx:1374-1375`) | counted `fClassName.Sizeof()` |
 
-Commit `713f56ea03f` (2012-01-26, first released in **5.34/00**) moved the
-substitution from creation to the write, which is what made the four agree.
-Before it, the spelling a key carried depended on where the key came from:
+Commit `713f56ea03f` (2012-01-26, first released in 5.34/00) moved the
+substitution from creation to the write, and that made the four agree. Before it,
+the spelling a key had depended on where the key came from:
 
-- **created** in this process by `TFile::mkdir` — `fClassName` was `"TDirectory"`,
-  so every copy of it said `TDirectory` in 11 bytes;
-- **read back** from disk — `ReadKeyBuffer` turned it into `"TDirectoryFile"`
-  while `fKeylen` stayed the value on disk, sized for the short spelling. `Sizeof`
+- **created** in this process by `TFile::mkdir`: `fClassName` was `"TDirectory"`,
+  so every copy of it spelled `TDirectory`, in 11 bytes;
+- **read back** from disk: `ReadKeyBuffer` changed it to `"TDirectoryFile"`
+  while `fKeylen` kept the value on disk, sized for the short spelling. `Sizeof`
   then reserved 15 bytes for the name and `FillBuffer` wrote them, but `fKeylen`
-  is written as the member it holds (`root/io/io/src/TKey.cxx:658`) and nothing
-  recomputed it.
+  is written from the member as it stands (`root/io/io/src/TKey.cxx:658`), and
+  nothing recomputed it.
 
-So a key list written by ROOT 5.32 or earlier can hold a directory entry that
+A key list written by ROOT 5.32 or earlier can therefore hold a directory entry
+that
 
-- spells its class `TDirectoryFile`, where the record's own key — written once, at
-  creation — spells it `TDirectory`;
-- reports an `fKeylen` **four bytes smaller than the image itself**, because
+- spells its class `TDirectoryFile`, where the record's own key (written once, at
+  creation) spells it `TDirectory`;
+- reports an `fKeylen` four bytes smaller than the image itself, because
   `sizeof("TDirectoryFile") - sizeof("TDirectory")` is 4.
 
-The enclosing record is not short: `Sizeof` reserved the 15 bytes it wrote, so
-`fObjlen` covers the images exactly. Only `fKeylen` is stale. ROOT never notices,
-because `ReadKeyBuffer` advances the buffer pointer past the strings it has
-parsed. A reader that trusts `fKeylen` desynchronises on the *next* entry and
+The enclosing record is not short: `Sizeof` reserved the 15 bytes that were
+written, so `fObjlen` covers the images exactly. Only `fKeylen` is stale. ROOT is
+unaffected, because `ReadKeyBuffer` advances the buffer pointer past the strings
+it has parsed. A reader that trusts `fKeylen` desynchronises at the next entry and
 frames a key from the middle of one.
 
-> `uproot-issue64.root` (ROOT 5.28/00) is the measured case, and it holds both
-> spellings at once: of the root directory's five subdirectories, `macros` and
-> `events` are listed as `TDirectoryFile` in 55 bytes with `fKeylen` 51, while
-> `detector`, `physics` and `generator` are listed as `TDirectory` in the 55, 53
-> and 57 bytes their `fKeylen` reports. Parsing the images consumes exactly the
-> record's 544-byte `fObjlen`; adding up their `fKeylen` gives 536. The first two
-> keys had therefore been read back from disk by the time the list was written and
-> the last three had not — which is a fact about the program that wrote the file,
-> not about the format.
+> `uproot-issue64.root` (ROOT 5.28/00) is the measured case, and it has both
+> spellings. Of the root directory's five subdirectories, `macros` and `events`
+> are listed as `TDirectoryFile` in 55 bytes with `fKeylen` 51, while `detector`,
+> `physics` and `generator` are listed as `TDirectory` in the 55, 53 and 57 bytes
+> their `fKeylen` reports. Parsing the images consumes the record's 544-byte
+> `fObjlen` exactly; summing their `fKeylen` gives 536. The first two keys had
+> been read back from disk by the time the list was written and the last three
+> had not, which reflects the program that wrote the file rather than the format.
 
-**The two spellings are one class name.** ROOT normalises to `TDirectoryFile` in
-memory whichever it reads, so a reader comparing two keys' class names must fold
-them together, and a reader looking for subdirectories must accept both (§8).
+**The two spellings are one class name.** ROOT normalises either spelling to
+`TDirectoryFile` in memory, so a reader comparing two keys' class names must treat
+them as equal, and a reader looking for subdirectories must accept both (§8).
 
 ## 7. Version history
 
 | Class version | ROOT | Change |
 |---|---|---|
-| 1 | ≤ 3.03/06 | **No UUID at all** |
-| 2 | 3.03/07 only | UUID as raw 16 bytes, **no version word** |
+| 1 | ≤ 3.03/06 | No UUID at all |
+| 2 | 3.03/07 only | UUID as raw 16 bytes, no version word |
 | 3 | 3.03/08 – 3.10 | UUID gains its 2-byte version word |
 | 4 | 4.00+ | The `> 1000` large layout, and the 12 reserved bytes |
-| 5 | 5.15/02+, 5.16 in production | `TDirectory` split into `TDirectory`/`TDirectoryFile`; **no layout change** |
+| 5 | 5.15/02+, 5.16 in production | `TDirectory` split into `TDirectory`/`TDirectoryFile`; no layout change |
 
 ROOT 6.40.04 writes 5, or 1005 in the large layout.
 
-**The boundaries are release tags**, read out of the submodule's history, which
+The boundaries are release tags, read from the submodule's history, which
 reaches back to ROOT 1: `v3-03-06` has `ClassDef(TDirectory,1)`, `v3-03-07` has
 2 and `v3-03-08` has 3. Version 2 arrived on the development trunk on
 2002-07-09 (root commit `a84103dbe0d`, "Each directory has now a universal
-unique id") and was replaced on 2002-08-02 (`ce1a652165b`), so **exactly one
-release, 3.03/07, wrote it** — along with the development builds between those two
+unique id") and was replaced on 2002-08-02 (`ce1a652165b`), so exactly one
+release, 3.03/07, wrote it, along with the development builds between those two
 dates. The same commit series gave the file header its UUID (FileHeader §8).
 
-> Until 2026-09-22 this table said version 1 ended at 3.02 and version 2 began at
-> 3.03/01. A ROOT-written 3.03/02 file refutes that:
-> `root/roottest/root/io/arrayobject/Event.3.2.0.root` holds a **version 1** root
-> directory, 30 bytes, no UUID, and its file header's UUID bytes are zero.
+> `root/roottest/root/io/arrayobject/Event.3.2.0.root`, written by ROOT 3.03/02,
+> holds a version 1 root directory: 30 bytes, no UUID, and its file header's UUID
+> bytes are zero. Until 2026-09-22 this table said version 1 ended at 3.02 and
+> version 2 began at 3.03/01, which this file refutes.
 
 Reading the UUID therefore depends on `version mod 1000`
 (`root/io/io/src/TDirectoryFile.cxx:1792-1796`):
@@ -383,25 +381,25 @@ Reading the UUID therefore depends on `version mod 1000`
 | ≥ 3 | 2-byte version word, then 16 bytes |
 
 > A latent inconsistency in ROOT: `TFile::Init` reads the root directory's UUID
-> with `if (versiondir > 1)`, unconditionally expecting a version word
+> under `if (versiondir > 1)` and always expects a version word
 > (`root/io/io/src/TFile.cxx:823`), so it would misparse a version-2 root
-> directory — while `TDirectoryFile::Streamer` handles it correctly. This affects
+> directory, which `TDirectoryFile::Streamer` handles correctly. This affects
 > only files from ROOT 3.03/07.
 
 ### 7.1 Payload length per version *and* width
 
-Because the two axes are independent (§3.1), the length is a function of both, and
-of one thing outside the record: the reserved bytes are allocated on the **file
-header's** version, not the directory's
-(`root/io/io/src/TDirectoryFile.cxx:1725-1735`, written at `:785-786`). The four
-contributions are:
+Because the two axes are independent (§3.1), the length depends on both, and on
+one thing outside the record: whether the reserved bytes are present depends on
+the file header's version, not the directory's
+(`root/io/io/src/TDirectoryFile.cxx:1725-1735`, written at `:785-786`). The length
+is the sum of:
 
 | Contribution | Bytes |
 |---|---|
 | version word, `fNbytesKeys`, `fNbytesName`, `fDatimeC`, `fDatimeM` | 18 |
-| the three offsets | 12 small, **24** wide |
+| the three offsets | 12 small, 24 wide |
 | UUID: `version mod 1000` of 1 / 2 / ≥ 3 | 0 / 16 / 18 |
-| reserved, only when `fVersion >= 40000` **and** the record is small | 12 |
+| reserved, only when `fVersion >= 40000` and the record is small | 12 |
 
 which gives:
 
@@ -413,23 +411,21 @@ which gives:
 | 3 | < 40000 | **48** | 60 |
 | 4, 5 | ≥ 40000 | **60** | **60** |
 
-Bold entries are measured on real files; the rest are arithmetic. The `fVersion`
+Bold entries are measured on real files; the rest are computed. The `fVersion`
 column pairs as shown because ROOT's class version and its file version advanced
-together — but only ROOT couples them, and g4tools is the counter-example that
-makes the second row necessary: class version 1 with `fVersion` 40000. The wide
-column does not depend on `fVersion` at all, because the reserved bytes are never
-written in the wide layout.
+together. Only ROOT couples them: g4tools writes class version 1 with `fVersion`
+40000, which is why the second row is needed. The wide column does not depend on
+`fVersion`, because the reserved bytes are never written in the wide layout.
 
-The 60-and-60 row is the point of the reserved bytes (§5): at the current class
-version, and only there, the record is the same length either way, which is what
-lets ROOT rewrite a directory header in place when a file grows past 2 GB.
+The 60-and-60 row is what the reserved bytes are for (§5): at the current class
+version, and only there, the record is the same length in both layouts.
 
-> `pippa.root` (ROOT 2.24/00) supplies the 30, `mlpHiggs.root` and
-> `H1display.root` the 48 — both with `fVersion` below 40000, so no reserved bytes
-> — and the two g4tools files the **42**, which is the combination ROOT does not
-> write. 438 records in `data/` and the corpora supply the 60. Over all **471**
-> directory records in `data/` and both corpora the table predicts the payload
-> exactly, with no exceptions; that is invariant 15.
+> `pippa.root` (ROOT 2.24/00) supplies the 30; `mlpHiggs.root` and
+> `H1display.root` the 48, both with `fVersion` below 40000 and so without
+> reserved bytes; and the two g4tools files the 42, the combination ROOT does not
+> write. 438 records in `data/` and the corpora supply the 60. Over all 471
+> directory records in `data/` and both corpora, the table predicts the payload
+> exactly, with no exceptions (invariant 15).
 
 ## 8. Walking the tree
 
@@ -437,17 +433,16 @@ lets ROOT rewrite a directory header in place when a file grows past 2 GB.
    `fBEGIN + fNbytesName`.
 2. If `fSeekKeys` is 0, the directory has no keys. Otherwise read the record at
    `fSeekKeys`, take the count, and parse that many key images.
-3. For each entry whose class name is `"TDirectory"` **or**
-   `"TDirectoryFile"` — one class either way; see
-   [Records §3.9](Record.md#39-fclassname) and §6.5 — seek to its `fSeekKey`,
-   skip its `fKeylen` bytes, and parse the directory fields there. Recurse from
-   step 2.
+3. For each entry whose class name is `"TDirectory"` or `"TDirectoryFile"`
+   (one class either way; see [Records §3.9](Record.md#39-fclassname) and §6.5),
+   seek to its `fSeekKey`, skip its `fKeylen` bytes, and parse the directory
+   fields there. Recurse from step 2.
 4. Resolve duplicate names by cycle; see [Records §4](Record.md#4-cycles).
 
 Step 3 works because a subdirectory's `fNbytesName` equals its `fKeylen`, so
 `fSeekKey + fKeylen` and `fSeekDir + fNbytesName` are the same byte.
 
-Do **not** use `fSeekParent` in step 3; see §4.3.
+Do not use `fSeekParent` in step 3 (§4.3).
 
 ## 9. Invariants
 
@@ -467,52 +462,52 @@ Do **not** use `fSeekParent` in step 3; see §4.3.
    key list.
 9. The record's version, modulo 1000, is between 1 and 5.
 10. `fDatimeC <= fDatimeM`, both decoding to valid dates.
-11. Every key image **agrees with the key of the record it points at** — the same
+11. Every key image agrees with the key of the record it points at: the same
     `fNbytes`, `fObjlen`, `fKeylen`, `fCycle`, `fClassName`, `fName` and `fTitle`,
     with `TDirectory` and `TDirectoryFile` counting as one class name (§6.5).
-    The image is what a reader frames the payload with, so a disagreement makes the
-    object unreadable in a file ROOT itself opens without complaint (the key list is
-    the only copy ROOT consults, and it never cross-checks the record's own key).
-12. The key-list record's own key carries the `fSeekDir` of the directory that
-    **owns** the list, in `fSeekPdir` — not that directory's parent
-    (`root/io/io/src/TDirectoryFile.cxx:2213`). It is the only structural link
-    back from a key list to its directory, since the record is otherwise
+    A reader frames the payload with the image, so a disagreement makes the
+    object unreadable in a file ROOT itself opens without complaint (the key list
+    is the only copy ROOT consults, and ROOT never cross-checks the record's own
+    key).
+12. The key-list record's own key has, in `fSeekPdir`, the `fSeekDir` of the
+    directory that owns the list, not that directory's parent
+    (`root/io/io/src/TDirectoryFile.cxx:2213`). This is the only structural link
+    from a key list back to its directory, since the record is otherwise
     indistinguishable from the directory record (§6.2).
-13. Each image occupies exactly its own `fKeylen` bytes in the list — except a
-    directory entry written before ROOT 5.34, which spells its class
-    `TDirectoryFile` and occupies exactly 4 bytes more (§6.5). No other
-    difference is legitimate, and a reader that adds `fKeylen` rather than
-    parsing gets no warning about either.
+13. Each image occupies exactly its own `fKeylen` bytes in the list, except a
+    directory entry written before ROOT 5.34 that spells its class
+    `TDirectoryFile`, which occupies exactly 4 bytes more (§6.5). No other
+    difference is legitimate. A reader that adds `fKeylen` instead of parsing gets
+    no warning in either case.
 14. Images sharing a name have **distinct cycles, in descending order**, and no
     cycle is 0. `TDirectoryFile::AppendKey` puts each new key in front of the
-    first of its name (`root/io/io/src/TDirectoryFile.cxx:225-256`), and ROOT's
-    lookups rely on it: `Get`, `GetKey` and `FindKeyAny` return the **first**
-    match rather than the highest cycle (`:1002`, `:1167`, `:829`). A list in
-    ascending order resolves every unqualified name to the *oldest* copy, with no
-    diagnostic — measured in
+    first key with its name (`root/io/io/src/TDirectoryFile.cxx:225-256`), and
+    ROOT's lookups rely on this: `Get`, `GetKey` and `FindKeyAny` return the first
+    match, not the highest cycle (`:1002`, `:1167`, `:829`). A list in ascending
+    order resolves every unqualified name to the oldest copy, with no diagnostic,
+    as measured in
     [Writing a file §8.1](../06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets).
-    Real files exercise this **thinly**: across both corpora and `data/`, 462
-    directories hold 2395 keys and only **six** name groups have more than one
-    cycle — all six in descending order. `data/written/cycles-3.root` is what
-    gives the invariant teeth, and no corpus file carries a **negative**
-    `fCycle` at all, which is why none demonstrates the keep flag.
-    A negative `fCycle` is the keep flag and counts as its magnitude (§3.8 of
-    [Records](Record.md#38-fcycle)).
-15. The payload is exactly the length §7.1 gives for its **class version, its
-    offset width and the file header's version** — `fObjlen` less the
-    `fNbytesName - fKeylen` prefix. Measured on all 471 directory records of
-    `data/` and both corpora.
+    Real files rarely exercise this: across both corpora and `data/`, 462
+    directories hold 2395 keys, and only six name groups have more than one
+    cycle, all six in descending order. `data/written/cycles-3.root` is the main
+    test of the invariant. No corpus file has a negative `fCycle`, so none
+    demonstrates the keep flag. A negative `fCycle` is the keep flag and counts as
+    its magnitude (§3.8 of [Records](Record.md#38-fcycle)).
+15. The payload, `fObjlen` less the `fNbytesName - fKeylen` prefix, is exactly the
+    length §7.1 gives for its class version, its offset width and the file
+    header's version. Measured on all 471 directory records of `data/` and both
+    corpora.
 
-    This is the invariant form of §3.1's *class version* axis: a record that
-    claims a version whose UUID framing does not match what was written is off by
-    16 or 18 bytes, and nothing else notices. The *width* axis needs no invariant,
-    because a record that lies about it fails invariant 1 first — reading the
-    offsets at the wrong width leaves `fSeekDir` pointing somewhere other than the
-    record itself, so it is not recognised as a directory at all. Confirmed by
-    corrupting `container/directories`: the version word changed from 5 to 1005
-    reports five keys whose `fSeekPdir` no longer names a directory
-    ([Records §8](Record.md#8-invariants)), and changed from 5 to 1 reports this
-    invariant.
+    This invariant checks §3.1's class-version axis: a record whose version
+    implies a different UUID framing from the one written is off by 16 or 18
+    bytes, and no other check catches it. The width axis needs no invariant of its
+    own, because a record with the wrong width flag fails invariant 1 first:
+    reading the offsets at the wrong width leaves `fSeekDir` pointing somewhere
+    other than the record itself, so the record is not recognised as a directory.
+    Corrupting `container/directories` confirms this: changing the version word
+    from 5 to 1005 reports five keys whose `fSeekPdir` no longer names a directory
+    ([Records §8](Record.md#8-invariants)), and changing it from 5 to 1 reports
+    this invariant.
 
 Not safe to assume: that `fSeekParent` names the mother directory (§4.3), that the
 12 reserved bytes are present or zero (§5), that the key-list payload contains
@@ -534,7 +529,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | 7 | — | Three independent large-file flags are never distinguished (§3) |
 | 8 | — | Version 2 records store the UUID with no version word; version 1 has none (§7) |
 | 9 | `keyslist.md`: one key list "per non-empty subdirectory" | Emptiness is not the criterion. A *saved* empty directory has a list with count 0; an *unsaved* one has none (§6.4) |
-| 10 | `keyslist.md`: the list is "probably not accessed by its key" | Definitely not, and the reason is that its key is indistinguishable from two other records' (§6.2) |
+| 10 | `keyslist.md`: the list is "probably not accessed by its key" | It is never accessed by its key, because its key is indistinguishable from two other records' keys (§6.2) |
 | 11 | `keyslist.md` shows only the 3.02.06 layout | Missing the large variant, that each entry carries its own version so widths vary within one list, and that a large entry's `fSeekPdir` packs `fPidOffset` (§6) |
 | 12 | — | Up to 8 bytes of uninitialized slack inside `fObjlen` when `fEND > 2 GB` (§6.1) |
 | 13 | — | `fNbytesKeys` counts the whole record, key included (§4.1) |
@@ -548,16 +543,16 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/directories` | Two nesting levels, per-directory key lists, distinct UUIDs, `fSeekParent` |
 | `container/empty-directory` | A saved empty directory versus an unsaved one |
 | `container/cycles` | Several entries in one key list sharing a name, newest first (invariant 14) |
-| `container/reopened` | A key list **rebuilt by a second session**: keys copied verbatim, a new one inserted, and one removed by `WriteDelete` |
+| `container/reopened` | A key list rebuilt by a second session: keys copied verbatim, a new one inserted, and one removed by `WriteDelete` |
 | `written/reopen-add` | The same file written here, and `fDatimeM` refreshed while `fDatimeC` is not |
 
-No fixture covers a version 1, 2 or 3 directory record, and none can: no ROOT
-this project can run writes one, so `data/` is version 5 throughout — 99 records
+No fixture covers a version 1, 2 or 3 directory record, and none can, because no
+ROOT this project can run writes one; `data/` is version 5 throughout, 99 records
 across 88 files. The legacy corpus supplies them instead, and every payload size
-in §7 is confirmed there: `pippa.root` (ROOT 2.24/00) holds 24 **version 1**
-records, 23 of them subdirectories of exactly 30 bytes; `mlpHiggs.root` (3.04/02)
-and `H1display.root` (3.05/07) hold one **version 3** record each, 48 bytes after
-the name and title copy and no reserved bytes; five further files carry version 4.
+in §7 is confirmed there. `pippa.root` (ROOT 2.24/00) holds 24 version 1 records,
+23 of them subdirectories of exactly 30 bytes. `mlpHiggs.root` (3.04/02) and
+`H1display.root` (3.05/07) hold one version 3 record each, 48 bytes after the name
+and title copy, with no reserved bytes. Five further files have version 4.
 
 The smallest witnesses of each are in `root/roottest/`, which the pinned submodule
 ships (`gen/cern/README.md` lists them): `Event.3.2.0.root` (9 227 bytes, ROOT
@@ -565,13 +560,13 @@ ships (`gen/cern/README.md` lists them): `Event.3.2.0.root` (9 227 bytes, ROOT
 `data_v4_00_02.root` (1 225 bytes) for version 4. The first is also what dates
 §7's first row.
 
-**Version 2 is witnessed nowhere** — only ROOT 3.03/07 wrote it, and 0 of
-roottest's 273 files carry it — so its version-word-less UUID is the one row of §7
-resting on the source alone.
-The two **version 1001** records in `gen/foreign/` are the other axis: class
-version 1 in the wide layout, 42 bytes, no UUID (§3.1).
+No file witnesses version 2: only ROOT 3.03/07 wrote it, and 0 of roottest's 273
+files have it. Its UUID without a version word is therefore the only row of §7
+that rests on the source alone. The two version 1001 records in `gen/foreign/`
+cover the other axis: class version 1 in the wide layout, 42 bytes, no UUID
+(§3.1).
 
-§6.5's mismatched image is absent for the same reason, and is demonstrated
+For the same reason no fixture has §6.5's mismatched image. It is demonstrated
 instead by `uproot-issue64.root` in the third-party corpus
 (`gen/foreign/MANIFEST.sha256`), which `tools/check_invariants.py` reads and
-accepts for exactly the reason §6.5 gives.
+accepts for the reason §6.5 gives.

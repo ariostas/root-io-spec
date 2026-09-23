@@ -3,25 +3,25 @@ file = "data/ttree/branch-first-entry.root"
 size = 19308
 
 description = """
-A branch whose `fFirstEntry` is not 0 -- a branch that came into existence part
-way through the tree.
+A branch whose `fFirstEntry` is not 0: a branch created part way through the
+tree.
 
 `TBranch::SetFirstEntry` is called from exactly one place in ROOT that is not a
 user: `TBranchSTL::Fill`, when it meets an object class it has not seen before
 and creates a sub-branch for it mid-stream
-(`root/tree/tree/src/TBranchSTL.cxx:285`). The new sub-branch is told the entry
-number it was born at, and that number reaches disk.
+(`root/tree/tree/src/TBranchSTL.cxx:285`). The new sub-branch is given the entry
+number at which it was created, and that number reaches disk.
 
 Reaching it needs the `TBranchSTL` shape specifically: a **top-level** branch of
 a collection with pointers, at a split level above
 `TTree::kSplitCollectionOfPointers` (`root/tree/tree/src/TTree.cxx:2516-2518`).
-`ttree/split-ptr-collection` has the other shape -- the same collection as a
-member of a holder class -- which goes through `TBranchElement` and never reaches
+`ttree/split-ptr-collection` has the other shape, the same collection as a
+member of a holder class, which goes through `TBranchElement` and never reaches
 this code. The branch also has to be given a pointer-to-pointer:
 `TBranchSTL::SetObject` is unsupported and the alternative is a crash.
 
-Four entries, the first two with an empty vector. So `v.FHit` is created at entry
-2 and the file holds two branches that disagree about what entry 0 is:
+Four entries, the first two with an empty vector. `v.FHit` is therefore created
+at entry 2, and the file holds two branches that disagree about what entry 0 is:
 
 | | `fEntries` | `fFirstEntry` | `fSplitLevel` |
 |---|---|---|---|
@@ -31,19 +31,19 @@ Four entries, the first two with an empty vector. So `v.FHit` is created at entr
 The tree's own `fEntries` is 4. **A reader that maps basket entry *i* to tree
 entry *i* reads `v.FHit`'s two entries as entries 0 and 1 and gets the wrong
 values for every entry of the branch.** TBranch.md 10 step 1 rejects `e` below
-`fFirstEntry`, which for this branch rejects entries 0 and 1 -- correctly, since
+`fFirstEntry`, which for this branch rejects entries 0 and 1, correctly, since
 the vector was empty there.
 
-Note `fSplitLevel` **decrements** across this boundary, 101 to 100, unlike the
-hundreds component in `ttree/split-ptr-collection`, which is carried down
-unchanged; the sub-branch here is constructed with `fSplitLevel-1`
+`fSplitLevel` decrements across this boundary, 101 to 100, unlike the hundreds
+component in `ttree/split-ptr-collection`, which is passed down unchanged; the
+sub-branch here is constructed with `fSplitLevel-1`
 (`root/tree/tree/src/TBranchSTL.cxx:281-283`).
 
-The file carries a streamer info for `FHit` but **none for `vector<FHit*>`**,
-which is the sub-branch's own `fClassName`. `check_invariants.py` reports its one
-basket as a `SKIPPED` branch-basket for that reason: this is a file whose entry
-no reader can decode from the file alone, and ROOT itself reads it only because
-the dictionary is loaded.
+The file has a streamer info for `FHit` but none for `vector<FHit*>`, which is
+the sub-branch's own `fClassName`. `check_invariants.py` reports its one basket
+as a `SKIPPED` branch-basket for that reason: no reader can decode this entry
+from the file alone, and ROOT itself reads it only because the dictionary is
+loaded.
 """
 
 spec = [
@@ -111,7 +111,7 @@ offset = 1896
 type = "u8"
 value = 0
 
-# --- the sub-branch, born at entry 2 -------------------------------------
+# --- the sub-branch, created at entry 2 ----------------------------------
 
 [[bytes]]
 name = "v.FHit: fSplitLevel is DECREMENTED to 100, not carried down"

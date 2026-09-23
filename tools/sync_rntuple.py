@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
 """Keep spec/05-rntuple/ in sync with RNTuple's own documentation upstream.
 
-RNTuple is the one ROOT format that already has a real specification, written and
+RNTuple is the only ROOT format with a real specification, written and
 maintained by the ROOT team. This project does not fork it. `spec/05-rntuple/`
-holds a **verbatim tracked copy** of the upstream documents, and everything this
-project has to say about them lives beside the copy in ERRATA.md and NOTES.md, so
-the two are never confused.
+holds a **verbatim tracked copy** of the upstream documents, and this project's
+own notes on them live beside the copy in ERRATA.md and NOTES.md, so the two are
+never confused.
 
   tools/sync_rntuple.py            re-copy from the submodule
   tools/sync_rntuple.py --check    fail if the tracked copy has drifted
 
-Drift means one of two things and they need opposite responses: the submodule was
-bumped and the copy is stale (re-run without --check, then re-audit the diff), or
-someone edited the copy in place (revert it -- corrections go in ERRATA.md).
+Drift has two causes with opposite fixes: the submodule was bumped and the copy
+is stale (re-run without --check, then re-audit the diff), or someone edited the
+copy in place (revert it; corrections go in ERRATA.md).
 
-The copy is byte-identical, newline for newline. That is the point: a diff against
-a new upstream revision is then exactly the set of changes to audit, and nothing
-in it is ours.
+The copy is byte-identical, newline for newline, so a diff against a new
+upstream revision is the set of changes to audit and contains nothing of ours.
 
 UPSTREAM.md records which commit the copy came from, and this tool checks that it
-names the commit `root/` is pinned to -- the same pin tools/check_pin.py holds
-zensical.toml to. Without that, a stale copy and a stale provenance note would
-agree with each other and look correct.
+names the commit `root/` is pinned to, the same pin tools/check_pin.py holds
+zensical.toml to. Otherwise a stale copy and a stale provenance note would agree
+with each other and look correct.
 """
 
 from __future__ import annotations

@@ -2,9 +2,9 @@
 """Check the `Invariants` sections of spec/ against every fixture.
 
 Each layer document ends with a list of properties a conforming file satisfies
-(see PLAN.md 2.8). This makes those lists executable, which serves two purposes:
-it validates the reference files, and it validates the invariants themselves --
-a property stated wrongly fails here against files ROOT actually wrote.
+(see PLAN.md 2.8). This makes those lists executable. It validates the
+reference files, and it validates the invariants themselves: a property stated
+wrongly fails here against files ROOT wrote.
 
 Each check names the document and section it comes from. Needs no third-party
 packages; the one exception is noted where it arises.
@@ -67,8 +67,8 @@ def _generated_classes(doc: Path, tag: str) -> set[str]:
     Those blocks are written by `tools/inventory.py` from the pinned submodule
     and checked in CI, so they are a current extraction of ROOT's source. They
     are read from the published documents rather than re-extracted, because this
-    checker must run without the submodule; `tools/inventory.py --check` is what
-    keeps them honest.
+    checker must run without the submodule; `tools/inventory.py --check` keeps
+    them current.
     """
     text = doc.read_text()
     start = text.index(f"<!-- BEGIN GENERATED: {tag} -->")
@@ -77,24 +77,24 @@ def _generated_classes(doc: Path, tag: str) -> set[str]:
         # A definition list grouped by module rather than a table. The module
         # headers are backticked too, and those are the ones with a slash.
         return {name for name in re.findall(r"`([^`]+)`", body) if "/" not in name}
-    # A table. Only the first column is a class name: the others carry a
-    # backticked path, and a `Where` note may quote another class entirely.
+    # A table. Only the first column is a class name: the others hold a
+    # backticked path, and a `Where` note may quote another class.
     return {line.split("|")[1].strip().strip("`")
             for line in body.splitlines() if line.startswith("| `")}
 
 
 #: Classes that record **no streamer info of their own**, so a `kBase` element or
 #: an inline member naming one is not a file failing to describe itself.
-#: StreamerDriven.md 10.5. Two published sets, for one reason each:
+#: StreamerDriven.md 10.5. Two published sets:
 #:
 #:   * `custom` -- the hand-written `Streamer` never calls `WriteClassBuffer`,
 #:     and that call is what tags a class's info to be written
 #:     (spec/06-writing/WritingObjects.md 8.2), so nothing records one;
 #:   * forwarding -- the generated `Streamer` writes only the base classes.
 #:
-#: The `guarded`, `extending` and `delegating` classes are deliberately **not**
-#: exempt: all three do call `WriteClassBuffer`, so a file that holds one holds
-#: its info too, and exempting them would weaken the invariant by 124 classes.
+#: The `guarded`, `extending` and `delegating` classes are **not** exempt: all
+#: three call `WriteClassBuffer`, so a file that holds one holds its info too,
+#: and exempting them would weaken the invariant by 124 classes.
 NO_INFO_OF_ITS_OWN = (
     _generated_classes(APPENDIX / "HandWrittenStreamers.md", "custom")
     | _generated_classes(APPENDIX / "ForwardingStreamers.md", "forwarding"))
@@ -103,9 +103,9 @@ NO_INFO_OF_ITS_OWN = (
 #: record in front of it to name the class: `kObject` (61), `kAny` (62) and the
 #: two `->` pointer forms `kObjectp` (63) and `kAnyp` (68), which cannot be null.
 #: `kOffsetL` is added to the first two only (ElementTypes.md 7), giving 81 and
-#: 82. For these the declared type IS what was written, so the file must describe
-#: it; for `kObjectP` (64) and `kAnyP` (69) it need not, and StreamerDriven.md
-#: 6.1 says why.
+#: 82. For these the declared type is what was written, so the file must
+#: describe it; for `kObjectP` (64) and `kAnyP` (69) it need not
+#: (StreamerDriven.md 6.1).
 INLINE_OBJECT_TYPES = {61, 62, 63, 68, 81, 82}
 
 #: sizeof("TDirectoryFile") - sizeof("TDirectory"). A key list written before
@@ -119,8 +119,7 @@ def _dir_spelling(class_name: str | None) -> str | None:
 
     ROOT writes the first and reads it back as the second
     (`root/io/io/src/TKey.cxx:1373`, `:1256`), so a comparison of two keys'
-    class names has to fold them together or it reports a difference ROOT
-    cannot see. `spec/01-container/Directory.md` 6.1.
+    class names must treat them as equal. `spec/01-container/Directory.md` 6.1.
     """
     return "TDirectory" if class_name in ("TDirectory", "TDirectoryFile") \
         else class_name
@@ -129,11 +128,11 @@ def _dir_spelling(class_name: str | None) -> str | None:
 def directory_payload_length(version: int, file_version: int) -> int:
     """What a directory record's payload occupies. Directory.md 7.1.
 
-    Three inputs, because the version word carries two independent things and the
+    Three inputs, because the version word holds two independent things and the
     reserved bytes depend on a third: `version % 1000` is the class version, which
-    decides the UUID framing; `version > 1000` is the offset width; and the
-    **file header's** version decides whether the 12 reserved bytes were allocated
-    at all (`root/io/io/src/TDirectoryFile.cxx:1725-1735`, `:785-786`).
+    determines the UUID framing; `version > 1000` is the offset width; and the
+    **file header's** version determines whether the 12 reserved bytes were
+    allocated at all (`root/io/io/src/TDirectoryFile.cxx:1725-1735`, `:785-786`).
     """
     wide = version > 1000
     class_version = version % 1000
@@ -157,8 +156,8 @@ def this_element_failures(info) -> list[tuple[str, str]]:
 
     The shape TStreamerInfo::Build gives a class with a collection proxy of its
     own (root/io/io/src/TStreamerInfo.cxx:421-435). Its fSTLtype is the proxy's
-    and its type name no container name, which is why invariant 10 does not
-    apply to it (Collections.md 11.2).
+    and its type name is not a container name, so invariant 10 does not apply
+    to it (Collections.md 11.2).
     """
     out = []
     for el in info.elements:
@@ -179,11 +178,11 @@ def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
     set of described classes rather than one element list.
 
     `by_name` maps a class name to its info, so that a counter declared in a base
-    class can be found -- TArrayD's fArray names fN in TArray. Without it, only
+    class can be found (TArrayD's fArray names fN in TArray). Without it, only
     counters in this same list are accepted.
 
     Separate from Checker so that it can be exercised on element lists no
-    fixture contains -- an out-of-order base class, for one.
+    fixture contains, such as an out-of-order base class.
     """
     failures: list[tuple[str, str]] = []
     by_name = by_name or {}
@@ -235,16 +234,16 @@ def element_list_failures(info, by_name=None) -> list[tuple[str, str]]:
 def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
     """StreamerDriven.md invariant 5, over one streamer info.
 
-    `described` is every class name the file's `StreamerInfo` record carries. The
-    invariant is about the classes whose bytes are written **inline**, where the
-    declared type is the only thing that says what they are: a `kBase` element,
-    and a member with one of `INLINE_OBJECT_TYPES`. A `kObjectP` or `kAnyP`
-    member is excluded, because it may be null in every object the file holds and
-    because a non-null one names its concrete class in the bytes.
+    `described` is every class name in the file's `StreamerInfo` record. The
+    invariant covers the classes whose bytes are written **inline**, where only
+    the declared type identifies them: a `kBase` element, and a member with one
+    of `INLINE_OBJECT_TYPES`. A `kObjectP` or `kAnyP` member is excluded, because
+    it may be null in every object the file holds and because a non-null one
+    names its concrete class in the bytes.
 
     Separate from Checker so that it can be exercised on element lists no file
-    contains, which is how the exemptions are tested: the published lists are
-    large and a file cannot demonstrate the boundary between them.
+    contains. The exemptions are tested that way: the published lists are large
+    and a file cannot demonstrate the boundary between them.
     """
     failures: list[tuple[str, str]] = []
 
@@ -258,7 +257,7 @@ def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
         if bare in described or bare in NO_INFO_OF_ITS_OWN:
             return True
         # An STL container is described by its type name and Collections.md, not
-        # by an info, and ROOT records none for one used as an inline member --
+        # by an info, and ROOT records none for one used as an inline member:
         # `vector<double> twovectors[2]` in uproot-issue-586.root, written by
         # 6.24/06, whose StreamerInfo record holds exactly one entry.
         return (name.startswith(rootfile.COLLECTION_PREFIXES)
@@ -282,9 +281,9 @@ def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
 def _element_signature(info) -> list[tuple]:
     """What two entries for one layout must agree on. SchemaEvolution.md 9.6.
 
-    Deliberately not `fBits`, which is where the two legitimately differ, and not
-    `fSize`, which is `sizeof` on the writing machine and is masked everywhere
-    else for the same reason.
+    Not `fBits`, where the two legitimately differ, and not `fSize`, which is
+    `sizeof` on the writing machine and is masked everywhere else for that
+    reason.
     """
     return [(e.cls, e.name, e.ftype, e.type_name, e.array_length,
              tuple(e.max_index), e.title) for e in info.elements]
@@ -294,15 +293,15 @@ def info_list_failures(infos) -> list[tuple[str, str]]:
     """SchemaEvolution.md invariants 1 and 6, over one StreamerInfo record.
 
     Separate from Checker so that both can be exercised: no fixture holds an
-    out-of-range fClassVersion, and none holds a pair that disagrees -- ROOT does
-    not write one, which is exactly what invariant 6 asserts.
+    out-of-range fClassVersion, and none holds a pair that disagrees, since ROOT
+    does not write one (which is what invariant 6 asserts).
     """
     failures: list[tuple[str, str]] = []
     # There is no uniqueness invariant: two entries for one class may share a
     # version and differ in checksum (SchemaEvolution.md 3), and may agree on
-    # both (8.1, which ROOT writes for ROOT::TIOFeatures). What invariant 6 says
-    # is that when they agree on both, the element lists agree too -- which is
-    # what makes "take either entry" safe.
+    # both (8.1, which ROOT writes for ROOT::TIOFeatures). Invariant 6 says that
+    # when they agree on both, the element lists agree too, so taking either
+    # entry is safe.
     layouts: dict[tuple, object] = {}
     for info in infos:
         if not 0 <= info.class_version <= 65000:
@@ -333,7 +332,7 @@ class Checker:
         self.skipped: dict[tuple[str, str, str], int] = {}
         #: branch-baskets on which an entry check ran to completion. The
         #: denominator for the SKIPPED counts, so that "0 failures" can be read
-        #: against how much was actually reached.
+        #: against how much was reached.
         self.verified = 0
         #: The payload of the TTree record whose branches are being checked,
         #: where an embedded basket lives. TBranch.md 5.
@@ -366,9 +365,9 @@ class Checker:
         """The file buffer with `rec`'s object data uncompressed in place.
 
         Returns None when the record's algorithm is unavailable here, which is
-        recorded as "not checked" rather than as a failure -- the invariant checks
-        deliberately depend on nothing outside the standard library, and zstd
-        needs Python 3.14 while LZ4 needs a package.
+        recorded as "not checked" rather than as a failure: the invariant checks
+        depend on nothing outside the standard library, and zstd needs Python
+        3.14 while LZ4 needs a package.
         """
         if rec.offset in self._data:
             return self._data[rec.offset]
@@ -396,14 +395,14 @@ class Checker:
              unit: str = "branch-basket") -> None:
         """Record that `check` could not run here, and why.
 
-        Not a pass: a check that cannot run must not sit inside a "0 failures"
-        line unexamined. The counts are printed per reason at the end.
+        Not a pass: a check that cannot run must not be hidden inside a
+        "0 failures" line. The counts are printed per reason at the end.
 
         `unit` says what was skipped, and only `branch-basket` feeds the ENTRIES
-        ratio -- that figure is about decoding a tree's entries, so a histogram
-        or a matrix record counted into it would understate the coverage of
-        something it does not measure. A shared unit hides a category the same
-        way a shared reason does.
+        ratio. That figure measures decoding a tree's entries, so counting a
+        histogram or a matrix record into it would understate coverage of
+        something it does not measure. Units are kept separate for the same
+        reason reasons are.
         """
         key = (check, reason, unit)
         self.skipped[key] = self.skipped.get(key, 0) + 1
@@ -418,7 +417,7 @@ class Checker:
     def streamer_infos(self):
         """(buffer, record, infos) for this file's StreamerInfo record.
 
-        Cached, because six checks want it and decompressing it is not free.
+        Cached, because six checks use it and decompressing it has a cost.
         Returns (None, None, None) when there is none or it cannot be read.
         """
         if self._infos is None:
@@ -497,11 +496,11 @@ class Checker:
     def check_header_floor(self, begin: int, large: bool) -> None:
         """FileHeader 10.11: the header fits before the first record.
 
-        It is rewritten in place at every close and its length is decided by
-        `fVersion`, so a file whose first record starts sooner would be
-        overwritten by its own header. Split out from `check_header` because the
-        only way to provoke it is to move `fBEGIN`, which destroys the record
-        walk that the rest of `check_header` needs.
+        The header is rewritten in place at every close and its length depends
+        on `fVersion`, so a file whose first record starts sooner would have
+        that record overwritten by its own header. Split out from `check_header`
+        because the only way to provoke it is to move `fBEGIN`, which breaks the
+        record walk that the rest of `check_header` needs.
         """
         need = self.HEADER_LEN[bool(large)]
         if begin < need:
@@ -545,7 +544,7 @@ class Checker:
             # strings give a lower bound rather than the length. TBasket adds 19
             # bytes; Record.md 3.7.
             if rec.class_name == "TBasket":
-                # 19 bytes, or 20 when the basket carries fIOBits.
+                # 19 bytes, or 20 when the basket has fIOBits.
                 if rec.key_len not in (total + 19, total + 20):
                     self.bad("Record 8.3",
                              f"TBasket fKeylen {rec.key_len} != {total} + 19 or 20")
@@ -562,7 +561,7 @@ class Checker:
                 # Record.md 3.6: RNTuple's RFileProper writer passed the key's
                 # own offset as its directory until ROOT commit 5fe8a99942,
                 # first released in 6.36.00. Scoped to that class, that value
-                # and those releases -- a self-pointing key anywhere else, or
+                # and those releases; a self-pointing key anywhere else, or
                 # from a later ROOT, still fails.
                 pass
             else:
@@ -575,39 +574,38 @@ class Checker:
             self.bad("Record 8.8", f"chain ends at {cursor}, fEND is {self.header.end}")
 
     # -- Buffer.md 9 --------------------------------------------------------
-    # Records whose class is TFile or TDirectory are the container's own
-    # bookkeeping (root directory, key list, free list, subdirectory records).
-    # They are not streamed objects and carry no frame.
+    # Records whose payload is not a framed object. Records whose class is
+    # TFile or TDirectory are the container's own bookkeeping (root directory,
+    # key list, free list, subdirectory records): not streamed objects, so no
+    # frame.
     #
-    # TRef is a streamed object that nonetheless carries none: its streamer is
-    # TObject::Streamer plus a pidf, and TObject::Streamer asks WriteVersion for
-    # no byte count. A TArray has neither a byte count nor a version word; its
-    # payload starts with the element count. See Buffer.md 2.3; they are checked
-    # by check_references and check_tarray.
-    # Records whose payload is not a framed object: the container's own
-    # bookkeeping, and the classes with a hand-written layout of their own.
+    # The rest are classes with a hand-written layout. TRef is a streamed object
+    # with no frame: its streamer is TObject::Streamer plus a pidf, and
+    # TObject::Streamer asks WriteVersion for no byte count. A TArray has
+    # neither a byte count nor a version word; its payload starts with the
+    # element count. See Buffer.md 2.3; they are checked by check_references and
+    # check_tarray.
     UNFRAMED = ({"TFile", "TDirectory", "TDirectoryFile", "TRef", "TBasket",
                  # RooLinkedList::Streamer calls WriteVersion with no byte
                  # count and then writes a whole object. Buffer.md 2.3.
                  "RooLinkedList",
-                 # The rest of Buffer.md 2.3's list, which until 2026-09-22 this
-                 # set did not follow: TDatime was "described by hand" below and
-                 # yet made to open with a byte count here, and a TDatime record
-                 # in a ROOT-written file (go-hep's tdatime.root) failed 9.2 for
-                 # it. TStringLong and TQObject were in the same position and
-                 # would have failed the same way. Each one's payload is still
-                 # checked -- StreamerDriven 10.1 requires the hand-written shape
+                 # The rest of Buffer.md 2.3's list, which this set did not
+                 # follow until 2026-09-22: TDatime was "described by hand" below
+                 # yet required to open with a byte count here, and a TDatime
+                 # record in a ROOT-written file (go-hep's tdatime.root) failed
+                 # 9.2 because of it. TStringLong and TQObject would have failed
+                 # the same way. Each one's payload is still checked
+                 # (StreamerDriven 10.1 requires the hand-written shape
                  # rootfile.Decoder.read_object gives it to consume the payload
-                 # exactly -- so this exempts them from a count, not from a check.
+                 # exactly), so this exempts them from a count, not from a check.
                  # serialization/unframed-records writes all five as records.
                  "TDatime", "TString", "TStringLong", "TObject", "TQObject"}
                 | set(rootfile.TARRAY_WIDTH) | rootfile.STD_STRING_NAMES)
 
     # Classes whose records this reader cannot decode, each with the reason,
     # verified one at a time against the pinned source. Their records are
-    # reported as NOT CHECKED with the class named, never passed over silently,
-    # and the reason is per class because a shared message hides a category --
-    # `tools/inventory.py` classifies two of these very differently.
+    # reported as NOT CHECKED with the class named. The reason is per class
+    # because `tools/inventory.py` classifies two of these very differently.
     # PLAN.md 9.8.
     UNSPECIFIED_STREAMERS = {
         "RooWorkspace::CodeRepo":
@@ -638,7 +636,7 @@ class Checker:
         return base if base in self.UNSPECIFIED_STREAMERS else None
 
     def needs_unspecified_streamer(self, data, rec) -> str | None:
-        """Does reading this record require a class we know diverges?
+        """Does reading this record require a class known to diverge?
 
         Followed through the file's own streamer infos, because an inline member
         is written with no class record and so cannot be found in the bytes.
@@ -659,9 +657,9 @@ class Checker:
             if info is None:
                 continue
             for el in info.elements:
-                # An object-pointer member's type name carries a trailing `*`,
-                # which matches no streamer info; strip it or the walk dead-ends
-                # at the first pointer. RooFitResult reaches RooAbsCollection
+                # An object-pointer member's type name has a trailing `*`,
+                # which matches no streamer info; strip it or the walk stops at
+                # the first pointer. RooFitResult reaches RooAbsCollection
                 # only through `RooArgList*`.
                 stack.append(el.name if el.cls == "TStreamerBase"
                              else rootfile._bare_class(el.type_name))
@@ -671,8 +669,8 @@ class Checker:
         """Offsets of the records that are the container's own bookkeeping.
 
         Identified structurally, because the class name on them is whatever TFile
-        subclass wrote the file -- TStorageFactoryFile, ND::TND280Output -- and
-        not necessarily TFile. Record.md 3.
+        subclass wrote the file (TStorageFactoryFile, ND::TND280Output), not
+        necessarily TFile. Record.md 3.
         """
         if self._container is None:
             out = {self.header.begin}
@@ -697,10 +695,11 @@ class Checker:
         anything: StreamerDriven.md 6.
         """
         # A template's hand-written layout is recorded under the template name,
-        # as `ClassDef` declares it, while a file names the specialization --
+        # as `ClassDef` declares it, while a file names the specialization:
         # `TMatrixTSym` against `TMatrixTSym<double>`. Both spellings count as
-        # described, or a class whose absence of an info is *specified* (Matrix.md
-        # 2.2) would be reported as a file that fails to describe itself.
+        # described; otherwise a class whose missing info is *specified*
+        # (Matrix.md 2.2) would be reported as a file that fails to describe
+        # itself.
         template = (name or "").split("<", 1)[0]
         if (name in rootfile.CUSTOM_STREAMER or template in rootfile.CUSTOM_STREAMER
                 or name in self.UNFRAMED
@@ -714,8 +713,8 @@ class Checker:
 
     def check_buffer_framing(self) -> None:
         # Before ROOT 5 an ordinary class's record payload could begin with a bare
-        # version word: Buffer.md 2.3. There is nothing in the record that says
-        # so, only the file header's version.
+        # version word: Buffer.md 2.3. Nothing in the record indicates this; only
+        # the file header's version does.
         framed_by_default = self.header.root_version[0] >= 5
         for rec in self.records:
             if rec.free or rec.class_name in self.UNFRAMED:
@@ -754,9 +753,9 @@ class Checker:
             if start + 4 + frame.byte_count != end:
                 if self.extends_past_byte_count(rec.class_name):
                     # Buffer.md 2.4: for an `extending` class the byte count is a
-                    # lower bound by design, and how much longer the object is is
-                    # checked instead by the class's own invariants -- Matrix 5.4
-                    # and 5.5 for a TMatrixTSym.
+                    # lower bound by design, and the object's full length is
+                    # checked by the class's own invariants instead (Matrix 5.4
+                    # and 5.5 for a TMatrixTSym).
                     pass
                 else:
                     self.bad("Buffer 9.9",
@@ -926,8 +925,8 @@ class Checker:
                     # "the base info" is any info for that class in the file: a
                     # file may hold several at different versions, and
                     # fBaseCheckSum identifies a layout (StreamerInfo.md 9.2).
-                    # Comparing against the one by_name happened to keep failed
-                    # a base element naming the other (PLAN-corpus.md C5).
+                    # Comparing only against the one by_name kept failed a base
+                    # element naming another (PLAN-corpus.md C5).
                     targets = all_by_name.get(e.name, [])
                     if (targets and e.base_checksum
                             and all(t.checksum != e.base_checksum for t in targets)):
@@ -935,11 +934,11 @@ class Checker:
                         self.bad("StreamerInfo 13.7",
                                  f"{where}: fMaxIndex[1] 0x{e.base_checksum:08x} "
                                  f"matches no {e.name} info in the file ({have})")
-                    # There is deliberately no invariant on fBaseVersion.
-                    # It records the base version the *derived* class's info was
-                    # built against, which need not be the version of the base's
-                    # own info in the same file: five files in the two corpora
-                    # disagree, and all five are right (StreamerInfo.md 9.2).
+                    # There is no invariant on fBaseVersion. It records the base
+                    # version the *derived* class's info was built against, which
+                    # need not be the version of the base's own info in the same
+                    # file: five files in the two corpora disagree, and all five
+                    # are correct (StreamerInfo.md 9.2).
                     # 13.6 of ElementTypes: -1 only for a suppressed TObject base
                     if e.ftype == -1 and e.name != "TObject":
                         self.bad("ElementTypes 11.6",
@@ -990,8 +989,8 @@ class Checker:
                              f"{where}: kHasRange set on fType {e.ftype}")
 
                 # 11.3. 500 is the two STL element classes; 501 is TStreamerLoop.
-                # The published entry omitted TStreamerLoop, which is the only
-                # class that ever carries 501.
+                # The published entry omitted TStreamerLoop, the only class that
+                # ever has 501.
                 if e.ftype in (500, 300, 365) and e.cls not in (
                         "TStreamerSTL", "TStreamerSTLstring"):
                     self.bad("ElementTypes 11.3",
@@ -999,12 +998,13 @@ class Checker:
                 elif e.ftype == 501 and e.cls != "TStreamerLoop":
                     self.bad("ElementTypes 11.3",
                              f"{where}: fType 501 on a {e.cls}, not a TStreamerLoop")
-                # 11.4. fArrayLength is the FIXED extent: positive for a
+                # 11.4. fArrayLength is the fixed extent: positive for a
                 # kOffsetL code, and 0 for a kOffsetP one, whose length is its
                 # counter's. The published invariant claimed positive for all of
-                # [20, 59] and 2229 elements say otherwise. The one scalar-looking
-                # exception is an object pointer, which spells a fixed array with
-                # fArrayLength and no kOffsetL (ElementTypes.md 7).
+                # [20, 59], which 2229 elements contradict. The only
+                # scalar-looking exception is an object pointer, which declares a
+                # fixed array with fArrayLength and no kOffsetL
+                # (ElementTypes.md 7).
                 if 20 <= e.ftype <= 39 and e.array_length <= 0:
                     self.bad("ElementTypes 11.4",
                              f"{where}: kOffsetL fType {e.ftype} with fArrayLength "
@@ -1041,7 +1041,7 @@ class Checker:
         exactly its byte count.
 
         Records whose class has a hand-written Streamer are reported as skipped
-        rather than as failures -- that divergence is StreamerDriven.md section 7
+        rather than as failures: that divergence is StreamerDriven.md section 7
         and is the subject of spec/03-classes/.
         """
         _, _, infos = self.streamer_infos()
@@ -1070,7 +1070,7 @@ class Checker:
                 continue    # a hand-written Streamer; StreamerDriven.md 7
             except (rootfile.FormatError, struct.error,
                     IndexError, ValueError) as exc:
-                # A record may need a class we know diverges but have not
+                # A record may need a class known to diverge that is not
                 # specified. Report the gap rather than the symptom.
                 needed = self.needs_unspecified_streamer(data, target)
                 if needed is not None:
@@ -1083,8 +1083,8 @@ class Checker:
                 continue
             # Buffer.md 9.10: ROOT writes TObject::IsA()'s version, which has
             # been 1 at every release. A reading that finds anything else here
-            # has taken a version word for a TObject or the reverse, which is
-            # the one mistake StreamerDriven.md 7.1 leaves a reader to make.
+            # has taken a version word for a TObject or the reverse, the only
+            # mistake StreamerDriven.md 7.1 leaves a reader to make.
             for v in rootfile.walk(value):
                 if v.tobject is not None and v.tobject.version != 1:
                     self.bad("Buffer 9.10",
@@ -1175,11 +1175,11 @@ class Checker:
 
         # 8.6, over every TObject base the streamer-driven read reached.
         #
-        # 8.1 -- that kIsReferenced makes the base 12 bytes rather than 10 -- is
-        # not checked here, because read_tobject derives the length from the bit
-        # and comparing the two would be vacuous. It is checked instead by
-        # StreamerDriven 10.1/10.2: mis-reading the length desynchronises the
-        # enclosing object and its byte count catches it. Confirmed by clearing
+        # 8.1 (kIsReferenced makes the base 12 bytes rather than 10) is not
+        # checked here, because read_tobject derives the length from the bit and
+        # comparing the two would be vacuous. StreamerDriven 10.1/10.2 check it
+        # instead: mis-reading the length desynchronises the enclosing object and
+        # its byte count catches it. Confirmed by clearing
         # kIsReferenced on serialization/references, which reports
         # "TObjString v1 consumed 11 bytes, byte count says 14".
         _, _, infos = self.streamer_infos()
@@ -1314,12 +1314,12 @@ class Checker:
                 elif (el.name == "This"
                       and not rootfile.is_collection_name(el.type_name)):
                     # 14.10 does not apply: the fSTLtype is the proxy's and the
-                    # type name no container name. Collections.md 11.2.
+                    # type name is not a container name. Collections.md 11.2.
                     pass
                 elif bare not in (300, 365):
                     # 14.10. Checked on the value a reader ends up with, so it
                     # fails on a reader that skips the set/multimap repair of
-                    # section 1 -- which is how it was found.
+                    # section 1; that is how the repair was found to be needed.
                     try:
                         want = rootfile.stl_kind(el.type_name)
                     except rootfile.UnsupportedClass:
@@ -1342,8 +1342,8 @@ class Checker:
             if data is None:
                 continue
 
-            # 14.7. 14.8 -- that the body matches the encoding fBits selects --
-            # is checked through consumption, by decode_record below: reading the
+            # 14.7. 14.8 (the body matches the encoding fBits selects) is
+            # checked through consumption, by decode_record below: reading the
             # wrong encoding desynchronises and the byte count catches it.
             # Confirmed by flipping kBypassStreamer on a copy of
             # serialization/clones-array.
@@ -1391,9 +1391,9 @@ class Checker:
                              f"which has no streamer info in this file")
 
                 # 9. An empty member-wise collection writes no columns at all.
-                # Read straight from the bytes rather than through the decoder,
-                # so that this states the rule independently of the reader that
-                # implements it.
+                # Read from the bytes rather than through the decoder, so the
+                # rule is checked independently of the reader that implements
+                # it.
                 if frame.end is None:
                     continue
                 pos = frame.body
@@ -1413,9 +1413,9 @@ class Checker:
     def check_tarray(self) -> None:
         """TArray.md invariants 1 and 3.
 
-        Invariant 2 -- that a TArray occupies 4 + fN * width -- is checked through
-        the enclosing object's byte count by the streamer-driven read, since a
-        TArray carries no byte count of its own to check against. Confirmed by
+        Invariant 2 (a TArray occupies 4 + fN * width) is checked through the
+        enclosing object's byte count by the streamer-driven read, since a
+        TArray has no byte count of its own to check against. Confirmed by
         shortening the fN of TH1L's TArrayL64 base on a copy of
         serialization/version-zero, which then reports "TH1L v0 consumed 544
         bytes, byte count says 552".
@@ -1447,9 +1447,9 @@ class Checker:
     FORMULA_NEW_FROM = {"TF1": 8, "TFormula": 9}
 
     #: WritingHistograms.md 10. The number of axes each histogram class counts
-    #: cells in; every axis past that carries exactly one bin. The TH1x, TH2x
-    #: and TH3x families follow from the name; TH2Poly, TH1K and TProfile's
-    #: relatives outside this map are not described here and are left alone.
+    #: cells in; every axis past that has exactly one bin. The TH1x, TH2x and
+    #: TH3x families follow from the name; TH2Poly, TH1K and TProfile's
+    #: relatives outside this map are not described here and are skipped.
     HIST_DIMENSION = {"TProfile": 1, "TProfile2D": 2, "TProfile3D": 3}
 
     #: The concrete element letters a THnx class name can end in.
@@ -1466,13 +1466,13 @@ class Checker:
     def check_histogram(self) -> None:
         """WritingHistograms.md invariants 1, 2, 3, 4, 6, 8 and 9.
 
-        The shape checks a histogram record must satisfy whatever wrote it, and
-        they are the same at every TH1 version because they are all about
-        *lengths* -- fNcells against the axes, the TArray base and fSumw2
-        against fNcells, fXbins against fNbins. A member a legacy version does
-        not carry is simply absent from the decoded tree and skipped.
+        The shape checks a histogram record must satisfy whatever wrote it. They
+        are the same at every TH1 version because they are all about *lengths*:
+        fNcells against the axes, the TArray base and fSumw2 against fNcells,
+        fXbins against fNbins. A member a legacy version lacks is absent from
+        the decoded tree and skipped.
 
-        Invariant 5 is not here: whether every weight was 1 is not recoverable
+        Invariant 5 is not here: whether every weight was 1 cannot be recovered
         from a record, so a check of `fTsumw <= fEntries` would be wrong for
         every weighted histogram ROOT has ever written. 7 is
         `tools/check_versions.py`.
@@ -1483,10 +1483,10 @@ class Checker:
         the same check from the other side, fZaxis.fNbins 1 -> 2 gives 10.4,
         fBufferSize 0 -> 4 gives 10.6, a moved fXbins edge gives 10.3, and
         fErrorMode 4 and an inverted Y range give 10.9. The other array lengths
-        desynchronise the decode before reaching here -- shortening the TArrayF
-        base reports "TH2F v4 consumed 807 bytes, byte count says 811" -- so the
-        length checks only bite on a file whose byte count agrees with its wrong
-        length, which is exactly what a faulty *writer* produces.
+        desynchronise the decode before reaching here (shortening the TArrayF
+        base reports "TH2F v4 consumed 807 bytes, byte count says 811"), so the
+        length checks only catch a file whose byte count agrees with its wrong
+        length, which is what a faulty *writer* produces.
         """
         for rec in self.records:
             if rec.free:
@@ -1516,19 +1516,18 @@ class Checker:
     def check_graphs(self) -> None:
         """The Invariants of `spec/06-writing/WritingGraphs.md` 6.
 
-        What is checkable here and what is not is worth stating, because the
-        obvious check is circular: `rootfile.py` derives each counted array's
-        extent *from* `fNpoints`, so comparing the two can never fail. The half
-        of invariant 1 with teeth is the flag byte -- a value other than 0 or 1,
-        or a 0 with points to write -- plus `fNpoints >= 0`. The "exactly
-        `fNpoints` values" half is enforced one layer down, by the byte count, as
-        `StreamerDriven` 10.1.
+        The obvious check is circular: `rootfile.py` derives each counted
+        array's extent *from* `fNpoints`, so comparing the two can never fail.
+        The part of invariant 1 that can fail is the flag byte (a value other
+        than 0 or 1, or a 0 with points to write) plus `fNpoints >= 0`. The
+        "exactly `fNpoints` values" half is enforced one layer down, by the byte
+        count, as `StreamerDriven` 10.1.
 
         Confirmed by corrupting `data/written/graph.root`: a flag byte of 7 gives
         "fX's flag byte is 7, not 0 or 1", and an inverted pair gives invariant 2.
-        `fNpoints` 4 -> 3 and 4 -> -1 desynchronise the decode first --
-        "TGraph v5 consumed 229 bytes, byte count says 192" -- which is the same
-        honest division the histogram checks have.
+        `fNpoints` 4 -> 3 and 4 -> -1 desynchronise the decode first ("TGraph
+        v5 consumed 229 bytes, byte count says 192"), the same division of labour
+        the histogram checks have.
         """
         _, _, infos = self.streamer_infos()
         if infos is None:
@@ -1564,9 +1563,9 @@ class Checker:
         if npoints < 0:
             self.bad("WritingGraphs 6.1", f"{where}: fNpoints {npoints}")
             return
-        # Invariant 1's flag byte, over every counted array in the record
-        # whichever class declared it: a TGraphErrors' fEX and fEY are the same
-        # shape, and so are the four arrays of a TGraphAsymmErrors.
+        # Invariant 1's flag byte, over every counted array in the record,
+        # whichever class declared it: a TGraphErrors' fEX and fEY have the same
+        # shape, and so do the four arrays of a TGraphAsymmErrors.
         for name in ("fX", "fY", "fEX", "fEY", "fEXlow", "fEXhigh", "fEYlow",
                      "fEYhigh"):
             member = by_name.get(name)
@@ -1685,7 +1684,7 @@ class Checker:
         if rec.class_name in self.HIST_DIMENSION:
             self.check_profile(data, rec, hist, ncells, where)
 
-    #: WritingHistograms.md 8.4 -- kERRORMEAN, kERRORSPREAD, kERRORSPREADI and
+    #: WritingHistograms.md 8.4: kERRORMEAN, kERRORSPREAD, kERRORSPREADI and
     #: kERRORSPREADG (`root/hist/hist/inc/TProfile.h:28`).
     ERROR_MODES = (0, 1, 2, 3)
 
@@ -1790,16 +1789,16 @@ class Checker:
     def check_matrix(self) -> None:
         """Matrix.md invariants 1 to 7.
 
-        Invariants 4 and 5 are the load-bearing ones: the bytes past the byte
-        count are exactly one element per stored position, so the object is
-        longer than its own byte count by exactly that much. They are what
-        catches a reader that treats `TMatrixTSym` as an ordinary delegating
-        class, since such a reader stops at the byte count and reports nothing.
+        Invariants 4 and 5 matter most: the bytes past the byte count are one
+        element per stored position, so the object is longer than its own byte
+        count by that much. They catch a reader that treats `TMatrixTSym` as an
+        ordinary delegating class, since such a reader stops at the byte count
+        and reports nothing.
 
         Confirmed by corrupting a copy of `classes/matrix`, one field at a time:
         the version word (5.1), `fNcols` and `fNelems` (5.2), `fNrowIndex`
         (5.3), the byte count and `fNrows` (5.4, where the element span no
-        longer reaches the end of the payload). Invariant 6 is the exception --
+        longer reaches the end of the payload). Invariant 6 is the exception:
         no corruption can add a streamer info under a longer name than the one
         that is there, so it is checked but not corruption-tested.
         """
@@ -1818,8 +1817,8 @@ class Checker:
                 continue
             names = {i.name for i in infos}
             if cls in names and symmetric:
-                # Invariant 6. Nothing writes such an info; if one appears it is
-                # a claim about the layout that the bytes do not honour.
+                # Invariant 6. Nothing writes such an info; if one appears it
+                # describes a layout the bytes do not follow.
                 self.bad("Matrix 5.6",
                          f"the file carries a streamer info for {cls}, which "
                          f"ROOT never records")
@@ -1859,8 +1858,8 @@ class Checker:
                 continue
             if frame.version != max(versions):
                 # Invariant 1. A version word that is not the base's current one
-                # is either an older file -- legitimate, and then the info in it
-                # says so -- or a misread frame.
+                # is either an older file (legitimate, and then the file has an
+                # info at that version) or a misread frame.
                 if frame.version not in versions:
                     self.bad("Matrix 5.1",
                              f"{cls} at {rec.offset} has version word "
@@ -2032,7 +2031,7 @@ class Checker:
             return
 
         # Invariant 5. The info is in the file whenever any class reaches
-        # RooLinkedList through the generated path, and it always names a member
+        # RooLinkedList through the generated path, and it always lists a member
         # the Streamer never writes.
         for info in infos:
             if info.name != "RooLinkedList":
@@ -2068,8 +2067,8 @@ class Checker:
                     self.check_roofit_object(data, value, cls, payload_end)
 
     #: How a decode failure is attributed to an invariant. Each reader in
-    #: rootfile.py raises with the class name first, so the message says which
-    #: of these broke -- the failure may be nested several objects deep, and the
+    #: rootfile.py raises with the class name first, so the message names the
+    #: class that failed. The failure may be nested several objects deep; the
     #: innermost class named is the one whose rule was violated.
     ROOFIT_LABELS = (("RooLinkedList", "RooFit 7.2"),
                      ("RooRefArray", "RooFit 7.3"),
@@ -2089,9 +2088,9 @@ class Checker:
     def roofit_class(value) -> str | None:
         """Which of RooFit.md 1's classes this Value is, or None.
 
-        A base class carries its name in `name` and the literal "BASE" in
+        A base class has its name in `name` and the literal "BASE" in
         `type_name`, which is how RooAbsBinning and RooCategory are reached;
-        a member or a record carries the class in `type_name`.
+        a member or a record has the class in `type_name`.
         """
         for name in (value.type_name, value.name):
             if name in Checker.ROOFIT_CLASSES:
@@ -2180,12 +2179,12 @@ class Checker:
             #
             # TBasket.md 1: the `fVersion += 1000` in TBasket's constructor
             # arrives in ROOT 4.02 (commit 3970c0bead, first production release
-            # 4.02/00). Before it a basket key carries the ordinary key version
-            # and the small layout -- 12385 such keys in 19 files of
-            # root/roottest/, from 2.23/12 to 4.00/04. So this is a claim about
-            # what ROOT writes from 4.02 on, and gating it on the writing release
-            # is scoping it to where it is true, not weakening it: rootfile.py
-            # takes every key's width from the key itself either way.
+            # 4.02/00). Before it a basket key has the ordinary key version and
+            # the small layout: 12385 such keys in 19 files of root/roottest/,
+            # from 2.23/12 to 4.00/04. So this is a claim about what ROOT writes
+            # from 4.02 on, and gating it on the writing release scopes it to
+            # where it is true; rootfile.py takes every key's width from the key
+            # itself either way.
             if (self.header.root_version >= BASKET_LARGE_KEY_SINCE
                     and rec.key_version <= rootfile.LARGE_KEY_VERSION):
                 self.bad("TBasket 9.2",
@@ -2204,8 +2203,8 @@ class Checker:
             tail = rec.obj_len - (basket.last - rec.key_len)
             if basket.has_offsets:
                 one = 4 + 4 * (basket.nev_buf + 1)
-                # One array, or two when a displacement array follows -- which
-                # the flag never says, because a record basket is written
+                # One array, or two when a displacement array follows, which
+                # the flag never indicates because a record basket is written
                 # header-only. TBasket.md 5.3.
                 want = one * (2 if basket.displacements is not None else 1)
                 if tail != want:
@@ -2249,7 +2248,7 @@ class Checker:
             if basket.generated:
                 # The offsets are not in the basket at all: generating them needs
                 # the branch's leaf and its counter, which TBasket.md 5.2 covers
-                # and this per-record check does not have to hand.
+                # and this per-record check does not have.
                 continue
             for index in range(basket.nev_buf):
                 try:
@@ -2268,15 +2267,15 @@ class Checker:
 
         The compressed/raw decision is `fObjlen > fNbytes - fKeylen` and nothing
         else (9.1), so a raw payload that happened to begin with a plausible block
-        header would make the two readings of the same record disagree. It does
-        not happen, and this is what says so.
+        header would make the two readings of the same record disagree. This
+        checks that it does not happen.
         """
         # payload_range's start is already a file offset. Until 2026-09-22 this
         # added rec.offset to it a second time, so the check read 9 bytes at
-        # twice the record's offset -- another record, or past the end of the
-        # file, where it returned early. It passed vacuously on every record it
-        # was ever given; corrupting a raw payload to open with a valid `ZL`
-        # header did not trip it (PLAN-corpus.md C7).
+        # twice the record's offset (another record, or past the end of the
+        # file, where it returned early). It passed vacuously on every record;
+        # corrupting a raw payload to open with a valid `ZL` header did not
+        # trip it (PLAN-corpus.md C7).
         start, end = rootfile.payload_range(rec)
         head = data[start:start + 9]
         if len(head) < 9 or head[:2] not in BLOCK_MAGICS:
@@ -2296,7 +2295,7 @@ class Checker:
                 continue
             payload, end = rec.payload_offset, rec.offset + rec.nbytes
             if rec.obj_len <= rec.payload_nbytes:
-                # Stored raw, which is 9.1's first branch -- Compression.md 1.1.
+                # Stored raw, 9.1's first branch: Compression.md 1.1.
                 self.check_raw_is_not_a_block(rec, self.buf)
                 continue
 
@@ -2308,8 +2307,8 @@ class Checker:
                 magic = self.buf[o:o+2]
                 if magic not in BLOCK_MAGICS:
                     # Inside an RBlob this is where the previous sealed page
-                    # ended and the next one begins -- a raw page, or a checksum
-                    # we walked into. Where the boundary is takes the page list.
+                    # ended and the next one begins: a raw page, or a checksum
+                    # the walk reached. Placing the boundary needs the page list.
                     if rec.class_name == RBLOB_CLASS:
                         self.no_codec.add(RBLOB_MULTIPAGE)
                         unreadable = True
@@ -2337,30 +2336,30 @@ class Checker:
                     break
 
             # Compression.md 9, "What an RBlob is not": an RBlob does not hold
-            # one object. It holds one or more SEALED PAGES, each of them
+            # one object. It holds one or more sealed pages, each of them
             # `blocks || optional 8-byte XXH3-64 checksum`, and the checksum is
-            # appended AFTER compression and counted outside fObjLen
+            # appended after compression and counted outside fObjLen
             # (root/tree/ntuple/src/RPageStorage.cxx:751, and
             # kNBytesPageChecksum at
             # root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74). So a sealed page's
             # chain stops 8 bytes short of the payload and 9.2 does not hold as
             # stated.
             #
-            # This stands 9.2 and 9.3 down for exactly that shape and no other.
-            # An RBlob holding an ENVELOPE still satisfies both, because an
-            # envelope's checksum is inside its own declared length -- measured
-            # on data/rntuple/compressed.root, where the three envelope blobs
-            # close exactly and only the page blob is 8 bytes short. A blob
-            # holding SEVERAL pages cannot be checked at all without the page
+            # This suspends 9.2 and 9.3 for that shape and no other. An RBlob
+            # holding an envelope still satisfies both, because an envelope's
+            # checksum is inside its own declared length; measured on
+            # data/rntuple/compressed.root, where the three envelope blobs close
+            # exactly and only the page blob is 8 bytes short. A blob holding
+            # several pages cannot be checked at all without the page
             # boundaries, which live in the page list envelope that rootfile.py
-            # does not read; that is reported rather than passed over.
+            # does not read; that case is reported, not passed.
             sealed = rec.class_name == RBLOB_CLASS
             if unreadable:       # already recorded as RBLOB_MULTIPAGE
                 continue
 
             if produced != rec.obj_len:
                 # Short of fObjLen inside an RBlob means the walk stopped at a
-                # page boundary it could not place. Say so; do not call it a
+                # page boundary it could not place. Report that, not a
                 # malformed chain.
                 if sealed:
                     self.no_codec.add(RBLOB_MULTIPAGE)
@@ -2369,19 +2368,18 @@ class Checker:
                          f"blocks decode to {produced} bytes, fObjlen is {rec.obj_len}")
             # The blocks account for fObjLen, so the payload must now close. An
             # envelope closes flush; a sealed page closes 8 bytes early, and that
-            # gap is the checksum. Nothing else is a shape ROOT writes, so a
-            # chain that lands anywhere else IS a failure -- without this the
-            # carve-out would swallow a corrupted page as "unverifiable".
+            # gap is the checksum. ROOT writes no other shape, so a chain that
+            # ends anywhere else is a failure; without this the carve-out would
+            # accept a corrupted page as "unverifiable".
             if o != end and not (sealed and o == end - RN_PAGE_CHECKSUM):
                 self.bad("Compression 9.2",
                          f"block chain ends at {o}, payload ends at {end}")
-            # 9.5: every block but the last carries exactly kMAXZIPBUF bytes.
-            # Also a statement about ONE object's chain: ROOT splits a single
-            # buffer at kMAXZIPBUF. An RBlob's blocks come from several pages
+            # 9.5: every block but the last holds exactly kMAXZIPBUF bytes.
+            # This too is about one object's chain: ROOT splits a single buffer
+            # at kMAXZIPBUF. An RBlob's blocks come from several pages
             # compressed independently, so the count follows the page size and
-            # the number of pages, and comparing it against fObjLen is comparing
-            # two unrelated numbers -- 1310 blocks against an "expected" 6 on
-            # test_ntuple_storage_1col_10e6evt.root.
+            # the number of pages and is unrelated to fObjLen: 1310 blocks
+            # against an "expected" 6 on test_ntuple_storage_1col_10e6evt.root.
             if not sealed and blocks > 1 and rec.obj_len > KMAXZIPBUF:
                 expected = 1 + (rec.obj_len - 1) // KMAXZIPBUF
                 if blocks != expected:
@@ -2395,7 +2393,7 @@ class Checker:
             d = rootfile.read_directory(self.buf, rec)
             if d is None:
                 continue
-            # 9.1 is what read_directory validates to identify the record at all.
+            # 9.1 is what read_directory validates to identify the record.
             if d.fields_offset != rec.offset + d.nbytes_name:
                 self.bad("Directory 9.2",
                          f"fields at {d.fields_offset}, but fSeekDir + fNbytesName "
@@ -2428,8 +2426,8 @@ class Checker:
                 self.bad("Directory 9.9", f"directory version {d.version}")
             else:
                 # 9.15. The class version and the offset width are independent
-                # axes (Directory.md 3.1), so the payload length is a function of
-                # both -- and of the file version, for the reserved bytes.
+                # axes (Directory.md 3.1), so the payload length depends on both,
+                # and on the file version for the reserved bytes.
                 want = directory_payload_length(d.version, self.header.version)
                 got = rec.obj_len - (d.nbytes_name - rec.key_len)
                 if got != want:
@@ -2453,8 +2451,8 @@ class Checker:
                          f"fNbytesKeys {d.nbytes_keys} != fNbytes at fSeekKeys ({got})")
                 continue
             # 9.12. The only link from a key-list record back to its directory:
-            # its key names the owning directory, which is what distinguishes it
-            # from the directory record it otherwise looks exactly like.
+            # its key names the owning directory, which distinguishes it from the
+            # directory record it otherwise looks exactly like.
             if klist.seek_pdir != d.seek_dir:
                 self.bad("Directory 9.12",
                          f"the key-list record at {klist.offset} has fSeekPdir "
@@ -2465,9 +2463,9 @@ class Checker:
             except rootfile.FormatError as exc:
                 self.bad("Directory 9.6", str(exc))
                 continue
-            # The images, measured by what they actually occupy. fKeylen
-            # describes the *record*, and Directory.md 6.5 says why that is not
-            # always the same number.
+            # The images, measured by what they occupy. fKeylen describes the
+            # *record*, and Directory.md 6.5 explains why that is not always the
+            # same number.
             consumed = 4 + sum(e.image_len for e in entries)
             if consumed > klist.obj_len:
                 self.bad("Directory 9.6",
@@ -2483,14 +2481,14 @@ class Checker:
                     self.bad("Directory 9.7",
                              f"entry {e.name!r} fSeekPdir {e.seek_pdir} != "
                              f"containing fSeekDir {d.seek_dir}")
-                # 9.11: the image is what frames the read, and ROOT never
-                # cross-checks it against the record's own key. A disagreement
-                # is invisible to ROOT and fatal to everyone else.
+                # 9.11: the image frames the read, and ROOT never cross-checks it
+                # against the record's own key. ROOT does not notice a
+                # disagreement; other readers fail on it.
                 rec_at = self.at(e.seek_key)
                 if rec_at is not None:
-                    # A directory key carries two spellings of one class name and
+                    # A directory key has two spellings of one class name and
                     # ROOT normalises on read (TKey::ReadKeyBuffer), so the
-                    # comparison has to as well -- Directory.md 6.5.
+                    # comparison must too (Directory.md 6.5).
                     for field, listed, actual in (
                             ("fNbytes", e.nbytes, rec_at.nbytes),
                             ("fObjlen", e.obj_len, rec_at.obj_len),
@@ -2525,7 +2523,7 @@ class Checker:
 
             # 9.14: within a name, cycles descend and are distinct. ROOT's
             # lookups take the first match rather than the highest cycle, so the
-            # order *is* the resolution rule (WritingFiles.md 8.1).
+            # order is the resolution rule (WritingFiles.md 8.1).
             runs: dict[str, list[int]] = {}
             for e in entries:
                 if e.cycle == 0:
@@ -2577,7 +2575,7 @@ class Checker:
         interior = [(f, l) for f, l in segments if l < self.header.end]
         # FreeSegments.md 4.2: before 6.36 RNTuple's TFile writer placed an RBlob
         # in a larger free slot and never wrote the remainder's marker. Exempt
-        # exactly that: a gap starting where an RBlob key ends, in such a file.
+        # only that: a gap starting where an RBlob key ends, in such a file.
         rblob_ends = ({r.offset + r.nbytes for r in self.records
                        if r.class_name == RBLOB_CLASS}
                       if self.header.root_version < RBLOB_MARKER_FIXED else set())
@@ -2629,8 +2627,8 @@ class Checker:
                 value = rootfile.decode_record(data, rec, infos)
                 yield data, rec, rootfile.read_tree(data, value, rec.offset)
             except rootfile.UnsupportedClass as exc:
-                # A layout this specification does not cover -- a legacy TBranch,
-                # say. Not a failure of the file.
+                # A layout this specification does not cover, such as a legacy
+                # TBranch. Not a failure of the file.
                 self.no_codec.add(str(exc))
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError, KeyError) as exc:
@@ -2685,15 +2683,15 @@ class Checker:
         """ReadingEntries.md invariant 5: the bytes a branch's entry occupies
         equal the bytes its decoding consumes.
 
-        The general statement of the other four, and the one a third-party reader
-        should test itself against. It needs a decoder rather than a rule, which
-        is what rootfile.TreeReader is.
+        It generalises the other four, and is the one a third-party reader
+        should test itself against. It needs a decoder rather than a rule;
+        rootfile.TreeReader is that decoder.
         """
         if br.element_type is None or br.file_name or not reader.holds_data(br):
             return
-        # Every basket the branch has, the one it kept in memory included: an
-        # embedded basket is as much data as a flushed one, and TreeReader reads
-        # it out of the TTree payload (TBranch.md 5).
+        # Every basket the branch has, including the one it kept in memory: an
+        # embedded basket holds data just as a flushed one does, and TreeReader
+        # reads it out of the TTree payload (TBranch.md 5).
         for i in range(min(br.write_basket + 1, len(br.basket_seek))):
             if not br.basket_seek[i] and i in br.embedded:
                 emb = br.embedded[i]
@@ -2723,8 +2721,8 @@ class Checker:
                 try:
                     start, end, consumed = reader.entry_end(br, entry)
                 except rootfile.UnsupportedClass as exc:
-                    # Not a pass: the decode could not run. Counted and named,
-                    # never silent -- see the SKIPPED report.
+                    # Not a pass: the decode could not run. Counted and named
+                    # in the SKIPPED report.
                     self.skip("ReadingEntries 8.5", str(exc))
                     return
                 except (rootfile.FormatError, struct.error, IndexError,
@@ -2865,7 +2863,7 @@ class Checker:
         """The Invariants of spec/04-ttree/Splitting.md."""
         name = f"branch {br.name!r}"
 
-        # 5. A TBranchSTL has no leaf -- and still has baskets, which is why
+        # 5. A TBranchSTL has no leaf but still has baskets, which is why
         #    TLeaf 10.5 to 10.7 are scoped to branches that have leaves.
         if br.cls == "TBranchSTL" and br.leaves:
             self.bad("Splitting 8.5",
@@ -2956,7 +2954,7 @@ class Checker:
         """(entry number, payload, (start, end)) for every entry, sampled.
 
         The payload is the entry's *own basket*, decompressed. It is returned
-        alongside the span because a span means nothing without it: on an
+        with the span because a span is meaningless without it: on an
         uncompressed file every buffer happens to be the same bytes, and on a
         compressed one they are not.
         """
@@ -3244,8 +3242,8 @@ class Checker:
                          f"fEntryNumber {br.entry_number}")
         elif span[-1] > br.entry_number and not br.branches:
             # The terminator was never written: the element is the embedded
-            # basket's first entry, so it is at most fEntryNumber -- equal when
-            # that basket is empty, and unconstrained on a split parent, where
+            # basket's first entry, so it is at most fEntryNumber (equal when
+            # that basket is empty). It is unconstrained on a split parent, where
             # fEntryNumber is 0 and counts nothing (TBranch.md 11.3, section 5,
             # section 7).
             self.bad("TBranch 11.3",
@@ -3295,14 +3293,13 @@ class Checker:
             # A branch with no leaf at all. Two shapes reach here: the interior
             # nodes of TBranchElement.md 4, which have no basket either and so
             # cost nothing, and a TBranchSTL, which has baskets full of data and
-            # still no leaf -- see Splitting.md 5. TLeaf 10.5 to 10.7 are about
-            # what a branch's leaves say, so they have nothing to check.
+            # still no leaf (Splitting.md 5). TLeaf 10.5 to 10.7 are about what a
+            # branch's leaves say, so they have nothing to check.
             #
             # A leafless branch that *does* have baskets must still be counted.
-            # Returning silently once put a TBranchSTL's baskets in neither the
-            # numerator nor the denominator of the ENTRIES line, which is the
-            # same mistake the embedded baskets taught (AGENTS.md): a ratio that
-            # cannot see what it skipped is worth less than a lower one that can.
+            # Returning silently once left a TBranchSTL's baskets out of both the
+            # numerator and the denominator of the ENTRIES line, the same
+            # mistake the embedded baskets exposed (AGENTS.md).
             for i in range(min(br.write_basket + 1, len(br.basket_seek))):
                 if not br.basket_seek[i]:
                     emb = br.embedded.get(i)
@@ -3405,14 +3402,13 @@ class Checker:
             # A branch with no leaf at all. Two shapes reach here: the interior
             # nodes of TBranchElement.md 4, which have no basket either and so
             # cost nothing, and a TBranchSTL, which has baskets full of data and
-            # still no leaf -- see Splitting.md 5. TLeaf 10.5 to 10.7 are about
-            # what a branch's leaves say, so they have nothing to check.
+            # still no leaf (Splitting.md 5). TLeaf 10.5 to 10.7 are about what a
+            # branch's leaves say, so they have nothing to check.
             #
             # A leafless branch that *does* have baskets must still be counted.
-            # Returning silently once put a TBranchSTL's baskets in neither the
-            # numerator nor the denominator of the ENTRIES line, which is the
-            # same mistake the embedded baskets taught (AGENTS.md): a ratio that
-            # cannot see what it skipped is worth less than a lower one that can.
+            # Returning silently once left a TBranchSTL's baskets out of both the
+            # numerator and the denominator of the ENTRIES line, the same
+            # mistake the embedded baskets exposed (AGENTS.md).
             for i in range(min(br.write_basket + 1, len(br.basket_seek))):
                 if not br.basket_seek[i]:
                     emb = br.embedded.get(i)
@@ -3469,12 +3465,12 @@ class Checker:
                                          br.leaves[0])
             self.check_entries(payload, basket_rec, basket, br, leaves, i)
 
-        # And the basket that was never written as a record. Its entry offsets
-        # are relative to the raw block inside the TTree record rather than to a
+        # The basket that was never written as a record. Its entry offsets are
+        # relative to the raw block inside the TTree record rather than to a
         # key, so the block start stands in for the record offset. Without this
-        # every branch of a file whose baskets are all embedded -- which is every
-        # legacy file in the corpora -- would be counted as checked while nothing
-        # in it was. TBranch.md 5, TBasket.md 4.1.
+        # every branch of a file whose baskets are all embedded (every legacy
+        # file in the corpora) would be counted as checked while nothing in it
+        # was. TBranch.md 5, TBasket.md 4.1.
         for i, emb in sorted(br.embedded.items()):
             if i > br.write_basket or emb.block < 0 or not emb.basket.nev_buf:
                 continue
@@ -3504,10 +3500,10 @@ class Checker:
     def check_leafc_strings(self, payload, basket_rec, basket, br, leaf) -> None:
         """TLeaf 10.11: `fMaximum` covers every string the baskets hold.
 
-        Only meaningful when the `TLeafC` is its branch's one leaf, because the
+        Only meaningful when the `TLeafC` is its branch's only leaf, because the
         entry offsets bound the whole entry rather than the string. `fLen` is
-        deliberately *not* what is compared: it can be smaller, and then ROOT
-        truncates on read while the bytes here stay right (`TLeaf.md` 9).
+        *not* compared: it can be smaller, and then ROOT truncates on read while
+        the bytes here are still correct (`TLeaf.md` 9).
         """
         offsets = basket.entry_offsets
         if not offsets or leaf.maximum is None:
@@ -3576,10 +3572,10 @@ class Checker:
                 rootfile.entry_spans(payload, basket_rec, basket, br, e,
                                      counts, leaves)
             except rootfile.UnsupportedClass as exc:
-                # Not a pass. The entry check simply cannot run here, and saying
-                # nothing would let the split branches of PLAN.md 9.11 sit
-                # inside a "0 failures" line unexamined. Counted, reported, and
-                # expected to fall as 04-ttree/ grows.
+                # Not a pass. The entry check cannot run here, and staying
+                # silent would hide the split branches of PLAN.md 9.11 inside a
+                # "0 failures" line. Counted and reported; the count should fall
+                # as 04-ttree/ grows.
                 if br.element_type is not None:
                     # A TBranchElement: entry_spans is leaf-driven and a
                     # TLeafElement has no fixed width, but check_entry_decode
@@ -3598,7 +3594,7 @@ class Checker:
     # costs one entry_spans call per entry per branch and a 42 000-entry tree with
     # 32 branches is millions of them. Every reference file and almost every file
     # in gen/foreign/ is below the threshold, and both corpora give the same
-    # result either way -- `--all-entries` turns sampling off to confirm that.
+    # result either way; `--all-entries` turns sampling off to confirm that.
     ENTRY_SAMPLE_ABOVE = 256
     ENTRY_SAMPLE_ENDS = 32
 
@@ -3608,7 +3604,7 @@ class Checker:
             return list(range(nev_buf))
         ends = self.ENTRY_SAMPLE_ENDS
         # The ends matter most: an offset array's first and last entry are where
-        # the errors of TBasket.md 5 and TLeaf.md 9 actually showed up.
+        # the errors of TBasket.md 5 and TLeaf.md 9 showed up.
         picked = set(range(ends)) | set(range(nev_buf - ends, nev_buf))
         stride = max(1, nev_buf // ends)
         picked |= set(range(0, nev_buf, stride))
@@ -3706,9 +3702,9 @@ def load_ignores(path: Path) -> tuple[dict[str, list[str]], dict[str, list[str]]
     """Per-file invariant skips and custom-streamer lists, from IGNORE.toml.
 
     `skip` is for files this project did not write and has diagnosed as the
-    file's fault rather than the specification's. `custom_streamer` is the other
-    thing a reader cannot get from a file: which of its classes have a
-    hand-written Streamer, so that their streamer info is not to be trusted
+    file's fault rather than the specification's. `custom_streamer` lists what a
+    reader cannot get from a file: which of its classes have a hand-written
+    Streamer, whose streamer info therefore cannot be trusted
     (StreamerDriven.md 7). See the header of that file.
     """
     import tomllib
@@ -3760,8 +3756,8 @@ def main(argv: list[str]) -> int:
 
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
-    # Say so out loud: a record nobody could read is a record nobody checked,
-    # and silence there would overstate the coverage. The reasons are a missing
+    # Report unread records: a record nobody could read was not checked, and
+    # omitting it would overstate the coverage. The reasons are a missing
     # codec, a class the file does not describe, and a class with a hand-written
     # streamer spec/ has not written up.
     for reason in sorted(no_codec):

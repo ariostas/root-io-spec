@@ -3,41 +3,41 @@ file = "data/container/reopen-gap.root"
 size = 1928
 
 description = """
-An update meeting **free space it did not create**, which is what separates a
+An update meeting free space it did not create, which is what separates a
 writer that reopens a file from one that only appends to it.
 
 The base is closed with a hole in it: `big` is written with a 120-character
-payload and overwritten with a short one, so the file carries an interior
-`TFree` entry — 95 bytes at 398 — that the next session inherits. Nothing in the
-update knows where that hole came from. The free list is the whole of what it is
-told, and a writer that reopens a file inherits exactly that and nothing else.
+payload and overwritten with a short one, so the file has an interior `TFree`
+entry (95 bytes at 398) that the next session inherits. Nothing in the update
+knows where that hole came from. The free list is all it is told, and a writer
+that reopens a file inherits that and nothing else.
 
 Three writes follow the reopen, and each resolves differently:
 
-* **an exact fit across sessions.** `fits` is 95 bytes, which is the hole to the
-  byte, so it lands at 398 and the free entry **disappears**. One session's
-  record exactly filling a span a different session released is the strongest
-  form of the claim that the free list is the whole interface between them;
+* **an exact fit across sessions.** `fits` is 95 bytes, the size of the hole, so
+  it lands at 398 and the free entry disappears. A record from one session
+  exactly filling a span another session released shows that the free list is
+  the only interface between them;
 * **`"overwrite"`, which frees before it allocates.** `tail` is replaced by a
   shorter record: the old span is on the free list in time for the allocation,
-  so the new record lands at **493**, the old one's address, leaving a 13-byte
-  remainder at 606 carrying its own `-13`. The cycle stays **1** — the old key
-  left the list before the new one was appended, so there was nothing to
-  increment. `container/reopened` shows `WriteDelete` getting the opposite
-  answer to both;
+  so the new record lands at 493, the old one's address, leaving a 13-byte
+  remainder at 606 with its own `-13`. The cycle stays 1: the old key left the
+  list before the new one was appended, so there was nothing to increment.
+  `container/reopened` shows `WriteDelete` giving the opposite result on both
+  counts;
 * **no fit at all.** `wide` is 204 bytes, nothing free is big enough, and it is
   appended.
 
-The hole is made with `"overwrite"` rather than `Delete` deliberately:
-`TDirectoryFile::Delete` is a **save**, writing the key list, the directory
-header and the free list before it returns
+The hole is made with `"overwrite"` rather than `Delete` on purpose:
+`TDirectoryFile::Delete` is a save, writing the key list, the directory header
+and the free list before it returns
 (`root/io/io/src/TDirectoryFile.cxx:736-738`), so a delete costs three record
 writes and its layout depends on when in the session it happened.
 
-The `StreamerInfo` record at 619 is not rewritten — no class new to the file was
-used — and the free-segment record at 1053 and the key list at 1576 are, each
-freeing its own span first. The 208-byte gap at 1164 is what the close released
-and did not want back.
+The `StreamerInfo` record at 619 is not rewritten, since no class new to the
+file was used. The free-segment record at 1053 and the key list at 1576 are
+rewritten, each freeing its own span first. The 208-byte gap at 1164 is space
+the close released and did not reuse.
 
 Compression is off so every length is arithmetic.
 """

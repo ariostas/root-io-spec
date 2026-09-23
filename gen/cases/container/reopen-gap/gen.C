@@ -1,14 +1,13 @@
-/// An update meeting **free space it did not create**, which is what separates
-/// a writer that reopens a file from one that only appends.
+/// An update meeting free space it did not create, which is what separates a
+/// writer that reopens a file from one that only appends.
 ///
 /// The base is closed with a hole in it: `big` is written with a 120-character
-/// payload and then overwritten with a short one, so the file carries an
-/// interior `TFree` entry that the next session inherits. Nothing in the update
-/// knows where that hole came from; the free list is the whole of what it is
-/// told, and that is the point.
+/// payload and then overwritten with a short one, so the file has an interior
+/// `TFree` entry that the next session inherits. Nothing in the update knows
+/// where that hole came from; the free list is all it is told.
 ///
-/// The hole is made with `"overwrite"` rather than `Delete` deliberately.
-/// `TDirectoryFile::Delete` is a **save**: it writes the key list, the directory
+/// The hole is made with `"overwrite"` rather than `Delete` on purpose.
+/// `TDirectoryFile::Delete` is a save: it writes the key list, the directory
 /// header and the free list before it returns
 /// (TDirectoryFile.cxx:736-738), so a delete costs three record writes and
 /// leaves the layout depending on when it happened. `"overwrite"` frees through
@@ -16,19 +15,19 @@
 ///
 /// Three writes follow the reopen, and each resolves differently:
 ///
-///   * `fits` is **exactly** the size of the inherited hole, so it lands in it
-///     and the free entry disappears -- a record written in one session filling,
-///     to the byte, a span a different session released;
-///   * `overwrite` on `tail` frees the old record **before** allocating the new
+///   * `fits` is the same size as the inherited hole, so it lands in it and the
+///     free entry disappears: a record written in one session fills a span
+///     another session released;
+///   * `overwrite` on `tail` frees the old record before allocating the new
 ///     one (TDirectoryFile.cxx:1977-1985), so a shorter replacement lands at the
 ///     old one's address, leaves a 13-byte remainder behind it, and the cycle
-///     does **not** advance -- the opposite of the `WriteDelete` in
+///     does not advance, the opposite of the `WriteDelete` in
 ///     `container/reopened`;
 ///   * `wide` fits nothing and is appended at the end of the file.
 ///
-/// Then the close competes for the same space: the key list frees its own record
-/// before sizing the new one, and the free-segment record is allocated last, out
-/// of everything the close itself has just released.
+/// The close then allocates from the same space: the key list frees its own
+/// record before sizing the new one, and the free-segment record is allocated
+/// last, out of everything the close itself has just released.
 void gen(const char *out)
 {
    TString big;

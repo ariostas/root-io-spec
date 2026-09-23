@@ -13,25 +13,25 @@ is the other form of the same node, and the two are read differently:
     v.fId      fType 41
     v.fE       fType 41
 
-What this case pins down:
+What this case covers:
 
 - **fID -1 changes what fClassName means.** Here it is the collection's own
   type, `vector<SHit>`, and fClassVersion 6 is the STL collection's version
-  rather than SHit's. That is the rule of TBranchElement.md section 5 seen from
-  its other side; the corpora hold 34 branches of this form against 50 of the
+  rather than SHit's. That is the rule of TBranchElement.md section 5 from the
+  other side; the corpora hold 34 branches of this form against 50 of the
   member form.
-- There is **no fType 0 split node above it**. A top-level collection branch is
+- There is no fType 0 split node above it. A top-level collection branch is
   itself the root of its sub-tree, which makes this the shortest split
-  arrangement ROOT produces -- three branches for a two-member value class.
+  arrangement ROOT produces: three branches for a two-member value class.
 - fStreamerType is -1, kNoType: with no element to index there is no element
   type to record. A reader must not look -1 up in the element-type table.
 - The title and fBranchCount conventions are unchanged from the member form:
   `v_` on the count branch and `fId[v_]` on the members, and every member
-  carries the tag 310, which against a record starting at 620 names position
+  has the tag 310, which against a record starting at 620 names position
   620 + 310 - 2 = 928.
 
-A `SHitHolder` class appears in classes.h and is never instantiated. It is there
-so ACLiC emits a collection proxy for `vector<SHit>`: without one TTree::Branch
+A `SHitHolder` class appears in classes.h and is never instantiated. It makes
+ACLiC emit a collection proxy for `vector<SHit>`: without one TTree::Branch
 refuses the collection outright, and a class *containing* the vector is the
 portable way to ask for the proxy from a header alone.
 

@@ -63,12 +63,12 @@ Two layouts exist, selected by `fVersion`:
 > **The rows are 4 bytes wide, but the header stops being 4-byte aligned at
 > `fUnits`.** `fUnits` is a single byte at offset 32, so `fCompress`, `fSeekInfo`,
 > `fNbytesInfo`, the `TUUID` version word and the UUID each straddle a row
-> boundary. From that point the diagram shows the **order** of the fields, not
-> their column positions; §2.2's offsets are authoritative and are what a reader
-> should implement against.
+> boundary. From that point the diagram shows the order of the fields, not their
+> column positions. The offsets in §2.2 are authoritative, and a reader should
+> implement against them.
 
-The wide layout, which the right-hand column below gives as offsets, is drawn
-out in [Large files §2](LargeFiles.md#2-the-file-header).
+The large-file layout, whose offsets are in the right-hand column below, is drawn
+in [Large files §2](LargeFiles.md#2-the-file-header).
 
 ### 2.2 Field offsets
 
@@ -95,7 +95,7 @@ Written by `TFile::WriteHeader()`, `root/io/io/src/TFile.cxx:2668-2712`; parsed 
 
 > The table in the ROOT source at `root/io/io/src/TFile.cxx:51-66` numbers bytes
 > from **1**, while `root/io/doc/TFile/header.md` and this document number from
-> **0**. They agree; the notation differs.
+> **0**. The offsets agree once that is accounted for.
 
 ## 3. `fVersion` and the large-file flag
 
@@ -105,8 +105,8 @@ Written by `TFile::WriteHeader()`, `root/io/io/src/TFile.cxx:2668-2712`; parsed 
 fVersion mod 1000000 = 10000 * major + 100 * minor + patch
 ```
 
-so 6.40.04 writes `64004`. A value `>= 1000000` additionally means the large-file
-layout: subtract 1000000 to recover the release.
+so 6.40.04 writes `64004`. A value `>= 1000000` also selects the large-file
+layout; subtract 1000000 to recover the release.
 
 ROOT applies the flag in `root/io/io/src/TFile.cxx:2679`:
 
@@ -114,36 +114,36 @@ ROOT applies the flag in `root/io/io/src/TFile.cxx:2679`:
 if (version < 1000000 && fEND > kStartBigFile) { version += 1000000; fUnits = 8; }
 ```
 
-with `kStartBigFile = 2000000000` (`root/io/io/inc/TFile.h:278`). Three consequences
-a reader MUST account for:
+with `kStartBigFile = 2000000000` (`root/io/io/inc/TFile.h:278`). A reader MUST
+account for three consequences:
 
-1. The test is against **`fEND` alone**, strictly greater-than. It is not, as
-   `root/io/doc/TFile/header.md` claims, a test on `fEND`, `fSeekFree` *or*
-   `fSeekInfo`. The distinction is immaterial in practice because both offsets are
-   below `fEND`, but the stated rule is not the implemented rule.
-2. The flag is added to a **local copy**. `TFile::fVersion` in memory keeps the
+1. The test is on **`fEND` alone**, strictly greater-than. It is not, as
+   `root/io/doc/TFile/header.md` claims, a test on `fEND`, `fSeekFree` or
+   `fSeekInfo`. In practice this makes no difference, because both offsets are
+   below `fEND`, but the documented rule is not the implemented one.
+2. The flag is added to a local copy. `TFile::fVersion` in memory keeps the
    unflagged value for a file ROOT has just written, but takes the flagged value
    from disk for a file it has opened. `TFile::GetVersion()` returns whatever is
    current, unflagged or flagged.
 3. `fUnits` is set to 8 as a side effect, but nothing reads it back (§5.7).
 
-A reader MUST select the layout from `fVersion`, not from `fUnits`, because that is
-what ROOT's own parser does (`root/io/io/src/TFile.cxx:738`).
+A reader MUST select the layout from `fVersion`, not from `fUnits`, as ROOT's own
+parser does (`root/io/io/src/TFile.cxx:738`).
 
 ## 4. Extent
 
 `fBEGIN` bytes are reserved. `WriteHeader()` writes 63 bytes (small) or 75 bytes
 (large) and stops; see §7 for what is in between.
 
-ROOT 6.40.04 always writes `fBEGIN = 100`, fixed at `root/io/io/src/TFile.cxx:204`,
-and `root/io/io/src/TFile.cxx:68-72` records that the value is fixed at 100 and that
-**bytes 96-99 are reserved and MUST be zero**, a constraint from the file's
-registered media type.
+ROOT 6.40.04 always writes `fBEGIN = 100`, set at `root/io/io/src/TFile.cxx:204`.
+The comment at `root/io/io/src/TFile.cxx:68-72` states that the value is fixed at
+100 and that **bytes 96-99 are reserved and MUST be zero**, a constraint from the
+file's registered media type.
 
-A reader MUST nevertheless take `fBEGIN` from the header rather than assume 100,
-and MUST NOT derive it from `fVersion` either. ROOT releases up to and including
-the 3.04 series used `fBEGIN = 64`, and two files in the corpora pair that same 64
-with an `fVersion` of 40000, where ROOT would have written 100. See §8.1.
+A reader MUST still take `fBEGIN` from the header rather than assume 100, and
+MUST NOT derive it from `fVersion` either. ROOT releases up to and including the
+3.04 series used `fBEGIN = 64`, and two files in the corpora pair that 64 with an
+`fVersion` of 40000, for which ROOT would have written 100. See §8.1.
 
 ## 5. Fields
 
@@ -154,32 +154,32 @@ A file whose first four bytes are not `root` MUST be rejected.
 
 ### 5.2 `fEND`
 
-Offset of the first free byte at the end of the file. It is where a writer would
-append, and it is **not** necessarily the file size.
+Offset of the first free byte at the end of the file. A writer would append
+there. It is **not** necessarily the file size.
 
-`fEND > filesize` is the one bad case: the file is truncated, and ROOT says so and
-refuses to open it unless recovery was asked for
+`fEND > filesize` is the only bad case: the file is truncated, and ROOT reports it
+and refuses to open the file unless recovery was requested
 (`root/io/io/src/TFile.cxx:881-889`).
 
-`fEND < filesize` is not an error and is not even a sign of a problem. ROOT
-compares the two only to detect truncation, so trailing bytes past `fEND` are
-simply outside the format. Two different things produce them:
+`fEND < filesize` is not an error, nor a sign of one. ROOT compares the two only to
+detect truncation; trailing bytes past `fEND` are outside the format. There are two
+causes:
 
-- **A file that was never closed** — the value on disk is then whatever the last
-  successful header write left. `fSeekFree == 0` proves that case, because ROOT
+- **A file that was never closed.** The value on disk is whatever the last
+  successful header write left. `fSeekFree == 0` proves this case, because ROOT
   writes the free list before the header when closing
   (`root/io/io/src/TFile.cxx:1024-1025`). **The converse does not hold**: a
   non-zero `fSeekFree` is not evidence of a clean close, because `TFile::Write`
   also writes the free list and then the header (`root/io/io/src/TFile.cxx:2508-2510`),
-  and `TTree::AutoSave` goes through it. A job that wrote a tree and then crashed
-  leaves a plausible-looking header behind (§5.4).
-- **A cleanly closed file with slack all the same.** `pippa.root` in the corpus of
-  `PLAN.md` §9.9 — ROOT 2.24/00, `fSeekFree` 391546, so closed by that signal — is
-  391 645 bytes long with `fEND` 391 641 and four unexplained trailing bytes.
-  `TFile::Open` reads it without a warning and reports `GetEND()` 391641 against
+  and `TTree::AutoSave` calls it. A job that wrote a tree and then crashed leaves a
+  plausible-looking header behind (§5.4).
+- **A cleanly closed file with trailing bytes anyway.** `pippa.root` in the corpus
+  of `PLAN.md` §9.9 (ROOT 2.24/00, `fSeekFree` 391546, so closed by that test) is
+  391 645 bytes long with `fEND` 391 641, leaving four unexplained trailing bytes.
+  `TFile::Open` reads it without a warning and reports `GetEND()` 391641 and
   `GetSize()` 391645.
 
-So a reader MUST NOT validate `fEND == filesize`, in either direction, and MUST NOT
+A reader MUST NOT validate `fEND == filesize`, in either direction, and MUST NOT
 take a mismatch as evidence that the file was not closed.
 
 ### 5.3 `fNbytesName`
@@ -187,15 +187,15 @@ take a mismatch as evidence that the file was not closed.
 The number of bytes, starting at `fBEGIN`, occupied by the root directory record's
 key **plus a second serialized copy of its name and title** that follows the key.
 
-Two different offsets are in play here, and conflating them is a common error:
+Two different offsets are involved, and confusing them is a common error:
 
 | Offset | What starts there |
 |---|---|
 | `fBEGIN + fKeylen` | the record's payload, beginning with the duplicated name and title |
 | `fBEGIN + fNbytesName` | the `TDirectoryFile` fields proper, starting with its class version |
 
-`fNbytesName` exists precisely to give the second offset, since the duplicated name
-and title are variable-length. `TFile::Init()` uses it that way
+`fNbytesName` gives the second offset, since the duplicated name and title have
+variable length. `TFile::Init()` uses it that way
 (`root/io/io/src/TFile.cxx:804`).
 
 In `container/file-minimal`: `fKeylen` is 91, the name is 32 bytes and the title 25,
@@ -209,45 +209,45 @@ outside `[10, 10000]` (`root/io/io/src/TFile.cxx:841-844`).
 
 `fSeekFree` is the absolute offset of the record holding the free-segment list.
 
-`fNbytesFree` is that record's **total size including its key**, i.e. its
-`TKey::fNbytes` and not its payload length. The same convention applies to
-`fNbytesInfo`. Reading either as a payload length is the most common off-by-a-key
-error in a reimplementation.
+`fNbytesFree` is that record's **total size including its key**: its
+`TKey::fNbytes`, not its payload length. The same applies to `fNbytesInfo`.
+Reading either as a payload length is the most common off-by-a-key error in a
+reimplementation.
 
-`nfree` is the number of `TFree` entries in the list. On a file ROOT 5 or later
-wrote it is never zero: the list always ends with a sentinel segment running to
+`nfree` is the number of `TFree` entries in the list. In a file written by ROOT 5
+or later it is never zero: the list always ends with a sentinel segment running to
 `kStartBigFile` (`root/io/io/src/TFile.cxx:691`), so an otherwise empty file has
 `nfree == 1`.
 
 > **It is advisory, and a reader should ignore it.** ROOT writes
-> `fFree->GetSize()` (`root/io/io/src/TFile.cxx:2676`) but on reading takes it
-> into a local variable and never looks at it again
-> (`root/io/io/src/TFile.cxx:743`, `root/io/io/src/TFile.cxx:753`) — the free list
-> is rebuilt by walking from `fSeekFree` instead. A file whose `nfree` disagrees
+> `fFree->GetSize()` (`root/io/io/src/TFile.cxx:2676`), but on reading it stores
+> the value in a local variable and never uses it
+> (`root/io/io/src/TFile.cxx:743`, `root/io/io/src/TFile.cxx:753`). The free list
+> is rebuilt by walking from `fSeekFree` instead, so a file whose `nfree` disagrees
 > with its list is read correctly.
 >
-> Both ROOT 4.00/00 files in the foreign corpus of `PLAN.md` §9.8 carry `nfree`
-> **0** against a free list of two entries, and ROOT opens them without complaint.
-> A reader that trusts `nfree` as a count, rather than walking the list, is wrong
-> on those.
+> Both ROOT 4.00/00 files in the foreign corpus of `PLAN.md` §9.8 have `nfree`
+> 0 with a free list of two entries, and ROOT opens them without complaint. A
+> reader that uses `nfree` as a count instead of walking the list gets these files
+> wrong.
 
-`fSeekFree == 0` marks a file whose free list was never written — created and
-abandoned before any close or `TFile::Write`. **It is a one-way signal**: a file
-that crashed after an `AutoSave` has a non-zero `fSeekFree` and was still never
-closed, so there is no field that proves a clean close (§5.2).
+`fSeekFree == 0` marks a file whose free list was never written: one created and
+abandoned before any close or `TFile::Write`. The implication runs one way only. A
+file that crashed after an `AutoSave` has a non-zero `fSeekFree` and was still
+never closed, so no field proves a clean close (§5.2).
 
-ROOT's reaction is narrower than it looks. Only when the file is opened
-**writable** does it touch the free list at all, the test is `fSeekFree > fBEGIN`
-rather than non-zero, and the failure path is a warning that skips the list — not
-recovery (`root/io/io/src/TFile.cxx:769-776`):
+ROOT's handling is limited. It reads the free list only when the file is opened
+writable; the test is `fSeekFree > fBEGIN` rather than non-zero; and on failure
+it prints a warning and skips the list rather than starting recovery
+(`root/io/io/src/TFile.cxx:769-776`):
 
 ```
 file %s probably not closed, cannot read free segments
 ```
 
-Recovery is a separate decision, gated on `fSeekKeys` and `fEND`
-(`root/io/io/src/TFile.cxx:869`, `root/io/io/src/TFile.cxx:899`), and a reader that
-only reads objects never needs the free list at all.
+Recovery is a separate decision, based on `fSeekKeys` and `fEND`
+(`root/io/io/src/TFile.cxx:869`, `root/io/io/src/TFile.cxx:899`). A reader that
+only reads objects never needs the free list.
 
 ### 5.5 `fSeekInfo`, `fNbytesInfo`
 
@@ -256,8 +256,8 @@ streamer-info list — a `TList` of `TStreamerInfo`, stored under the key name
 `StreamerInfo`. See `spec/02-serialization/StreamerInfo.md`.
 
 `fSeekInfo <= fBEGIN` means the file has no streamer-info record
-(`root/io/io/src/TFile.cxx:921`). That is normal for a file containing only classes
-ROOT does not write streamer info for, and abnormal otherwise.
+(`root/io/io/src/TFile.cxx:921`). This is normal for a file containing only classes
+for which ROOT writes no streamer info, and abnormal otherwise.
 
 ### 5.6 Locating the keys list
 
@@ -266,27 +266,26 @@ The header does **not** contain the offset of the keys list. That offset,
 [Directories and key lists](Directory.md).
 
 > **The keys-list and free-segment records cannot be identified from their keys.**
-> Both carry `fClassName = "TFile"` and the file's own name and title, exactly like
-> the root directory record. `TFile::Map()` labels them `KeysList` and
-> `FreeSegments` by comparing offsets against `fSeekKeys` and `fSeekFree`, not by
-> reading anything in the key. A reader MUST do the same. In
-> `container/file-minimal`, three distinct records at offsets 100, 832 and 993 all
-> have `fClassName = "TFile"` and the name `data/container/file-minimal.root`.
+> Both have `fClassName = "TFile"` and the file's own name and title, like the root
+> directory record. `TFile::Map()` labels them `KeysList` and `FreeSegments` by
+> comparing their offsets with `fSeekKeys` and `fSeekFree`, not by reading anything
+> in the key. A reader MUST do the same. In `container/file-minimal`, three
+> distinct records at offsets 100, 832 and 993 all have `fClassName = "TFile"` and
+> the name `data/container/file-minimal.root`.
 
 ### 5.7 `fUnits`
 
 The width in bytes of the file's offset fields: 4 in the small-file layout, 8 in the
 large-file layout.
 
-**ROOT never reads this field.** Every occurrence in `root/io/io/` is an
-initialization, a write, or a read into the member that is then never consulted.
+**ROOT never uses this field.** Every occurrence in `root/io/io/` is an
+initialization, a write, or a read into a member that nothing consults afterwards.
 A reader MUST branch on `fVersion` (§3) and MAY use `fUnits` only as a cross-check.
-Where the two disagree, `fVersion` is authoritative, because that is the one ROOT
-acts on.
+Where the two disagree, `fVersion` is authoritative, since it is what ROOT uses.
 
 ### 5.8 `fCompress`
 
-The file's **default** compression setting:
+The file's default compression setting:
 
 ```
 fCompress = 100 * algorithm + level
@@ -311,25 +310,24 @@ Typical composite values are `0`, `101` (ZLIB level 1), `207` (LZMA 7), `404`
 (LZ4 4) and `505` (ZSTD 5).
 
 > This field is a default, **not** a description of the file's contents. Each record
-> carries its own compressed and uncompressed lengths, and each may use a different
-> algorithm — the algorithm of a given record is determined by the magic bytes of
-> its compression block, never by `fCompress`. See
-> [Compression](Compression.md).
+> has its own compressed and uncompressed lengths and may use a different
+> algorithm. A record's algorithm is identified by the magic bytes of its
+> compression block, never by `fCompress`. See [Compression](Compression.md).
 
 Before ROOT ~5.30, `fCompress` was a bare ZLIB level with no algorithm component.
-The modern decoding stays correct for those files: a level in 0-9 yields algorithm 0
+The current decoding still works for those files: a level in 0-9 gives algorithm 0
 ("use global default"), which resolves to ZLIB.
 
 ## 6. UUID
 
 A 2-byte class version, always `1`, followed by the 16-byte UUID.
 
-The 16 bytes are the standard RFC 4122 big-endian wire layout — a 4-byte
+The 16 bytes use the standard RFC 4122 big-endian wire layout: a 4-byte
 `fTimeLow`, 2-byte `fTimeMid`, 2-byte `fTimeHiAndVersion`, 1-byte
-`fClockSeqHiAndReserved`, 1-byte `fClockSeqLow`, and 6 bytes of `fNode` — so they
-can be read directly as a UUID and formatted conventionally.
+`fClockSeqHiAndReserved`, 1-byte `fClockSeqLow`, and 6 bytes of `fNode`. They can
+be read directly as a UUID and formatted conventionally.
 
-Two properties that surprise implementers:
+Two properties surprise implementers:
 
 - **ROOT never reads the header UUID.** `TFile::Init()` does not parse these bytes.
   The `TFile`'s UUID is taken from the root directory record instead
@@ -346,15 +344,15 @@ Two properties that surprise implementers:
 Bytes from the end of the last field (63 small, 75 large) to `fBEGIN`.
 
 **The contents are not specified, and ROOT does not write them.** `WriteHeader()`
-allocates an uninitialized buffer of `fBEGIN` bytes and hands only the first 63 or
-75 to the write call. On a newly created file the rest is a hole in the file, which
-reads back as zero on any ordinary filesystem — which is what lets the media-type
-registration require bytes 96-99 to be zero (§4).
+allocates an uninitialized buffer of `fBEGIN` bytes and passes only the first 63 or
+75 to the write call. In a newly created file the rest is a hole, which reads back
+as zero on any ordinary filesystem. This is why the media-type registration can
+require bytes 96-99 to be zero (§4).
 
-On a file opened for update, `WriteHeader()` again rewrites only the first 63 or 75
-bytes. Whatever was in the padding stays. In particular, a file that once exceeded
-2 GB and later shrank below the threshold retains the stale tail of its large-file
-fields there.
+In a file opened for update, `WriteHeader()` again rewrites only the first 63 or 75
+bytes, and the padding keeps its old contents. In particular, a file that once
+exceeded 2 GB and later shrank below the threshold keeps the stale tail of its
+large-file fields there.
 
 A reader MUST treat the padding as "don't care" and MUST NOT rely on it being zero.
 
@@ -368,11 +366,11 @@ A reader MUST treat the padding as "don't care" and MUST NOT rely on it being ze
 | ≥ ~5.30 | `fCompress` gains its algorithm component (§5.8). |
 | ≥ 6.x | Reproducible mode possible (§6). |
 
-The UUID's boundary is a release tag: `TFile.cxx` has no `fUUID` at `v3-03-06`
-and writes one at `v3-03-07`, the same release that gave directories theirs
-([Directory §7](Directory.md#7-version-history)). Until 2026-09-22 the table put
-it at 3.03/00. `root/roottest/root/io/arrayobject/Event.3.2.0.root`, written by
-3.03/02, has `fBEGIN` 64 and zeros at bytes 45-63.
+The UUID boundary is set by release tags: `TFile.cxx` has no `fUUID` at
+`v3-03-06` and writes one at `v3-03-07`, the same release that added the UUID to
+directories ([Directory §7](Directory.md#7-version-history)). Until 2026-09-22 the
+table put it at 3.03/00. `root/roottest/root/io/arrayobject/Event.3.2.0.root`,
+written by 3.03/02, has `fBEGIN` 64 and zeros at bytes 45-63.
 
 Field order, offsets, widths and byte order have been stable since 3.05. The
 large-file layout cannot occur in a file older than 3.05, since the flag did not
@@ -382,10 +380,10 @@ exist.
 
 > The table above says what **ROOT** wrote. It is not a lookup table for
 > `fBEGIN`: a reader MUST take that from the header (§4), because a third-party
-> writer pairs the two however it likes.
+> writer can pair the two fields in any way.
 
-Measured across `data/` and both corpora, **four** files carry `fBEGIN = 64` and
-only two of them are old ROOT:
+Across `data/` and both corpora, four files have `fBEGIN = 64`, and only two of
+them were written by an old ROOT:
 
 | File | `fBEGIN` | `fVersion` | Header UUID |
 |---|---|---|---|
@@ -394,26 +392,24 @@ only two of them are old ROOT:
 | `uproot-from-geant4.root` | 64 | **40000** | 16 zero bytes |
 | `uproot-issue-250.root` | 64 | **40000** | 16 zero bytes |
 
-The first two are exactly what the table predicts. The last two are g4tools,
-Geant4's own writer — their directory records are `fDatimeC` 2018-10-03 and
-2021-01-20 — and they claim `fVersion` 40000, where the table says `fBEGIN` should
-be 100. A reader that computes `fBEGIN` from `fVersion` reads their first record
-36 bytes late.
+The first two match the table. The last two were written by g4tools, Geant4's
+own writer (their directory records have `fDatimeC` 2018-10-03 and 2021-01-20).
+They declare `fVersion` 40000, for which the table gives `fBEGIN` 100. A reader
+that computes `fBEGIN` from `fVersion` reads their first record 36 bytes late.
 
-**ROOT accepts them, and gives a reader no help here.** Its only check on the field
-is `fBEGIN < 0 || fBEGIN > fEND` (`root/io/io/src/TFile.cxx:760-766`); it never
+ROOT accepts these files. Its only check on the field is
+`fBEGIN < 0 || fBEGIN > fEND` (`root/io/io/src/TFile.cxx:760-766`); it never
 compares `fBEGIN` with 100, nor with the length of the header it is about to write.
 Both files open and read normally.
 
-They are also the live example of invariant 11's hazard rather than a curiosity: 64
-leaves exactly one byte of slack over the 63-byte small header and is **eleven
-bytes short** of the 75-byte large one, so pushing either past 2 GB would write the
-header over its own first record
+They are also real instances of the hazard behind invariant 11. 64 is one byte more
+than the 63-byte small header and eleven bytes short of the 75-byte large one,
+so pushing either file past 2 GB would write the header over its own first record
 ([Writing a file §13.8](../06-writing/WritingFiles.md#138-crossing-2-gb-during-an-update)).
-And **neither file carries a UUID anywhere** — zeroes in the header, and their
-directory records are version 1001, which has no UUID field at all
+Neither file has a UUID anywhere: the header holds zeroes, and their directory
+records are version 1001, which has no UUID field
 ([Directories §3.1](Directory.md#31-the-version-word-carries-two-independent-things)).
-That costs nothing, because ROOT never reads the header's (§6).
+This does not matter, because ROOT never reads the header UUID (§6).
 
 ## 9. Reading
 
@@ -430,7 +426,7 @@ A conforming reader performs the following steps.
    begin at `fBEGIN + fNbytesName` (§5.3). Continue with
    [Directories and key lists](Directory.md).
 
-Everything else — the record chain, the keys list, the streamer info — is reached
+Everything else (the record chain, the keys list, the streamer info) is reached
 from there or from `fSeekFree` / `fSeekInfo`.
 
 ## 10. Invariants
@@ -443,42 +439,42 @@ make the data ambiguous.
 2. `0 <= fBEGIN <= fEND`.
 3. `fBEGIN + fNbytesName + sizeof(directory record) <= fEND`.
 4. `10 <= fNbytesName <= 10000`.
-5. `fEND <= filesize`. `fEND > filesize` means the file is **truncated**, and is
+5. `fEND <= filesize`. `fEND > filesize` means the file is truncated, and is
    the only direction ROOT rejects (`root/io/io/src/TFile.cxx:881-889`). A file
-   longer than `fEND` carries trailing bytes outside the format; ROOT never looks
-   at them and neither should a reader (§5.2).
+   longer than `fEND` has trailing bytes outside the format; ROOT ignores them and
+   so should a reader (§5.2).
 6. `fSeekFree == 0` **implies** the file was never closed; the converse does not
    hold, since `TFile::Write` writes the free list mid-job (§5.4). When it is
    non-zero, `fBEGIN < fSeekFree < fEND`, and `fNbytesFree` equals the `fNbytes`
-   of the record at `fSeekFree` — which is the direction
-   `tools/check_invariants.py` checks.
-7. `nfree` equals the number of entries in the free list at `fSeekFree`, and is
-   at least 1 — on a file written by ROOT 5 or later. It is advisory (§5.4) and
+   of the record at `fSeekFree`. `tools/check_invariants.py` checks this
+   direction.
+7. In a file written by ROOT 5 or later, `nfree` equals the number of entries in
+   the free list at `fSeekFree` and is at least 1. It is advisory (§5.4), and
    ROOT 4 wrote 0.
 8. `fSeekInfo` is either `<= fBEGIN` (no streamer info) or satisfies
    `fBEGIN < fSeekInfo < fEND` with `fNbytesInfo` equal to the `fNbytes` of the
    record there.
 9. `fVersion >= 1000000` **if** `fEND > 2000000000`, and on every file seen so far
-   the reverse holds too. It is not guaranteed: the flag is set when `fEND` crosses
-   the threshold (`root/io/io/src/TFile.cxx:2679`) and is never cleared, so a file
-   that shrank below it again would keep the flag and still be readable.
-   `tools/check_invariants.py` enforces the strict `iff`, which is therefore
-   slightly stricter than the format requires; no file in either corpus violates
-   it. A reader MUST take the key width from the flag, never from `fEND`.
+   the reverse holds too. The reverse is not guaranteed: the flag is set when `fEND`
+   crosses the threshold (`root/io/io/src/TFile.cxx:2679`) and is never cleared, so
+   a file that shrank below it again would keep the flag and still be readable.
+   `tools/check_invariants.py` enforces the strict `iff`, which is slightly
+   stricter than the format requires; no file in either corpus violates it. A
+   reader MUST take the key width from the flag, never from `fEND`.
 10. `fUnits` is 4 when `fVersion < 1000000` and 8 otherwise. ROOT does not enforce
     this and does not read the field.
-11. `fBEGIN` is at least the length of the header its own `fVersion` selects —
-    **63** bytes for the small layout, **75** for the large one. The header is
-    rewritten in place at every close, so a file whose first record began sooner
-    would be overwritten by it. The margin is not theoretical: four files in the
-    corpora have `fBEGIN` of 64 — two from ROOT 2.24/00 and 3.04/02, and two that
-    g4tools wrote with an `fVersion` of 40000 (§8.1) — and all four would violate
-    this the moment they were pushed past 2 GB, since 64 is one byte over the
-    small header and eleven short of the large one. See
+11. `fBEGIN` is at least the length of the header its own `fVersion` selects:
+    63 bytes for the small layout, 75 for the large one. The header is
+    rewritten in place at every close, so it would overwrite a first record that
+    began sooner. Four files in the corpora have `fBEGIN` of 64: two from ROOT
+    2.24/00 and 3.04/02, and two that g4tools wrote with an `fVersion` of 40000
+    (§8.1). All four would violate this invariant once pushed past 2 GB, since 64
+    is one byte over the small header and eleven short of the large one. See
     [Writing a file §13.8](../06-writing/WritingFiles.md#138-crossing-2-gb-during-an-update).
 
-Not validated by ROOT, and therefore not safe to assume: `fCompress` is in range,
-the UUID is well-formed, and the padding is zero.
+ROOT does not validate the following, so they are not safe to assume: that
+`fCompress` is in range, that the UUID is well-formed, and that the padding is
+zero.
 
 ROOT's own checks, which a reader can reuse, are at
 `root/io/io/src/TFile.cxx:714-730` (magic and minimum length),

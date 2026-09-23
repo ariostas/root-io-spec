@@ -2,42 +2,42 @@ id   = "classes/roofit"
 file = "data/classes/roofit.root"
 
 # No `size`, and no digest: this file is 16338 bytes when libc++ wrote it and
-# 16371 when libstdc++ did, for the reason `digest_reason` below gives -- the
-# same one `serialization/pairs` carries. Every offset the assertions use is in
-# the RooRealVar record (533..977) or the RooLinkedList record (1071..1164),
-# both of which come *before* the StreamerInfo record where the divergence is,
-# and both of which are identical either way.
+# 16371 when libstdc++ did, for the reason `digest_reason` below gives (the same
+# as for `serialization/pairs`). Every offset the assertions use is in the
+# RooRealVar record (533..977) or the RooLinkedList record (1071..1164). Both
+# come before the StreamerInfo record, where the divergence is, and both are
+# identical either way.
 
 description = """
 The two RooFit classes whose recorded streamer info does not describe their
 bytes: one `RooRealVar` and one `RooLinkedList`, and nothing else.
 
-**No `RooRealVar` info is written at all.** Its `Streamer`
+**No `RooRealVar` info is written.** Its `Streamer`
 (`root/roofit/roofitcore/src/RooRealVar.cxx:1252`) never calls
 `WriteClassBuffer`, which is what tags a class's info for writing, so the
 StreamerInfo record of this file holds `RooAbsRealLValue`,
 `RooRealVarSharedProperties`, `RooSharedProperties` and `RooUniformBinning` and
 no `RooRealVar`. A reader that expects the file to describe every class it
-contains finds nothing here to work with.
+contains finds nothing here.
 
 **Its byte count still covers every byte.** The frame at 533 claims 440 bytes
 and the object ends at 977, the trailing `RooRealVarSharedProperties` included.
-That is the difference between this class and an `extending` one
-(`Buffer.md` 2.4): the tail is *inside* the count, so skipping the object by its
-byte count is correct, and only *decoding* it needs the layout.
+This is where the class differs from an `extending` one (`Buffer.md` 2.4): the
+tail is inside the count, so skipping the object by its byte count is correct,
+and only decoding it needs the layout.
 
-**`RooLinkedList` has no byte count at all.** `WriteVersion(IsA())` without the
+**`RooLinkedList` has no byte count.** `WriteVersion(IsA())` without the
 `useBcnt` argument writes a bare version word
 (`root/roofit/roofitcore/src/RooLinkedList.cxx:890`), so the record's payload
-opens with `00 03` and the only thing delimiting the object is the record. Its
-info *is* in the file, and it is wrong in two directions at once: it lists
-`_hashThresh`, which the `Streamer` never writes, and it does not mention the
-object slots, which are most of the bytes.
+opens with `00 03` and only the record delimits the object. Its info is in the
+file, and it is wrong in both directions: it lists `_hashThresh`, which the
+`Streamer` never writes, and it does not mention the object slots, which are
+most of the bytes.
 
-The `RooRealVar` is deliberately one that never had a shared property installed,
+The `RooRealVar` is chosen to be one that never had a shared property installed,
 so its tail is `RooRealVar::_nullProp()` and the `TUUID` at 945 is sixteen zero
 bytes (`root/roofit/roofitcore/src/RooRealVar.cxx:88`). A `RooRealVar` that has
-been through a `RooDataSet` carries a real, per-run `TUUID`, which would make
+been through a `RooDataSet` holds a real, per-run `TUUID`, which would make
 this fixture irreproducible; `tools/normalize.py` masks the file's own UUID and
 every copy of it, not an unrelated one inside an object.
 """
@@ -49,13 +49,13 @@ spec = [
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
 
-# A RooRealVar drags RooNumIntConfig, RooCategory and RooAbsCategory into the
-# file's class graph, and RooAbsCategory::_stateNames is a map<string,int> --
-# so this file carries a synthesised pair<string,int>, and with it the one
+# A RooRealVar brings RooNumIntConfig, RooCategory and RooAbsCategory into the
+# file's class graph, and RooAbsCategory::_stateNames is a map<string,int>. This
+# file therefore has a synthesised pair<string,int>, and with it the one
 # difference between the two standard libraries that a mask cannot repair.
-# libstdc++ carries doc comments on std::pair's members and libc++ does not, so
+# libstdc++ has doc comments on std::pair's members and libc++ does not, so
 # that pair's two TStreamerElement titles are "The first member" and "The second
-# member" on Linux and empty on macOS: 35 bytes against 2. It is a *length*
+# member" on Linux and empty on macOS: 35 bytes against 2. It is a length
 # difference, so every offset after the StreamerInfo record moves by 33.
 # PLAN.md section 9.6, and gen/cases/serialization/pairs for the same exemption.
 #
@@ -65,7 +65,7 @@ digest        = false
 digest_reason = """
 a RooRealVar pulls a synthesised pair<string,int> into the class graph, and
 libstdc++ gives std::pair's members doc comments where libc++ does not, so its
-element titles differ in LENGTH -- 35 bytes against 2 -- and a mask cannot
+element titles differ in length (35 bytes against 2), and a mask cannot
 restore a length. The byte assertions still run. PLAN.md 9.6
 """
 
@@ -96,8 +96,8 @@ class  = "TList"
 role   = "StreamerInfo; 14764 bytes with libstdc++"
 # The two records below sit after the StreamerInfo record, so their offsets are
 # the libc++ ones; with libstdc++ they are 15928 and 16261. Nothing checks these
-# entries -- they are here to describe the file -- but the difference is real and
-# is the whole reason this case has no `size` and no digest.
+# entries, which only describe the file, but the difference is real and is the
+# reason this case has no `size` and no digest.
 [[records]]
 offset = 15895
 nbytes = 333

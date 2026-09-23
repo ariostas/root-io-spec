@@ -7,52 +7,50 @@ file = "data/rntuple/anchor.root"
 
 description = """
 The first RNTuple fixture in this project: an anchor, a header envelope and a
-footer envelope written by **the pinned ROOT**.
+footer envelope written by the pinned ROOT.
 
 `spec/05-rntuple/` tracks ROOT's own specification rather than restating it, so
-this case exists for the **audit** rather than for the format. It pins the bytes
-that ERRATA 1, 2, 3 and 5 are about, and it pins them on 6.40.04. Until it
-existed, every byte in those errata came from `RNTuple.root` in the CERN corpus
--- one file, written by ROOT 6.35/01, which is **older than the pinned release**
-and carries an older format version: `Version Minor` 0 there against **2** here.
+this case serves the audit rather than the format. It pins the bytes that ERRATA
+1, 2, 3 and 5 are about, on 6.40.04. Before this case, every byte in those
+errata came from `RNTuple.root` in the CERN corpus: one file, written by ROOT
+6.35/01, which is older than the pinned release and has an older format version
+(`Version Minor` 0 there, 2 here).
 
-Compression is off, which RNTuple does not default to (it defaults to zstd), so
-the envelopes are readable in place and every assertion below is about the format
-rather than about a codec.
+Compression is off, which is not RNTuple's default (zstd), so the envelopes are
+readable in place and every assertion below is about the format rather than a
+codec.
 
-**ERRATUM 1.** The anchor stamps epoch 1, major 0, minor 2, patch **0** --
-`1.0.2.0` -- where the document is titled `1.0.2.1`. Now confirmed on the pinned
-release rather than inferred from `RNTuple.hxx`.
+**ERRATUM 1.** The anchor stamps epoch 1, major 0, minor 2, patch 0 --
+`1.0.2.0` -- where the document is titled `1.0.2.1`. This is now confirmed on
+the pinned release rather than inferred from `RNTuple.hxx`.
 
 **ERRATUM 2.** The payload begins `40 00 00 42 00 02`: a byte count of 66 and
 `ROOT::RNTuple`'s class version 2, six bytes that the document's anchor schema
 does not show. `Version Epoch` is at offset 1058, not 1052.
 
-**ERRATUM 3.** The byte count says the object ends at 1122; the payload ends at
-**1130**. The eight bytes in between are the XXH3 checksum, which is therefore
-outside the byte count -- assert 1122 and 1130 together and the gap is the
-erratum.
+**ERRATUM 3.** The byte count puts the end of the object at 1122; the payload
+ends at 1130. The eight bytes in between are the XXH3 checksum, which is
+therefore outside the byte count. The assertions check 1122 and 1130 together.
 
 **ERRATUM 5.** The header envelope's first eight bytes are
 `01 00 f0 00 00 00 00 00`: little-endian, type `0x0001` in the low 16 bits and
-length `0xf0` = **240** in the upper 48. 240 is the whole envelope **including**
-the trailing checksum, and it equals the anchor's `Len Header`. The checksum
-occupies 500..508, and 508 is where the envelope ends.
+length `0xf0` = 240 in the upper 48. The 240 covers the whole envelope
+including the trailing checksum, and equals the anchor's `Len Header`. The
+checksum occupies 500..508, and the envelope ends at 508.
 
-**A cross-check worth having.** The footer's *Header checksum* field at 854 holds
-`2a 13 a2 84 b3 59 d3 dd`, which is byte for byte the header envelope's own
-checksum at 500. That is what the document says the field is for, and nothing
-else in the file states the relation.
+The footer's *Header checksum* field at 854 holds `2a 13 a2 84 b3 59 d3 dd`, the
+same bytes as the header envelope's own checksum at 500. That is what the
+document says the field is for; nothing else in the file states the relation.
 
-The header envelope's contents are asserted too, because decoding them from the
-document alone is the only way to know the document describes them: two field
-record frames (`x`/`float`, `n`/`std::int32_t`), two column record frames at type
-**0x0C Real32** and **0x07 Int32**, and the two empty list frames that follow.
-Note the list frames' sizes are **negative** int64 -- `-111`, `-52`, `-12`, `-12`
--- which is how a list frame is told from a record frame, and that RNTuple strings
-are a `u32` length followed by bytes, not the counted string of Conventions 5.1.
+The header envelope's contents are asserted too, since decoding them from the
+document alone is the only way to confirm the document describes them: two
+field record frames (`x`/`float`, `n`/`std::int32_t`), two column record frames
+of type 0x0C Real32 and 0x07 Int32, and the two empty list frames that follow.
+The list frames' sizes are negative int64 (`-111`, `-52`, `-12`, `-12`), which
+is how a list frame is told from a record frame. RNTuple strings are a `u32`
+length followed by bytes, not the counted string of Conventions 5.1.
 
-Everything in this file is **little-endian except the anchor**, which is a TKey
+Everything in this file is little-endian except the anchor, which is a TKey
 payload and big-endian. The boundary is the anchor's last byte.
 """
 
@@ -69,19 +67,19 @@ compression  = { algorithm = "none", setting = 0 }
 # `unsigned long long` with libc++ and `unsigned long` with libstdc++ -- so the
 # streamer info records `fType` 17 (kULong64) with the type name `ULong64_t` on
 # one and `fType` 14 (kULong) with `unsigned long` on the other. Seven members,
-# four characters of type name each: exactly the 28-byte difference. It is a
-# LENGTH change, and a mask can restore a value but not a length.
+# four characters of type name each, make the 28-byte difference. A mask can
+# restore a value but not a length.
 #
-# The bytes on disk are identical either way -- codes 14 and 17 are both eight
-# bytes (ElementTypes.md 2) -- which is the point, and is now recorded there as
-# section 2.4. PLAN.md 9.6.
+# The bytes on disk are identical either way, since codes 14 and 17 are both
+# eight bytes (ElementTypes.md 2); that is recorded there as section 2.4.
+# PLAN.md 9.6.
 digest        = false
 digest_reason = """
 `std::uint64_t` resolves to `unsigned long long` with libc++ and `unsigned long`
 with libstdc++, so ROOT::RNTuple's seven 64-bit members are recorded as fType 17
-`ULong64_t` on one and fType 14 `unsigned long` on the other -- a 28-byte LENGTH
-difference a mask cannot undo. The bytes they describe are identical. The 50 byte
-assertions still run. ElementTypes.md 2.4, PLAN.md 9.6
+`ULong64_t` on one and fType 14 `unsigned long` on the other: a 28-byte length
+difference a mask cannot undo. The bytes they describe are identical. The 50
+byte assertions still run. ElementTypes.md 2.4, PLAN.md 9.6
 """
 
 [[records]]

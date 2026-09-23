@@ -11,7 +11,7 @@
 /// and fOwnFile is false (root/tree/tree/src/TFriendElement.cxx:199-203). The
 /// second uses the "alias=tree" form, which splits at the '='
 /// (root/tree/tree/src/TFriendElement.cxx:59-69), so its fName and fTreeName
-/// differ -- the only way to see that they are separate fields.
+/// differ. That is the only way to see that they are separate fields.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "a tree with friends", 0);

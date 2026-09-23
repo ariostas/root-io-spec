@@ -6,13 +6,13 @@ description = """
 Graphs written by tools/rootwrite.py, from spec/06-writing/WritingGraphs.md.
 
 g and gr hold what the ROOT-written fixture classes/graph holds under the same
-names, and both records are byte-identical to ROOT's -- as is the whole
-StreamerInfo record, all 12169 bytes of nineteen infos, with no listOfRules to
-subtract. The assertions below are the fixture's own offsets, which hold here
-because a graph stores no offsets of its own: only the key length has to match,
-and it does because the class, name and title do.
+names, and both records are byte-identical to ROOT's. So is the StreamerInfo
+record, all 12169 bytes of nineteen infos, with no listOfRules to subtract. The
+assertions below use the fixture's own offsets, which hold here because a graph
+stores no offsets of its own: only the key length has to match, and it does
+because the class, name and title do.
 
-gy is the object ROOT cannot produce: fMinimum -2 and fMaximum 5 with fHistogram
+gy is an object ROOT cannot produce: fMinimum -2 and fMaximum 5 with fHistogram
 still null. TGraph::SetMinimum builds the TH1F and the record grows sixfold; on
 disk the members are independent of it, and verify.C reads the range back.
 """

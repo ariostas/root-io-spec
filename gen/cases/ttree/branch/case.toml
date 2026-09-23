@@ -4,18 +4,18 @@ size = 15767
 
 description = """
 One branch with more than one basket, so that TBranch's three parallel arrays
-carry real values.
+hold real values.
 
-The basket size is 100 -- TBranch's minimum, root/tree/tree/src/TBranch.cxx:202
--- so twenty four-byte entries need three baskets of 8, 8 and 4. Compression is
+The basket size is 100, TBranch's minimum (root/tree/tree/src/TBranch.cxx:202),
+so twenty four-byte entries need three baskets of 8, 8 and 4. Compression is
 off, so the whole TTree record is readable without a codec and the branch can be
 asserted field by field.
 
-What this case pins down:
+What this case shows:
 
 - fMaxBaskets on disk is max(fWriteBasket + 1, 10). Here fWriteBasket is 3 and
   fMaxBaskets is 10, so array slots 4 to 9 are zero padding. The writer's own
-  fMaxBaskets is never what reaches the file.
+  fMaxBaskets never reaches the file.
 - fBasketEntry has one more meaningful element than there are baskets:
   fBasketEntry[fWriteBasket] is 20, the total entry count, not a basket's first
   entry. Without it the extent of the last basket is unknown.
@@ -26,10 +26,10 @@ What this case pins down:
   They are equal because nothing is compressed.
 - fBaskets is on disk and is a TObjArray of fWriteBasket + 1 null references.
 - fIOFeatures is a class with no ClassDef, so its version word is 0 and a
-  four-byte checksum follows -- the foreign-class path of Buffer.md section 4,
-  which every branch of every tree exercises.
+  four-byte checksum follows. This is the foreign-class path of Buffer.md
+  section 4, which every branch of every tree exercises.
 - fEntryOffsetLen is 0: every entry of this branch is four bytes, so its baskets
-  carry no entry-offset array.
+  have no entry-offset array.
 """
 
 spec = [

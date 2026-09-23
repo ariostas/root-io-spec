@@ -1,6 +1,6 @@
 /// Records whose payload opens with neither a byte count nor, for most of them,
-/// a version word -- the classes of Buffer.md 2.3 that no fixture had written as
-/// a record of their own.
+/// a version word: the classes of Buffer.md 2.3 that no fixture had written as a
+/// record of their own.
 ///
 /// `WriteClassBuffer` asks for a byte count, so a class whose streamer is
 /// generated always has one. These five have hand-written streamers that do not:

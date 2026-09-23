@@ -7,14 +7,14 @@
 /// TBasket::MoveEntries, which builds fDisplacement out of the entry offsets
 /// that are about to be rewritten.
 ///
-/// MoveEntries only builds it when there IS an entry-offset array, so the
+/// MoveEntries only builds it when there is an entry-offset array, so the
 /// fixed-width branch `n` never gets one and the string branch `s` does.
 ///
 /// Two trees, because the two basket forms cannot both come from one:
 ///
-///   circ  Write()        a basket RECORD:   flag 0, and the displacement
-///                        array sits in the payload with nothing announcing it
-///   emb   WriteTObject   EMBEDDED:          flag 51 = 1 + 10 + 40
+///   circ  Write()        a basket record:   flag 0, and the displacement
+///                        array sits in the payload with nothing signalling it
+///   emb   WriteTObject   embedded:          flag 51 = 1 + 10 + 40
 ///
 /// SetCircular(3) keeps 3 entries, so filling 7 moves the window four times.
 /// Each string is one character longer than the last, so every entry offset is

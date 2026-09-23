@@ -3,37 +3,37 @@ file = "data/written/cluster.root"
 size = 15917
 
 description = """
-A `TTree` of **five baskets in one branch** and **two closed cluster ranges**,
-written by `tools/rootwrite.py` from
+A `TTree` of five baskets in one branch and two closed cluster ranges, written
+by `tools/rootwrite.py` from
 [Writing trees §7](../../../spec/06-writing/WritingTrees.md): nineteen entries of
 one `Int_t` branch, flushed at entries 4, 8, 11, 14 and 19.
 
 **All five basket records and the `TTree` record are byte-identical to the ones
 ROOT wrote in `data/ttree/clusters.root`**, keys included, once the wall-clock
-timestamp is masked -- five `fBasketSeek` values, five `fBasketBytes`, six
-`fBasketEntry` and both cluster arrays among them. The file's name and title are
-chosen so that the root directory record is the same length in both files, which
-is what makes the offsets line up; `tools/test_write.py` asserts the comparison.
+timestamp is masked. That covers five `fBasketSeek` values, five `fBasketBytes`,
+six `fBasketEntry` and both cluster arrays. The file's name and title are chosen
+so that the root directory record is the same length in both files and the
+offsets line up; `tools/test_write.py` asserts the comparison.
 
-This is the case for everything the single-basket `written/tree` cannot show:
+This case covers what the single-basket `written/tree` cannot:
 
-- `fWriteBasket` of 5, and `fMaxBaskets` of **10** rather than 6 --
+- `fWriteBasket` of 5, and `fMaxBaskets` of 10 rather than 6.
   `TBranch::Streamer` floors it at 10 while writing, and the three counted arrays
   are that long, zero-padded past the last basket.
-- `fBasketEntry` with **one element more than there are baskets**: the first entry
+- `fBasketEntry` with one element more than there are baskets: the first entry
   of each, then the total, then zeros.
 - `fNClusterRange` of 2, with both counted pointers' is-present flag set and
-  exactly two values behind each. `fClusterRangeEnd` is the **last** entry of each
+  two values behind each. `fClusterRangeEnd` is the **last** entry of each
   range, inclusive, so the third range starts at 14 and is described by
   `fAutoFlush` alone.
-- `fFlushedBytes` non-zero, which is the only thing that distinguishes a tree
-  whose cluster boundaries were recorded from one flushed only at `Write`.
-- Two values that are **ROOT's policy reproduced as inputs**: the first basket
-  records `fBufferSize` 100 and every later one 512, because ROOT rewrites
+- `fFlushedBytes` non-zero, the only thing that distinguishes a tree whose
+  cluster boundaries were recorded from one flushed only at `Write`.
+- Two values that reproduce ROOT's policy as inputs. The first basket records
+  `fBufferSize` 100 and every later one 512, because ROOT rewrites
   `fBasketSize` at the first automatic flush through `OptimizeBaskets` (whose
-  floor is 512); and `fAutoSave` is 3703700, which ROOT derived at that same
-  moment from the bytes written so far. Neither is required of a writer, and both
-  are needed to compare records byte for byte.
+  floor is 512). `fAutoSave` is 3703700, which ROOT derived at that same moment
+  from the bytes written so far. Neither is required of a writer, and both are
+  needed to compare records byte for byte.
 
 Only the `StreamerInfo` record differs from ROOT's, by the one `listOfRules` entry
 a file written at `TTree` version 20 cannot use (`WritingTrees.md` 8.1).

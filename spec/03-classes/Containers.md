@@ -1,17 +1,18 @@
 # `TMap`, `TExMap` and `TBtree`
 
-The three ROOT containers whose `Streamer` is hand-written at **every** class
-version, so that no streamer info in any file describes their bytes. They are
-grouped here because they share that property and nothing else: a `TMap` is a
-hash table of object pairs, a `TExMap` is a table of integers with no objects at
-all, and a `TBtree` is an ordered collection whose on-disk form is not a tree.
+These are the three ROOT containers whose `Streamer` is hand-written at **every**
+class version, so that no streamer info in any file describes their bytes. That
+is all they have in common: a `TMap` is a hash table of object pairs, a `TExMap`
+is a table of integers with no objects at all, and a `TBtree` is an ordered
+collection whose on-disk form is not a tree.
 
-[Hand-written streamers](../99-appendix/HandWrittenStreamers.md) is the list they
-come from. `TList`, `TObjArray` and `TClonesArray` are in the same category and
-are specified elsewhere, per `PLAN.md` decision 6.
+They come from the list in
+[Hand-written streamers](../99-appendix/HandWrittenStreamers.md). `TList`,
+`TObjArray` and `TClonesArray` are in the same category and are specified
+elsewhere, per `PLAN.md` decision 6.
 
 Prerequisites: [Conventions](../00-conventions.md),
-[Buffer framing](../02-serialization/Buffer.md) — in particular §6, the object
+[Buffer framing](../02-serialization/Buffer.md), in particular §6, the object
 tag, which all three depend on.
 
 ## 1. `TMap`
@@ -39,10 +40,10 @@ recorded as a gap in §9.
 
 ### 1.1 The pairs are object references, not objects
 
-Each half of a pair is written with `TBuffer::operator<<(const TObject *)`, which
-is the pointer form of [Buffer framing §6](../02-serialization/Buffer.md): a byte
-count, then either a class tag and the object, or a four-byte reference to an
-object already in the buffer. **The same object stored twice is written once.**
+Each half of a pair is written with `TBuffer::operator<<(const TObject *)`, the
+pointer form of [Buffer framing §6](../02-serialization/Buffer.md): a byte count,
+then either a class tag and the object, or a four-byte reference to an object
+already in the buffer. **The same object stored twice is written once.**
 
 In `classes/containers` the two pairs share one value:
 
@@ -58,16 +59,16 @@ In `classes/containers` the two pairs share one value:
 484  00 00 00 78                    object reference: the object at 424
 ```
 
-The last four bytes are the whole of the second pair's value. A reader that
-expects an object at every slot reads a byte count that is not there, and the
-remaining bytes of the record decode as noise.
+The last four bytes are all of the second pair's value. A reader that expects an
+object at every slot reads a byte count that is not there, and the rest of the
+record decodes as noise.
 
 > `TPair` never appears on disk. `TMap::Streamer` writes `a->Key()` and
 > `a->Value()` and never the pair itself, so `TPair`'s class version 0 and its
 > streamer info are both unreachable through a `TMap`.
 
-A null key is dropped on read — `if (obj) Add(obj, value)`
-(`root/core/cont/src/TMap.cxx:378`) — but its value has already been consumed, so
+A null key is dropped on read (`if (obj) Add(obj, value)`,
+`root/core/cont/src/TMap.cxx:378`), but its value has already been consumed, so
 the pair count still governs how many references to read. **`n` is the number of
 references divided by two, not the number of entries the reader ends up with.**
 
@@ -96,39 +97,38 @@ bc:u32  ver:i16=3  <TObject>  fSize:i32  fTally:i32
 (`root/core/cont/src/TExMap.cxx:375-380`).
 
 Because that loop walks the table in slot order, **the records are in slot order,
-which is not insertion order**. In `classes/containers` the entry added last is
-the first on disk.
+not insertion order**. In `classes/containers` the entry added last is the first
+on disk.
 
 ### 2.1 The stored hash has bit 0 forced
 
 `Assoc_t::SetHash` is `fHash = (h | 1)`, and `InUse()` is `fHash & 1`
-(`root/core/cont/inc/TExMap.h:44-46`): a zero hash marks a free slot, so bit 0 is
-spent on that flag and the hash the caller supplied is not recoverable if it was
-even. `classes/containers` adds hashes 3, 6, 9 and 10 and the file holds 3, 7, 9
+(`root/core/cont/inc/TExMap.h:44-46`). A zero hash marks a free slot, so bit 0 is
+used as that flag, and the hash the caller supplied cannot be recovered if it was
+even. `classes/containers` adds hashes 3, 6, 9 and 10, and the file holds 3, 7, 9
 and 11.
 
-The slot follows from the **stored** hash, so a reader recomputing a slot from a
+The slot follows from the stored hash, so a reader that recomputes a slot from the
 hash it was given will not reproduce the file.
 
 ### 2.2 `Long_t` on disk is always eight bytes
 
 Class versions 1 and 2 read `hash`, `key` and `value` as `ULong_t`/`Long_t`
 rather than the version-3 `ULong64_t`/`Long64_t`
-(`root/core/cont/src/TExMap.cxx:334-352`). That is **not** a width difference on
-disk: `frombuf` consumes eight bytes for a `ULong_t` whatever `sizeof(ULong_t)`
-is, and keeps only the low four when it is 4
-(`root/core/base/inc/Bytes.h:324-350`). A 32-bit reader silently truncated; the
-bytes did not move.
+(`root/core/cont/src/TExMap.cxx:334-352`). The width on disk is the same:
+`frombuf` consumes eight bytes for a `ULong_t` whatever `sizeof(ULong_t)` is, and
+keeps only the low four when it is 4 (`root/core/base/inc/Bytes.h:324-350`). A
+32-bit reader silently truncated the values, but the bytes did not move.
 
-So versions 2 and 3 have the same layout and differ only in the value range.
-Version 1 is a different layout — no slot index, and the table is rebuilt by
-`Add` — and needs an old file to test (§9).
+Versions 2 and 3 therefore have the same layout and differ only in the value
+range. Version 1 has a different layout (no slot index, and the table is rebuilt
+by `Add`) and needs an old file to test (§9).
 
 ## 3. `TBtree`
 
-Class version **0** (`root/core/cont/inc/TBtree.h:106`), and the version word on
-disk is therefore `00 00`. That is a version word, not a checksum; the rule for
-telling the two apart is [Buffer framing §4](../02-serialization/Buffer.md).
+Class version **0** (`root/core/cont/inc/TBtree.h:106`), so the version word on
+disk is `00 00`. That is a version word, not a checksum; the rule for telling the
+two apart is [Buffer framing §4](../02-serialization/Buffer.md).
 
 ```
 bc:u32  ver:i16=0
@@ -140,9 +140,9 @@ fInnerMaxIndex:i32  fLeafMaxIndex:i32
 `root/core/cont/src/TBtree.cxx:459-484`.
 
 **None of the tree structure is written.** The nodes, the keys and the ordering
-all live in `fRoot`, which is not streamed; what reaches the file is six integers
-describing the *shape parameters* and then the elements as a flat sequence. A
-reader reconstructs nothing and needs nothing: the elements arrive in order.
+all live in `fRoot`, which is not streamed. The file holds six integers giving
+the shape parameters, then the elements as a flat sequence. A reader has nothing
+to reconstruct: the elements arrive in order.
 
 ### 3.1 Five of the six integers are derived
 
@@ -157,14 +157,14 @@ reader reconstructs nothing and needs nothing: the elements arrive in order.
 | `fLeafLowWaterMark` | `fLeafMaxIndex / 2 - 1` | 2 |
 | `fInnerLowWaterMark` | `(fOrder - 1) / 2` | 1 |
 
-They are redundant on disk and are checkable against each other, which is
-invariant 4 in §7.
+They are redundant on disk and can be checked against each other (invariant 4 in
+§7).
 
 ### 3.2 The elements come from `TCollection`, through a class that adds nothing
 
-`TBtree::Streamer` ends with `TSeqCollection::Streamer(b)`, and what that emits is
-**byte for byte what `TCollection::Streamer` emits** — one frame, version 3, with
-no frame of its own around it:
+`TBtree::Streamer` ends with `TSeqCollection::Streamer(b)`, which emits the same
+bytes as `TCollection::Streamer`: one frame, version 3, with no frame of its own
+around it:
 
 ```
 bc:u32  ver:i16=3  <TObject>  fName:string  n:i32  n x object
@@ -174,22 +174,21 @@ bc:u32  ver:i16=3  <TObject>  fName:string  n:i32  n x object
 `TCollection` frame opens at offset 756 and its version word is at 760,
 immediately after `TBtree`'s sixth integer at 752.
 
-Why an intermediate class contributes nothing at all is §6, and it is not
+§6 explains why the intermediate class contributes nothing; the rule is not
 specific to `TBtree`.
 
 ## 4. None of the three writes a streamer info
 
 `TStreamerInfo::ForceWriteInfo` is reached through `WriteClassBuffer`
 (`root/io/io/src/TBufferFile.cxx:3722`), and none of these classes calls it.
-So a file holding a `TMap`, a `TExMap` and a `TBtree` and nothing else carries
-**one** streamer info — for the `TObjString`s inside them, whose `Streamer` is
-generated.
+A file holding only a `TMap`, a `TExMap` and a `TBtree` therefore has one
+streamer info, for the `TObjString`s inside them, whose `Streamer` is generated.
 
-That is the sharpest statement of
-[Streamer-driven reading §7](../02-serialization/StreamerDriven.md) available in
-the corpus: the presence of an info and the meaning of the bytes are independent.
-`TBasket` is the other class with no info of its own
-([TBasket §1](../04-ttree/TBasket.md)), and it reaches files the same way.
+This is the clearest instance in the corpus of
+[Streamer-driven reading §7](../02-serialization/StreamerDriven.md): whether an
+info is present is independent of what the bytes mean. `TBasket` is the other
+class with no info of its own ([TBasket §1](../04-ttree/TBasket.md)), and it
+reaches files in the same way.
 
 ## 5. Reading
 
@@ -214,44 +213,43 @@ the corpus: the presence of an info and the meaning of the bytes are independent
 
 ## 6. A version-0 class can contribute nothing at all
 
-This is the general rule behind §3.2, and it belongs here because `TBtree` is the
-only fixture that witnesses it.
+This is the general rule behind §3.2. It is described here because `TBtree` is
+the only fixture that demonstrates it.
 
 When `rootcling` generates a `Streamer` for a class whose `ClassDef` version is
 **≤ 0**, and the class was selected with a plain `#pragma link C++ class X;`
 rather than `X+`, it emits a body that calls each base class's `Streamer` **and
-nothing else** — no version word, no byte count, no members
+nothing else**: no version word, no byte count, no members
 (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`). The choice between that
 generator and the schema-evolution one is `cl.RequestStreamerInfo()`, which is the
 `+` suffix (`root/core/clingutils/src/TClingUtils.cxx:3016`).
 
-`TSeqCollection` is exactly this: version 0
+`TSeqCollection` is such a class: version 0
 (`root/core/cont/inc/TSeqCollection.h:73`), selected plainly
 (`root/core/cont/inc/LinkDef.h:49`). Its `Streamer` forwards to `TCollection` and
-adds nothing, which is why §3.2's frame is `TCollection`'s.
+adds nothing, so §3.2's frame is `TCollection`'s.
 
-> Checked directly rather than inferred: streaming the same `TBtree` through
+> Checked directly: streaming the same `TBtree` through
 > `TSeqCollection::Streamer` and through `TCollection::Streamer` produces
-> identical buffers, 59 bytes each. The generated definition is in the dictionary
-> and not in the repository, so the source alone cannot answer this — a reading
-> of `ClassDefOverride` and `WriteClassBuffer` predicts a frame that the bytes say
-> is not there.
+> identical buffers, 59 bytes each. The generated definition is in the dictionary,
+> not in the repository, so the source alone cannot settle this. Reading
+> `ClassDefOverride` and `WriteClassBuffer` predicts a frame that the bytes do not
+> contain.
 
 **A reader cannot tell the two generators apart from the file.** Both produce a
 streamer info for the class, both record class version 0, and the `+` suffix is
-not persisted anywhere. `TSeqCollection`'s recorded info has a single element, the
-`TCollection` base, and following it — version word, then the base — is wrong by
+not stored anywhere. `TSeqCollection`'s recorded info has a single element, the
+`TCollection` base, and following it (version word, then the base) is wrong by
 six bytes.
 
-This is the same shape as
-[Streamer-driven reading §4.4](../02-serialization/StreamerDriven.md), which
-covers a base class with a *hand-written* `Streamer`, and the two together
-account for both of `PLAN.md` §9.9's open leads. The second of them,
+[Streamer-driven reading §4.4](../02-serialization/StreamerDriven.md) covers the
+corresponding case of a base class with a *hand-written* `Streamer`, and the two
+together account for both of `PLAN.md` §9.9's open leads. The second lead,
 `aod_flushed.root`, is this rule: `TTreePerfStats`'s first element is a `kBase`
 for `TVirtualPerfStats`, which is version 0
 (`root/core/base/inc/TVirtualPerfStats.h:93`) and plainly selected
-(`root/core/base/inc/LinkDef3.h:173`). Its `Streamer` therefore contributes
-exactly its own base, a bare `TObject`, and the record's bytes agree:
+(`root/core/base/inc/LinkDef3.h:173`). Its `Streamer` therefore contributes only
+its own base, a bare `TObject`, and the record's bytes agree:
 
 ```
 +0   40 00 86 60     byte count
@@ -261,12 +259,12 @@ exactly its own base, a bare `TObject`, and the record's bytes agree:
 +28  00 03 e8 00     fReadaheadSize = 256000
 ```
 
-Ten bytes for the base, with no version word of its own. Reading it as a framed
-object puts `fReadaheadSize` four bytes early and every later member with it.
+The base is ten bytes, with no version word of its own. Reading it as a framed
+object puts `fReadaheadSize` four bytes early, and every later member with it.
 
-**The complete class list is published**, since a reader cannot derive it:
+The complete class list is published, since a reader cannot derive it:
 [Forwarding streamers](../99-appendix/ForwardingStreamers.md), 534 classes
-extracted from the pinned submodule and CI-checked. `TSeqCollection` and
+extracted from the pinned submodule and checked in CI. `TSeqCollection` and
 `TVirtualPerfStats` are two of the three that occur anywhere in this project's
 corpora; the third is `THashList`, which any labelled `TAxis` writes.
 
@@ -274,7 +272,7 @@ corpora; the third is `THashList`, which any labelled `TAxis` writes.
 
 1. A `TMap`'s pair count `n` satisfies `4 + 2 + 10 + sizeof(fName) + 4 + (bytes
    consumed by 2n references) = byte count + 4`, where `sizeof(fName)` is the
-   counted string's own length — `len + 1`, or `len + 5` above 254 characters
+   counted string's own length: `len + 1`, or `len + 5` above 254 characters
    ([Conventions §5.1](../00-conventions.md#51-counted-string)). The references are
    variable-length, so this is a consumption check, not an arithmetic one.
 2. A `TExMap`'s `fTally` records exactly exhaust its frame:
@@ -294,8 +292,8 @@ corpora.
 
 | # | Claim | Correction |
 |---|---|---|
-| 1 | `TBtree.h:47` says `fOrder2` is `order*2+1` | `TBtree::Init` computes `2 * (fOrder + 1)` (`root/core/cont/src/TBtree.cxx:351`). For order 3 the comment gives 7 and the file holds 8. The comment has said this since the class was written; nothing reads it, so nothing has caught it |
-| 2 | `TMap`'s streamer info describes a `TCollection` base holding `fName` and `fSize` | `TMap::Streamer` writes a bare `TObject` and then `fName` itself. `fSize` is never written; the pair count is `GetSize()` computed at write time. The same fiction as `TList`'s ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md)) |
+| 1 | `TBtree.h:47` says `fOrder2` is `order*2+1` | `TBtree::Init` computes `2 * (fOrder + 1)` (`root/core/cont/src/TBtree.cxx:351`). For order 3 the comment gives 7 and the file holds 8. The comment has been wrong since the class was written; nothing reads it, so nobody noticed |
+| 2 | `TMap`'s streamer info describes a `TCollection` base holding `fName` and `fSize` | `TMap::Streamer` writes a bare `TObject` and then `fName` itself. `fSize` is never written; the pair count is `GetSize()` computed at write time. `TList`'s info is wrong in the same way ([Streamer-driven reading §7](../02-serialization/StreamerDriven.md)) |
 
 ## 9. Gaps
 
@@ -310,4 +308,4 @@ corpora.
 
 | File | What it pins |
 |---|---|
-| `classes/containers` | all three classes in one file: §1 including the shared value and its back-reference, §2 including the forced hash bit and the slot ordering, §3 including the version-0 word and the missing `TSeqCollection` frame, and §4 — the file carries one streamer info, for `TObjString` |
+| `classes/containers` | all three classes in one file: §1 including the shared value and its back-reference, §2 including the forced hash bit and the slot ordering, §3 including the version-0 word and the missing `TSeqCollection` frame, and §4 — the file has one streamer info, for `TObjString` |

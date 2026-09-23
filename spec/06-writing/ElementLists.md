@@ -1,13 +1,12 @@
 # Streamer-info element lists
 
 [Writing an object §7](WritingObjects.md#7-the-streamerinfo-record) specifies the
-`StreamerInfo` record — its nesting, its option bytes, the `fBits` each info
-carries, the checksum algorithm — and
+`StreamerInfo` record (its nesting, its option bytes, the `fBits` of each info,
+the checksum algorithm), and
 [§7.2](WritingObjects.md#72-which-classes-need-an-info) says which classes a file
 needs an info for. Neither says what goes **inside** one: the member list, with
 every field of every `TStreamerElement`. Without that a writer can build a
-correctly framed record with nothing in it, so this document publishes the lists
-themselves.
+correctly framed record with nothing in it, so this document publishes the lists.
 
 Thirty-five classes, which is every class a writer of histograms, profiles, graphs,
 flat trees and a bare object has to describe:
@@ -16,19 +15,18 @@ flat trees and a bare object has to describe:
 **35 classes, 194 elements**, every one read out of a file ROOT wrote.
 <!-- END GENERATED -->
 
-Nothing here was transcribed from this project's writer. Every table is read out
-of a reference file **ROOT wrote** by `tools/element_lists.py`, which also
-compares each class across every fixture that carries it, compares every field
-with `tools/rootwrite.py`, and recomputes each checksum from the table beside it.
+Nothing here was transcribed from this project's writer. `tools/element_lists.py`
+reads every table out of a reference file **ROOT wrote**. It also compares each
+class across every fixture that contains it, compares every field with
+`tools/rootwrite.py`, and recomputes each checksum from the table beside it.
 `tools/element_lists.py --check` fails in CI if any of that stops holding.
 
 ## 1. How to read a table
 
 One table is one info's `TObjArray` of elements, in the order they appear on
-disk, which is declaration order with the bases first. That order is part of the
-layout: it is the order the members are written in, and the order the checksum
-folds them in
-([StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums)).
+disk: declaration order, with the bases first. That order is part of the layout.
+It is the order the members are written in and the order the checksum folds them
+in ([StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums)).
 
 | Column | What it is |
 |---|---|
@@ -41,30 +39,30 @@ folds them in
 | Extra | whatever the element's subclass adds after the `TStreamerElement` base |
 | `fTitle` | the member's declaration comment, verbatim |
 
-The `Extra` column carries the subclass tail in one of three forms, and nothing
-else in these thirty-one classes needs a fourth:
+The `Extra` column holds the subclass tail in one of three forms, and none of
+these thirty-one classes needs a fourth:
 
-- `TStreamerBase` — `fBaseVersion`, and the base's own checksum, which travels in
-  `fMaxIndex[1]`
+- `TStreamerBase`: `fBaseVersion`, and the base's own checksum, which is stored
+  in `fMaxIndex[1]`
   ([StreamerInfo §9](../02-serialization/StreamerInfo.md#9-tstreamerbase-and-a-checksum-hidden-in-fmaxindex)).
   It is written as an unsigned word, so a value with the top bit set reads back
   as a negative `i32`. A base's `fType` is not always 0: the tables show 66 for a
   `TObject` base and 67 for a `TNamed` one, because `TStreamerBase`'s constructor
   rewrites the code by name
-  ([Element types §6](../02-serialization/ElementTypes.md#6-kbase-0-and-knotype-1)),
-  and those two codes are what tell a reader that the base carries no byte count
-  and that it does.
-- `TStreamerBasicPointer` — the counter member, the class that **declares** it,
+  ([Element types §6](../02-serialization/ElementTypes.md#6-kbase-0-and-knotype-1)).
+  Those two codes tell a reader that the base has no byte count and that it has
+  one, respectively.
+- `TStreamerBasicPointer`: the counter member, the class that **declares** it,
   and that class's version. The class is the one the member is declared in, not
   the one being described: `TArrayF::fArray` names `fN` in `TArray`.
-- `TStreamerSTL` — `fSTLtype` and `fCtype`. A `vector<string>` has `fCtype`
+- `TStreamerSTL`: `fSTLtype` and `fCtype`. A `vector<string>` has `fCtype`
   61 `kObject`, not `kSTLstring`: `std::string` has a dictionary, so the
-  collection's value class is found and the element type follows from that
+  collection's value class is found and the element type follows from it
   (`root/core/meta/src/TStreamerElement.cxx:1810-1812`).
 
-**Which subclass a member takes** is not stated anywhere as a rule, and the tables
-are the specification of it by example: a primitive or an enum is a
-`TStreamerBasicType`, a `TString` a `TStreamerString`, a counted array a
+No rule anywhere states **which subclass a member takes**; the tables specify it
+by example. A primitive or an enum is a `TStreamerBasicType`, a `TString` a
+`TStreamerString`, a counted array a
 `TStreamerBasicPointer`, an embedded `TObject`-derived class a `TStreamerObject`,
 an embedded class that is not a `TObject` a `TStreamerObjectAny`, a pointer to a
 `TObject`-derived class a `TStreamerObjectPointer`, an STL container a
@@ -74,20 +72,20 @@ example here: `TStreamerObjectAnyPointer`, for a pointer to a class that is not 
 ([Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)). The subclass and
 the `fType` agree in every row, and a reader uses the `fType`
 ([StreamerInfo §8](../02-serialization/StreamerInfo.md#8-the-element-subclasses)
-is what each subclass adds to the record).
+lists what each subclass adds to the record).
 
 Two fields are absent from every row and are therefore not columns.
-`fArrayLength` and `fArrayDim` are 0 throughout — no member of these classes is a
+`fArrayLength` and `fArrayDim` are 0 throughout: no member of these classes is a
 fixed-length C array, so `fMaxIndex[0]` is 0 as well and only `fMaxIndex[1]`
-carries anything. And each element's own `fBits` is 0: `kHasRange` would appear
+holds anything. Each element's own `fBits` is also 0: `kHasRange` would appear
 there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all thirty-one — and in all **743** streamer
-infos in this repository's reference files, which is worth knowing because
+The info's own `fTitle` is empty in all thirty-one, and in all **743** streamer
+infos in this repository's reference files.
 [Writing an object §7.1](WritingObjects.md#71-the-nesting) describes it as the
-class's comment and a writer will wonder what to put there. An empty string.
+class's comment, but the value to write there is an empty string.
 
 ## 2. What the tables do not, and cannot, give you
 
@@ -101,53 +99,51 @@ Every other checksum in §4 to §10 is reproduced exactly by §12's algorithm ap
 to the table printed beside it, and `tools/element_lists.py` fails if that stops
 being true in either direction.
 
-**These lists are the current versions and nothing else.** They describe the
-classes at the versions in §12, which are the versions the pinned ROOT compiles.
-A file written with them is readable by older ROOT only as far as that ROOT's own
-schema evolution reaches; producing an *older* layout is not something the format
-offers a writer
+**These lists describe only the current versions**, the versions in §12, which
+are the ones the pinned ROOT compiles. A file written with them is readable by
+older ROOT only as far as that ROOT's own schema evolution reaches; the format
+offers a writer no way to produce an *older* layout
 ([Overview §3.1](index.md#31-what-the-current-version-means)).
 
-**And they are the classes these procedures need, not a general set.** A split
-branch, a `TGraph`, a `TH3` or a user-defined class needs infos this document
-does not carry — the element list for any of them is
-obtainable from the file side with
+**They cover only the classes these procedures need.** A split branch, a
+`TGraph`, a `TH3` or a user-defined class needs infos this document does not
+have. The element list for any of them can be read from a file with
 [StreamerInfo §12](../02-serialization/StreamerInfo.md#12-reading), and
-[Overview §4](index.md#4-what-is-not-specified) is the standing list of what the
-writing layer does not cover.
+[Overview §4](index.md#4-what-is-not-specified) lists what the writing layer does
+not cover.
 
 ## 3. `fSize` is a `sizeof`, and nothing reads it
 
 `fSize` is the size of the member **on the machine that wrote the file**, and a
 reader must never use it
 ([StreamerInfo §7](../02-serialization/StreamerInfo.md#7-tstreamerelement)).
-The tables publish ROOT's values because a writer that wants a byte-identical
-record needs them, not because they matter:
+The tables give ROOT's values only because a writer that wants a byte-identical
+record needs them:
 
 - **ROOT overwrites the value it just read.** `TStreamerBasicType::Streamer`
   recomputes `fSize` from `fType` for every basic member after
   `ReadClassBuffer` returns (`root/core/meta/src/TStreamerElement.cxx:1242-1269`),
   multiplying by the array length if there is one. Whatever the file said is
-  discarded before anything can consult it.
+  discarded before anything can use it.
 - **A pointer element's field is not a pointer size either.** For
   `Float_t *fArray` the value is 4, because `TStreamerInfo::Build` takes the
   *element* type's size (`root/io/io/src/TStreamerInfo.cxx:645`,
   `:783`), while `TStreamerBasicPointer::GetSize` reports `sizeof(void *)`
   regardless of it (`root/core/meta/src/TStreamerElement.cxx:1002-1005`).
 - **ROOT's own files disagree with each other.** Counting only the files ROOT
-  published (`gen/cern/`, so provenance is not in question), `TNamed::fName` — a
-  `TString`, ROOT's own class — is recorded with `fSize` **0, 8, 16 and 24**, and
+  published (`gen/cern/`, so provenance is not in question), `TNamed::fName` (a
+  `TString`, ROOT's own class) is recorded with `fSize` **0, 8, 16 and 24**, and
   `TH1::fXaxis` with **0, 128, 184, 208 and 216**. A `TArrayD` member is 0, 12 or
-  24 and every object pointer 0, 4 or 8. The zeros are ROOT 3.04/02 and 3.05/07
-  (`mlpHiggs.root`, `H1display.root`), which wrote the field as 0 throughout; the
-  rest is pointer width and class layout changing across releases. None of it
-  changes a byte of any object.
+  24 and every object pointer 0, 4 or 8. The zeros are from ROOT 3.04/02 and
+  3.05/07 (`mlpHiggs.root`, `H1display.root`), which wrote the field as 0
+  throughout; the rest is pointer width and class layout changing across
+  releases. None of it changes a byte of any object.
 
-The practical consequence for a writer is that this is the one column it can get
-wrong without consequence — but also that `fSize` is why a fixture's normalized
-digest is masked at all (`tools/normalize.py`), since `sizeof(std::string)` and
-`sizeof(std::map<int,int>)` differ between standard libraries. No member of these
-thirty-one classes is affected: the only STL member among them is
+A writer can therefore get this column wrong without consequence. `fSize` is also
+why a fixture's normalized digest is masked at all (`tools/normalize.py`), since
+`sizeof(std::string)` and `sizeof(std::map<int,int>)` differ between standard
+libraries. No member of these thirty-one classes is affected: the only STL member
+among them is
 `TRefTable::fProcessGUIDs`, a `vector<string>`, and `sizeof(std::vector<T>)` is
 24 with both.
 
@@ -240,7 +236,7 @@ Class version **5**, `fCheckSum` **`0x69c5c3bb`**. 1 element.
 
 With §4 these are the fifteen of
 [Writing histograms §9](WritingHistograms.md#9-the-streamer-infos). `THashList`
-is here rather than in §4 because only a histogram reaches it — `TAxis::fLabels`
+is here rather than in §4 because only a histogram reaches it: `TAxis::fLabels`
 is a `THashList *`, and a null pointer still forces its class's info to be
 written.
 
@@ -348,10 +344,10 @@ Class version **3**, `fCheckSum` **`0xf9b1569f`**. 2 elements.
 With §4 and §5 these are the eighteen of
 [Writing histograms §9](WritingHistograms.md#9-the-streamer-infos). `TH2` sits
 between `TH1` and the concrete classes; `TProfile` sits **below** `TH1D`, so it
-is the one class here whose base is itself a concrete histogram.
+is the only class here whose base is itself a concrete histogram.
 
-`TProfile` is also the only class in this document with an **enum** member
-outside `TH1` — `fErrorMode`, whose `fTypeName` is the unqualified `EErrorType`
+`TProfile` is also the only class in this document with an enum member outside
+`TH1`: `fErrorMode`, whose `fTypeName` is the unqualified `EErrorType`
 because the enum is declared at file scope
 (`root/hist/hist/inc/TProfile.h:28`). An enum folds an extra 1 into the
 checksum, so a writer that misses it cannot produce `0x4bedee54`
@@ -408,13 +404,13 @@ Class version **7**, `fCheckSum` **`0x4bedee54`**. 8 elements.
 ## 7. A flat tree file: the other ten
 
 With §4 these are the eighteen of
-[Writing trees §8](WritingTrees.md#8-the-streamer-infos) — the concrete leaf
-classes vary with the branch types, so a file has as many `TLeafX` infos as it has
-kinds of leaf and no more: `TLeafI` and `TLeafF` for `data/ttree/basket.root`,
-`TLeafI` and `TLeafC` for `data/ttree/strings.root`. `TBranchRef`,
-`TRefTable` and `TObjArray` are all reached through null pointers the same way,
-and `ROOT::TIOFeatures` is the one class here with no `ClassDef` at all — an
-object of it carries a version word of 0 followed by a checksum
+[Writing trees §8](WritingTrees.md#8-the-streamer-infos). The concrete leaf
+classes vary with the branch types, so a file has one `TLeafX` info per kind of
+leaf: `TLeafI` and `TLeafF` for `data/ttree/basket.root`, `TLeafI` and `TLeafC`
+for `data/ttree/strings.root`. `TBranchRef`, `TRefTable` and `TObjArray` are all
+reached through null pointers the same way. `ROOT::TIOFeatures` is the only class
+here with no `ClassDef`: an object of it has a version word of 0 followed by a
+checksum
 ([Writing an object §2](WritingObjects.md#2-a-version-word-of-0-and-when-a-writer-must-emit-one)),
 while its info records class version 1.
 
@@ -575,13 +571,13 @@ Class version **20**, `fCheckSum` **`0x7264e07f`**. 33 elements.
 ## 8. A file of one object: `TObjString`
 
 The smallest file that needs a `StreamerInfo` record at all. `TObjString` is a
-`TObject` and a `TString`, so with §4's first three tables this is a complete set,
-and it is the one this project's `StreamerInfo` record is compared against byte for
+`TObject` and a `TString`, so with §4's first three tables this is a complete set.
+It is the set this project's `StreamerInfo` record is compared against byte for
 byte ([Writing an object §7.4](WritingObjects.md#74-the-check-that-this-procedure-passes)).
 
 It is also what `data/written/nested-subdir.root` holds at each of its three
-directory levels, which is what makes that file reproducible from this document
-rather than from `tools/rootwrite.py`.
+directory levels, so that file can be reproduced from this document rather than
+from `tools/rootwrite.py`.
 
 <!-- BEGIN GENERATED: objstring -->
 <!-- END GENERATED -->
@@ -590,20 +586,20 @@ rather than from `tools/rootwrite.py`.
 
 `TGraph` at class version 5 and `TGraphErrors` at 3, which between them are the
 graph classes a writer needs. With §4 and §5 they are the **nineteen** infos of
-`data/classes/graph.root` — nineteen, for three small objects, because
-`TGraph::fHistogram` is a `TH1F*` and a pointer member pulls the pointee's whole
-chain in whether or not the pointer is null
+`data/classes/graph.root`. Three small objects need nineteen because
+`TGraph::fHistogram` is a `TH1F*`, and a pointer member pulls in the pointee's
+whole chain whether or not the pointer is null
 ([Writing graphs §5](WritingGraphs.md#5-nineteen-streamer-infos-for-a-198-byte-object)).
-That is also what makes this the only set here that carries §10's three `TArray`
-tables as well.
+For the same reason this is the only set here that also includes §10's three
+`TArray` tables.
 
-Three fields repay a second look. `fNpoints` is `fType` 6 `kCounter` rather than
-3, promoted because `fX` and `fY` name it (erratum 1). `fFunctions` is `fType`
-**64** where `TH1::fFunctions` is 63, so it is written as a pointer slot with a
-class record rather than in place. And every one of the four counted arrays gives
-`TGraph` as its `fCountClass`, including `TGraphErrors`'s own `fEX` and `fEY`:
-`fNpoints` is declared two classes up, and the field names where the counter
-lives, not where the array does (§1).
+`fNpoints` is `fType` 6 `kCounter` rather than 3, promoted because `fX` and `fY`
+name it (erratum 1). `fFunctions` is `fType` **64** where `TH1::fFunctions` is
+63, so it is written as a pointer slot with a class record rather than in place.
+Every one of the four counted arrays gives `TGraph` as its `fCountClass`,
+including `TGraphErrors`'s own `fEX` and `fEY`: `fNpoints` is declared two
+classes up, and the field names the class that declares the counter, not the one
+that declares the array (§1).
 
 <!-- BEGIN GENERATED: graph -->
 <!-- END GENERATED -->
@@ -611,22 +607,22 @@ lives, not where the array does (§1).
 ## 10. Three classes a histogram file does not describe
 
 `TArray`, `TArrayF` and `TArrayD` have hand-written streamers, so **streaming**
-one marks nothing and a histogram or profile file contains no info for any of them
-([Writing an object §7.2](WritingObjects.md#72-which-classes-need-an-info)).
-Their checksums are needed all the same, as the `fBaseCheckSum` of `TH1F`,
-`TH1D`, `TH2F` and `TH2D`, so a writer of histograms has to build the element
-lists below without ever emitting them.
+one marks nothing, and a histogram or profile file contains no info for any of
+them ([Writing an object §7.2](WritingObjects.md#72-which-classes-need-an-info)).
+Their checksums are still needed, as the `fBaseCheckSum` of `TH1F`, `TH1D`,
+`TH2F` and `TH2D`, so a writer of histograms has to build the element lists below
+without ever emitting them.
 
-Two other kinds of file do carry them, by two different routes, and the tables
-here are read from both and compared:
+Two other kinds of file do contain them, by different routes; the tables here are
+read from both and compared:
 
 | File | Why it has them |
 |---|---|
 | `data/classes/tarray-histogram.root` | a `TH2F` inside a `TTree` branch, streamed through a path that marks them |
-| `data/classes/graph.root` | a `TGraph`'s `fHistogram` is a `TH1F*`, and a **pointer member** forces the pointee's whole info chain to be built and marked — even though the pointer is null (§9) |
+| `data/classes/graph.root` | a `TGraph`'s `fHistogram` is a `TH1F*`, and a **pointer member** forces the pointee's whole info chain to be built and marked, even though the pointer is null (§9) |
 
-The second is the cheaper one to reproduce: an empty `TGraph` file carries all
-three, where a file full of histograms carries none.
+The second is easier to reproduce: an empty `TGraph` file contains all three,
+and a file full of histograms contains none.
 
 <!-- BEGIN GENERATED: arrays -->
 ### `TArray`
@@ -658,9 +654,9 @@ Class version **1**, `fCheckSum` **`0x7139ef34`**. 2 elements.
 
 ## 11. The order ROOT writes them in
 
-Registration order, which is neither alphabetical nor dependency order. **A
-reader does not care**, and a writer is free to choose its own — the order is
-what makes a record byte-comparable with ROOT's, and that is all it is for.
+Registration order, which is neither alphabetical nor dependency order. A reader
+does not depend on it, and a writer is free to choose its own; the order matters
+only for making a record byte-comparable with ROOT's.
 
 <!-- BEGIN GENERATED: order -->
 **A histogram file** — 15 infos, as `data/classes/histogram.root` carries them:
@@ -712,9 +708,9 @@ TBranchRef  TRefTable  TObjArray
 ## 12. Class versions
 
 The version each info records, which is also the version an object of that class
-must carry in its version word. Checked against `ClassDef` in the pinned
-submodule by `tools/check_versions.py`, so this table and §4 to §10 together say
-that the fixtures' values *are* the current ones.
+must have in its version word. `tools/check_versions.py` checks the table against
+`ClassDef` in the pinned submodule, so this table and §4 to §10 together show
+that the fixtures' values are the current ones.
 
 <!-- BEGIN GENERATED: versions -->
 | Class | Version | Sets |
@@ -779,16 +775,16 @@ by `tools/check_versions.py`.
 
 ## 14. Errata
 
-Not against ROOT's shipped documentation, which says nothing about element lists,
-but against two claims a writer will otherwise make from the class definitions.
-Both were wrong in *this project's* writer until the tables were published, and
-both are invisible to every check that does not compare an element's subclass tail
-byte for byte — the fields below are in no checksum and in no byte count.
+These are not against ROOT's shipped documentation, which says nothing about
+element lists, but against two claims a writer would otherwise draw from the class
+definitions. Both were wrong in this project's writer until the tables were
+published. Only a check that compares an element's subclass tail byte for byte
+can see either, because the fields below are in no checksum and in no byte count.
 
 | # | Claim | Correction |
 |---|---|---|
-| 1 | A counter member is declared with `fType` 6 `kCounter` | `kCounter` is not a property of the declaration: `TStreamerInfo::Build` gives the member `kInt`, and it is **promoted** to `kCounter` when some other element names it as a counter (`root/core/meta/src/TStreamerElement.cxx:99`). `TArray::fN` is 6 only because `TArrayF::fArray` points at it, and a member that nothing counts stays 3 — `TCollection::fSize` is the contrast in §4. ROOT's own comment records that the switch "might be triggered by a derived class" (`root/io/io/src/TStreamerInfo.cxx:2969-2970`) |
-| 2 | A `vector<string>` member has `fCtype` 365 `kSTLstring` | 365 is what `TStreamerSTLstring` sets for itself (`root/core/meta/src/TStreamerElement.cxx:2194`). A `TStreamerSTL` for `vector<string>` records 61 `kObject`, because the value type has a dictionary (`:1810-1812`) — and `std::string` has one. This is the only one of the two that reaches a file: it is `TRefTable::fProcessGUIDs`, in every tree file |
+| 1 | A counter member is declared with `fType` 6 `kCounter` | `kCounter` is not a property of the declaration: `TStreamerInfo::Build` gives the member `kInt`, and it is **promoted** to `kCounter` when some other element names it as a counter (`root/core/meta/src/TStreamerElement.cxx:99`). `TArray::fN` is 6 only because `TArrayF::fArray` points at it, and a member that nothing counts stays 3, as `TCollection::fSize` does in §4. ROOT's own comment records that the switch "might be triggered by a derived class" (`root/io/io/src/TStreamerInfo.cxx:2969-2970`) |
+| 2 | A `vector<string>` member has `fCtype` 365 `kSTLstring` | 365 is what `TStreamerSTLstring` sets for itself (`root/core/meta/src/TStreamerElement.cxx:2194`). A `TStreamerSTL` for `vector<string>` records 61 `kObject`, because the value type has a dictionary (`:1810-1812`), and `std::string` has one. This is the only one of the two that reaches a file: it is `TRefTable::fProcessGUIDs`, in every tree file |
 
 ## 15. Reference files
 

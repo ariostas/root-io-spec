@@ -1,8 +1,8 @@
 /// Gate 3 for `written/histogram`: ROOT reads two histograms this project wrote.
 ///
-/// The assertions are the ones a physicist would notice if they were wrong --
-/// the entry count, the mean, the per-bin contents and the per-bin errors, and
-/// for the second histogram the variable bin edges. Each is derived by ROOT from
+/// The assertions are the ones a physicist would notice if they were wrong: the
+/// entry count, the mean, the per-bin contents and the per-bin errors, and for
+/// the second histogram the variable bin edges. Each is derived by ROOT from
 /// a different part of the record: the mean from fTsumwx/fTsumw, the errors from
 /// fSumw2, the edges from TAxis::fXbins.
 void verify(const char *path)
@@ -60,8 +60,8 @@ void verify(const char *path)
       if (h2->Integral() != 2.5) printf("FAIL h2 integral %g\n", h2->Integral());
    }
 
-   // And the streamer infos: fifteen of them, and ROOT must agree with every
-   // checksum or BuildCheck warns -- which fails the case.
+   // The streamer infos: fifteen of them. ROOT must agree with every checksum
+   // or BuildCheck warns, which fails the case.
    TList *infos = f->GetStreamerInfoList();
    if (!infos || infos->GetSize() != 15)
       printf("FAIL streamer info list has %d entries\n",

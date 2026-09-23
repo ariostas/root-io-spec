@@ -1,17 +1,16 @@
 /// Gate 3 for `written/two-versions`: ROOT reads one class at two layouts.
 ///
 /// ROOT has no dictionary for `Grown`, so it builds the class from the file and
-/// takes the **highest** version it finds as the in-memory layout. Reading
-/// `first`, written at version 1, therefore goes through the evolution path:
-/// `fA` comes off the file and `fB`, which version 1 does not have, is left at
-/// its default. That is the whole claim of
-/// `spec/06-writing/WritingObjects.md` 8.4, and ROOT confirming it is worth more
-/// than this project's own reader confirming it, because ROOT's answer is the
-/// one a user gets.
+/// takes the highest version it finds as the in-memory layout. Reading `first`,
+/// written at version 1, therefore goes through the evolution path: `fA` comes
+/// off the file and `fB`, which version 1 does not have, is left at its default.
+/// That is the claim of `spec/06-writing/WritingObjects.md` 8.4. ROOT
+/// confirming it counts for more than this project's own reader confirming it,
+/// because ROOT's answer is the one a user gets.
 ///
 /// The `no dictionary` warning is declared in `case.toml` rather than avoided:
-/// it is unavoidable for a class a writer invented, it is about the session and
-/// not about the file, and every other diagnostic still fails the case.
+/// it is unavoidable for a class a writer invented, it concerns the session and
+/// not the file, and every other diagnostic still fails the case.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);

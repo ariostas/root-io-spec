@@ -2,18 +2,18 @@
 ///
 /// A std::map is written member-wise because its value class is pair<K,V>
 /// (Collections.md 5), so each member is two columns: every `first`, then every
-/// `second`. What a column looks like depends entirely on the member's type,
-/// and this case has one map per shape:
+/// `second`. What a column looks like depends on the member's type, and this
+/// case has one map per shape:
 ///
 ///   std::string   one shared byte count and version, then n counted strings
-///   TString       n counted strings, with no shared frame at all
+///   TString       n counted strings, with no shared frame
 ///   a class       n objects, each with its own byte count and version
 ///   a collection  one shared frame, then n object-wise collections
 ///   a pointer     n object slots
 ///
-/// fEmpty is the seventh shape and the one that is easiest to get wrong: an
-/// empty member-wise collection writes its count and then **nothing**, not even
-/// the columns' own headers.
+/// fEmpty is the seventh shape, and the easiest to get wrong: an empty
+/// member-wise collection writes its count and then nothing, not even the
+/// columns' own headers.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "pair<K,V> member shapes", 0);

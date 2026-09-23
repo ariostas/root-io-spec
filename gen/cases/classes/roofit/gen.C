@@ -2,22 +2,21 @@
 /// bytes, one object each and nothing else.
 ///
 /// `RooRealVar::Streamer` (root/roofit/roofitcore/src/RooRealVar.cxx:1252) never
-/// calls ReadClassBuffer, so no info for it is written at all: the file's
-/// StreamerInfo record has RooAbsRealLValue and RooRealVarSharedProperties and
-/// no RooRealVar. The object is a full framed object all the same, and its byte
-/// count covers every byte -- including the RooRealVarSharedProperties written
-/// directly at the end, which is the part no info anywhere describes.
+/// calls ReadClassBuffer, so no info for it is written: the file's StreamerInfo
+/// record has RooAbsRealLValue and RooRealVarSharedProperties and no
+/// RooRealVar. The object is still fully framed, and its byte count covers
+/// every byte, including the RooRealVarSharedProperties written directly at the
+/// end, which is the part no info describes.
 ///
 /// `RooLinkedList::Streamer` (root/roofit/roofitcore/src/RooLinkedList.cxx:890)
-/// opens its frame with WriteVersion(IsA()) and no byte count at all, then
-/// writes its TObject base, an Int_t size, that many object slots, and a
-/// TString. The info the file *does* carry for it lists a member it never
-/// writes and no slots.
+/// opens its frame with WriteVersion(IsA()) and no byte count, then writes its
+/// TObject base, an Int_t size, that many object slots, and a TString. The info
+/// the file does have for it lists a member it never writes and no slots.
 ///
-/// The RooRealVar is deliberately one that never had a shared property
+/// The RooRealVar is chosen to be one that never had a shared property
 /// installed, so the tail is RooRealVar::_nullProp() and the TUUID inside it is
 /// all zeros (root/roofit/roofitcore/src/RooRealVar.cxx:88). A RooRealVar that
-/// has been through a RooDataSet carries a real, per-run TUUID and would make
+/// has been through a RooDataSet holds a real, per-run TUUID and would make
 /// this fixture irreproducible.
 void gen(const char *out)
 {

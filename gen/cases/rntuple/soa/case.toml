@@ -2,15 +2,15 @@ id   = "rntuple/soa"
 file = "data/rntuple/soa.root"
 
 description = """
-A collection stored as a struct of arrays, which is the only field shape that sets
-**flag 0x08** — the one flag bit no other fixture reaches.
+A collection stored as a struct of arrays, the only field shape that sets
+flag 0x08, a flag bit no other fixture reaches.
 
 `RNPointSoA` holds two `RVec<float>`s mirroring `RNPointRecord`'s two floats, and
 is marked in the dictionary with `rntuple.SoARecord = "RNPointRecord"`. On disk:
 
 | | |
 |---|---|
-| `fPoints` | role **collection**, one `Index64` column, flags **0x0c**, that is SoA plus has-checksum, type name `RNPointSoA`, type version 3, checksum |
+| `fPoints` | role **collection**, one `Index64` column, flags **0x0c** (SoA plus has-checksum), type name `RNPointSoA`, type version 3, checksum |
 | `fPoints._0` | role **record**, type `RNPointRecord`, its own version and checksum, two `Real32` children |
 
 Everything the document's *Classes representing a SoA layout* section claims holds:
@@ -18,12 +18,11 @@ the representation is a `std::vector<T>`'s, the child is named `_0`, the field's
 type name is the SoA class, the type version and checksum are field information,
 and the SoA flag is set.
 
-One thing it does not mention, and a writer will hit it first:
-**the two class versions must be equal**. ROOT refuses otherwise — "version
-mismatch between SoA type and underlying record type: 7 vs. 3"
-(`root/tree/ntuple/src/RFieldMeta.cxx:707`) — which is why both are 3 here, and
-why the version in the field record cannot tell a reader which of the two classes
-it came from. The checksums differ, and those can.
+The section does not mention that **the two class versions must be equal**. ROOT
+refuses otherwise: "version mismatch between SoA type and underlying record
+type: 7 vs. 3" (`root/tree/ntuple/src/RFieldMeta.cxx:707`). Both are 3 here, so
+the version in the field record does not tell a reader which of the two classes
+it came from. The checksums differ and do.
 """
 
 # The same standard-library difference as the other RNTuple cases: the
@@ -32,7 +31,7 @@ it came from. The checksums differ, and those can.
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

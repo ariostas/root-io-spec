@@ -7,11 +7,11 @@ A TNtuple: a tree whose record is not of class TTree.
 
 TNtuple derives from TTree and adds one member. The key's class name is
 "TNtuple", the whole TTree layout sits inside the record as a base class, and
-fNvar follows it. The point of the case is that a reader cannot find the trees in
-a file by comparing the key's class name against "TTree" -- it has to know, from
-the file's own streamer info, which classes derive from it.
+fNvar follows it. A reader therefore cannot find the trees in a file by comparing
+the key's class name against "TTree"; it has to know, from the file's own
+streamer info, which classes derive from it.
 
-What this case pins down:
+What this case shows:
 
 - The key names the class "TNtuple", and the object data opens with TNtuple's own
   byte count and class version 2, not TTree's.

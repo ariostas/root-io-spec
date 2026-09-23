@@ -3,42 +3,41 @@ file = "data/container/gap-reused.root"
 size = 1747
 
 description = """
-Free space being **used again**, which is the half of the allocator that
-`container/gap` does not show. Three placements are visible in the finished
-file, and they are the three a writer has to implement:
+Free space being used again, the half of the allocator that `container/gap`
+does not show. Three placements are visible in the finished file, and they are
+the three a writer has to implement:
 
 * **an exact fit.** `exact` is written at 290 with a 128-character payload,
   overwritten with a short one, then overwritten again with the original string.
   The second overwrite frees 125 bytes that coalesce with the 88 already free,
-  giving back exactly the 213 the record needs — so the `TFree` entry is removed
-  and `exact` ends up at **the very offset its first version had**, with nothing
-  left over;
+  giving back the 213 the record needs, so the `TFree` entry is removed and
+  `exact` ends up at the same offset as its first version, with nothing left
+  over;
 * **a partial fit by an unrelated record.** `snug` is written long and
   overwritten short, releasing 123 bytes at 592. `lodger` is written next, is
-  104 bytes, and is placed **inside the span `snug` released**. Nothing connects
+  104 bytes, and is placed inside the span `snug` released. Nothing connects
   the two: the allocator matches on size and address, never on identity;
-* **the remainder, marked in place.** 123 − 104 leaves 19 bytes at 696, carrying
-  a negative `fNbytes` of −19 and appearing in the free list as 696..714.
+* **the remainder, marked in place.** 123 − 104 leaves 19 bytes at 696, with a
+  negative `fNbytes` of −19, listed in the free list as 696..714.
 
-Two details of ROOT's rule are worth reading off this file.
+Two details of ROOT's rule can be read off this file.
 
 **The remainder is written by the new record's own key.** `TKey::Create` puts the
 marker into the key's buffer immediately after the payload
 (`root/io/io/src/TKey.cxx:559-561`) and `TKey::WriteFile` extends the write by
-four bytes to carry it (`root/io/io/src/TKey.cxx:1501`). There is no second seek,
-which is why the 19 bytes at 696 are correct even though nothing wrote them
-separately.
+four bytes to include it (`root/io/io/src/TKey.cxx:1501`). There is no second
+seek; the 19 bytes at 696 are correct even though nothing wrote them separately.
 
 **A segment one, two or three bytes too large is skipped.** The search takes an
 exact match from anywhere in the list, and otherwise the first segment whose
-length is **strictly greater than `nbytes + 3`** (`root/io/io/src/TFree.cxx:137`),
+length is strictly greater than `nbytes + 3` (`root/io/io/src/TFree.cxx:137`),
 so a partial fit always leaves at least the four bytes the marker needs. This
 case was built around that rule: an earlier draft of `lodger` was 122 bytes
-against a 123-byte segment and was **appended at the end of the file instead**,
+against a 123-byte segment and was appended at the end of the file instead,
 three bytes short of fitting.
 
-The `"overwrite"` option is what makes any of this controllable from a macro. It
-frees the old key *before* allocating the new one
+The `"overwrite"` option makes this controllable from a macro. It frees the old
+key before allocating the new one
 (`root/io/io/src/TDirectoryFile.cxx:1977-1985`), so the space is back on the free
 list in time for the allocation that follows; a plain `Write()` would append a
 second cycle and free nothing.

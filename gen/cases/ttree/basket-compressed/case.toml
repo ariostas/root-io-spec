@@ -3,29 +3,28 @@ file = "data/ttree/basket-compressed.root"
 size = 5911
 
 description = """
-A compressed basket, and beside it one ROOT gave up compressing -- the two
+A compressed basket, and beside it one ROOT gave up compressing: the two
 outcomes of TBasket.md 7.
 
 Every other `ttree` case writes with compression 0 so its bytes can be asserted
-directly. This one is the exception the specification needs, because two of its
-claims are about compressed baskets and neither could be checked:
+directly. This one is the exception, because two of the specification's claims
+are about compressed baskets and neither could otherwise be checked:
 
 **The entry-offset array is inside the compressed payload.** It is appended to
 the basket's buffer before the buffer is compressed
 (`root/tree/tree/src/TBasket.cxx:1254-1269`), so it lives past `fLast` in the
-*decompressed* bytes and **a reader cannot reach it without decompressing the
-whole basket** -- it cannot seek to one entry. Branch `a`'s array is
-`4 | 65, 465, 1265, 0` at decompressed offset 2465, and the record on disk is 63
-bytes of payload.
+decompressed bytes, and a reader cannot reach it without decompressing the whole
+basket; it cannot seek to one entry. Branch `a`'s array is `4 | 65, 465, 1265, 0`
+at decompressed offset 2465, and the record on disk is 63 bytes of payload.
 
 **Compression is all or nothing, and a small basket loses.** Branch `n` holds
 three `Int_t`, twelve bytes; zlib cannot beat that, so ROOT abandons compression
 for the whole basket and writes it raw
 (`root/tree/tree/src/TBasket.cxx:1334`). The result is
-`fNbytes == fKeylen + fObjlen` -- 77 = 65 + 12 -- which is the ordinary "stored
-raw" case of Compression.md 1 and is **indistinguishable from a file written with
-compression off**. Two baskets of the same tree, written under the same setting,
-one compressed and one not.
+`fNbytes == fKeylen + fObjlen` (77 = 65 + 12), the ordinary "stored raw" case of
+Compression.md 1, and indistinguishable from a file written with compression
+off. The tree has two baskets written under the same setting, one compressed and
+one not.
 
 The two branches are the same pair as `ttree/basket`, so the layouts can be read
 against that case's uncompressed assertions. `check_invariants.py` decompresses

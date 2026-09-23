@@ -8,29 +8,30 @@ fSplitLevel >= 100, and the only one that contains a TBranchSTL.
 
 TClass::CanSplit refuses to split any collection holding pointers
 (root/core/meta/src/TClass.cxx:2354). The exception is an explicit request, made
-by adding TTree::kSplitCollectionOfPointers -- 100, root/tree/tree/inc/TTree.h:310
--- to the split level. That hundreds component is then carried down to every
+by adding TTree::kSplitCollectionOfPointers (100, root/tree/tree/inc/TTree.h:310)
+to the split level. That hundreds component is then passed down to every
 sub-branch rather than decremented
-(root/tree/tree/src/TBranchElement.cxx:6279-6280), which is what leaves the
-members of the collection's content at fSplitLevel 100.
+(root/tree/tree/src/TBranchElement.cxx:6279-6280), which leaves the members of
+the collection's content at fSplitLevel 100.
 
 **Nothing in either corpus does this.** Across 178 files written by ROOT
 releases from 4.00 to 6.36 the maximum fSplitLevel is 99, so without this case
-the two pointer-collection rows of TBranchElement.md section 8 --
-ReadLeavesCollectionSplitVectorPtrMember and ReadLeavesCollectionSplitPtrMember
--- cannot be reached at all, and neither can the class TBranchSTL.
+the two pointer-collection rows of TBranchElement.md section 8
+(ReadLeavesCollectionSplitVectorPtrMember and
+ReadLeavesCollectionSplitPtrMember) cannot be reached at all, and neither can
+the class TBranchSTL.
 
-What this case pins down:
+What this case covers:
 
 - **TBranchSTL exists and is reachable.** The branch `fHits` is one. It is a
-  TBranch with five added persistent members -- fContName, fClassName,
-  fClassVersion, fClCheckSum and fID (root/tree/tree/inc/TBranchSTL.h:71-77) --
-  and, unlike TBranchElement, its fClassVersion is a four-byte Int_t. It carries
-  no fType, so none of the TBranchElement fields or invariants apply to it.
+  TBranch with five added persistent members, fContName, fClassName,
+  fClassVersion, fClCheckSum and fID (root/tree/tree/inc/TBranchSTL.h:71-77),
+  and, unlike TBranchElement, its fClassVersion is a four-byte Int_t. It has no
+  fType, so none of the TBranchElement fields or invariants apply to it.
   fContName holds the collection's own class name, which nothing else in the
   branch records.
-- fSplitLevel runs 199, 198, 197 and then **100** on the two fType 41 members.
-  That last value is what SetReadLeavesPtr tests with `>= 100`
+- fSplitLevel runs 199, 198, 197 and then 100 on the two fType 41 members.
+  SetReadLeavesPtr tests that last value with `>= 100`
   (root/tree/tree/src/TBranchElement.cxx:5779).
 - The collection branch under it is an ordinary fType 4 with **fID -1**, so its
   fClassName is the collection type `vector<PHit*>` rather than a parent class,
@@ -38,11 +39,11 @@ What this case pins down:
   This is the top-level form of the fClassName rule in TBranchElement.md
   section 5, and the corpora have only 34 examples of it.
 - The name of the collection branch inserts the *value class* as a path
-  component: `fHits.PHit`. The count-title convention is unchanged --
+  component: `fHits.PHit`. The count-title convention is unchanged:
   `fHits.PHit_`, and `fId[fHits.PHit_]` on the members.
 
 Three entries with collections of 2, 0 and 1 elements. ROOT reads the file back
-and reports those values, which is the check that the fixture is not merely
+and reports those values, which checks that the fixture is not merely
 self-consistent.
 """
 

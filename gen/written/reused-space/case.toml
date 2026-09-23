@@ -3,33 +3,33 @@ file = "data/written/reused-space.root"
 size = 1747
 
 description = """
-Records placed into **released space** rather than appended, written by
+Records placed into released space rather than appended, written by
 `tools/rootwrite.py` from [`WritingFiles.md` §2](../../../spec/06-writing/WritingFiles.md).
 
-**This file and `data/container/gap-reused.root` are the same 1747 bytes**, bar
-each key's `fDatime`, the file's own name and the UUID — 156 bytes across 31
-runs, and not one of them structural. ROOT wrote the other one from the same
-sequence of operations, which is what makes the comparison worth having: the
-allocator is the one part of a writer whose mistakes are invisible until
-somebody else's reader walks the record chain.
+**This file and `data/container/gap-reused.root` are the same 1747 bytes**,
+except each key's `fDatime`, the file's own name and the UUID: 156 bytes across
+31 runs, none of them structural. ROOT wrote the other one from the same sequence
+of operations. Mistakes in the allocator are otherwise invisible until another
+reader walks the record chain, so this comparison is a strong one.
 
 The two names are deliberately the same length, 30 characters, because a key
-carries the file's name and a record carries its own offset; one byte more and
+stores the file's name and a record stores its own offset; one byte more and
 every record would shift.
 
-Three placements, the three of §2.3, and all three are in the bytes:
+The file contains all three placements of §2.3:
 
-* `exact` at **290**, 213 bytes — written long, overwritten short, overwritten
+* `exact` at **290**, 213 bytes: written long, overwritten short, overwritten
   long again. The last overwrite released 125 bytes that coalesced with the 88
   already free, giving back exactly the 213 needed, so the free entry was
   removed and the record landed at the offset its first version had;
-* `lodger` at **592**, 104 bytes — placed inside the 123 bytes `snug` released
+* `lodger` at **592**, 104 bytes, placed inside the 123 bytes `snug` released
   when it was overwritten short. Nothing connects the two records;
-* the remainder at **696**, 19 bytes, carrying `-19` and listed as 696..714.
+* the remainder at **696**, 19 bytes, with the marker `-19` and listed as
+  696..714.
 
-What is *not* rewritten is as much of the point: bytes 700..714 are the tail of
-the long `snug` payload, still there behind the marker, because releasing a
-record writes four bytes and moves on.
+Some bytes are not rewritten: 700..714 are the tail of the long `snug` payload,
+still there behind the marker, because releasing a record writes four bytes and
+nothing else.
 """
 
 spec = [

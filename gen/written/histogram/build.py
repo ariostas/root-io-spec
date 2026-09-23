@@ -1,14 +1,14 @@
 """A TH1F and a TH1D written by this project, from spec/06-writing/WritingHistograms.md.
 
-The two histograms are deliberately the **same two** that ROOT wrote in
+The two histograms are deliberately the same two that ROOT wrote in
 `data/classes/histogram.root`, down to the values, so that the two files' data
 records can be compared byte for byte. `tools/test_write.py` asserts that
 comparison: 596 bytes and 651 bytes, identical.
 
 The statistics are supplied rather than derived. `tools/rootwrite.py` can compute
-them from the bin contents, and for `h1` -- unit weights, fills at bin centres --
-that gives ROOT's own values; for `h2` it cannot, because `fEntries` counts fills
-and the x moments remember where inside a bin each fill landed.
+them from the bin contents, and for `h1` (unit weights, fills at bin centres)
+that gives ROOT's own values. For `h2` it cannot, because `fEntries` counts fills
+and the x moments depend on where inside a bin each fill landed.
 """
 
 from __future__ import annotations

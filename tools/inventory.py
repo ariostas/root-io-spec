@@ -4,28 +4,28 @@
 `spec/02-serialization/StreamerDriven.md` is the specification for almost every
 class in a ROOT file: the streamer info recorded *in the file* describes the
 bytes, and a reader needs no per-class knowledge. The exception is a class that
-replaces the `Streamer` its `ClassDef` would generate — and **nothing in the file
-says which classes those are**. A reader that assumes the streamer info is
+replaces the `Streamer` its `ClassDef` would generate, and **nothing in the file
+identifies those classes**. A reader that assumes the streamer info is
 authoritative decodes such a class into garbage without any error.
 
-So the set matters, and until now the specification asserted its size from a
-spot-check. This extracts it from the pinned submodule instead, and sorts each
-member by what its `Streamer` actually does when reading:
+The specification used to give the size of this set from a spot-check. This
+extracts the set from the pinned submodule and sorts each member by what its
+`Streamer` does when reading:
 
 `delegating`
     The reading branch calls `ReadClassBuffer` with no version test around it,
-    and reads nothing afterwards. The custom code runs *after* the bytes are
-    consumed — fixups, caches, back-pointers — so on disk the class is
+    and reads nothing afterwards. The custom code (fixups, caches,
+    back-pointers) runs *after* the bytes are consumed, so on disk the class is
     indistinguishable from a generated one. **A reader needs nothing.**
 
 `extending`
     The reading branch calls `ReadClassBuffer` and then **reads more bytes of
-    its own**. The streamer info describes a prefix of the object and stops;
-    what follows it is in no info anywhere, and it is usually outside the byte
-    count as well, so `CheckByteCount` does not notice. `TMatrixTSym` is the
-    case that forced this category out of `delegating`: it reads the upper-right
-    triangle after the base class's members and reconstructs the lower one.
-    **These need hand-written text**, like `custom`.
+    its own**. The streamer info describes a prefix of the object; what follows
+    is in no info, and is usually outside the byte count as well, so
+    `CheckByteCount` does not notice. `TMatrixTSym` is why this category was
+    split from `delegating`: it reads the upper-right triangle after the base
+    class's members and reconstructs the lower one. **These need hand-written
+    text**, like `custom`.
 
 `guarded`
     The reading branch calls `ReadClassBuffer` above a version threshold and
@@ -37,23 +37,22 @@ member by what its `Streamer` actually does when reading:
     describe the bytes at *any* version. **These need hand-written text**, and a
     class here that the specification does not account for is a hole.
 
-It answers a second question in the same pass, for
-`spec/99-appendix/ForwardingStreamers.md`: **which classes write nothing of their
-own even though their `Streamer` is generated?** For a `ClassDef` version `<= 0`
-selected with a plain `#pragma link C++ class X;` — no `+`, no `-` — `rootcling`
-emits a body that calls each base's `Streamer` and returns
-(`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`), chosen at
+The same pass writes `spec/99-appendix/ForwardingStreamers.md`, the classes that
+**write nothing of their own even though their `Streamer` is generated**. For a
+`ClassDef` version `<= 0` selected with a plain `#pragma link C++ class X;` (no
+`+`, no `-`), `rootcling` emits a body that calls each base's `Streamer` and
+returns (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`), chosen at
 `root/core/clingutils/src/TClingUtils.cxx:3016`. Such a class writes no version
 word, no byte count and none of its members, while still recording a streamer
 info that lists them. Nothing in a file distinguishes it from a version-0 class
-read through `ReadClassBuffer`, so the list has to be published; that is what the
-second document is.
+read through `ReadClassBuffer`, so the list has to be published.
 
-Every row carries a `path:line` citation, and every `custom` and `extending` row
-must be resolved in `spec/99-appendix/streamers.toml` — to the document that specifies it, or
-explicitly to a gap. A submodule bump that adds a hand-written `Streamer` fails
-`--check` until someone says which it is, so the list cannot rot silently the way
-`tools/test_bootstrap.py` exists to stop the bootstrap list rotting.
+Every row has a `path:line` citation, and every `custom` and `extending` row
+must be resolved in `spec/99-appendix/streamers.toml`, either to the document
+that specifies it or explicitly to a gap. A submodule bump that adds a
+hand-written `Streamer` fails `--check` until it is classified, so the list
+cannot drift silently (`tools/test_bootstrap.py` does the same for the
+bootstrap list).
 """
 
 from __future__ import annotations
@@ -70,16 +69,16 @@ DOCUMENT = REPO / "spec/99-appendix/HandWrittenStreamers.md"
 FORWARDING_DOCUMENT = REPO / "spec/99-appendix/ForwardingStreamers.md"
 SIDECAR = REPO / "spec/99-appendix/streamers.toml"
 
-#: A definition of `X::Streamer(TBuffer &)`. The class name may carry template
+#: A definition of `X::Streamer(TBuffer &)`. The class name may have template
 #: arguments (`TParameter<Long64_t>`), which are dropped: the sidecar and the
 #: specification name the template, not each specialization. A second parameter
-#: is allowed — `ROOT::v5::TFormula` takes an on-file `TClass*` as well.
+#: is allowed; `ROOT::v5::TFormula` also takes an on-file `TClass*`.
 #:
-#: The name may also be **qualified**, as `void ROOT::RNTuple::Streamer` is: a
-#: definition written that way is not inside a `namespace` block, so `enclosing`
-#: cannot see the qualifier and it has to be read off the definition itself.
-#: Without this the inventory silently missed `ROOT::RNTuple`, whose `Streamer`
-#: reads a checksum outside the byte count, and `RooWorkspace::CodeRepo`.
+#: The name may also be **qualified**, as in `void ROOT::RNTuple::Streamer`. Such
+#: a definition is not inside a `namespace` block, so `enclosing` cannot see the
+#: qualifier and it has to be read off the definition itself. Without this the
+#: inventory silently missed `ROOT::RNTuple`, whose `Streamer` reads a checksum
+#: outside the byte count, and `RooWorkspace::CodeRepo`.
 #:
 #: The buffer parameter's name is captured because `extending` is detected by
 #: looking for I/O on *that* name after the `ReadClassBuffer` call; ROOT spells
@@ -97,8 +96,8 @@ NAMESPACE = re.compile(r"\bnamespace\s+([A-Za-z_]\w*)?\s*\{")
 #: spells it `R__v` and most hand-edited streamers keep that, but not all:
 #: `ROOT::v5::TFormula` and `ROOT::v5::TF1Data` call it `v`. Taking the name from
 #: the `ReadVersion` call instead of assuming one avoids classifying a version
-#: guard as unconditional delegation, which is the error that would matter — it
-#: understates what a reader has to know.
+#: guard as unconditional delegation, an error that would understate what a
+#: reader has to know.
 READ_VERSION = re.compile(
     r"\b(?:Version_t|Short_t|Int_t)\s+([A-Za-z_]\w*)\s*=\s*[^;]*\bReadVersion\s*\(")
 
@@ -120,9 +119,9 @@ RESOLVED = ("custom", "extending")
 def blank(text: str) -> str:
     """`text` with comments and literals replaced by spaces, length preserved.
 
-    Everything here is done by scanning source text, so a `{` inside a string and
-    a `ReadClassBuffer` inside a comment both have to stop counting — the first
-    would desynchronize the namespace tracking (`ROOT::v5::TFormula`'s file parses
+    Everything here scans source text, so a `{` inside a string and a
+    `ReadClassBuffer` inside a comment must both be ignored. The first would
+    desynchronize the namespace tracking (`ROOT::v5::TFormula`'s file parses
     formula syntax and is full of braces in string literals), and the second would
     classify a class by code that does not run. Replacing rather than deleting
     keeps every offset and line number the same as in the original.
@@ -203,10 +202,10 @@ def enclosing(text: str, offsets: list[int]) -> dict[int, list[str] | None]:
 def body(text: str, start: int) -> str | None:
     """The braced body of the definition whose match begins at `start`.
 
-    Returns `None` for a declaration — `template <> void X::Streamer(TBuffer &);`
-    — which has no body. Without that check the next unrelated `{` in the file is
-    read as the function, which is how a header's forward declaration first came
-    out classified as `custom`.
+    Returns `None` for a declaration such as
+    `template <> void X::Streamer(TBuffer &);`, which has no body. Without that
+    check the next unrelated `{` in the file is read as the function; that is how
+    a header's forward declaration was once classified as `custom`.
     """
     paren = text.find("(", start)
     if paren < 0:
@@ -241,10 +240,10 @@ def body(text: str, start: int) -> str | None:
 def _enclosing_block(source: str, start: int) -> str:
     """`source` from `start` to the end of the block that encloses it.
 
-    Stopping at the enclosing `}` is what keeps the *writing* branch out of the
-    window: a `Streamer` is `if (R__b.IsReading()) { ... } else { ... }`, so the
-    reads in the else-branch are on the far side of a closing brace and are not
-    reached from inside the reading one.
+    Stopping at the enclosing `}` keeps the *writing* branch out of the window:
+    a `Streamer` is `if (R__b.IsReading()) { ... } else { ... }`, so the reads in
+    the else-branch are past a closing brace and are not reached from inside
+    the reading one.
     """
     depth = 0
     for i in range(start, len(source)):
@@ -260,16 +259,16 @@ def _enclosing_block(source: str, start: int) -> str:
 def reads_after_class_buffer(source: str, buffers: set[str]) -> bool:
     """Does the reading branch consume bytes after `ReadClassBuffer` returns?
 
-    Looked for in the same block as the call and before any `return`, on the
-    buffer parameter's own name — so `R__b >> x` and `R__b.ReadFastArray(...)`
+    Searched for in the same block as the call and before any `return`, on the
+    buffer parameter's own name: `R__b >> x` and `R__b.ReadFastArray(...)`
     count, and a `memcpy`, a `Clear()` or a `MakeValid()` do not. A second
-    `ReadClassBuffer` does not count either: those bytes are described by an
-    info like the first lot.
+    `ReadClassBuffer` does not count either, since an info describes those bytes
+    as it does the first.
 
     The window is deliberately narrow. Reads that follow the *whole* if/else,
-    rather than the `ReadClassBuffer` branch of it, are not seen — no class in
-    the pinned submodule is written that way, and widening the window would
-    start counting the legacy branch of every `guarded` streamer instead.
+    rather than its `ReadClassBuffer` branch, are not seen. No class in the
+    pinned submodule is written that way, and widening the window would count
+    the legacy branch of every `guarded` streamer instead.
 
     It also ends at a `return`, a `break` or the next `case` label. `break` and
     `case` are there because of `RooBinning`, which dispatches on the version
@@ -297,10 +296,10 @@ def classify(source: str, buffers: set[str]) -> str:
 
     `extending` outranks `guarded` because it is the stronger requirement: a
     reader must know the extra bytes at *every* version, where a guard only
-    matters below its threshold. No class in the pinned submodule is both — the
+    matters below its threshold. No class in the pinned submodule is both (the
     detector finds extra reads in three of the 35 otherwise-`delegating`
-    streamers and in none of the 88 `guarded` ones — so the precedence has no
-    effect today and is recorded here rather than left implicit.
+    streamers and in none of the 88 `guarded` ones), so the precedence has no
+    effect today; it is stated here rather than left implicit.
     """
     if "ReadClassBuffer" not in source:
         return "custom"
@@ -309,10 +308,10 @@ def classify(source: str, buffers: set[str]) -> str:
     names = "|".join(re.escape(n) for n in
                      sorted(set(READ_VERSION.findall(source)) | {"R__v"}))
     #: A version test: a comparison, or a `switch` on the version word.
-    #: `RooBinning` is the reason for the second form — it hand-decodes its
-    #: version 1 in a `case 1:` and nothing in it compares anything, so a
-    #: comparison-only test called it `delegating`, i.e. "a reader needs
-    #: nothing", for a class with a legacy layout on disk.
+    #: `RooBinning` needs the second form: it hand-decodes its version 1 in a
+    #: `case 1:` and compares nothing, so a comparison-only test called it
+    #: `delegating` ("a reader needs nothing") for a class with a legacy layout
+    #: on disk.
     guard = re.compile(r"\b(?:%s)\b\s*(?:[<>]=?|[!=]=)"
                        r"|\bswitch\s*\(\s*(?:%s)\s*\)" % (names, names))
     if not guard.search(source):
@@ -320,8 +319,8 @@ def classify(source: str, buffers: set[str]) -> str:
     # A version test somewhere in the body is not enough: the call has to be
     # *inside* it. TEntryList, TLeafF16 and TLeafD32 call ReadClassBuffer
     # unconditionally and then consult the version only to repair a title or a
-    # filename -- they delegate at every version, and calling them `guarded`
-    # told a reader there was a legacy layout to implement when there is none.
+    # filename. They delegate at every version; calling them `guarded` implied a
+    # legacy layout to implement when there is none.
     if any(not _inside_guard(source, m.start(), guard)
            for m in re.finditer(r"\bReadClassBuffer\b", source)):
         return "delegating"
@@ -337,10 +336,10 @@ def _inside_guard(source: str, at: int, guard: re.Pattern) -> bool:
     call follows the test with nothing but the condition's own `)` between them.
 
     The region runs through the **whole** `if / else if / else` chain, not just
-    the first block. RooCategory is why: it hand-decodes versions 1 and 2 and
-    calls ReadClassBuffer in the trailing `else`, so stopping at the first
-    closing brace called it `delegating` -- "a reader needs nothing" for a class
-    with two legacy layouts on disk, which is the direction that matters.
+    the first block. RooCategory hand-decodes versions 1 and 2 and calls
+    ReadClassBuffer in the trailing `else`, so stopping at the first closing
+    brace called it `delegating` ("a reader needs nothing") for a class with two
+    legacy layouts on disk.
     """
     for m in guard.finditer(source):
         rest = source[m.end():]
@@ -392,15 +391,15 @@ def qualifier(prefix: str) -> list[str]:
 def streamers() -> dict[str, dict]:
     """Every hand-written `Streamer` in the submodule, by class name.
 
-    A class may define several overloads, and they are classified **together**
-    rather than separately, because ROOT's multi-overload streamers are one
-    streamer that dispatches between its own forms. `ROOT::v5::TFormula` is the
-    case that forced this: its one- and two-argument forms read the version word
-    and hand off to `Streamer(TBuffer&, Int_t, UInt_t, UInt_t, const TClass*)`,
-    and *that* is where `ReadClassBuffer` is. Classified separately the class
-    comes out `custom` -- "the streamer info describes the bytes at no version"
-    -- when in fact every version a released ROOT ever wrote is streamer-info
-    driven, and only versions 1 to 3 are hand-decoded.
+    A class may define several overloads, and they are classified **together**,
+    because ROOT's multi-overload streamers are one streamer that dispatches
+    between its own forms. In `ROOT::v5::TFormula` the one- and two-argument
+    forms read the version word and hand off to
+    `Streamer(TBuffer&, Int_t, UInt_t, UInt_t, const TClass*)`, which is where
+    `ReadClassBuffer` is. Classified separately the class comes out `custom`
+    ("the streamer info describes the bytes at no version"), when in fact every
+    version a released ROOT ever wrote is streamer-info driven, and only
+    versions 1 to 3 are hand-decoded.
 
     Three classes have more than one: `ROOT::v5::TFormula` (three),
     `ROOT::v5::TF1Data` and `TGenCollectionProxy`. All three were read before
@@ -453,7 +452,7 @@ LINK = re.compile(
 
 #: A `#pragma link C++ defined_in "header";` selects everything in a header, with
 #: no per-class flag. Eight exist, all naming TMVA's GUI headers, and they are
-#: reported rather than resolved -- see `ForwardingStreamers.md` §4.
+#: reported rather than resolved; see `ForwardingStreamers.md` §4.
 DEFINED_IN = re.compile(
     r"^[ \t]*#pragma[ \t]+link[ \t]+C\+\+[ \t]+defined_in[ \t]+(\S+)[ \t]*;", re.M)
 
@@ -463,12 +462,12 @@ def selections() -> tuple[dict[str, set[str]], dict[str, str], list[str]]:
 
     Returns the set of flags seen per class (`""`, `"+"`, `"-"` or `"!"`), the
     LinkDef path each class was first seen in, and the `defined_in` selections,
-    which carry no flag and so cannot be classified.
+    which have no flag and so cannot be classified.
 
-    Template selections are kept out: a `ClassDef` names the template and a
+    Template selections are skipped: a `ClassDef` names the template and a
     pragma names the specialization, so `vector<TObject*>+` matches nothing this
-    is compared against, and a line continued with a backslash would otherwise give a
-    half-spelled name.
+    is compared against. Lines continued with a backslash are skipped too, since
+    they would give a half-spelled name.
     """
     flags: dict[str, set[str]] = {}
     where: dict[str, str] = {}
@@ -501,7 +500,7 @@ def forwarding() -> tuple[list[tuple[str, str]], list[str]]:
     The rule is `ClassDef` version `<= 0` **and** a plain selection. Both halves
     matter: `+` routes the class through `ReadClassBuffer`, which writes a version
     word of 0 rather than nothing, and `-` means the class supplies its own
-    `Streamer` -- `TCollection` is version 3 with a `-`, `TSeqCollection` is
+    `Streamer`. `TCollection` is version 3 with a `-`, `TSeqCollection` is
     version 0 and plain, and the two sit four lines apart in the same LinkDef
     (`root/core/cont/inc/LinkDef.h:29`, `root/core/cont/inc/LinkDef.h:49`).
 
@@ -593,9 +592,8 @@ def summary(found: dict[str, dict],
 def render_forwarding(rows: list[tuple[str, str]]) -> list[str]:
     """The forwarding classes as a definition list, by ROOT module.
 
-    534 names is too many for a table and the module is the useful grouping:
-    almost every one of them is a GUI or graphics class that never reaches a
-    file, and seeing that at a glance is part of the answer.
+    534 names is too many for a table, and grouping by module shows at a glance
+    that almost every one is a GUI or graphics class that never reaches a file.
     """
     import textwrap
 
@@ -652,9 +650,9 @@ def unresolved(found: dict[str, dict],
                annotations: dict[str, dict]) -> list[str]:
     """Classes the sidecar does not account for, and stale entries.
 
-    Both `custom` and `extending` have to be resolved: in each case bytes reach
-    the file that no streamer info describes, and the difference is only whether
-    any of the object is described.
+    Both `custom` and `extending` have to be resolved: in each, bytes reach the
+    file that no streamer info describes. They differ only in whether any of the
+    object is described.
     """
     must = {n for n, e in found.items() if e["kind"] in RESOLVED}
     problems = [f"{n}: {found[n]['kind']} bytes no streamer info describes, "
@@ -683,8 +681,8 @@ def main(argv: list[str]) -> int:
     rows, doubts = forwarding()
     problems = unresolved(found, annotations)
     # A class cannot both supply a `Streamer` and have one generated for it: the
-    # first needs a `-` and the second a plain selection. If the two lists ever
-    # overlap, one of the two extractions is wrong.
+    # first needs a `-` and the second a plain selection. An overlap means one of
+    # the two extractions is wrong.
     overlap = sorted({n for n, _ in rows} & set(found))
     problems += [f"{n}: both hand-written and generated-forwarding, which "
                  f"cannot both be true" for n in overlap]

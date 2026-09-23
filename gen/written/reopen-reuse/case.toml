@@ -3,28 +3,28 @@ file = "data/written/reopen-reuse.root"
 size = 1928
 
 description = """
-An update placing a record **into a hole an earlier session left**, written by
+An update placing a record into a hole an earlier session left, written by
 `tools/rootwrite.py` from
 [`WritingFiles.md` §13](../../../spec/06-writing/WritingFiles.md).
 
-**This file and `data/container/reopen-gap.root` are the same 1928 bytes**, bar
-each key's `fDatime`, the file's own name and two UUIDs — 181 bytes across 37
-runs. ROOT performed the same sequence on the same base. Both names are 30
-characters, because four records carry the file's name.
+**This file and `data/container/reopen-gap.root` are the same 1928 bytes**,
+except each key's `fDatime`, the file's own name and two UUIDs: 181 bytes across
+37 runs. ROOT performed the same sequence on the same base. Both names are 30
+characters, because four records store the file's name.
 
 The base closes with an interior `TFree` entry of 95 bytes at 398: `big` is
 written with a 120-character payload and overwritten with a short one. The
-update is handed the base's **bytes** and nothing else, so that entry is the
-only thing telling it the hole is there — which is exactly the situation a third
-party's writer is in when it opens a file somebody else produced.
+update is given the base's bytes and nothing else, so that entry is its only
+record of the hole. A third-party writer opening a file somebody else produced is
+in the same situation.
 
-* **`fits` is 95 bytes**, the hole to the byte. It lands at 398 and the free
-  entry disappears — an exact fit across two sessions
+* **`fits` is 95 bytes**, the size of the hole. It lands at 398 and the free
+  entry disappears: an exact fit across two sessions
   ([§2.3](../../../spec/06-writing/WritingFiles.md#23-updating-the-free-list-and-the-three-outcomes));
 * **`tail` is overwritten**, which frees before it allocates, so the shorter
-  record lands at **493**, the address its first version had, leaving a 13-byte
-  remainder at 606 carrying its own `-13`. The cycle stays **1**: the old key had
-  left the list before the new one was appended. `written/reopen-add` shows
+  record lands at 493, the address its first version had, leaving a 13-byte
+  remainder at 606 with its own `-13`. The cycle stays 1: the old key had left
+  the list before the new one was appended. `written/reopen-add` shows
   `WriteDelete` advancing it instead;
 * **`wide` is 204 bytes** and fits nothing free, so it is appended.
 

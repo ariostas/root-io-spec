@@ -3,13 +3,13 @@
 /// SetAutoFlush is called with a positive entry count, so ROOT flushes every
 /// four entries and records the boundary; changing it to 3 and then to 5 closes
 /// out a cluster range each time. The result is the only shape in which
-/// fNClusterRange, fClusterRangeEnd and fClusterSize carry anything: two ranges
+/// fNClusterRange, fClusterRangeEnd and fClusterSize hold anything: two ranges
 /// on disk, the two counted pointers with their is-present flag set, and the
 /// third, open-ended range described by fAutoFlush alone.
 ///
 /// A positive fAutoFlush also makes fFlushedBytes and fSavedBytes non-zero,
-/// which is what distinguishes a tree whose cluster boundaries are recorded
-/// from one where they were never reached.
+/// which distinguishes a tree whose cluster boundaries are recorded from one
+/// where they were never reached.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "cluster ranges", 0);

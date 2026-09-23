@@ -13,7 +13,7 @@ streamer info's fArrayDim and fMaxIndex recover the shape.
 A variable-length array (kOffsetP, 40 + the basic type) is preceded by a single
 byte saying whether the pointer was null. fVar is present, so its flag byte is 1
 and three Int_t follow; fMissing is null, so its flag byte is 0 and nothing
-follows it at all -- not even a length. Both take their length from fN, which is
+follows it, not even a length. Both take their length from fN, which is
 an ordinary Int_t marked kCounter (6) in the streamer info.
 """
 

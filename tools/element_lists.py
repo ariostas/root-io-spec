@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """Publish the streamer-info element lists a writer has to emit.
 
-`spec/06-writing/` specifies the `StreamerInfo` record exactly -- its nesting,
-its option bytes, its checksum algorithm -- and each class document says *which*
-classes a file needs an info for. What it did not say until now is what goes
-*in* each of those infos: the member list, with every field of every
-`TStreamerElement`. Those lists lived only in `tools/rootwrite.py`, which made
-the writing layer unimplementable from the prose alone -- the one gap in it that
-a third party could not work around without reading this project's code.
+`spec/06-writing/` specifies the `StreamerInfo` record (its nesting, option
+bytes and checksum algorithm), and each class document says *which* classes a
+file needs an info for. What goes *in* each info, the member list with every
+field of every `TStreamerElement`, used to live only in `tools/rootwrite.py`, so
+a third party could not implement the writing layer from the prose alone.
 
-This extracts them from the **reference files ROOT wrote** and writes them into
-`spec/06-writing/ElementLists.md`, so the published tables are evidence about
-ROOT rather than a transcription of `rootwrite.py`. Seven fixtures between them
-carry every class:
+This extracts the lists from the **reference files ROOT wrote** and writes them
+into `spec/06-writing/ElementLists.md`, so the published tables are evidence
+about ROOT rather than a transcription of `rootwrite.py`. Seven fixtures
+between them hold every class:
 
     data/classes/histogram.root        the fifteen infos of a TH1F/TH1D file
     data/ttree/basket.root             the eighteen of a flat TTree file
@@ -20,38 +18,37 @@ carry every class:
                                        for a second time
     data/classes/tarray-histogram.root TArray, TArrayF and TArrayD, which a
                                        histogram file does not describe at all
-    data/container/file-minimal.root   TObjString, the one info a file holding a
-                                       single object carries
+    data/container/file-minimal.root   TObjString, the only info in a file
+                                       holding a single object
     data/ttree/strings.root            TLeafC, which only a string branch pulls in
-    data/classes/graph.root            TGraph and TGraphErrors -- and a third
+    data/classes/graph.root            TGraph and TGraphErrors, and a third
                                        independent copy of the TArray trio, which
-                                       a null TH1F* member drags in
+                                       a null TH1F* member pulls in
 
-and every class the fixtures share is compared across them, so a table can only
-be published when every file that carries the class agrees on it, field for
+Every class the fixtures share is compared across them, and a table is
+published only when every file that holds the class agrees on it, field for
 field.
 
-Three checks run in the same pass, and each closes a hole that a published table
-would otherwise open:
+Three checks run in the same pass:
 
 **Against the writer.** Every field of every element is compared with
 `rootwrite.histogram_infos`, `rootwrite.tree_infos` and `rootwrite.InfoSet`.
 That is stricter than the element-by-element comparison in
 `tools/test_write.py`, which stops at the `TStreamerElement` base and does not
-look at the subclass tail -- and the difference was not academic: it is what
-hid four wrong values in `rootwrite.py` (a `vector<string>`'s `fCtype`, a
-counter's promoted `fType`, a basic pointer's `fSize` and the class a counter is
-declared in), all of them in fields the checksum does not fold.
+look at the subclass tail. That gap hid four wrong values in `rootwrite.py` (a
+`vector<string>`'s `fCtype`, a counter's promoted `fType`, a basic pointer's
+`fSize` and the class a counter is declared in), all in fields the checksum
+does not fold.
 
 **Against the checksum algorithm.** Each published element list is fed to
 `StreamerInfo.md` §11 and the result compared with the `fCheckSum` beside it, so
-a table is only published when it is *sufficient* to produce the checksum a
-writer has to emit. Two classes cannot pass and are named: `THashList` and
+a table is published only when it is *sufficient* to produce the checksum a
+writer has to emit. Two classes cannot pass and are listed: `THashList` and
 `TSeqCollection` are class version 0, so their infos omit the members their
 checksums fold (§11.2).
 
-**Against the document.** `--check` fails if the tables in `spec/` have drifted
-from the fixtures, which is what CI runs.
+**Against the document.** `--check`, which CI runs, fails if the tables in
+`spec/` have drifted from the fixtures.
 
     tools/element_lists.py          # rewrite the generated blocks
     tools/element_lists.py --check  # fail if they are stale
@@ -74,9 +71,9 @@ DOCUMENT = REPO / "spec/06-writing/ElementLists.md"
 BEGIN = "<!-- BEGIN GENERATED: {} -->"
 END = "<!-- END GENERATED -->"
 
-#: The reference files the tables are read out of. Every one was written by
-#: ROOT, which is what makes the published values evidence rather than a
-#: restatement of `tools/rootwrite.py`.
+#: The reference files the tables are read out of. All were written by ROOT, so
+#: the published values are evidence rather than a restatement of
+#: `tools/rootwrite.py`.
 SOURCES = (
     "data/classes/histogram.root",
     "data/ttree/basket.root",
@@ -89,8 +86,8 @@ SOURCES = (
 
 #: The seven groups, each in bases-first order: a base's checksum is folded into
 #: the checksum of every class that inherits it (`StreamerInfo.md` §11 step 2),
-#: so this is the order a writer has to compute them in, and reading the tables
-#: in it means never meeting a checksum before the table that produces it.
+#: so a writer has to compute them in this order, and a reader of the tables
+#: never meets a checksum before the table that produces it.
 GROUPS = {
     "shared": ("TObject", "TNamed", "TString", "TAttLine", "TAttFill",
                "TAttMarker", "TCollection", "TSeqCollection", "TList"),
@@ -103,9 +100,9 @@ GROUPS = {
     "graph": ("TGraph", "TGraphErrors"),
 }
 
-#: The infos a file of each kind carries, in the order ROOT writes them --
-#: registration order, which is neither alphabetical nor dependency order. A
-#: reader does not care; a writer that wants a byte-identical record does.
+#: The infos a file of each kind holds, in the order ROOT writes them:
+#: registration order, which is neither alphabetical nor dependency order. Only
+#: a writer that wants a byte-identical record needs it.
 WRITE_ORDER = {
     "histogram": (
         "A histogram file", "data/classes/histogram.root",
@@ -154,7 +151,7 @@ NO_CLASSDEF = {"ROOT::TIOFeatures"}
 
 #: Element type codes below `kOffsetL`, for the `fType` column's mnemonic. The
 #: table in `ElementTypes.md` §1 is the full list; this covers what the
-#: the published classes use, and an unknown code is printed bare rather than
+#: published classes use, and an unknown code is printed bare rather than
 #: guessed at.
 TYPE_NAMES = {
     0: "kBase", 1: "kChar", 2: "kShort", 3: "kInt", 4: "kLong", 5: "kFloat",
@@ -207,7 +204,7 @@ def infos_of(path: str) -> dict[str, rootfile.StreamerInfo]:
 def fields(element) -> tuple:
     """Every field of one element that the tables publish.
 
-    `fMaxIndex[1]` is masked to 32 bits unsigned: it carries a base class's
+    `fMaxIndex[1]` is masked to 32 bits unsigned: it holds a base class's
     checksum, which reads back negative when its top bit is set (`StreamerInfo.md`
     §9).
     """
@@ -291,8 +288,8 @@ def compare_with_writer(published: dict) -> list[str]:
     """Every field of every element, against `tools/rootwrite.py`.
 
     The writer is an independent implementation of the same tables, so a
-    difference is a bug in one of them and has to be resolved before either can
-    be published.
+    difference is a bug in one of them and must be resolved before either is
+    published.
     """
     ours = writer_infos()
     problems = []
@@ -411,8 +408,8 @@ def render_class(info) -> list[str]:
         if "`" in element.title or "|" in element.title:
             # The column publishes the title verbatim as inline code, which
             # only works while no title contains a backtick or a pipe. None of
-            # the 743 in the reference files does; say so rather than mangle
-            # one silently.
+            # the 743 in the reference files does; stop rather than mangle one
+            # silently.
             sys.exit(f"{info.name}.{element.name}: a title with a backtick or "
                      f"a pipe cannot be published verbatim")
         title = f"`{element.title}`" if element.title else ""
@@ -452,10 +449,10 @@ def render_order(published: dict) -> list[str]:
 def render_versions(published: dict) -> list[str]:
     """A `| Class | Version |` table, which `check_versions.py` then checks.
 
-    That is the point of publishing it separately from the per-class headings:
-    the heading states what the file records, and this table is compared with
-    `ClassDef` in the pinned submodule, so the two together say that the file's
-    value *is* the current version.
+    It is published separately from the per-class headings: the heading states
+    what the file records, and this table is compared with `ClassDef` in the
+    pinned submodule, so together they show that the file's value *is* the
+    current version.
     """
     lines = ["| Class | Version | Sets |", "|---|---|---|"]
     for name in sorted(published, key=str.lower):

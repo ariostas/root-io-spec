@@ -1,9 +1,9 @@
 /// Gate 3 for `written/reopen-reuse`: ROOT opens a file whose update placed a
 /// record into a hole an earlier session left.
 ///
-/// The free list is the half that matters. `fits` consumed an entry exactly, so
-/// if the written list still claimed that span ROOT's next write would land on
-/// live data -- which is what appending an object here tests.
+/// The free list is the important half. `fits` consumed an entry exactly, so if
+/// the written list still claimed that span ROOT's next write would land on
+/// live data. Appending an object here tests that.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);

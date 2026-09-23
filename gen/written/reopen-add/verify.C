@@ -1,10 +1,10 @@
 /// Gate 3 for `written/reopen-add`: ROOT opens a file this project reopened.
 ///
-/// The values matter less than the structure. What has to hold is that ROOT
-/// agrees about which record each key names after a session that rewrote the
-/// key list, moved the free record and left a 243-byte hole -- and that the
-/// `StreamerInfo` record the base wrote is still the one ROOT reads the objects
-/// through, since the update never rewrote it.
+/// The structure matters more than the values. ROOT has to agree about which
+/// record each key names after a session that rewrote the key list, moved the
+/// free record and left a 243-byte hole. The `StreamerInfo` record the base
+/// wrote must still be the one ROOT reads the objects through, since the update
+/// never rewrote it.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -41,7 +41,7 @@ void verify(const char *path)
    if (kt && kt->GetSeekKey() != 1259)
       printf("FAIL two;2 at %lld\n", (long long)kt->GetSeekKey());
 
-   // And the record the update did NOT write is where the base put it.
+   // The record the update did not write is where the base put it.
    TKey *k1 = f->GetKey("str", 1);
    if (!k1 || k1->GetSeekKey() != 284)
       printf("FAIL str;1 moved to %lld\n",

@@ -8,7 +8,7 @@ The tracked specification's *Fundamental Types* table marks a default column per
 type with an asterisk, and then says: **"If the ntuple is stored uncompressed,
 the default changes from split encoding to non-split encoding where
 applicable."** Both halves are checkable. This case checks the uncompressed half
--- thirteen types, thirteen columns, compression off -- and the assertions below
+(thirteen types, thirteen columns, compression off), and the assertions below
 are the table's asterisked row, read out of a real file.
 
 All thirteen come out as the document says:
@@ -29,22 +29,21 @@ All thirteen come out as the document says:
 | `float` | Real32 | 0x0C | 32 |
 | `double` | Real64 | 0x0D | 64 |
 
-**The split rows are the point.** `Int16`, `Int32`, `Real32` and `Real64` appear
-here, not `SplitInt16`, `SplitInt32`, `SplitReal32` and `SplitReal64` -- which is
-the sentence about uncompressed ntuples, in bytes. A reader that assumes the
-split forms because they are the common case in real files reads every one of
-these columns wrong.
+`Int16`, `Int32`, `Real32` and `Real64` appear here, not `SplitInt16`,
+`SplitInt32`, `SplitReal32` and `SplitReal64`, as the sentence about
+uncompressed ntuples requires. A reader that assumes the split forms because
+they are common in real files decodes every one of these columns incorrectly.
 
-Two more claims fall out of the same file. Every one of the thirteen is a
-**plain** field with **exactly one** column, as the section's opening sentence
-says. And the type names show the normalization rule that "the integer types
-... are replaced by the corresponding `std::[u]int(8|16|32|64)_t` standard
-integer typedef": the sized integers are normalized, while `bool`, `char`,
-`std::byte`, `float` and `double` are stored as spelled.
+The same file shows two more claims. Each of the thirteen is a plain field with
+exactly one column, as the section's opening sentence says. The type names
+follow the normalization rule that "the integer types ... are replaced by the
+corresponding `std::[u]int(8|16|32|64)_t` standard integer typedef": the sized
+integers are normalized, while `bool`, `char`, `std::byte`, `float` and `double`
+are stored as spelled.
 
 `tools/test_rntuple.py` parses that table out of the tracked copy and compares it
 against this file's decoded schema, so the two cannot drift apart silently on a
-submodule bump -- the same idea as `check_versions.py` for class versions.
+submodule bump, as `check_versions.py` does for class versions.
 """
 
 spec = [
@@ -60,7 +59,7 @@ compression  = { algorithm = "none", setting = 0 }
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

@@ -3,46 +3,45 @@ file = "data/serialization/unframed-records.root"
 size = 1042
 
 description = """
-**Five records whose payload does not open with a byte count**, each written as a
-record of its own by the pinned ROOT: the rest of
-[Buffer §2.3](../../../spec/02-serialization/Buffer.md)'s list, which no fixture had
-written this way. `WriteClassBuffer` asks for a byte count, so a class with a
+Five records whose payload does not open with a byte count, each written as a
+record of its own by the pinned ROOT. They are the rest of
+[Buffer §2.3](../../../spec/02-serialization/Buffer.md)'s list, which no fixture
+had written this way. `WriteClassBuffer` asks for a byte count, so a class with a
 generated streamer always has one; these five have hand-written streamers that
-do not, and each record is exactly what its source line writes:
+do not, and each record is what its source line writes:
 
 | Record | Payload | Streamer |
 |---|---|---|
-| `TDatime` at 276 | **4** bytes, `7e 6c c0 00` -- the packed date | `root/core/base/src/TDatime.cxx:415` |
-| `TString` at 322 | **6** bytes, a bare counted string | `root/core/base/src/TString.cxx:1418` |
-| `TStringLong` at 371 | **17** bytes, an `i32` 13 and 13 characters | `root/core/base/src/TStringLong.cxx:131` |
-| `TObject` at 439 | **10** bytes, `00 01` then `fUniqueID` and `fBits` | `root/core/base/src/TObject.cxx:994` |
-| `TQObject` at 509 | **0** bytes -- a key over nothing | `root/core/base/src/TQObject.cxx:1033` |
+| `TDatime` at 276 | 4 bytes, `7e 6c c0 00`, the packed date | `root/core/base/src/TDatime.cxx:415` |
+| `TString` at 322 | 6 bytes, a bare counted string | `root/core/base/src/TString.cxx:1418` |
+| `TStringLong` at 371 | 17 bytes, an `i32` 13 and 13 characters | `root/core/base/src/TStringLong.cxx:131` |
+| `TObject` at 439 | 10 bytes, `00 01` then `fUniqueID` and `fBits` | `root/core/base/src/TObject.cxx:994` |
+| `TQObject` at 509 | 0 bytes: a key over nothing | `root/core/base/src/TQObject.cxx:1033` |
 
 **Why the case exists.** A ROOT-written file in go-hep's corpus, `tdatime.root`,
 stores a `TDatime` as a record, and `check_invariants.py` rejected it with
 `Buffer 9.2: payload of 4 bytes ... is too short for a byte count and a version`.
-§2.3 left `TDatime` out, and the checker agreed with §2.3 rather than with the
-reader, which already decoded the class by hand. Rather than add one name, every
+§2.3 left `TDatime` out, and the checker followed §2.3 rather than the reader,
+which already decoded the class by hand. Instead of adding one name, every
 hand-written `Streamer` of a persisted class was read once for what its write
-branch emits first; that is what §2.3's list is now, and it found two more
-classes in the same position (`TStringLong`, `TQObject`) and one this project's
-reader got wrong.
+branch emits first. §2.3's list is the result. That reading found two more
+classes in the same position (`TStringLong`, `TQObject`) and one that this
+project's reader got wrong.
 
 **The reader bug is the `TObject` record.** `rootfile.Decoder.read_object` sent
 `TObject` down the generic path, which reads a version word for the class and
-then a `TObject` base after it -- two version words -- and so consumed 12 bytes
-of this 10-byte payload. But `TObject` is the base: §7's
+then a `TObject` base after it (two version words), and so consumed 12 bytes of
+this 10-byte payload. `TObject` is the base itself: §7's
 `version fUniqueID fBits [pidf]` is the whole record.
 
 **The `TDatime` value is deterministic** because the macro gives it a literal
 date. `0x7E6CC000` is `(2026-1995)<<26 | 9<<22 | 22<<17 | 12<<12`, 2026-09-22
 12:00:00, by [Record §3.7](../../../spec/01-container/Record.md)'s packing.
 
-**`TQObject` is the one to test a reader's edge cases against.** Its key has
-`fObjlen` 0 and `fNbytes == fKeylen`, so the payload is empty. §1's
-compression test (`fObjlen > fNbytes - fKeylen`, i.e. `0 > 0`) correctly calls
-it raw; a reader that divides by `fObjlen` or reads one byte to sniff a magic does
-not survive it.
+**`TQObject` tests a reader's edge cases.** Its key has `fObjlen` 0 and
+`fNbytes == fKeylen`, so the payload is empty. §1's compression test
+(`fObjlen > fNbytes - fKeylen`, i.e. `0 > 0`) correctly calls it raw; a reader
+that divides by `fObjlen` or reads one byte to sniff a magic fails on it.
 
 None of the five has a streamer info: the `StreamerInfo` record at 554 is an
 empty `TList`. Compression is off so every payload is readable in place.

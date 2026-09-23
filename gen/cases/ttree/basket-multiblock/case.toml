@@ -3,17 +3,17 @@ file = "data/ttree/basket-multiblock.root"
 size = 7920
 
 description = """
-A basket whose payload is split into **two** compression blocks.
+A basket whose payload is split into two compression blocks.
 
 TBasket.md 7 says a basket does its own multi-block splitting with the same
 constant as the container layer, `kMAXZIPBUF = 0xffffff`
 (`root/core/zip/inc/RZip.h:40`), and nothing demonstrated it: a basket needs more
-than 16 MB of **uncompressed** payload to have two blocks, and a fixture that big
+than 16 MB of uncompressed payload to have two blocks, and a fixture that big
 cannot be committed.
 
-It can, if the payload compresses hard enough. 2 100 000 `Double_t` all equal is
-16 800 000 bytes, LZMA at level 9 stores it in 2 712, and the committed file is
-**7 920 bytes** with a real two-block payload:
+It can be committed if the payload compresses well enough. 2 100 000 `Double_t`,
+all equal, are 16 800 000 bytes; LZMA at level 9 stores them in 2 712, and the
+committed file is 7 920 bytes with a real two-block payload:
 
 | Block | At | Compressed | Uncompressed |
 |---|---|---|---|
@@ -26,12 +26,12 @@ number**, so a reader that assumes one block per record truncates the entry at
 16 777 215 bytes and reads the second block's nine-byte header as data.
 
 Nothing else about the basket changes: `flag` is 0, `fNevBuf` is 1, and the
-entry-offset array sits at the end of the *decompressed* buffer exactly as in
+entry-offset array sits at the end of the decompressed buffer as in
 `ttree/basket-compressed`. The block structure belongs to the container layer and
 is invisible above it.
 
-`fObjlen` is 16 800 012 in a 7 920-byte file. That is the largest ratio in the
-fixtures and a useful check on any reader that sizes a buffer from `fNbytes`.
+`fObjlen` is 16 800 012 in a 7 920-byte file, the largest ratio in the fixtures
+and a useful check on any reader that sizes a buffer from `fNbytes`.
 
 Branch `n`'s basket is four bytes and is stored raw, for the reason
 `ttree/basket-compressed` records.

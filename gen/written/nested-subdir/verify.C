@@ -1,13 +1,12 @@
 /// Gate 3 for `written/nested-subdir`: ROOT opens a nested file this project wrote.
 ///
-/// Three things are being checked that no other written case can reach: that
-/// ROOT rebuilds the directory tree from the records, that it recovers each
-/// subdirectory's own fSeekDir/fSeekParent/fSeekKeys, and that it can *write
-/// into* a subdirectory this project created -- which exercises the claim in
+/// It checks three things no other written case reaches: that ROOT rebuilds
+/// the directory tree from the records, that it recovers each subdirectory's
+/// own fSeekDir/fSeekParent/fSeekKeys, and that it can write into a
+/// subdirectory this project created. The last exercises the claim in
 /// `spec/06-writing/WritingFiles.md` 5.3 that the record never moves.
 ///
-/// Anything ROOT says on either stream fails the case too, so the absence of
-/// output is half the assertion.
+/// Any ROOT output on either stream also fails the case.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -40,7 +39,7 @@ void verify(const char *path)
          printf("FAIL alpha key fObjlen %d\n", dk->GetObjlen());
    }
 
-   // The two subdirectories, and the fields only their own records carry.
+   // The two subdirectories, and the fields only their own records hold.
    TDirectoryFile *alpha = (TDirectoryFile *)f->Get("alpha");
    if (!alpha) {
       printf("FAIL no directory 'alpha'\n");
@@ -74,7 +73,7 @@ void verify(const char *path)
    if (beta->GetNkeys() != 1)
       printf("FAIL beta holds %d keys\n", beta->GetNkeys());
 
-   // Every directory carries its own UUID (Directory.md 4.5). Copy each one out
+   // Every directory has its own UUID (Directory.md 4.5). Copy each one out
    // before comparing: TUUID::AsString returns a thread-local static buffer
    // (root/core/base/src/TUUID.cxx:602-612), so two calls in one expression
    // compare a string with itself and every UUID looks identical.
@@ -102,8 +101,8 @@ void verify(const char *path)
 
    // Now write into a subdirectory this project created. ROOT frees alpha's old
    // key-list record, writes a new one, and rewrites alpha's directory record
-   // **in place** -- WritingFiles.md 5.3. If fSeekDir, fNbytesName or fSeekKeys
-   // were wrong, this is where it shows.
+   // in place (WritingFiles.md 5.3). If fSeekDir, fNbytesName or fSeekKeys were
+   // wrong, it shows here.
    TString copy = "build/scratch/verify-nested-subdir.root";
    gSystem->mkdir("build/scratch", kTRUE);
    if (gSystem->CopyFile(path, copy, kTRUE) != 0) {

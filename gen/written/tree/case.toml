@@ -9,23 +9,23 @@ one counted `Float_t` array, three entries, one basket each.
 
 **Both basket records and the `TTree` record are byte-identical to the ones ROOT
 wrote in `data/ttree/basket.root`**, keys included, once the wall-clock timestamp
-is masked -- and that includes the two `fBasketSeek` values, which is why the
-file's name and title are chosen to match: both paths are 22 characters, so the
-root directory record is the same length in both files and every offset after it
-lines up. `tools/test_write.py` asserts the comparison.
+is masked. That includes the two `fBasketSeek` values, so the file's name and
+title are chosen to match: both paths are 22 characters, so the root directory
+record is the same length in both files and every offset after it lines up.
+`tools/test_write.py` asserts the comparison.
 
 Only the `StreamerInfo` record differs, by one entry. ROOT appends a
 `listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and
 <= 18; a file written at version 20 cannot use them, so this writer does not emit
 them.
 
-What the case pins that no reading fixture does: the basket key's version of
-**1004**, which `TBasket` sets whatever the file's size; `fCycle` as the basket
-number; the 19-byte `TBasket` header living **inside** `fKeylen`; the
-offset array's trailing element, which is never read; `fLeafCount` as an **object
-reference** to the counter leaf; `fLeaves` as references to the same leaf objects
-`fBranches` holds; and `ROOT::TIOFeatures`, whose version word is 0 followed by a
-checksum because the class has no `ClassDef`.
+What the case fixes that no reading fixture does: the basket key's version of
+1004, which `TBasket` sets whatever the file's size; `fCycle` as the basket
+number; the 19-byte `TBasket` header inside `fKeylen`; the offset array's
+trailing element, which is never read; `fLeafCount` as an object reference to
+the counter leaf; `fLeaves` as references to the same leaf objects `fBranches`
+holds; and `ROOT::TIOFeatures`, whose version word is 0 followed by a checksum
+because the class has no `ClassDef`.
 """
 
 spec = [

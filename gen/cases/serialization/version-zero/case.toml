@@ -3,19 +3,19 @@ file = "data/serialization/version-zero.root"
 size = 10557
 
 description = """
-TH1L is declared ClassDefOverride(TH1L,0), so its class version really is zero.
+TH1L is declared ClassDefOverride(TH1L,0), so its class version is zero.
 
-This is the case a reader cannot resolve from the bytes alone. A version word of
-0 is followed by a 4-byte checksum when the class is foreign, as in
-serialization/basic-types -- but TH1L is not foreign, so nothing follows. The
+A reader cannot resolve this case from the bytes alone. A version word of 0 is
+followed by a 4-byte checksum when the class is foreign, as in
+serialization/basic-types, but TH1L is not foreign, so nothing follows. The
 four bytes after the version word here are the byte count of the embedded TH1
 base class, and a reader that consumed them as a checksum would be lost.
 
-The disambiguator is the file's own streamer info: the TStreamerInfo for TH1L in
-this file has fClassVersion 0, whereas a foreign class is recorded with
+The file's own streamer info resolves it: the TStreamerInfo for TH1L in this
+file has fClassVersion 0, whereas a foreign class is recorded with
 fClassVersion 1. See spec/02-serialization/Buffer.md section 4.
 
-Assertions stop after the first few nested bases; the point of the case is the
+Assertions stop after the first few nested bases; the case is about the
 framing, not TH1's member layout.
 """
 
@@ -71,9 +71,9 @@ offset = 361
 type = "i16"
 value = 0
 
-# The next four bytes are the evidence. If a checksum followed the zero version
-# word, this would be it; instead it carries kByteCountMask, which a checksum
-# would not, and it is the byte count of the TH1 base.
+# If a checksum followed the zero version word, it would be the next four bytes.
+# Instead they carry kByteCountMask, which a checksum would not, and are the byte
+# count of the TH1 base.
 [[bytes]]
 name = "no checksum: this is the TH1 base byte count, kByteCountMask | 512"
 offset = 363

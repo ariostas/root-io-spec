@@ -3,25 +3,24 @@ file = "data/written/streamerinfo.root"
 size = 970
 
 description = """
-A **compressed** data record and a `StreamerInfo` record, both produced by
+A compressed data record and a `StreamerInfo` record, both produced by
 `tools/rootwrite.py` from `spec/06-writing/WritingObjects.md`.
 
-Three things are under test that `written/objstring` does not reach:
+It tests three things that `written/objstring` does not reach:
 
-* the **ZLIB block header** -- two 24-bit little-endian size fields inside an
+* the **ZLIB block header**: two 24-bit little-endian size fields inside an
   otherwise big-endian format, with the compressed size excluding the nine
   header bytes;
 * the `StreamerInfo` record: a `TList` at version 5 holding one
-  `TStreamerInfo` at version 10, whose `fElements` is a `TObjArray` **pointer
-  slot** and whose `TStreamerBase` element carries `TObject`'s checksum in
+  `TStreamerInfo` at version 10, whose `fElements` is a `TObjArray` pointer
+  slot and whose `TStreamerBase` element stores `TObject`'s checksum in
   `fMaxIndex[1]`;
 * `fCheckSum` computed from scratch by the algorithm of `StreamerInfo.md` 11.
-  It equals the value ROOT's own `TObjString` carries, `0x9c8e4800`, which is
-  why ROOT prints no `BuildCheck` warning -- and the harness fails the case if
-  it prints one.
+  It equals the value ROOT's own `TObjString` has, `0x9c8e4800`, so ROOT prints
+  no `BuildCheck` warning; the harness fails the case if it prints one.
 
 The record's 370 bytes of object data are byte-identical to the `StreamerInfo`
-record ROOT wrote in `data/container/file-minimal.root`; `tools/test_write.py`
+record ROOT wrote in `data/container/file-minimal.root`. `tools/test_write.py`
 asserts that directly, and it is the strongest evidence for `WritingObjects.md` 7.
 """
 

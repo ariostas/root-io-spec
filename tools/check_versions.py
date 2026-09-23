@@ -2,22 +2,22 @@
 """Check the spec's class-version tables against `ClassDef` in the pinned submodule.
 
 `tools/check_citations.py` verifies that every cited file and line exists. It
-cannot verify that a cited line still says what the citing sentence claims, and
-`spec/00-conventions.md` §7 says so explicitly. This closes one class of that
-problem completely: a **class version** is a number in a `ClassDef` macro, so a
-claim about one can be checked rather than merely cited.
+cannot verify that a cited line still says what the citing sentence claims, as
+`spec/00-conventions.md` §7 notes. For **class versions** this gap can be closed:
+a class version is a number in a `ClassDef` macro, so a claim about one can be
+checked rather than only cited.
 
-The claim each table makes is that its highest version is the class's current
-one. When the submodule is bumped and a class's version rises, that table is
-silently stale; nothing else in the suite notices.
+Each table claims that its highest version is the class's current one. When the
+submodule is bumped and a class's version rises, the table goes stale and
+nothing else in the suite notices.
 
 Two shapes of table are understood, told apart by the header row:
 
     | Version | Difference |          -- the class is the document's name
     | Class | Version | Note |        -- each row names its own class
 
-A row whose text says "current" must carry that highest version, so the prose and
-the table cannot disagree with each other either.
+A row whose text says "current" must give that highest version, so the prose
+and the table cannot disagree.
 
 Deliberately **not** checked: `## N. Version history` sections in
 `spec/01-container/`. Those tabulate ROOT *release* numbers and on-disk record
@@ -52,7 +52,7 @@ ELLIPSIS = re.compile(r"\u2026|\.\.\.")
 #: One or more version numbers in a table cell: "10", "8, 9", "1, 2, 3, 4".
 #: Backticked spans are removed first, so a citation's line number is not
 #: mistaken for a version. A cell like "<= 5" contributes 5, which is harmless
-#: because the comparison is against the highest version in the whole table.
+#: because the comparison uses the highest version in the table.
 VERSIONS = re.compile(r"(?<![\w.])(\d+)(?![\w.])")
 
 
@@ -134,17 +134,16 @@ def claims(path: Path,
                         # A backticked cell that is not a bare identifier: a
                         # template specialization such as `TMatrixTBase<T>`, or
                         # a `pair<int,int>`. `ClassDef` names the template, so
-                        # there is nothing to compare against — said out loud,
-                        # because the alternative is a table that looks checked
-                        # and is not. Spell the template in the table to fix it.
+                        # there is nothing to compare against. Report it, so the
+                        # table does not look checked when it is not; spelling
+                        # the template in the table fixes it.
                         narrowed.append(
                             f"{path.relative_to(REPO)}:{start + 1}: "
                             f"{cells[0]} is not a name ClassDef declares; "
                             f"its version is not checked")
                     if ELLIPSIS.search(cells[0]):
                         # "`TLeafO`…`TLeafD`" names classes it does not spell,
-                        # so only the endpoints can be checked. Said out loud
-                        # rather than passed over.
+                        # so only the endpoints can be checked. Report it.
                         narrowed.append(
                             f"{path.relative_to(REPO)}:{start + 1}: "
                             f"{cells[0]} names a range; only the classes it "
@@ -153,7 +152,7 @@ def claims(path: Path,
                     names = [path.stem]
                     version_cell = cells[0]
                 # Strip backticked spans first: a cell like
-                # "1 (`root/tree/tree/inc/TBranchObject.h:71`)" carries a
+                # "1 (`root/tree/tree/inc/TBranchObject.h:71`)" holds a
                 # citation whose line number is not a class version.
                 bare = re.sub(r"`[^`]*`", " ", version_cell)
                 versions = [int(v) for v in VERSIONS.findall(bare)]
@@ -179,9 +178,9 @@ def main(argv: list[str]) -> int:
 
     for path in sorted(SPEC.rglob("*.md")):
         # Per class: every version the table gives it, and separately the
-        # versions on rows that say "current". The two must not be merged --
-        # doing so made the "current" check vacuous, because the actual version
-        # is in the table whichever row claims to be the current one.
+        # versions on rows that say "current". Merging the two made the
+        # "current" check vacuous, because the actual version is in the table
+        # whichever row claims to be current.
         by_class: dict[str, tuple[list[int], list[int], int]] = {}
         for name, versions, current, line in claims(path, narrowed):
             seen, marked, first = by_class.get(name, ([], [], line))

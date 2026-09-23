@@ -6,40 +6,40 @@ description = """
 A displacement array, in both of the forms it takes. TBasket.md 4 said `flag > 40`
 "requires `TBasket::Update` to be called with a skip count, which happens only for
 a branch filled entry-by-entry out of order or for a circular tree". A circular
-tree is the reachable one, and it turns out only half the story was true.
+tree is the reachable one, and only half of that statement turned out true.
 
 `TTree::SetCircular(3)` then seven fills makes `TTree::KeepCircular` call
-`TBasket::MoveEntries`, which saves each entry's **pre-move** offset into
-`fDisplacement` and rewrites the offsets lower by a constant. It does so **only
-when there is an entry-offset array**, so the string branch `s` gets one and the
-fixed-width branch `n` never does -- in either tree.
+`TBasket::MoveEntries`, which saves each entry's pre-move offset into
+`fDisplacement` and rewrites the offsets lower by a constant. It does so only
+when there is an entry-offset array, so the string branch `s` gets one and the
+fixed-width branch `n` never does, in either tree.
 
-**In a record the flag is 0 and nothing announces the array.** A basket destined
+**In a record the flag is 0 and nothing signals the array.** A basket destined
 for a record is streamed with `fHeaderOnly`, so its flag is 0 or 80 whatever
-`WriteBuffer` appended; and `WriteBuffer` appends the displacement array and then
+`WriteBuffer` appended. `WriteBuffer` appends the displacement array and then
 clears `fDisplacement`, so the header-only write can no longer see it
 (`root/tree/tree/src/TBasket.cxx:1281-1285`). Tree `circ`'s `s` basket has flag
-**0**, `fObjlen` 61, and a payload of 21 data bytes followed by **two**
-count-prefixed arrays of 20 bytes each. Only the arithmetic finds the second.
+0, `fObjlen` 61, and a payload of 21 data bytes followed by two count-prefixed
+arrays of 20 bytes each. Only the arithmetic finds the second.
 
-So `flag > 40` occurs **only** embedded. Tree `emb`, written with
-`WriteTObject` so no basket reaches a record, has flag **51** on the same branch:
-1 for the offset array, 10 for the data, 40 for the displacements.
+So `flag > 40` occurs only embedded. Tree `emb`, written with `WriteTObject` so
+no basket reaches a record, has flag 51 on the same branch: 1 for the offset
+array, 10 for the data, 40 for the displacements.
 
-The two forms also disagree on the count, exactly as TBasket.md 5.1 says of the
-offset array: the record writes `fNevBuf + 1` = 4 for **both** arrays and the
-embedded one writes `fNevBuf` = 3.
+The two forms also disagree on the count, as TBasket.md 5.1 says of the offset
+array: the record writes `fNevBuf + 1` = 4 for both arrays and the embedded one
+writes `fNevBuf` = 3.
 
-**The extra element is not an offset, twice over.** `ttree/basket` shows the
-record's trailing value as 0; here it is **-14** in the offset array and **-9** in
-the displacement array. Two files, two different values, neither of them a
-position -- which is why a reader must use only the first `fNevBuf`.
+**The extra element is not an offset in either array.** `ttree/basket` shows the
+record's trailing value as 0; here it is -14 in the offset array and -9 in the
+displacement array. Two files give two different values, neither of them a
+position, so a reader must use only the first `fNevBuf`.
 
-`fKeylen` differs by one between the trees because their titles do ("written to
-records" against "kept in memory" makes no difference, but the basket's fTitle is
-the tree name, `circ` against `emb`). That is why the record's offsets are
-`68, 74, 81` and the embedded copy's are `67, 73, 80`: the same entries, one byte
-of key apart.
+`fKeylen` differs by one between the trees because their names do. The tree
+titles ("written to records" against "kept in memory") make no difference, but
+the basket's fTitle is the tree name, `circ` against `emb`. The record's offsets
+are therefore `68, 74, 81` and the embedded copy's are `67, 73, 80`: the same
+entries, one byte of key apart.
 """
 
 spec = [

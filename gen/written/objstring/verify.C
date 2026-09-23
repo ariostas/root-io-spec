@@ -1,9 +1,8 @@
 /// Gate 3 for `written/objstring`: ROOT opens a file this project wrote.
 ///
 /// It checks the container fields ROOT recovers from the header and the
-/// directory record, then the object itself. Anything ROOT says on either
-/// stream fails the case too -- see ROOT_DIAGNOSTICS in tools/check_write.py --
-/// so the absence of output is half the assertion.
+/// directory record, then the object itself. Any ROOT output on either stream
+/// also fails the case (see ROOT_DIAGNOSTICS in tools/check_write.py).
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -38,8 +37,8 @@ void verify(const char *path)
                 k->GetDatime().GetDate(), k->GetDatime().GetTime());
    }
 
-   // And the object. This is the part that drives ROOT's own streamer over
-   // bytes tools/rootwrite.py produced.
+   // The object. This part drives ROOT's own streamer over bytes
+   // tools/rootwrite.py produced.
    TObjString *s = (TObjString *)f->Get("str");
    if (!s) {
       printf("FAIL no TObjString at key 'str'\n");
@@ -51,10 +50,10 @@ void verify(const char *path)
 
    // ROOT reads the free list only when the file is opened writable
    // (root/io/io/src/TFile.cxx:769-775), so that half of the check needs an
-   // UPDATE open -- and an UPDATE open rewrites the key list, the free list and
+   // UPDATE open, and an UPDATE open rewrites the key list, the free list and
    // the header. Do it on a copy, and then use it: appending an object exercises
-   // ROOT's allocator against our free entry, which is WritingFiles.md 8's
-   // hazard. If our last entry named the wrong span, this overwrites live data.
+   // ROOT's allocator against our free entry, the hazard of WritingFiles.md 8.
+   // If our last entry named the wrong span, this overwrites live data.
    TString copy = "build/scratch/verify-objstring.root";
    gSystem->mkdir("build/scratch", kTRUE);
    if (gSystem->CopyFile(path, copy, kTRUE) != 0) {

@@ -8,9 +8,9 @@ A TTreeIndex, the one class in this layer that publishes no streamer info.
 TTreeIndex::Streamer is fully hand-written
 (root/tree/treeplayer/src/TTreeIndex.cxx:631): it never calls ReadClassBuffer or
 WriteClassBuffer, so **no TStreamerInfo for TTreeIndex is written into the
-file**. This file's StreamerInfo record holds TVirtualIndex and not TTreeIndex,
-which is the assertion at offset 0 of this case in spirit: everything else in
-Auxiliary.md is discoverable from the file that contains it, and this is not.
+file**. This file's StreamerInfo record holds TVirtualIndex and not TTreeIndex.
+Everything else in Auxiliary.md can be discovered from the file that contains
+it, and this cannot.
 
 The tree has ten entries with two Run values and five Event values each, so the
 index is a real permutation rather than the identity:
@@ -19,13 +19,13 @@ index is a real permutation rather than the identity:
   fIndexValuesMinor  2 4 6 8 10 1 3 5 7 9
   fIndex             8 6 4 2 0 9 7 5 3 1
 
-What this case pins down:
+What this case covers:
 
 - The nesting: TTreeIndex v2 wraps TVirtualIndex v1 wraps TNamed v1, and the
-  TNamed name and title are **empty** -- an index carries no name of its own.
+  TNamed name and title are empty; an index has no name of its own.
 - fMajorName and fMinorName are the strings passed to BuildIndex. They may be
   expressions rather than leaf names; these are leaf names.
-- **The three arrays carry no is-present flag.** They are written with
+- **The three arrays have no is-present flag.** They are written with
   WriteFastArray (root/tree/treeplayer/src/TTreeIndex.cxx:657-659), so the
   Long64_t fN is followed immediately by 8*fN bytes. Compare ttree/tree-entrylist,
   where TEventList::fList is an ordinary [fN] member and does have the flag.

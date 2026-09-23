@@ -1,12 +1,12 @@
 /// Gate 3 for `written/reused-space`: ROOT opens a file whose records were
 /// placed into released space rather than appended.
 ///
-/// The interesting half is the free list. ROOT reads it only when the file is
-/// opened writable (root/io/io/src/TFile.cxx:769-775), and then *allocates
-/// against it* -- so if our interior entry named the wrong span, or if the
-/// remainder marker at 696 disagreed with it, ROOT's next write would land on
-/// live data. Appending an object here is what tests that, and the three
-/// original objects are read back afterwards to prove nothing was trampled.
+/// The free list is the important half. ROOT reads it only when the file is
+/// opened writable (root/io/io/src/TFile.cxx:769-775), and then allocates
+/// against it. If our interior entry named the wrong span, or if the remainder
+/// marker at 696 disagreed with it, ROOT's next write would land on live data.
+/// Appending an object here tests that, and the three original objects are
+/// read back afterwards to show nothing was overwritten.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -22,7 +22,7 @@ void verify(const char *path)
    if (f->GetNkeys() != 4) printf("FAIL %d keys\n", f->GetNkeys());
 
    // The exact fit: `exact` is back at the offset its first version had, and
-   // it is 213 bytes there, which is what made the fit exact.
+   // it is 213 bytes there, which made the fit exact.
    TKey *ke = f->GetKey("exact");
    if (!ke) {
       printf("FAIL no key 'exact'\n");
@@ -73,7 +73,7 @@ void verify(const char *path)
    } else {
       TFree *a = (TFree *)fr->First();
       TFree *b = (TFree *)fr->Last();
-      // The remainder, inclusive, exactly as the marker at 696 says.
+      // The remainder, inclusive, as the marker at 696 says.
       if (a->GetFirst() != 696 || a->GetLast() != 714)
          printf("FAIL interior free entry [%lld, %lld]\n",
                 (long long)a->GetFirst(), (long long)a->GetLast());

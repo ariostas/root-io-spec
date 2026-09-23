@@ -1,17 +1,17 @@
 """Graphs written by this project, from `spec/06-writing/WritingGraphs.md`.
 
-Three objects. The first two hold exactly what `data/classes/graph.root` holds
-under the same names, and **both records are byte-identical to ROOT's** -- which
-is what pins `fBits`, the three attribute bases and the empty `fFunctions` list,
-none of which a writer would guess right. A record comparison needs only the
-same class name, key name and title, because a graph stores no offsets: the class
-map is measured from the start of the record, so an equal key length is enough.
+Three objects. The first two hold what `data/classes/graph.root` holds under
+the same names, and both records are byte-identical to ROOT's. That fixes
+`fBits`, the three attribute bases and the empty `fFunctions` list, none of which
+a writer would guess right. A record comparison needs only the same class name,
+key name and title, because a graph stores no offsets: the class map is measured
+from the start of the record, so an equal key length is enough.
 
-The third is the object ROOT cannot write: a graph with an explicit y range and
-`fHistogram` still **null**. `TGraph::SetMinimum` goes through `GetHistogram()`
-and materialises a whole `TH1F` inside the record, six times the size; the
-members are independent of it on disk, and `verify.C` shows ROOT reading the
-range back from a graph that has no histogram at all.
+The third is an object ROOT cannot write: a graph with an explicit y range and
+`fHistogram` still null. `TGraph::SetMinimum` goes through `GetHistogram()` and
+builds a complete `TH1F` inside the record, six times the size; the members are
+independent of it on disk, and `verify.C` shows ROOT reading the range back from
+a graph that has no histogram at all.
 """
 
 from __future__ import annotations

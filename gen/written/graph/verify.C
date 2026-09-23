@@ -1,13 +1,12 @@
 /// Gate 3 for `written/graph`: ROOT reads graphs this project wrote.
 ///
-/// The interesting object is `gy`: its y range is set and its `fHistogram` is
-/// null, which is a state ROOT's own API cannot produce because `SetMinimum`
-/// goes through `GetHistogram()`. ROOT reads the range back from the members,
-/// and builds the histogram on demand when asked for it -- so nothing is lost by
-/// leaving the pointer null, which is what `WritingGraphs.md` 3.4 says to do.
+/// The main object is `gy`: its y range is set and its `fHistogram` is null, a
+/// state ROOT's own API cannot produce because `SetMinimum` goes through
+/// `GetHistogram()`. ROOT reads the range back from the members and builds the
+/// histogram on demand when asked for it, so nothing is lost by leaving the
+/// pointer null, as `WritingGraphs.md` 3.4 says to do.
 ///
-/// Anything ROOT says on either stream fails the case too, so the absence of
-/// output is half the assertion.
+/// Any ROOT output on either stream also fails the case.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);

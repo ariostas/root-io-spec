@@ -2,8 +2,8 @@
 ///
 /// TArray's streamer is the shortest hand-written one in ROOT: an Int_t count
 /// and then that many values, with no byte count and no version word. Writing
-/// each as a standalone record makes the whole payload be exactly that, so the
-/// record's fObjlen pins the element width with nothing else in the way.
+/// each as a standalone record makes the payload only that, so the record's
+/// fObjlen pins the element width.
 ///
 /// The values are chosen so that each array's bytes are distinguishable: the
 /// first element is the element width, the second is 0x7F repeated to fill the

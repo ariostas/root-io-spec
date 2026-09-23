@@ -1,7 +1,7 @@
 # Element types
 
 Every member of a streamer-info-driven class has a type code, and the code
-determines exactly what bytes the member occupies. This document is the mapping.
+determines the bytes the member occupies. This document gives the mapping.
 
 Prerequisites: [Conventions](../00-conventions.md),
 [Buffer framing](Buffer.md), [Streamer information](StreamerInfo.md). All
@@ -16,10 +16,10 @@ Notation: `bc` is a byte count, a `u32` with `kByteCountMask` set; `ver` is an
 The codes are `TVirtualStreamerInfo::EReadWrite`
 (`root/core/meta/inc/TVirtualStreamerInfo.h:124-174`). The offset families are
 `kOffsetL = 20` for a fixed array and `kOffsetP = 40` for a counted pointer; both
-are **added to** a base code.
+are added to a base code.
 
-> **Roughly half the enum can never appear in a file.** Time spent implementing
-> those codes is wasted, so the third column is the most useful one here.
+> **Roughly half the enum can never appear in a file.** The third column shows
+> which codes a reader needs to implement.
 
 | Code | Name | On disk? |
 |---|---|---|
@@ -56,14 +56,14 @@ are **added to** a base code.
   `root/io/io/src/TStreamerInfoActions.cxx:4323`). That structure is transient
   (`root/io/io/inc/TStreamerInfo.h:97-99`). `kSkipL`, `kSkipP`, `kConvL` and
   `kConvP` are never used as addends anywhere in ROOT; those ranges arise only
-  because the element's code already carried `kOffsetL` or `kOffsetP`.
+  because the element's code already included `kOffsetL` or `kOffsetP`.
 - **`kArtificial`, `kCacheNew`, `kCacheDelete`** belong to `TStreamerArtificial`
   elements, which the write path filters out
   (`root/io/io/src/TStreamerInfo.cxx:5699`) and whose streamer is a no-op anyway
   (`root/core/meta/src/TStreamerElement.cxx:2253`).
-- **`kCache`** has no assignment site in ROOT at all; caching is driven by a
-  status bit instead.
-- **`kSTL`, `kSTLp`, `kSTLstring`** are overwritten with 500 on the way out; see
+- **`kCache`** is never assigned anywhere in ROOT; caching is driven by a status
+  bit instead.
+- **`kSTL`, `kSTLp`, `kSTLstring`** are replaced with 500 when written; see
   [Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean).
 
 ### 1.2 Optimisation does not change the bytes
@@ -72,12 +72,12 @@ are **added to** a base code.
 adding 20 to its code (`root/io/io/src/TStreamerInfoActions.cxx:4250-4289`). This
 affects only the transient compiled array; the bytes are identical either way.
 
-> A specification, and a reader, must be written against the element list, never
+> A specification or a reader must be written against the element list, never
 > against the compiled list.
 
 ## 2. Scalars
 
-Widths are fixed by the code, **not** by the element's `fSize`
+Widths are fixed by the code, not by the element's `fSize`
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:824-836`).
 
 | Code | Name | On disk | Bytes |
@@ -118,16 +118,16 @@ refers to it by name.
 > it has read in the current object.
 
 **A counter is not always marked.** `kCounter` replaces `kInt` (3) only when the
-class that *uses* the member as a length is built, and ROOT notes that "the switch
-from `Int_t` (3) to `kCounter` (6) might be triggered by a derived class using the
+class that uses the member as a length is built. ROOT notes that "the switch from
+`Int_t` (3) to `kCounter` (6) might be triggered by a derived class using the
 field as an array size, [so] the class itself has no control on what the field type
-really use" (`root/io/io/src/TStreamerInfo.cxx:2967-2972`). The same code treats
-the two as one on-file format. And a counter declared as an unsigned integer keeps
-`kUInt` (13) — `TBits::fNbytes` is one.
+really use" (`root/io/io/src/TStreamerInfo.cxx:2967-2972`), and the same code
+treats the two as one on-file format. A counter declared as an unsigned integer
+keeps `kUInt` (13); `TBits::fNbytes` is one.
 
-So a reader resolving `fCountName` must accept **any integer basic type**, not only
-6; all of them are a 4-byte value on disk and the code is a hint about the writing
-class, not about the bytes.
+A reader resolving `fCountName` must therefore accept any integer basic type, not
+only 6. All of them are a 4-byte value on disk, and the code describes the writing
+class, not the bytes.
 
 > Seen on real files: `TArrayD.fArray` names `fN` with `fType` 3 on both ROOT
 > 4.00/00 files of the foreign corpus, where a modern file writes 6; and
@@ -139,13 +139,13 @@ class, not about the bytes.
 n:i32   n bytes
 ```
 
-No terminator and no `255` escape — this is not the counted string of
+There is no terminator and no `255` escape; this is not the counted string of
 [Conventions §5.1](../00-conventions.md#51-counted-string)
 (`root/io/io/src/TBufferFile.cxx:285-317`). **A null pointer and an empty string
 are both four zero bytes** and cannot be distinguished.
 
 > Demonstrated by `serialization/element-types`: `fText` is `00 00 00 02` then
-> `68 69`, and `fNull` is `00 00 00 00` — the same bytes an empty string would
+> `68 69`, and `fNull` is `00 00 00 00`, the same bytes an empty string would
 > have written.
 
 ### 2.3 `kBits` (15)
@@ -156,13 +156,13 @@ fBits:u32   [pidf:u16 if fBits has kIsReferenced (BIT(4))]
 
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1031-1055`. The writer masks off
 `kIsOnHeap` and `kNotDeleted`
-(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:409-412`), exactly as
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:409-412`), as
 [Buffer framing §7](Buffer.md#7-the-tobject-base) describes for the `TObject`
 base.
 
 This code exists only because `Build` special-cases `TObject::fBits`
-(`root/io/io/src/TStreamerInfo.cxx:668-670`), so it appears **only in `TObject`'s
-own streamer info**.
+(`root/io/io/src/TStreamerInfo.cxx:668-670`), so it appears only in `TObject`'s
+own streamer info.
 
 ### 2.4 One member, two codes, depending on the writer's standard library
 
@@ -176,18 +176,18 @@ than the spelling in the source. On a 64-bit Linux it is `unsigned long`, giving
 `unsigned long long`, giving `fType` 17 and `fTypeName` `ULong64_t`. The same
 applies to the signed pair, `kLong` (4) against `kLong64` (16).
 
-Both write eight bytes, so **nothing on disk distinguishes them** and a reader
-that handles all four codes as 8-byte integers is correct on every platform. What
-a reader MUST NOT do is treat `fType` or `fTypeName` as a stable property of a
+Both write eight bytes, so nothing on disk distinguishes them, and a reader that
+handles all four codes as 8-byte integers is correct on every platform. What a
+reader MUST NOT do is treat `fType` or `fTypeName` as a stable property of a
 class: two files holding the same class, written by the same ROOT release from
 the same source, can disagree on both.
 
 > Measured on `ROOT::RNTuple`, whose seven seek and length members are declared
 > `std::uint64_t`. Regenerating `rntuple/anchor` under libstdc++ moves all seven
-> from 17/`ULong64_t` to 14/`unsigned long`, and the streamer info grows by
-> exactly 28 bytes — seven members times four characters of type name — while
-> every one of the case's 50 byte assertions still passes. That is why the case
-> carries `digest = false`; `PLAN.md` §9.6 has the reasoning.
+> from 17/`ULong64_t` to 14/`unsigned long`, and the streamer info grows by 28
+> bytes (seven members times four characters of type name), while all 50 of the
+> case's byte assertions still pass. The case therefore declares
+> `digest = false`; `PLAN.md` §9.6 has the reasoning.
 
 ### 2.5 A value can be `0x99` because nobody wrote one
 
@@ -199,15 +199,15 @@ The value is not random. `TObject::operator new` goes through
 `TStorage::ObjectAlloc`, which `memset`s the whole object with
 `kObjectAllocMemValue`, `0x99999999`
 (`root/core/base/src/TStorage.cxx:291-295`, `root/core/base/inc/TStorage.h:48`).
-Only the low byte of that survives `memset`, so **every byte of a freshly
-heap-allocated `TObject` is `0x99`** before any constructor runs. The reason is
-not debugging: `TStorage::FilledByObjectAlloc` reads the pattern back so that the
-`TObject` constructor can tell it is on the heap, which cannot be done by
-comparing stack addresses when there is one stack per thread
+Only the low byte of that value survives `memset`, so every byte of a freshly
+heap-allocated `TObject` is `0x99` before any constructor runs. The pattern is not
+a debugging aid: `TStorage::FilledByObjectAlloc` reads it back so that the
+`TObject` constructor can tell it is on the heap, which comparing stack addresses
+cannot do when there is one stack per thread
 (`root/core/base/inc/TStorage.h:93-109`).
 
-So a **persistent member that no code path ever assigns is written out as `0x99`
-bytes**, for any type, not only `kBool`:
+As a result, a **persistent member that no code path ever assigns is written out
+as `0x99` bytes**, for any type, not only `kBool`:
 
 | Code | Bytes on disk | Reads back as |
 |---|---|---|
@@ -217,16 +217,16 @@ bytes**, for any type, not only `kBool`:
 | `kDouble` (8) | `99 99 99 99 99 99 99 99` | ≈ −2.35e−185 |
 | `kFloat` (5) | `99 99 99 99` | ≈ −1.59e−23 |
 
-`classes/formula` has one: byte 665 is `TFormula::fAllParametersSetted`, and
-`TF1("g", "gaus", -3, 3)` never assigns it. It is **deterministic** — a `memset`
-pattern, not uninitialized heap contents — so the fixture is byte-reproducible
-across platforms, and the pattern is a usable diagnostic: `0x99999999` in a member
-almost always means the writer never set it, rather than that the reader is out of
-step.
+`classes/formula` has one: byte 665 is `TFormula::fAllParametersSetted`, which
+`TF1("g", "gaus", -3, 3)` never assigns. Because the value is a `memset` pattern
+and not uninitialized heap contents, it is deterministic, and the fixture is
+byte-reproducible across platforms. The pattern is also a useful diagnostic:
+`0x99999999` in a member almost always means the writer never set it, not that
+the reader is out of step.
 
-> Not an invariant, for the reason the section exists: a reader that rejected a
-> `kBool` outside `{0, 1}` would reject a file ROOT wrote and reads back without
-> complaint. `PLAN.md` §7.1 carries the underlying `TFormula` bug.
+> This is deliberately not an invariant: a reader that rejected a `kBool` outside
+> `{0, 1}` would reject a file ROOT wrote and reads back without complaint.
+> `PLAN.md` §7.1 records the underlying `TFormula` bug.
 
 ## 3. `kOffsetL + T` (20 + T) — fixed-size array
 
@@ -239,14 +239,14 @@ n values of T, back to back
 comes from the streamer info, never from the stream.
 
 A multidimensional array is flat and row-major. `fArrayLength` is the product of
-the extents, `fArrayDim` the rank, and `fMaxIndex[0..4]` the extents — so on disk
-a `[2][2]` array is indistinguishable from a flat array of 4, and only the
-streamer info recovers the shape.
+the extents, `fArrayDim` the rank, and `fMaxIndex[0..4]` the extents. On disk a
+`[2][2]` array is indistinguishable from a flat array of 4; only the streamer info
+records the shape.
 
 > Demonstrated by `serialization/arrays`: `fFixed[3]` is three `i32` with nothing
 > around them, and `fGrid[2][2]` is four `f64` in row-major order.
 
-The object codes take `kOffsetL` too, but not uniformly — see §7.2.
+The object codes take `kOffsetL` too, but not uniformly; see §7.2.
 
 ## 4. `kOffsetP + T` (40 + T) — counted pointer
 
@@ -258,25 +258,26 @@ if (isArray != 0)  n × c values of T
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:87-105`, written at
 `root/io/io/src/TStreamerInfoWriteBuffer.cxx:64-75`.
 
-Four things to get right:
+Things to get right:
 
 - The flag is a **signed 1-byte value**, not a 4-byte bool.
-- **When the flag is 0 the member is over** — one byte total, with no length and
-  no payload. It is written as 0 when the pointer is null *or* the counter is 0.
-- There is **exactly one flag byte** even when `fArrayLength > 1`: `kOffsetL` is
-  not added for counted pointers
-  (`root/core/meta/src/TStreamerElement.cxx:1022-1025`), so the total element
-  count is `max(fArrayLength, 1) × c` — ROOT raises a zero `fArrayLength` to 1
+- **When the flag is 0 the member ends there**: one byte in total, with no length
+  and no payload. The flag is written as 0 when the pointer is null or the counter
+  is 0.
+- There is **only one flag byte** even when `fArrayLength > 1`. `kOffsetL` is not
+  added for counted pointers
+  (`root/core/meta/src/TStreamerElement.cxx:1022-1025`), and the total element
+  count is `max(fArrayLength, 1) × c`: ROOT raises a zero `fArrayLength` to 1
   when it compiles the info (`root/io/io/src/TStreamerInfoActions.cxx:4332-4334`),
   and a scalar counted pointer has `fArrayLength` 0.
 - The length comes from the counter, never from the stream (§2.1), and the counter
-  may be declared in a **base class** rather than beside it — see
-  [Streamer-driven reading §3.2](StreamerDriven.md#32-elements-are-not-independent).
-  `fCountClass` names the class it is in.
+  may be declared in a base class rather than beside the member (see
+  [Streamer-driven reading §3.2](StreamerDriven.md#32-elements-are-not-independent)).
+  `fCountClass` names the class that declares it.
 
 > Demonstrated by `serialization/arrays`: `fVar` has flag byte 1 followed by three
-> `i32`, and `fMissing` has flag byte 0 followed by nothing at all — the record
-> ends there.
+> `i32`, and `fMissing` has flag byte 0 followed by nothing; the record ends
+> there.
 
 ## 5. `kDouble32` and `kFloat16`
 
@@ -305,10 +306,9 @@ if xmin < xmax:                          factor = bigint / (xmax - xmin)
 if xmin >= xmax and nbits < 15:          xmin = nbits + 0.1
 ```
 
-The last line is why `fXmin` doubles as the bit-count carrier when no real range
-was given. Note that the first bracket in a comment may be an array dimension, in
-which case the parser retries after it
-(`root/core/meta/src/TStreamerElement.cxx:128-134`).
+The last line is why `fXmin` holds the bit count when no real range was given.
+The first bracket in a comment may be an array dimension, in which case the
+parser retries after it (`root/core/meta/src/TStreamerElement.cxx:128-134`).
 
 ### 5.2 The three encodings
 
@@ -344,23 +344,22 @@ if (theMan & (1 << (nbits + 1)))  value = -value      // sign is bit nbits+1
 > plain 4-byte float**, because `xmin` is only set to the bit count when
 > `nbits < 15` (`root/core/meta/src/TStreamerElement.cxx:184`), and the writer
 > falls back to a `float` when the recovered bit count is 0
-> (`root/io/io/src/TBufferFile.cxx:703-706`). So a 15-bit request is *wider* on
-> disk than a 14-bit one, and the element does not even carry `kHasRange`.
+> (`root/io/io/src/TBufferFile.cxx:703-706`). A 15-bit request is therefore wider
+> on disk than a 14-bit one, and the element does not carry `kHasRange`.
 >
-> **A `Float16_t` behaves differently and the difference is easy to miss**: the
-> same `[0,0,15]` still gives a bit count of 0, but its writer substitutes **12**
-> (`root/io/io/src/TBufferFile.cxx:631-634`) and emits the `u8` exponent plus `u16`
-> mantissa regardless — **3 bytes**, exactly as for `[0,0,12]`, never 4. §5.2's
-> table says the same thing in its "plain `kFloat16`" row. Only `kDouble32` has the
-> widening trap.
+> **A `Float16_t` behaves differently.** The same `[0,0,15]` still gives a bit
+> count of 0, but its writer substitutes 12
+> (`root/io/io/src/TBufferFile.cxx:631-634`) and emits the `u8` exponent plus
+> `u16` mantissa regardless: 3 bytes, as for `[0,0,12]`, never 4. This is the
+> "plain `kFloat16`" row of §5.2's table. Only `kDouble32` has the widening trap.
 >
 > **The range path always costs 4 bytes**, whatever `nbits` says: `[-1,1,2]` is a
 > `u32`, not two bits.
 
-> Both `Double32_t` traps are demonstrated by `serialization/double32`, where the six members occupy
-> 4, 4, 3, 3, 4 and 3 bytes: `fBits15` is wider than `fBits14`, and `fRange` with
-> a 32-bit factor is the same width as the unannotated `fPlain`. A trailing `i32`
-> sentinel pins the last width.
+> Both `Double32_t` traps are demonstrated by `serialization/double32`, where the
+> six members occupy 4, 4, 3, 3, 4 and 3 bytes: `fBits15` is wider than
+> `fBits14`, and `fRange` with a 32-bit factor is the same width as the
+> unannotated `fPlain`. A trailing `i32` sentinel pins the last width.
 
 ## 6. `kBase` (0) and `kNoType` (-1)
 
@@ -370,9 +369,9 @@ kNoType:  nothing at all
 ```
 
 A base class is read by recursing into it
-(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1400-1412`), which emits a byte count
-and a version word of its own because it goes through the ordinary
-streamer-info-driven path.
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1400-1412`). That goes through the
+ordinary streamer-info-driven path, so the base has a byte count and a version
+word of its own.
 
 > **A `TObject` or `TNamed` base does not have code 0.** `TStreamerBase`'s
 > constructor rewrites the code by name
@@ -386,16 +385,17 @@ streamer-info-driven path.
 | anything else, hand-written streamer | 0 | **whatever that streamer writes** |
 | `TObject`, suppressed | **-1** | — | — (nothing written) |
 
-> **The framing of a `kBase` element is not the element's; it is the base class's
-> own.** Code 0 recurses into the base, and what appears is whatever that class's
-> streamer emits. For the common case — a class with a generated streamer — that
-> is a byte count and a version word. For a base with a hand-written streamer it
-> can be neither: a `TArray` base is a bare `fN` and its values, with nothing in
-> front ([TArray §3.1](../03-classes/TArray.md#31-as-a-base-class)).
+> **The framing of a `kBase` element belongs to the base class, not to the
+> element.** Code 0 recurses into the base, and the bytes are whatever that
+> class's streamer writes. For the common case, a class with a generated
+> streamer, that is a byte count and a version word. For a base with a
+> hand-written streamer it can be neither: a `TArray` base is a bare `fN` and its
+> values, with nothing in front
+> ([TArray §3.1](../03-classes/TArray.md#31-as-a-base-class)).
 >
-> The same is true of the object-valued codes in §7. Their byte-count and version
-> columns describe what a generated streamer writes, which is what a reader will
-> meet almost always — but the authority is the member class, not the code.
+> The same holds for the object-valued codes in §7. Their byte-count and version
+> columns describe what a generated streamer writes, which is almost always what a
+> reader will find, but the member class determines the framing, not the code.
 
 `kNoType` arises when the class sets `kIgnoreTObjectStreamer`, and a reader MUST
 consume **nothing** for it rather than treating it as an error
@@ -422,8 +422,8 @@ consume **nothing** for it rather than treating it as an error
 | 70 | `kAnyPnoVT` | no | yes | no | a 1-byte flag |
 | 71 | `kSTLp` | yes | yes | no | n/a |
 
-The `p`/`P` pairs differ only in nullability, and **only the comment string
-decides which** (`root/core/meta/src/TStreamerElement.cxx:1527`,
+The `p`/`P` pairs differ only in nullability, and only the comment string
+determines which a member gets (`root/core/meta/src/TStreamerElement.cxx:1527`,
 `root/core/meta/src/TStreamerElement.cxx:1630`):
 
 - `kObjectp` (63) and `kAnyp` (68) come from a `->` annotation. The pointer is
@@ -436,13 +436,13 @@ decides which** (`root/core/meta/src/TStreamerElement.cxx:1527`,
 The choice between `kObject`/`kObjectp`/`kObjectP` and `kAny`/`kAnyp`/`kAnyP` is
 whether the member's class derives from `TObject`.
 
-> **The byte count and version columns are the member class's doing.** For a
-> class with a generated streamer they are always there; for one with a
-> hand-written streamer they are whatever it writes. `TH1::fContour` is a
-> `TArrayD` held by value, so its code is 62 and its whole on-disk form is four
-> bytes of `fN` ([TArray §3.2](../03-classes/TArray.md#32-as-a-member-by-value)).
-> The class record column, by contrast, *is* a property of the code, because the
-> element layer writes it.
+> **The byte count and version columns depend on the member class.** A class with
+> a generated streamer always writes them; for one with a hand-written streamer
+> they are whatever that streamer writes. `TH1::fContour` is a `TArrayD` held by
+> value, so its code is 62 and its entire on-disk form is four bytes of `fN`
+> ([TArray §3.2](../03-classes/TArray.md#32-as-a-member-by-value)). The class
+> record column, by contrast, is a property of the code, because the element layer
+> writes it.
 
 > Demonstrated by `serialization/pointer-forms`, whose `fArrow` and `fPlainP` have
 > the same C++ type and differ only by the `->` comment: `fArrow` is 14 bytes with
@@ -453,15 +453,15 @@ whether the member's class derives from `TObject`.
 
 ### 7.1 The three fast paths
 
-`kTString`, `kTObject` and `kTNamed` bypass the generic path, and **they do not
-agree with each other** (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1070-1072`):
+`kTString`, `kTObject` and `kTNamed` bypass the generic path, and each is framed
+differently (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1070-1072`):
 
-- **`kTString` (65)** is a bare counted string — no byte count, no version word,
+- **`kTString` (65)** is a bare counted string: no byte count, no version word,
   no class record.
 - **`kTObject` (66)** is `TObject::Streamer` alone: a version word and then 10 or
   12 bytes, with **no byte count**. A reader that assumes every object-valued
   member begins with a byte count desynchronises on the first `TObject` base.
-- **`kTNamed` (67)** *does* have a byte count, because it is an ordinary
+- **`kTNamed` (67)** does have a byte count, because it is an ordinary
   streamer-info-driven read.
 
 > Demonstrated by `serialization/objects` (`fStr` at 345 is a bare counted string)
@@ -489,17 +489,18 @@ codes omit `kOffsetL` deliberately
 for everything else (`root/core/meta/src/TStreamerElement.cxx:510-515`).
 
 > **A reader MUST take the element count from `fArrayLength`, never from whether
-> the code carries `kOffsetL`.** The last row is the reason: the code alone does
-> not say the member is an array.
+> the code includes `kOffsetL`.** The last row shows why: the code alone does not
+> say whether the member is an array.
 >
 > Demonstrated by `serialization/element-types`: `fObjArr` (81, two elements) and
 > `fAnyArr` (82, three) are bare sequences of self-framing objects, while
-> `fPtrArr` is declared `EPoint *fPtrArr[2]`, keeps the scalar code **69**, and
-> still occupies two object slots — the second of them a null, four zero bytes.
+> `fPtrArr` is declared `EPoint *fPtrArr[2]`, keeps the scalar code 69, and still
+> occupies two object slots, the second of them a null (four zero bytes).
 
-> **The version word in the 85/86/87 form is `TStreamerInfo`'s own class version**
-> — not the member class's version and not a count. It is whatever that version
-> was in the ROOT that wrote the file, so it is **not a constant**: see §8.1.
+> **The version word in the 85/86/87 form is `TStreamerInfo`'s own class
+> version**, not the member class's version and not a count. It is the
+> `TStreamerInfo` version of the ROOT that wrote the file, so it is not a constant
+> (§8.1).
 >
 > Demonstrated by `serialization/pointer-forms`: `fS1` is code 65 and occupies 2
 > bytes, while `fS2`, code 85 with two elements, is `40 00 00 06 00 0a` followed
@@ -507,28 +508,28 @@ for everything else (`root/core/meta/src/TStreamerElement.cxx:510-515`).
 
 ### 7.3 `kAnyPnoVT` (70) has no producer
 
-The code is listed for completeness and a reader will never meet it. ROOT has a
+The code is listed for completeness; a reader will never meet it. ROOT has a
 write path for it (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:456-457`) and no
-read path, but more to the point **nothing constructs an element with `fType`
-70**: the only class that could is `TStreamerObjectAnyPointer`, whose constructor
-sets 69 and downgrades to 68 for a `->` comment and never anything else
-(`root/core/meta/src/TStreamerElement.cxx:1628-1630`), and `Build` reaches for
-that class for every non-`TObject` pointer member without a counter
+read path, and **nothing constructs an element with `fType` 70**. The only class
+that could is `TStreamerObjectAnyPointer`, whose constructor sets 69, or 68 for a
+`->` comment, and never anything else
+(`root/core/meta/src/TStreamerElement.cxx:1628-1630`). `Build` uses that class for
+every non-`TObject` pointer member without a counter
 (`root/io/io/src/TStreamerInfo.cxx:744`).
 
-Its documented meaning — a pointer to a class with no virtual table
-(`root/core/meta/inc/TVirtualStreamerInfo.h:115`) — is therefore not a case a
-reader has to distinguish. `serialization/element-types` is where this was
-settled: it declares exactly such a member and gets 69.
+Its documented meaning, a pointer to a class with no virtual table
+(`root/core/meta/inc/TVirtualStreamerInfo.h:115`), is therefore not a case a
+reader has to distinguish. `serialization/element-types` declares such a member
+and gets 69.
 
 ## 8. `kStreamer` (500) and `kStreamLoop` (501)
 
-Both are framed `bc ver`, where `ver` is `TStreamerInfo`'s own class version —
-**not a constant**, see §8.1.
+Both are framed `bc ver`, where `ver` is `TStreamerInfo`'s own class version,
+which is not a constant (§8.1).
 
-**`kStreamer` (500)** marks a member serialized by C++ the reader does not have
-(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1436-1460`). The payload is opaque,
-and the only correct action is to seek past it using the byte count.
+**`kStreamer` (500)** marks a member serialized by C++ code the reader does not
+have (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1436-1460`). The payload is
+opaque, and the only correct action is to seek past it using the byte count.
 
 > **On disk, code 500 usually means "STL container", not "custom streamer".**
 > Every `TStreamerSTL` and `TStreamerSTLstring` stores 500
@@ -545,19 +546,19 @@ for each of fArrayLength blocks:  c objects, or c object references if
                                   fTypeName contains "**"
 ```
 
-`c` comes from the counter member, and as with `kOffsetP` **no length is stored**
-— the commented-out length write is still visible in ROOT's source
+`c` comes from the counter member, and as with `kOffsetP` no length is stored.
+The commented-out length write is still visible in ROOT's source
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:731`).
 
 The two payload forms are chosen by a `strstr` for `**` in `fTypeName`
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:700`), so `Cls *m; //[n]` is *c*
-objects and `Cls **m; //[n]` is *c* object slots. Whatever framing each object
-carries is its own class's doing: a `TString*` loop is *c* bare counted strings,
-because `TString::Streamer` writes no version word and no byte count (§7.1).
+objects and `Cls **m; //[n]` is *c* object slots. Each object's framing comes from
+its own class: a `TString*` loop is *c* bare counted strings, because
+`TString::Streamer` writes no version word and no byte count (§7.1).
 
 **A count of zero writes the frame and nothing else.** ROOT's writer guards the
 whole loop with `if (vlen)` (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:730`),
-so the byte count is 2 — the version word alone.
+so the byte count is 2, covering only the version word.
 
 > Demonstrated by `serialization/element-types`, which has all three forms:
 > `fLoop` (`EPoint*`) is two framed objects with no count between them, `fLoopP`
@@ -566,8 +567,8 @@ so the byte count is 2 — the version word alone.
 
 ### 8.1 The version word is not a constant
 
-`b.WriteVersion(this->IsA(), kTRUE)` writes **the `TStreamerInfo` class version of
-the ROOT that wrote the file**, and that number has changed:
+`b.WriteVersion(this->IsA(), kTRUE)` writes the `TStreamerInfo` class version of
+the ROOT that wrote the file, and that number has changed:
 
 | Written by | `ver` |
 |---|---|
@@ -575,10 +576,10 @@ the ROOT that wrote the file**, and that number has changed:
 | ROOT 5.26 to 6.35 | 9 |
 | earlier | 8 or less |
 
-10 arrived in `a5d03de7e67` (2024-11-25), first released in 6.36.00; 9 in
-`40d8dd3552d`. All three are in the corpora — 8 in a 5.21 file, 9 in files from
-5.34 to 6.26, 10 only in the one 6.36 file and in the fixtures — so **every
-real-world file predating 6.36 carries 9 or 8, not 10.**
+Version 10 arrived in `a5d03de7e67` (2024-11-25), first released in 6.36.00;
+version 9 in `40d8dd3552d`. All three appear in the corpora: 8 in a 5.21 file, 9
+in files from 5.34 to 6.26, and 10 only in the one 6.36 file and in the fixtures.
+**Every real-world file predating 6.36 therefore has 9 or 8, not 10.**
 
 > **A reader MUST mask `kStreamedMemberWise` and treat the rest as a version
 > number, never compare the word to 10.** The same applies to the 85/86/87 form
@@ -593,21 +594,21 @@ The contents belong in [Collections](Collections.md). The framing is:
 bc  ver
 ```
 
-read with the element's class in hand
+read with the element's class known
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1151`,
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1255`).
 
-**The member-wise flag lives in that version word**: `kStreamedMemberWise`
-(`0x4000`) as described in
+**The member-wise flag is in that version word**: `kStreamedMemberWise`
+(`0x4000`), as described in
 [Buffer framing §3.1](Buffer.md#31-kbytecountvmask-and-kstreamedmemberwise-are-the-same-number).
-When it is set, a *second* version word for the value class follows for
+When it is set, a second version word, for the value class, follows for
 sufficiently recent `TStreamerInfo` versions
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1168`,
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1273`). When it is clear, the
 collection is written object-wise and `ver` is `TStreamerInfo`'s version 10.
 
-Remember that the stored `fType` is 500, and that `fSTLtype` and `fCtype` are the
-element's trailing members.
+The stored `fType` is 500, and `fSTLtype` and `fCtype` are the element's trailing
+members.
 
 ## 10. Reading
 
@@ -620,18 +621,18 @@ Given a streamer info and a buffer positioned at an object's first content byte:
    the value of every `kCounter` member for later `kOffsetP` and `kStreamLoop`
    members.
 4. For a code the reader does not implement, seek to the end of the enclosing byte
-   count. Because every nested object carries one, each is a resynchronisation
+   count. Because every nested object has one, each is a resynchronisation
    point ([Buffer framing §2.1](Buffer.md#21-a-byte-count-is-authoritative)).
 5. At the end, seek to the object's own byte-count end regardless of how much was
    consumed.
 
-A member present on file but absent in the reader's target is simply consumed and
+A member present on file but absent in the reader's target is consumed and
 discarded; a member absent on file is left at its default. ROOT implements those
 two as separate skip and convert paths, but they change no bytes.
 
-> Step 4 is what makes an unknown class survivable, and step 5 is what makes a
-> disagreement survivable. A reader that omits either will fail on files ROOT
-> reads without complaint.
+> Step 4 lets a reader get past an unknown class, and step 5 lets it recover when
+> the bytes consumed disagree with the byte count. A reader that omits either will
+> fail on files ROOT reads without complaint.
 
 ## 11. Invariants
 
@@ -643,21 +644,19 @@ Invariants 1 and 2 hold on a file written by ROOT 5 or later. **ROOT 4 wrote 300
 and 365**, the real STL codes, where later releases write 500
 ([Streamer information §10.1](StreamerInfo.md#101-root-4-wrote-the-real-code)).
 3. `fType` **500** belongs to a `TStreamerSTL` or a `TStreamerSTLstring`, and
-   **501** to a `TStreamerLoop` — the counted pointer to objects of §8. Measured
+   **501** to a `TStreamerLoop`, the counted pointer to objects of §8. Measured
    over `data/` and both corpora: 1137, 213 and 13 elements, with no other element
    class carrying either code, and the 18 that carry the legacy 300 are all
-   `TStreamerSTL`. The published form of this entry omitted `TStreamerLoop` and
-   allowed any element "whose class carries a custom streamer", a case no file in
-   either corpus contains.
+   `TStreamerSTL`.
 4. `fArrayLength` is the **fixed** extent and nothing else, so it is positive for
    a `kOffsetL` code in `[20, 39]` and **0** for a `kOffsetP` code in `[40, 59]`,
    whose length is its counter's value at read time. It is 0 for a scalar, with
-   one exception: an object-pointer code — 63, 64, 68 or 69 — spells a fixed array
-   as `fArrayLength > 1` with **no** `kOffsetL` added (§7), so those carry an
+   one exception: an object-pointer code (63, 64, 68 or 69) represents a fixed
+   array as `fArrayLength > 1` with **no** `kOffsetL` added (§7), so those have an
    extent while looking scalar. Measured over `data/` and both corpora: 651
-   `kOffsetL` elements all positive, **2229 `kOffsetP` elements all 0**, and of
-   28 856 remaining exactly one — `ElementZoo.fPtrArr`, an `EPoint*[2]` in
-   `serialization/element-types` — with an extent.
+   `kOffsetL` elements, all positive; 2229 `kOffsetP` elements, all 0; and of the
+   28 856 remaining, exactly one with an extent, `ElementZoo.fPtrArr`, an
+   `EPoint*[2]` in `serialization/element-types`.
 5. An element with `fType` in `[40, 59]` is a `TStreamerBasicPointer` and names a
    counter in `fCountName`.
 6. An element with `fType` -1 is a `TStreamerBase` named `TObject`.
@@ -673,14 +672,14 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | # | Claim | Actually |
 |---|---|---|
 | 1 | The type list omits codes 7, 9, 10, 16, 17, 18, 19 | `kCharStar`, `kDouble32`, `kLegacyChar`, `kLong64`, `kULong64`, `kBool` and `kFloat16` all exist, and all but 10 are routine (§1) |
-| 2 | The list omits 68, 69, 70, 71 | `kAnyp` and `kAnyP` are extremely common — any pointer to a non-`TObject` class (§7) |
+| 2 | The list omits 68, 69, 70, 71 | `kAnyp` and `kAnyP` are very common: any pointer to a non-`TObject` class (§7) |
 | 3 | "Arrays: 20 + fType of array element", with no exceptions | `kOffsetL` is not added for counted pointers or for object pointers, and for 65/66/67 the array form gains a byte count and a version word the scalar form does not have (§4, §7.2) |
-| 4 | "500: an STL string or container", listed beside 501 with no note | The byte is right but the meaning is not: a reader must discard the stored 500 and recompute the real code, and 500 is *also* the genuine custom-streamer code (§8) |
+| 4 | "500: an STL string or container", listed beside 501 with no note | The value is right but the meaning is not: a reader must discard the stored 500 and recompute the real code, and 500 is also the genuine custom-streamer code (§8) |
 | 5 | "0: base class (other than TObject or TNamed)", without saying what those two use | A `TObject` base is 66 and a `TNamed` base is 67 (§6) |
 | 6 | — | `fType` of -1 is legal and means "consume nothing" (§6) |
 | 7 | `fSize` is "size of built in type or of pointer to built in type, 0 otherwise" | It is non-zero for every element class and is the writer's `sizeof` (§2) |
 | 8 | "4: long" and "14: unsigned long" with no width given | Always 8 bytes on disk (§2) |
-| 9 | "6: an array dimension (counter)" | Correct, but nothing says the counter's value is the *only* source of length for the members naming it, and that no length is ever written for them (§2.1, §4) |
+| 9 | "6: an array dimension (counter)" | Correct, but nothing says the counter's value is the only source of length for the members naming it, and that no length is ever written for them (§2.1, §4) |
 | 10 | — | Nothing describes `kDouble32`/`kFloat16` at all: that their width is 3 or 4 bytes, that it depends on parsing the comment string, or that a `Double32_t` annotated `[0,0,15]` silently degrades to a plain float while a `Float16_t` does not (§5.3) |
 | 11 | — | Nothing distinguishes `->` from an ordinary pointer, though the byte layouts differ completely (§7) |
 
@@ -697,11 +696,10 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | `serialization/version-zero` | `kBase` with a byte count, and code 66 without one |
 | `serialization/element-types` | 7 including a null, 501 in all three forms, 81 and 82, and 69 with `fArrayLength` 2 |
 
-`kBits` (15) is covered from the `TTree` side rather than here: a split branch
+`kBits` (15) is covered from the `TTree` side rather than here. A split branch
 turns a `TObject` base into `fUniqueID` and `fBits` sub-branches whose elements
-carry code 15, which `ttree/split-bitset` and `ttree/split-double32` both have,
-and the encoding itself — `fBits` plus a `pidf` when `kIsReferenced` is set — is
-asserted in eleven cases through the `TObject` base, `serialization/references`
-among them.
+have code 15, as in `ttree/split-bitset` and `ttree/split-double32`. The encoding
+itself, `fBits` plus a `pidf` when `kIsReferenced` is set, is asserted through the
+`TObject` base in eleven cases, `serialization/references` among them.
 
 `kAnyPnoVT` (70) has no fixture because it has no producer (§7.3).

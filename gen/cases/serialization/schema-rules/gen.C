@@ -10,10 +10,10 @@
 /// is the same: TClass::AddRule and the dictionary path both end in
 /// TSchemaRuleSet::AddRule.
 ///
-/// Note that the rule changes nothing about the streamer info itself: fOld and
-/// fNew are both real members and both appear as ordinary TStreamerBasicType
-/// elements. No kConv, kSkip or kArtificial code is written -- those exist only
-/// in memory, after BuildOld has run.
+/// The rule changes nothing about the streamer info itself: fOld and fNew are
+/// both real members and both appear as ordinary TStreamerBasicType elements.
+/// No kConv, kSkip or kArtificial code is written; those exist only in memory,
+/// after BuildOld has run.
 struct Evolved {
    Int_t fOld;
    Int_t fNew;

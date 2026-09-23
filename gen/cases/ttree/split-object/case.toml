@@ -5,26 +5,26 @@ size = 20592
 description = """
 A split object branch: one TTree::Branch call, six branches on disk.
 
-Every fixture before this one has a single unsplit TBranch carrying a concrete
-TLeaf. This is the first with a TBranchElement, and it is the smallest
-arrangement that produces the three kinds of node an ordinary split makes:
+Every fixture before this one has a single unsplit TBranch with a concrete TLeaf.
+This is the first with a TBranchElement, and it is the smallest arrangement that
+produces the three kinds of node an ordinary split makes:
 
   ev          fType 0, fID -2   the split node; no data of its own
   ev/Base     fType 1           the base class; no leaf, no basket
   ev/Base/fBase   fType 0, fID 0    a member of the base
   ev/fI, fD, fS   fType 0, fID 1..3 members of the class itself
 
-What this case pins down:
+What this case covers:
 
 - fID is a three-way selector, not a member index alone. -2 marks the split node
   (root/tree/tree/src/TBranchElement.cxx:2279); -1 would mark an unsplit object;
   0 and above index the element list of the class fClassName names.
 - fClassName is not the branch's own type. On `ev` it is Ev, the object being
-  split. On `Base` it is *also* Ev -- because fID 0 indexes Ev's element list,
-  where element 0 is the base-class entry. On `fBase` it is Base, because fID 0
-  there indexes Base's list. The rule that covers all three: fClassName names
-  the class whose TStreamerInfo fID indexes into. fCheckSum agrees with it --
-  0x85067d87 on the five Ev branches, 0x013b271d on fBase.
+  split. On `Base` it is also Ev, because fID 0 indexes Ev's element list, where
+  element 0 is the base-class entry. On `fBase` it is Base, because fID 0 there
+  indexes Base's list. In all three, fClassName names the class whose
+  TStreamerInfo fID indexes into. fCheckSum agrees with it: 0x85067d87 on the
+  five Ev branches, 0x013b271d on fBase.
 - An fType 1 branch has no leaf at all. `Base`'s fLeaves is a TObjArray with
   nobjects 0, while every other branch here has exactly 1. The leaf-driven
   reading procedure of TLeaf.md section 5 therefore cannot be applied to it.
@@ -35,12 +35,12 @@ What this case pins down:
   -1 on the split node, 0 (kBase) on the base-class branch, and 3, 8 and 2 on
   the Int_t, Double_t and Short_t members.
 - fBranchCount and fBranchCount2 are both null here. Neither is used by a plain
-  split object; fBranchCount carries a back-reference only for a collection or
+  split object; fBranchCount holds a back-reference only for a collection or
   TClonesArray member.
 - fEntryOffsetLen follows fDefaultEntryOffsetLen (1000) on the two interior
-  nodes and is reset to 0 on every fixed-width member branch, which is what
-  TTree.md section 7 predicts from the TBranchElement constructor.
-- Sub-branch names are the bare member names -- `fI`, not `ev.fI`. The dotted
+  nodes and is reset to 0 on every fixed-width member branch, as TTree.md
+  section 7 predicts from the TBranchElement constructor.
+- Sub-branch names are the bare member names: `fI`, not `ev.fI`. The dotted
   form only appears when the top-level branch name ends in a dot; ROOT's own
   comment calls the divergence "very annoying"
   (root/tree/tree/src/TBranchElement.cxx:476-480).

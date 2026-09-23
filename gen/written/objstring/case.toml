@@ -3,23 +3,23 @@ file = "data/written/objstring.root"
 size = 656
 
 description = """
-The smallest complete file **this project wrote**, rather than one ROOT wrote:
-a header, the root directory record, one `TObjString` record, the key list and
-the free list, produced by `tools/rootwrite.py` from
+The smallest complete file written by this project rather than by ROOT: a
+header, the root directory record, one `TObjString` record, the key list and the
+free list, produced by `tools/rootwrite.py` from
 `spec/06-writing/WritingFiles.md`.
 
-Compare it with `container/file-minimal`, which is the same shape written by
-ROOT. Two differences are deliberate and both are specified:
+`container/file-minimal` is the same shape written by ROOT. Two differences are
+deliberate and both are specified:
 
 * there is **no `StreamerInfo` record**, so `fSeekInfo` and `fNbytesInfo` are 0.
   ROOT reads the `TObjString` anyway, from the class it has compiled in
-  (`WritingFiles.md` 8); a streamer-info-driven reader cannot, which is the
-  asymmetry that decides what a writer should emit;
-* the timestamp and the UUID are **fixed inputs**, so the file is
+  (`WritingFiles.md` 8); a streamer-info-driven reader cannot, and that
+  asymmetry determines what a writer should emit;
+* the timestamp and the UUID are fixed inputs, so the file is
   byte-reproducible and `data/written/MANIFEST.sha256` is a plain sha256.
 
-Every assertion below is also a row in a table in `WritingFiles.md`, which is
-what makes the two check each other.
+Every assertion below is also a row in a table in `WritingFiles.md`, so the two
+check each other.
 """
 
 spec = [

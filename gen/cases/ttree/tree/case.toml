@@ -6,24 +6,24 @@ description = """
 The TTree record itself, class version 20, asserted member by member.
 
 Two branches of two entries each, compression off, so the whole record is
-readable without a codec and short enough to pin field by field. The branches
-are deliberately dull: what this case is about is the tree-level record, which
-no other case asserts.
+readable without a codec and short enough to check field by field. The branches
+are deliberately simple: this case is about the tree-level record, which no
+other case asserts.
 
-What this case pins down:
+What this case covers:
 
 - The member order of class version 20, and the widths: fEntries, fTotBytes,
   fZipBytes, fSavedBytes, fFlushedBytes are Long64_t, and so are fMaxEntries,
   fMaxEntryLoop, fMaxVirtualSize, fAutoSave, fAutoFlush and fEstimate. The
-  release-3.02.06 documentation has the first four as Stat_t -- a double -- and
-  the rest as Int_t.
+  release-3.02.06 documentation has the first four as Stat_t (a double) and the
+  rest as Int_t.
 - fTotBytes and fZipBytes are the sums over every branch: 0x49 + 0x51 = 0x9a.
-  They count whole basket records, keys included, exactly as TBranch's do.
+  They count whole basket records, keys included, as TBranch's do.
 - The values ROOT writes when nothing was configured: fWeight 1.0, fScanField
   25, fDefaultEntryOffsetLen 1000, fMaxEntries and fMaxEntryLoop 10^12,
   fAutoSave -300000000, fAutoFlush -30000000, fEstimate 10^6. The two negative
   ones mean "a byte watermark that was never reached"; a file where it was
-  reached carries a positive entry count instead (see ttree/clusters).
+  reached has a positive entry count instead (see ttree/clusters).
 - fNClusterRange is 0, and the is-present flag byte of both counted pointers is
   therefore **0**, not 1: the arrays are absent, and each member is one byte.
   TBranch's three arrays are never absent, so this is the first case where a
@@ -36,7 +36,7 @@ What this case pins down:
 - fLeaves holds a back-reference to every leaf, not the leaves. fBranches is
   written first, so by the time fLeaves is reached both leaves are already in
   the buffer's object map. The two words are 0x1bf and 0x3a4, which are buffer
-  positions 445 and 930 -- absolute 867 and 1352, the two TLeaf object slots
+  positions 445 and 930 (absolute 867 and 1352), the two TLeaf object slots
   inside the branches.
 """
 

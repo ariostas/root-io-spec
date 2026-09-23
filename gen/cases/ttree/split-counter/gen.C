@@ -1,7 +1,7 @@
 /// A counted array inside a split object: fBranchCount pointing at a counter.
 ///
 /// `Int_t fN; Float_t *fX; //[fN]` is the oldest variable-length shape in ROOT,
-/// and splitting it produces the one case where an fType 0 branch carries an
+/// and splitting it produces the only case where an fType 0 branch has an
 /// fBranchCount:
 ///
 ///   ce        fType 0, fID -2   the split node
@@ -11,12 +11,12 @@
 ///
 /// The dispatch of TBranchElement.md section 8 sends fN to ReadLeavesMemberCounter
 /// and fX to ReadLeavesMemberBranchCount, which are the two rows with the fewest
-/// occurrences in either corpus -- 2 and 16.
+/// occurrences in either corpus: 2 and 16.
 ///
 /// The relationship is recorded twice and independently: fX's branch has an
 /// fBranchCount naming fN's *branch*, and fX's leaf has an fLeafCount naming
-/// fN's *leaf*. Three entries with three different lengths, so the counter is
-/// doing real work.
+/// fN's *leaf*. Three entries with three different lengths, so the counter
+/// varies.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "a counted array in a split object", 0);

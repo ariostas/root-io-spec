@@ -6,13 +6,12 @@ subclasses.
 
 Prerequisites: [TTree](TTree.md), [TBranch](TBranch.md).
 
-They have one thing in common worth saying first. **Seven of the nine appear in
-no file of either corpus** (`PLAN.md` §9.8 and §9.9, 178 files from ROOT 4.00 to
-6.36); only `TBranchRef` and `TRefTable` do, and those only because every tree
-file carries their *streamer info* whether or not an object exists. Everything
-here is therefore specified from the source and from fixtures written for the
-purpose, and the invariants are correspondingly weaker than elsewhere in this
-layer.
+**Seven of the nine appear in no file of either corpus** (`PLAN.md` §9.8 and
+§9.9, 178 files from ROOT 4.00 to 6.36). Only `TBranchRef` and `TRefTable` do,
+and only because every tree file contains their streamer info whether or not an
+object exists. Everything here is therefore specified from the source and from
+fixtures written for the purpose, and the invariants are weaker than elsewhere in
+this layer.
 
 ## 1. Where they hang off the tree
 
@@ -27,16 +26,14 @@ a null one is four zero bytes.
 | `fBranchRef` | `TBranchRef*` | a branch, and its `TRefTable` (§4) |
 | `fAliases`, `fUserInfo` | `TList*` | user data; no fixed layout |
 
-`TEntryList`, `TEntryListArray` and `TEventList` (§5) are **not** reached from
-the tree at all: they are written as top-level keys and name their tree by
-string.
+`TEntryList`, `TEntryListArray` and `TEventList` (§5) are not reached from the
+tree at all. They are written as top-level keys and name their tree by string.
 
 ## 2. `TTreeIndex` — the one class with no streamer info
 
 `TTreeIndex` lives in `libTreePlayer` and its `Streamer` is fully hand-written
 (`root/tree/treeplayer/src/TTreeIndex.cxx:631`). It never calls
-`ReadClassBuffer` or `WriteClassBuffer`, and the consequence is the single most
-important fact in this document:
+`ReadClassBuffer` or `WriteClassBuffer`, so:
 
 > **No `TStreamerInfo` for `TTreeIndex` is ever written into a file.** Every
 > other class here is discoverable from the file that contains it. This one has
@@ -58,11 +55,10 @@ order:
 | `fIndexValuesMinor` | `Long64_t[fN]` | the minor value; **class version 2 and above** |
 | `fIndex` | `Long64_t[fN]` | the entry number each row refers to |
 
-**The three arrays carry no is-present flag.** They are written with
-`WriteFastArray` (`root/tree/treeplayer/src/TTreeIndex.cxx:657-659`), so `fN` is
-followed immediately by the values. That is the opposite of a streamer-info
-`[fN]` member, which is preceded by a one-byte flag — compare `TEventList`
-in §5.3, in the same fixture, which has one.
+**The three arrays have no is-present flag.** They are written with
+`WriteFastArray` (`root/tree/treeplayer/src/TTreeIndex.cxx:657-659`), so the
+values follow `fN` immediately. A streamer-info `[fN]` member is preceded by a
+one-byte flag; compare `TEventList` in §5.3, in the same fixture, which has one.
 
 From `ttree/tree-index`, a ten-entry tree indexed on `Run` and `Event`:
 
@@ -91,9 +87,9 @@ which *is* streamer-info driven. No fixture covers one.
 ### 2.1 `fIndexValues` and `fIndex` on the tree are dead
 
 [`TTree`](TTree.md#81-findexvalues-and-findex) also has members called
-`fIndexValues` and `fIndex`, a `TArrayD` and a `TArrayI`. They are **not** a
-projection of the `TTreeIndex`: they are the pre-4.00 index, they are still
-serialised as empty arrays, and ROOT **discards them on read with a warning**
+`fIndexValues` and `fIndex`, a `TArrayD` and a `TArrayI`. They are not a
+projection of the `TTreeIndex`. They are the pre-4.00 index, still serialised as
+empty arrays, and ROOT **discards them on read with a warning**
 (`root/tree/tree/src/TTree.cxx:9840-9844`). A reader should ignore them and use
 `fTreeIndex`.
 
@@ -103,8 +99,7 @@ Class version 2 (`root/tree/tree/inc/TFriendElement.h:76`), streamer-info
 driven. Two persistent members after the `TNamed` base: `fTreeName` (`TString`)
 and `fOwnFile` (`bool`) (`root/tree/tree/inc/TFriendElement.h:39-40`).
 
-The mapping from `TTree::AddFriend`'s arguments onto those fields is the whole
-difficulty:
+The difficulty is how `TTree::AddFriend`'s arguments map onto those fields:
 
 | Field | Holds |
 |---|---|
@@ -114,9 +109,9 @@ difficulty:
 | `fOwnFile` | false when the friend shares the parent's file (`root/tree/tree/src/TFriendElement.cxx:199-203`) |
 
 A tree name containing `=` is split at it: the part before becomes `fName`, the
-part after `fTreeName` (`root/tree/tree/src/TFriendElement.cxx:59-69`). That is
-the only way `fName` and `fTreeName` differ, and `ttree/tree-friend` has one of
-each:
+part after `fTreeName` (`root/tree/tree/src/TFriendElement.cxx:59-69`). This is
+the only way `fName` and `fTreeName` can differ; `ttree/tree-friend` has one
+friend of each kind:
 
 ```
 40 00 00 1a  00 02                    TFriendElement, version 2
@@ -128,10 +123,9 @@ each:
   00                                  fOwnFile = false
 ```
 
-**A friend is a file path in a file.** When `fTitle` is non-empty it is the
-string passed to `AddFriend`, stored verbatim, and a reader resolving it is
-following a path that may no longer exist. This specification describes what is
-recorded, not how to resolve it.
+When `fTitle` is non-empty it is the file path passed to `AddFriend`, stored
+verbatim, and that path may no longer exist when the file is read. This
+specification describes what is recorded, not how to resolve it.
 
 ## 4. `TBranchRef` and `TRefTable`
 
@@ -140,7 +134,7 @@ recorded, not how to resolve it.
 (`root/tree/tree/src/TBranchRef.cxx:58-59`) — holding one persistent member, a
 `TRefTable*` (`root/tree/tree/inc/TBranchRef.h:39`). Class version 1.
 
-Three things about it are unlike any other branch.
+It differs from every other branch in three ways.
 
 **It is not in `fBranches`.** It hangs off `TTree::fBranchRef`, so every walk
 over the branch tree misses it — including the byte-sum invariant of
@@ -154,10 +148,10 @@ has to add it by name.
 beginning `5a 4c` — a `ZL` block header
 ([Compression](../01-container/Compression.md)).
 
-**Its basket is not written unless asked.** `TTree::FlushBasketsImpl` iterates
-only `GetListOfBranches` (`root/tree/tree/src/TTree.cxx:5255-5265`), so
+**Its basket is not written unless requested.** `TTree::FlushBasketsImpl`
+iterates only `GetListOfBranches` (`root/tree/tree/src/TTree.cxx:5255-5265`), so
 `TTree::Write` never flushes `fBranchRef`. An ordinary small file therefore has a
-`TBranchRef` **with no basket at all**, and its references cannot be resolved.
+`TBranchRef` with no basket at all, and its references cannot be resolved.
 The fixture calls `FlushBaskets()` explicitly to produce one.
 
 ### 4.1 `TRefTable`
@@ -169,7 +163,8 @@ compatibility), `fParents` (`TObjArray*`), `fOwner` (`TObject*`) and
 `fProcessGUIDs` (`std::vector<std::string>`)
 (`root/core/cont/inc/TRefTable.h:46-49`).
 
-**The per-entry payload in its baskets is not that layout.** It is written by
+**The per-entry payload in its baskets does not follow that layout.** It is
+written by
 `TRefTable::FillBuffer` (`root/core/cont/src/TRefTable.cxx:224-231`):
 
 ```
@@ -179,11 +174,11 @@ for each PID:
     Int_t  fParentIDs[fN]            raw, no flag byte
 ```
 
-A **non-negative** first `Int_t` means the older single-`TProcessID` format, in
+A non-negative first `Int_t` means the older single-`TProcessID` format, in
 which that value is itself the count
 (`root/core/cont/src/TRefTable.cxx:307-339`).
 
-Resolving a reference then goes: match the `TRef`'s `TProcessID` GUID against
+To resolve a reference, match the `TRef`'s `TProcessID` GUID against
 `fProcessGUIDs` to get an internal index; mask the `TRef`'s `fUniqueID` with
 `0xFFFFFF`, since the top byte is the process-ID number; index `fParentIDs` with
 it; **subtract one**, because 0 means "no parent"; and use the result to index
@@ -203,11 +198,12 @@ Class version 2 (`root/tree/tree/inc/TEntryList.h:125`). Members after the
 (`root/tree/tree/inc/TEntryList.h:31-49`). Exactly one of `fLists` and `fBlocks`
 is set: `fLists` when the selection spans a chain, `fBlocks` for a single tree.
 
-`fFileName` is a trap for anyone generating one. The three-argument constructor
-takes the filename from the tree's open file and **prepends the process's working
-directory** (`root/tree/tree/src/TEntryList.cxx:1311-1322`), so the absolute path
-of the machine that wrote it ends up in the file. The four-argument form stores
-the string verbatim; `ttree/tree-entrylist` uses it for that reason.
+`fFileName` needs care when writing a `TEntryList`. The three-argument
+constructor takes the filename from the tree's open file and **prepends the
+process's working directory** (`root/tree/tree/src/TEntryList.cxx:1311-1322`), so
+the absolute path on the machine that wrote it ends up in the file. The
+four-argument form stores the string verbatim, which is why
+`ttree/tree-entrylist` uses it.
 
 ### 5.2 `TEntryListBlock` — two encodings
 
@@ -221,7 +217,8 @@ selected iff bit `e % 16` of `fIndices[e / 16]` is set — **least significant b
 first** (`root/tree/tree/src/TEntryListBlock.cxx:203-205`). Each word is a
 16-bit big-endian integer, so the bit order within a word runs opposite to the
 byte order. `ttree/tree-entrylist`'s `dense` list, holding every third entry from
-0 to 99, begins `92 49 49 24 24 92` — `0x9249` is bits 0, 3, 6, 9, 12 and 15.
+0 to 99, begins `92 49 49 24 24 92`; `0x9249` has bits 0, 3, 6, 9, 12 and 15
+set.
 
 **`fType` 1 — a sorted array.** `fN` equals `fNPassed` and `fIndices` holds local
 entry numbers. If `fPassing` is true they are the entries **in** the selection;
@@ -242,25 +239,25 @@ The older and simpler form. Class version 4
 (`root/tree/tree/inc/TEventList.h:34-38`). `fSize` is the allocated size and can
 exceed `fN`; only `fN` values are written.
 
-Its `Streamer` is hand-written for one reason: class version 1 stored the entry
-numbers as 32-bit `Int_t` and had no `fReapply`
+Its `Streamer` is hand-written because class version 1 stored the entry numbers
+as 32-bit `Int_t` and had no `fReapply`
 (`root/tree/tree/src/TEventList.cxx:411-424`).
 
-`fList` **does** carry the one-byte is-present flag of an ordinary `[fN]` member,
-which is the contrast with `TTreeIndex` (§2). Both are in
+`fList` does have the one-byte is-present flag of an ordinary `[fN]` member,
+unlike the arrays of `TTreeIndex` (§2). Both are in
 `ttree/tree-entrylist` and `ttree/tree-index` respectively, three records apart.
 
 ## 6. `TNtuple` and `TNtupleD`
 
-Each adds exactly one persistent `Int_t`, `fNvar`, after the `TTree` base
+Each adds one persistent `Int_t`, `fNvar`, after the `TTree` base
 (`root/tree/tree/inc/TNtuple.h:31`, `root/tree/tree/inc/TNtupleD.h:31`); `fArgs`
 is transient. Class versions 2 and 1
 (`root/tree/tree/inc/TNtuple.h:61`, `root/tree/tree/inc/TNtupleD.h:58`).
 
 Their branches are ordinary single-leaf `TBranch`es with `TLeafF` and `TLeafD`
-leaves. On disk a `TNtuple` is a `TTree` record with one trailing `Int_t`, which
-is why [TTree §1](TTree.md#1-finding-the-trees-in-a-file) insists that trees are
-found through the base-class chain and not by comparing a key's class name
+leaves. On disk a `TNtuple` is a `TTree` record with one trailing `Int_t`. This
+is why [TTree §1](TTree.md#1-finding-the-trees-in-a-file) requires trees to be
+found through the base-class chain rather than by comparing a key's class name
 against `TTree`.
 
 Both `Streamer`s are hand-written and differ from the generated one only on the
@@ -274,14 +271,13 @@ A `TChain` can be written to a file and read back. Class version 5
 `fTreeOffsetLen`, `fNtrees`, `fTreeOffset` (`Long64_t[fTreeOffsetLen]`),
 `fFiles` and `fStatus` (`root/tree/tree/inc/TChain.h:36-44`).
 
-`fFiles` and `fStatus` are declared `->`, so they are streamed **inline** — a
-byte count and version with no class tag — while their contents carry tags
-normally. `fFiles` holds `TChainElement`s, class version 2, whose `fName` is the
-**tree** name and `fTitle` the **file** name
-(`root/tree/tree/inc/TChainElement.h:36-39`).
+`fFiles` and `fStatus` are declared `->`, so they are streamed inline: a byte
+count and version with no class tag. Their contents have class tags as usual.
+`fFiles` holds `TChainElement`s, class version 2, whose `fName` is the **tree**
+name and `fTitle` the **file** name (`root/tree/tree/inc/TChainElement.h:36-39`).
 
 An entry count of `0x7FFFFFFFFFFFFFFF` in `fTreeOffset` or in a `TChainElement`'s
-`fEntries` is the *unknown* sentinel: `TChain::Add` records it until something
+`fEntries` is the sentinel for "unknown": `TChain::Add` records it until something
 forces the member files to be opened.
 
 Class versions 1 and 2 have a different order and, in version 1, no `fStatus` and
@@ -305,11 +301,10 @@ Invariants 1, 2, 3 and 5 are confirmed by corrupting `ttree/tree-index` and
 `ttree/tree-branchref` and checking that the intended invariant is what rejects
 the result.
 
-Invariant 1 deserves a note, because it is the only redundancy a `TTreeIndex`
-has. Its three arrays carry no count of their own, so a wrong `fN` is invisible
-*inside* the object — the reader simply reads fewer values. What catches it is
-the frame's byte count: the three arrays must fill the object exactly, and a
-reader should check that they do. Nothing else in the object can.
+Invariant 1 is the only redundancy a `TTreeIndex` has. Its three arrays have no
+count of their own, so a wrong `fN` cannot be detected inside the object; the
+reader just reads fewer values. Only the frame's byte count catches it: the three
+arrays must fill the object exactly, and a reader should check that they do.
 
 Invariants 6 and 7 cannot be reached by corruption. `fN` in a
 `TEntryListBlock` and in a `TEventList` is the length prefix of a streamer-info
@@ -339,5 +334,5 @@ first. Invariant 4 is the same: `fTreeName` is a counted string.
 Not covered: `TChain` and `TChainElement` (§7), `TChainIndex`,
 `TEntryListArray`, a cross-file `TFriendElement`, and a `TTreeIndex` of class
 version 1. A cross-file friend and a `TChain` both record a path that must exist
-when the file is read, which makes them awkward as committed fixtures; that is a
-decision recorded in `PLAN.md` §9.11 rather than a gap in the format.
+when the file is read, which makes them awkward as committed fixtures. Leaving
+them out is a decision recorded in `PLAN.md` §9.11, not a gap in the format.

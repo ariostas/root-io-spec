@@ -3,36 +3,36 @@ file = "data/classes/formula.root"
 size = 7732
 
 description = """
-A `TF1` written by the pinned ROOT: class version **12**, holding a `TFormula` at
-class version **14** as a pointer member.
+A `TF1` written by the pinned ROOT: class version 12, holding a `TFormula` at
+class version 14 as a pointer member.
 
 The case exists for the contrast with a pre-6.02 file, which is what
-`03-classes/Formula.md` is about. `TF1` v7 lists `TFormula` as its **first base
-class**; `TF1` v12 has no `TFormula` base and holds one as a member. And the two
-`TFormula`s are different C++ classes -- `ROOT::v5::TFormula` and `TFormula` --
-sharing one name on disk, told apart only by the version word. Both are described
-by the streamer info in their own file, so a reader that follows the info needs
-neither layout written down; a reader that hardcodes a layout for "TFormula" is
-wrong for one of them.
+`03-classes/Formula.md` is about. `TF1` v7 lists `TFormula` as its first base
+class; `TF1` v12 has no `TFormula` base and holds one as a member. The two
+`TFormula`s are different C++ classes, `ROOT::v5::TFormula` and `TFormula`,
+sharing one name on disk and told apart only by the version word. Each is
+described by the streamer info in its own file, so a reader that follows the
+info needs neither layout written down; a reader that hardcodes a layout for
+"TFormula" is wrong for one of them.
 
-`gaus` rather than a compiled function, so `fType` is `kFormula` (0) and the write
-path does not sample the function into `fSave` -- which is why `fSave` is an empty
-`vector<double>` at offset 566 and not 100 points.
+The function is `gaus` rather than a compiled function, so `fType` is `kFormula`
+(0) and the write path does not sample the function into `fSave`. `fSave` is
+therefore an empty `vector<double>` at offset 566, not 100 points.
 
-**The byte at 665 is the reason this case earns its place.** It is
-`TFormula::fAllParametersSetted`, element code 18, `kBool`, and it is **0x99** --
+**The byte at 665 is the main reason for this case.** It is
+`TFormula::fAllParametersSetted`, element code 18, `kBool`, and it is 0x99,
 neither 0 nor 1. `TF1("g", "gaus", ...)` never assigns it, and ROOT's
 `TObject::operator new` pre-fills every byte of a heap object with `0x99` so that
-the constructor can detect heap allocation. So an unassigned persistent member
-reaches the file as that pattern. It is deterministic, not garbage: this fixture
-is byte-reproducible. See ElementTypes.md 2.5.
+the constructor can detect heap allocation. An unassigned persistent member
+therefore reaches the file as that pattern. It is deterministic, not garbage:
+this fixture is byte-reproducible. See ElementTypes.md 2.5.
 
 ROOT reads the file back correctly, because it takes any nonzero byte as true.
 
-The three parameters are asserted where they land twice over: in
-`TFormula::fClingParameters` at 641, and by name in `fParams`, which is a
-`map<TString,int,TFormulaParamOrder>` -- an STL map with a **custom comparator**,
-written as an ordinary member-wise pair sequence at code 500.
+The three parameters are asserted in both places they land: in
+`TFormula::fClingParameters` at 641, and by name in `fParams`, a
+`map<TString,int,TFormulaParamOrder>`. That is an STL map with a custom
+comparator, written as an ordinary member-wise pair sequence at code 500.
 
 The `00 0a` version words at 468, 635 and 670 are `TStreamerInfo`'s class version
 in the writing ROOT, not a collection version: 10 because the pin is 6.40.04

@@ -8,8 +8,8 @@ A `TH2F`, a `TH2D` and two `TProfile`s written by `tools/rootwrite.py` from
 with the eighteen `TStreamerInfo` records the two chains need.
 
 **All four data records are byte-identical to the ones ROOT wrote in
-`data/classes/th2-profile.root`** -- 817, 887, 708 and 713 bytes -- **and so is
-the whole `StreamerInfo` record**, all 11853 bytes of it: eighteen infos and the
+`data/classes/th2-profile.root`** (817, 887, 708 and 713 bytes), **and so is
+the `StreamerInfo` record**, all 11853 bytes of it: eighteen infos and the
 `listOfRules` entry ROOT appends, holding one read rule for `TProfile` versions 1
 to 5 that a file written at version 7 can never use. This writer emits it anyway,
 for the reason
@@ -17,28 +17,27 @@ for the reason
 `tools/test_write.py` asserts all five comparisons. Both files put their records
 at the same offsets, because the two paths are the same length.
 
-What this case carries that `written/histogram` cannot:
+What this case covers that `written/histogram` cannot:
 
 - **The `TH2` frame.** A `TH2F` is a byte count and a version word around a
   `TH2`, which is another around a `TH1`, and the four doubles a `TH2` adds sit
-  *after* the `TH1` frame closes and *before* the `TArray` base opens.
-- **A real Y axis.** In `h2d` both axes carry variable edges, which is the only
-  non-empty `fXbins` on a Y axis anywhere in `data/`.
+  after the `TH1` frame closes and before the `TArray` base opens.
+- **A real Y axis.** In `h2d` both axes have variable edges, the only non-empty
+  `fXbins` on a Y axis anywhere in `data/`.
 - **Cells in two dimensions**: `fNcells` is `(nx + 2) * (ny + 2)`, and a fill
-  outside the range in *either* axis increments a cell while reaching none of
-  the seven statistics -- `h2f` has one of each, so `fEntries` is 6 and `fTsumw`
+  outside the range in either axis increments a cell while reaching none of
+  the seven statistics. `h2f` has one of each, so `fEntries` is 6 and `fTsumw`
   is 4.
 - **A `TProfile`'s four parallel arrays**, none of which is a bin content:
   `fArray` is sum(w*y), `fSumw2` is sum(w*y*y) and is never absent, `fBinEntries`
   is sum(w), and `fBinSumw2` is sum(w*w) and is empty in `p1` and populated in
   `p2`.
-- **`fErrorMode` and the Y range.** `p2` carries `kERRORSPREAD` and
-  `fYmax` 10, where `p1` has 0 and 0 -- equal limits being the only way "no
-  range" is expressed.
+- **`fErrorMode` and the Y range.** `p2` has `kERRORSPREAD` and `fYmax` 10,
+  where `p1` has 0 and 0; equal limits are the only way to express "no range".
 
-The statistics are **derived** here, unlike in `written/histogram`: only
-`fEntries` is supplied, for the two objects filled with weights, because it
-counts fills and nothing in the arrays does.
+The statistics are derived here, unlike in `written/histogram`: only `fEntries`
+is supplied, for the two objects filled with weights, because it counts fills
+and nothing in the arrays does.
 """
 
 spec = [

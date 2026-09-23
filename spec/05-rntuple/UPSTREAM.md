@@ -1,19 +1,19 @@
 # Provenance and sync procedure
 
-RNTuple is the one ROOT format that already has a real specification, written and
+RNTuple is the only ROOT format that already has a real specification, written and
 maintained by the ROOT team. **This project does not fork it.**
 
-`BinaryFormatSpecification.md` in this directory is a **verbatim tracked copy**,
-byte for byte, of
+`BinaryFormatSpecification.md` in this directory is a tracked, byte-for-byte copy
+of
 
 ```
 root/tree/ntuple/doc/BinaryFormatSpecification.md
 ```
 
-at the commit `root/` is pinned to. Nothing in this project edits it. Everything
-this project has to say about it is in [ERRATA.md](ERRATA.md), where the document
-and the code disagree, and [NOTES.md](NOTES.md), where the document is correct
-but incomplete for someone implementing a reader.
+at the commit `root/` is pinned to. Nothing in this project edits it. This
+project's comments on it are in [ERRATA.md](ERRATA.md), where the document and the
+code disagree, and [NOTES.md](NOTES.md), where the document is correct but
+incomplete for someone implementing a reader.
 
 ## The copy
 
@@ -36,18 +36,17 @@ tools/sync_rntuple.py --check    # CI: fail if the tracked copy has drifted
 `--check` runs in CI on every push. A failure means one of two things, and they
 need opposite responses:
 
-- **the submodule was bumped** and the copy is stale. Re-run without `--check`,
-  then read the diff: it is exactly the set of upstream changes to audit, and
-  nothing in it is ours. Update the table above, and re-check every ERRATA entry
-  the diff touches — an erratum that upstream has fixed must be closed, not left
-  standing;
-- **the copy was edited in place.** Revert it. A correction belongs in ERRATA.md
-  with a citation, not in the copy, or the copy stops being evidence of what
+- **The submodule was bumped** and the copy is stale. Re-run without `--check`,
+  then read the diff: it is the set of upstream changes to audit, and none of it
+  is ours. Update the table above, and re-check every ERRATA entry the diff
+  touches. An erratum that upstream has fixed must be closed.
+- **The copy was edited in place.** Revert it. A correction belongs in ERRATA.md
+  with a citation, not in the copy, so that the copy remains evidence of what
   upstream says.
 
-The tool also asserts that the commit recorded above **is** the commit `root/` is
-pinned to. Without that check a stale copy and a stale provenance note would agree
-with each other and look correct.
+The tool also asserts that the commit recorded above is the commit `root/` is
+pinned to. Otherwise a stale copy and a stale provenance note would agree with each
+other and look correct.
 
 ## Why the other documents are not tracked
 
@@ -68,8 +67,8 @@ Adding one is a one-line change to `DOCUMENTS` in `tools/sync_rntuple.py`.
 ## What this directory does not do
 
 It does not restate the format in this project's house style, and it should not
-start to. The value here is the **audit** — checking the upstream document against
+start to. Its purpose is the audit: checking the upstream document against
 `RNTupleSerialize.cxx` field by field, the way `spec/01-container/` and
-`spec/02-serialization/` were checked against `TFile.cxx` and `TStreamerInfo.cxx`
-— and feeding what that finds back upstream as pull requests rather than keeping
-it here. ERRATA.md tracks the PR link per entry for exactly that reason.
+`spec/02-serialization/` were checked against `TFile.cxx` and `TStreamerInfo.cxx`.
+What the audit finds goes upstream as pull requests rather than staying here, and
+ERRATA.md tracks the PR link for each entry.

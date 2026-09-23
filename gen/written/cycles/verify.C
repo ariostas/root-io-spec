@@ -1,10 +1,10 @@
 /// Gate 3 for `written/cycles`: ROOT resolves the cycles the way the key list
 /// orders them.
 ///
-/// The interesting assertions are the lookups, not the values. ROOT takes the
-/// first key of a name and never compares cycles, so `Get("str")` returning
-/// `revision 3` is the evidence that the images are in descending order --
-/// reversing them makes it return `revision 1` instead, silently.
+/// The lookups matter more than the values. ROOT takes the first key of a name
+/// and never compares cycles, so `Get("str")` returning `revision 3` shows that
+/// the images are in descending order; reversing them makes it return
+/// `revision 1` instead, with no diagnostic.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -16,7 +16,7 @@ void verify(const char *path)
    if (f->GetEND() != 1361) printf("FAIL fEND %lld\n", (long long)f->GetEND());
    if (f->GetNkeys() != 3) printf("FAIL %d keys\n", f->GetNkeys());
 
-   // An unqualified name resolves to the highest cycle -- because it is first.
+   // An unqualified name resolves to the highest cycle, because it is first.
    TObjString *s = (TObjString *)f->Get("str");
    if (!s || s->GetString() != "revision 3")
       printf("FAIL Get(\"str\") is '%s'\n", s ? s->GetString().Data() : "(null)");
@@ -39,7 +39,7 @@ void verify(const char *path)
    if (!k2 || k2->GetCycle() != 2)
       printf("FAIL GetKey(\"str\", 2) cycle %d\n", k2 ? k2->GetCycle() : -1);
 
-   // The list order itself, which is what all of the above rests on.
+   // The list order itself, which all of the above depends on.
    TIter it(f->GetListOfKeys());
    TKey *e;
    int want = 3;

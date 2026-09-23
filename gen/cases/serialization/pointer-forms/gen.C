@@ -1,15 +1,15 @@
 /// Two framing distinctions that are invisible in a member's declared type.
 ///
 /// fArrow is annotated `->`, which promises the pointer is never null. ROOT then
-/// writes the pointee with no class record at all, because no null check and no
+/// writes the pointee with no class record, because no null check and no
 /// dynamic type are needed. fPlainP has the same C++ type and no annotation, and
 /// gets the full object-reference protocol: byte count, class record, object.
 /// The two differ only in the comment.
 ///
 /// fS1 and fS2 are the second distinction. A scalar TString member (kTString,
 /// 65) has neither byte count nor version word. The array form (85, kTString +
-/// kOffsetL) has both -- and the version word is TStreamerInfo's own class
-/// version, 10, not anything to do with TString.
+/// kOffsetL) has both, and its version word is TStreamerInfo's own class
+/// version, 10, unrelated to TString.
 ///
 /// Generating this case prints "In2* has no streamer or dictionary" warnings.
 /// They are benign, as in serialization/objects: the elements are saved, with

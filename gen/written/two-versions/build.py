@@ -1,21 +1,21 @@
-"""One class at **two versions** in one file, with an object at each.
+"""One class at two versions in one file, with an object at each.
 
 The write side of `spec/06-writing/WritingObjects.md` 8.4. No file in either
-corpus carries a class at two versions, and no single ROOT session produces one
--- a session has one definition of a class. Two sessions do: reopen a file with a
+corpus has a class at two versions, and no single ROOT session produces one: a
+session has one definition of a class. Two sessions do. Reopen a file with a
 class that has since gained a member and ROOT writes both infos, which is the
 measurement in 8.4. This case is that file, written in one pass by this project.
 
-`Grown` is **not** derived from `TObject`, and that is not a stylistic choice:
-`TKey::ReadObj` streams a `TObject`-derived object through `tobj->Streamer()`,
-which for a class ROOT has no dictionary for dispatches to `TObject::Streamer`
-and reads ten bytes and stops -- so ROOT returns a default-constructed object and
-says nothing about the data it dropped. 8.7 has the measurement and the
-citations. A non-`TObject` class takes the `ReadObjectAny` path instead and reads
-correctly, which is what lets `verify.C` check the values.
+`Grown` is deliberately not derived from `TObject`. `TKey::ReadObj` streams a
+`TObject`-derived object through `tobj->Streamer()`, which for a class ROOT has
+no dictionary for dispatches to `TObject::Streamer`, reads ten bytes and stops.
+ROOT then returns a default-constructed object and reports nothing about the
+data it dropped. 8.7 has the measurement and the citations. A non-`TObject`
+class takes the `ReadObjectAny` path instead and reads correctly, so `verify.C`
+can check the values.
 
 The base is built here and reopened, so the second info arrives the way it
-arrives in practice: a file that already describes `Grown` at version 1 is opened
+does in practice: a file that already describes `Grown` at version 1 is opened
 again by a writer whose `Grown` has a second member.
 """
 
@@ -59,9 +59,9 @@ def build() -> bytes:
     base.add_info(info(1))
 
     # The reopen. The StreamerInfo record is rewritten because a class new to
-    # the file is used -- here the *same* class at a new version, which counts
-    # (WritingFiles.md 13.7) -- and the list must carry both infos, because the
-    # record is replaced rather than appended to.
+    # the file is used; the same class at a new version counts
+    # (WritingFiles.md 13.7). The list must hold both infos, because the record
+    # is replaced rather than appended to.
     f = rw.FileWriter.reopen(base.to_bytes(), NAME)
     f.add(grown("second", 2, 22, 3.5))
     f.add_info(info(1))

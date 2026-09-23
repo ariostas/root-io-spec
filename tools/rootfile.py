@@ -1,9 +1,8 @@
 """Minimal pure-Python ROOT file structure reader.
 
 Implements only what `spec/01-container/` specifies: the file header and the
-record chain. It exists so that the fixture tooling does not depend on ROOT,
-and so that the container specification has an independent implementation
-exercising it. It deliberately does NOT decode object payloads.
+record chain. It keeps the fixture tooling independent of ROOT and gives the
+container specification an independent implementation. It deliberately does NOT decode object payloads.
 
 No third-party dependencies.
 """
@@ -137,7 +136,7 @@ def _i64(b, o):
 def _counted_string(b, o):
     """A counted string: Conventions 5.1.
 
-    One length byte, then that many bytes -- except that a length byte of 255
+    One length byte, then that many bytes, except that a length byte of 255
     escapes to a 4-byte big-endian length. The escape triggers above 254, so a
     leading 0xFF never means "255 characters".
     """
@@ -192,17 +191,16 @@ def read_records(buf: bytes, header: FileHeader) -> list[Record]:
     """Walk the record chain from `header.begin` to `header.end`.
 
     Raises FormatError, never a struct error, when the chain runs past the end of
-    the buffer -- which is what a file truncated after `fEND` was written looks
-    like.
+    the buffer, as it does in a file truncated after `fEND` was written.
     """
     if header.end > len(buf):
         raise FormatError(
             f"fEND is {header.end} but the file is {len(buf)} bytes: truncated")
     # A gap whose marker was never written is still in the free list, and a
     # reader that finds a key where the list says there is a gap SHOULD trust the
-    # list (FreeSegments.md 4.2). RNTuple's TFile writer did exactly that before
-    # ROOT 6.36 (root commit d328b598b32), so the list is read first, straight
-    # from fSeekFree rather than through the chain it is here to repair.
+    # list (FreeSegments.md 4.2). RNTuple's TFile writer left such gaps before
+    # ROOT 6.36 (root commit d328b598b32), so the list is read first, directly
+    # from fSeekFree rather than through the chain it is used to repair.
     unmarked = {first: last for first, last in _free_list_at(buf, header)
                 if last < header.end}
     records, off = [], header.begin
@@ -253,9 +251,9 @@ def parse_free_entries(chunk: bytes, key_len: int,
                        payload_nbytes: int) -> list[tuple[int, int, int]]:
     """The TFree entries with their version words: (version, fFirst, fLast).
 
-    `chunk` holds the record from its key onwards -- it need not be the whole file,
-    which is what lets a caller read the list of a multi-gigabyte file with one
-    HTTP range request. Each entry sizes itself from its own version word, so the
+    `chunk` holds the record from its key onwards. It need not be the whole file,
+    so a caller can read the list of a multi-gigabyte file with one HTTP range
+    request. Each entry sizes itself from its own version word, so the
     10-byte and 18-byte forms may be interleaved (FreeSegments.md section 2.1,
     LargeFiles.md section 4).
     """
@@ -334,7 +332,7 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
     The root directory's record repeats the name and title before the directory
     fields, while a subdirectory's record does not. Rather than special-case the
     two, both candidate offsets are tried and accepted only if `fSeekDir` equals
-    the record's own offset -- a self-check ROOT itself relies on.
+    the record's own offset, a self-check ROOT itself relies on.
 
     Equivalently: the fields always begin at `rec.offset + fNbytesName`, which is
     why `fNbytesName` differs between the root directory and a subdirectory.
@@ -342,9 +340,9 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
     if rec.free:
         return None
     # Not gated on the class name: the record that holds a file's root directory
-    # carries the name of whatever TFile subclass wrote it -- CMS files say
-    # TStorageFactoryFile. The fSeekDir self-check below is what identifies a
-    # directory record. spec/01-container/Directory.md section 1.
+    # has the name of whatever TFile subclass wrote it (CMS files say
+    # TStorageFactoryFile). The fSeekDir self-check below identifies a directory
+    # record. spec/01-container/Directory.md section 1.
     if not rec.class_name:
         return None
     candidates = [rec.payload_offset]
@@ -375,11 +373,11 @@ def read_directory(buf: bytes, rec: Record) -> Directory | None:
         if seek_dir != rec.offset:
             continue
         uuid, uuid_offset = b"", p
-        # The class version and the offset width are independent axes: a record
-        # at version 1001 is class version 1 -- no UUID at all -- in the wide
-        # layout. So the width test above is on `version > 1000` and this one is
-        # on `version % 1000`, which also gets version 2 right: it stores the 16
-        # bytes with no TUUID version word in front of them.
+        # The class version and the offset width are independent: a record at
+        # version 1001 is class version 1 (no UUID at all) in the wide layout.
+        # The width test above is on `version > 1000` and this one on
+        # `version % 1000`, which also handles version 2: it stores the 16 bytes
+        # with no TUUID version word in front of them.
         # Directory.md 7; TDirectoryFile.cxx:1792-1797.
         class_version = version % 1000
         if class_version == 2:              # raw 16 bytes, no version word
@@ -457,9 +455,9 @@ def _read_key_at(buf: bytes, off: int) -> tuple[Record, int]:
 # ---------------------------------------------------------------------------
 # The buffer framing layer, spec/02-serialization/Buffer.md.
 #
-# This is deliberately an independent implementation of what that document
-# specifies, written from the document rather than from ROOT's code, so that the
-# two disagreeing is a detectable event.
+# This is deliberately an independent implementation of that document, written
+# from the document rather than from ROOT's code, so that a disagreement between
+# the two can be detected.
 #
 # Buffer positions are measured from the start of the *record*, key included, so
 # a position p in the file is at buffer offset p - record.offset. See Buffer.md
@@ -523,12 +521,11 @@ def payload_range(rec: Record) -> tuple[int, int]:
     """Where `rec`'s object data lies in the buffer `object_data` returns.
 
     For a raw record that buffer is the file itself; for a compressed one it is
-    the file with the payload decompressed in place, which is why the range ends
-    at `start + obj_len` and not at the record's end. Index the file with it only
+    the file with the payload decompressed in place, so the range ends at
+    `start + obj_len` and not at the record's end. Index the file with it only
     for a record known to be raw. Every caller was audited against that on
-    2026-09-22 (PLAN-corpus.md C7): all of them hold to it, and the one that got
-    the *start* wrong -- Compression 9.7, adding the record's offset twice -- is
-    fixed.
+    2026-09-22 (PLAN-corpus.md C7): all of them comply, and the one that got the
+    *start* wrong (Compression 9.7, adding the record's offset twice) is fixed.
     """
     start = rec.offset + rec.key_len
     return start, start + rec.obj_len
@@ -580,11 +577,11 @@ def skip_tobject(buf: bytes, offset: int) -> int:
 # sizes, the magics, LZ4's 8-byte checksum, and the block chain of section 7.
 #
 # The codecs themselves are not reimplemented. zlib and lzma are in the standard
-# library everywhere; zstd is only from Python 3.14, and lz4 needs a package. A
+# library everywhere; zstd only from Python 3.14, and lz4 needs a package. A
 # record whose algorithm is unavailable raises MissingCodec, which callers report
-# as "not checked" rather than as a failure -- the alternative is making the
-# invariant checks depend on third-party packages, which would undermine the point
-# of the fixtures being checkable with stdlib Python alone.
+# as "not checked" rather than as a failure, so the invariant checks do not
+# depend on third-party packages and the fixtures stay checkable with stdlib
+# Python alone.
 # ---------------------------------------------------------------------------
 
 KMAXZIPBUF = 0xFFFFFF          # root/core/zip/inc/RZip.h, the 24-bit size cap
@@ -650,9 +647,9 @@ def decompress_blocks(buf: bytes, src: int, src_end: int, want: int,
                       where: str) -> bytes:
     """A sequence of compression blocks, decompressed to `want` bytes.
 
-    Compression.md section 7. Factored out of `decompress` because RNTuple wraps
-    its envelopes and pages in the same block format without wrapping them in a
-    TKey, so the block walk has to be reachable without a Record
+    Compression.md section 7. Separate from `decompress` because RNTuple uses
+    the same block format for its envelopes and pages without a TKey around
+    them, so the block walk has to be reachable without a Record
     (spec/05-rntuple/, "Compression Block").
     """
     rec_obj_len = want
@@ -715,9 +712,9 @@ def object_data(buf: bytes, rec: Record) -> bytes:
 
     Returns `buf` unchanged when the record is stored raw. Otherwise returns the
     file truncated after this record, with the payload replaced by the
-    decompressed bytes -- so the record still starts at `rec.offset` and every
+    decompressed bytes, so the record still starts at `rec.offset` and every
     offset convention in this module, which counts from the start of the record,
-    keeps working. Callers pass the result wherever they would pass the file.
+    still holds. Callers pass the result wherever they would pass the file.
     """
     if not is_compressed(rec):
         return buf
@@ -742,7 +739,7 @@ def read_slot(buf: bytes, offset: int, base: int) -> Slot:
     """Read one object slot. `base` is the record start, i.e. buffer position 0.
 
     Raises FormatError when the slot cannot be skipped, which happens only for a
-    new-class record with no byte count -- a form no fixture contains.
+    new-class record with no byte count, a form no fixture contains.
     """
     word = _u32(buf, offset)
     if word == 0:
@@ -821,9 +818,9 @@ def read_tlist(buf: bytes, rec: Record) -> list[Slot]:
 # ---------------------------------------------------------------------------
 # The StreamerInfo record, spec/02-serialization/StreamerInfo.md.
 #
-# These classes cannot be read using streamer info, because they are what the
-# streamer info is made of, so the layout below is hardcoded -- which is exactly
-# the bootstrap problem the specification describes.
+# These classes cannot be read using streamer info, because the streamer info is
+# made of them, so the layout below is hardcoded. This is the bootstrap problem
+# the specification describes.
 # ---------------------------------------------------------------------------
 
 # TStreamerElement status bits that survive to disk, in the TObject base's fBits.
@@ -834,10 +831,10 @@ ELEMENT_DO_NOT_DELETE = 1 << 13  # kDoNotDelete
 # ---------------------------------------------------------------------------
 # The hand-written containers: TMap, TExMap, TBtree (03-classes/Containers.md).
 #
-# None of the three has a usable streamer info -- none of them ever calls
-# WriteClassBuffer, so no info is even written -- and all three carry ordinary
-# object slots, so they are read here from the specification rather than through
-# the streamer-driven path.
+# None of the three has a usable streamer info (none calls WriteClassBuffer, so
+# no info is written), and all three hold ordinary object slots, so they are
+# read here from the specification rather than through the streamer-driven
+# path.
 # ---------------------------------------------------------------------------
 
 #: The fixed part of a TExMap record: slot, hash, key, value.
@@ -885,8 +882,8 @@ def read_collection_frame(buf: bytes, offset: int, base: int,
                           pairs: bool = False) -> Collection:
     """The `TObject`, `fName`, count and object slots of a TCollection frame.
 
-    `pairs` reads two slots per count, which is what `TMap::Streamer` writes --
-    the count is the number of pairs, not the number of slots.
+    `pairs` reads two slots per count, as `TMap::Streamer` writes them: the
+    count is the number of pairs, not the number of slots.
     """
     frame = read_frame(buf, offset)
     at = skip_tobject(buf, frame.body)
@@ -935,8 +932,8 @@ def read_texmap(buf: bytes, rec: Record) -> ExMap:
 def read_tbtree(buf: bytes, rec: Record) -> BTree:
     """A TBtree record. Containers.md section 3.
 
-    The six integers are followed by exactly one more frame, and it is
-    TCollection's: `TSeqCollection` is a version-0 class whose generated
+    The six integers are followed by one more frame, TCollection's:
+    `TSeqCollection` is a version-0 class whose generated
     `Streamer` forwards to its bases and writes nothing of its own, so it
     contributes no frame at all (Containers.md section 6).
     """
@@ -1039,8 +1036,8 @@ def resolve_class(slot: Slot, classes: dict[int, str]) -> tuple[str, int]:
     """The slot's class name and the offset its object body starts at.
 
     `classes` maps map positions to class names and is filled as the buffer is
-    walked, which is what lets a class back-reference be resolved (Buffer.md
-    section 5.2). It must be shared across one whole record.
+    walked, so that a class back-reference can be resolved (Buffer.md section
+    5.2). It must be shared across one whole record.
     """
     if slot.kind != "object":
         raise FormatError(f"slot at {slot.offset} is {slot.kind}, not an object")
@@ -1102,13 +1099,12 @@ def _read_element_body(buf: bytes, offset: int, cls: str) -> Element:
     if ftype == 11 and type_name in ("Bool_t", "bool"):
         ftype = 18      # read-time fixup, root/core/meta/src/TStreamerElement.cxx:566
 
-    # The second read-time fixup, and the one that cannot be skipped: until
-    # 5.34/13 `TStreamerSTL` numbered kSTLset 5 and kSTLmultimap 6, the reverse
-    # of every other use of the enum, and the element version did not change --
-    # so fSTLtype alone cannot say which convention wrote it and fTypeName
-    # decides. Mirrors root/core/meta/src/TStreamerElement.cxx:2112-2122
-    # exactly, including its prefix test and its indifference to kOffsetP.
-    # Collections.md 1.
+    # The second read-time fixup, which cannot be skipped: until 5.34/13
+    # `TStreamerSTL` numbered kSTLset 5 and kSTLmultimap 6, the reverse of every
+    # other use of the enum, and the element version did not change. fSTLtype
+    # alone cannot tell which convention wrote it, so fTypeName is used. Mirrors
+    # root/core/meta/src/TStreamerElement.cxx:2112-2122 exactly, including its
+    # prefix test and its indifference to kOffsetP. Collections.md 1.
     if tail.get("fSTLtype") in (STL_MULTIMAP, STL_SET):
         if type_name.startswith(("set", "std::set")):
             tail["fSTLtype"] = STL_SET
@@ -1171,10 +1167,9 @@ def read_streamer_infos(buf: bytes, rec: Record) -> list[StreamerInfo]:
 # ---------------------------------------------------------------------------
 # The streamer-driven read (spec/02-serialization/StreamerDriven.md).
 #
-# Written from the specification, not from ROOT's source, so that the two
-# disagreeing is a detectable event. It produces a value tree and, more to the
-# point, an exact end position -- which is what StreamerDriven.md invariants 1
-# and 2 check.
+# Written from the specification, not from ROOT's source, so that a
+# disagreement between the two can be detected. It produces a value tree and an
+# exact end position, which StreamerDriven.md invariants 1 and 2 check.
 # ---------------------------------------------------------------------------
 
 # On-disk width of a scalar type code (ElementTypes.md section 2). kDouble32 (9)
@@ -1189,16 +1184,16 @@ OFFSET_L = 20
 OFFSET_P = 40
 
 # Classes whose Streamer is hand-written *at the versions a current file uses*, so
-# that their streamer info -- which is still in the file -- does not describe their
+# that their streamer info, though still in the file, does not describe their
 # bytes (StreamerDriven.md section 7).
 #
-# This list is deliberately short, and shorter than it first appears it should be.
-# Many ROOT classes do have a hand-written Streamer, but it is a version guard that
-# delegates to ReadClassBuffer above some threshold and keeps a legacy layout below
-# it: TH1 and TGraph above class version 2, TAxis above 5, TTree above 4, TLeaf
-# above 1, and TBranch/TBranchElement unconditionally. Those are streamer-info
-# driven for every version a modern file contains, and listing them here would
-# wrongly refuse files this specification can in fact describe.
+# The list is deliberately short. Many ROOT classes have a hand-written Streamer,
+# but it is a version guard that delegates to ReadClassBuffer above some
+# threshold and keeps a legacy layout below it: TH1 and TGraph above class
+# version 2, TAxis above 5, TTree above 4, TLeaf above 1, and
+# TBranch/TBranchElement unconditionally. Those are streamer-info driven for
+# every version a modern file contains, and listing them here would wrongly
+# refuse files this specification can describe.
 #
 # What remains are the classes that diverge at every version.
 # std::string has a hand-written streamer registered on its TClass
@@ -1227,13 +1222,13 @@ CUSTOM_STREAMER = {
     "TArray",
     # Reachable only through TList's streamer info, which describes bases its
     # hand-written streamer never writes. read_sequence bypasses that info, so
-    # these should never be reached at all.
+    # these should never be reached.
     "TCollection", "TSeqCollection",
     # Implemented below, from spec/02-serialization/References.md.
     "TRef", "TRefArray",
     # Writes nothing in either direction, so a kBase element for it occupies
-    # zero bytes -- and a modern file carries no streamer info for it at all,
-    # leaving a reader with an element it can neither describe nor skip.
+    # zero bytes, and a modern file has no streamer info for it at all, leaving
+    # a reader with an element it can neither describe nor skip.
     # StreamerDriven.md 4.4; every TPad and TCanvas has one.
     "TQObject",
     # A version word, a TPad read through its own info, then fourteen fields
@@ -1242,39 +1237,39 @@ CUSTOM_STREAMER = {
     "TCanvas",
     # An i32 count and then the characters: no length byte, no 255 escape, no
     # version word and no byte count. It appears as element code 62 (kAny), so
-    # the streamer-driven path would look for a frame, and no file carries an
-    # info for it. Conventions 5.1.1.
+    # the streamer-driven path would look for a frame, and no file has an info
+    # for it. Conventions 5.1.1.
     "TStringLong",
     # Derives from TBranch and streams a TNamed plus ten hand-picked TBranch
-    # fields instead of a TBranch base. No file carries an info for it, the same
-    # as TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 12.1.
+    # fields instead of a TBranch base. No file has an info for it, as with
+    # TBasket and TTreeIndex. spec/04-ttree/TBranchElement.md 12.1.
     "TBranchClones",
     # `extending`: calls ReadClassBuffer with TMatrixTBase's TClass and then
     # reads the upper-right triangle, outside the byte count. The name in a file
-    # is a specialization -- TMatrixTSym<double> -- so read_object dispatches on
-    # the prefix; this entry is the template, which is what the sidecar and
-    # Bootstrap.md name. spec/03-classes/Matrix.md.
+    # is a specialization (TMatrixTSym<double>), so read_object dispatches on the
+    # prefix; this entry is the template, as the sidecar and Bootstrap.md name
+    # it. spec/03-classes/Matrix.md.
     "TMatrixTSym",
     # RooFit. All four are implemented below, from spec/03-classes/RooFit.md.
     # RooRealVar writes no info for itself at all, and RooLinkedList writes one
     # that names a member it never streams; neither describes the bytes.
-    # RooAbsBinning and RooRefArray are reached from a RooRealVar -- as the base
-    # of its binning and as RooAbsArg's proxy list -- and write no info either.
+    # RooAbsBinning and RooRefArray are reached from a RooRealVar (as the base
+    # of its binning and as RooAbsArg's proxy list) and write no info either.
     "RooRealVar", "RooLinkedList", "RooAbsBinning", "RooRefArray",
 }
 
 # Classes whose *generated* Streamer writes only their base classes: ClassDef
 # version <= 0 selected with a plain `#pragma link C++ class X;`, for which
-# rootcling emits a body that calls each base's Streamer and returns -- no
-# version word, no byte count, none of its own members
+# rootcling emits a body that calls each base's Streamer and returns, with no
+# version word, no byte count and none of its own members
 # (root/core/dictgen/src/rootcling_impl.cxx:1332-1367).
 #
 # Nothing in a file distinguishes such a class from a version-0 class read
-# through ReadClassBuffer, which writes a version word of 0, so the list is
-# out-of-band knowledge a reader has to carry. spec/99-appendix/ForwardingStreamers.md
-# publishes all 534 of them; these are the three that any file in either corpus
-# names, and the rest are a lookup table for the day a file surprises this
-# reader. StreamerDriven.md 4.5.
+# through ReadClassBuffer, which writes a version word of 0, so a reader has to
+# know the list in advance. spec/99-appendix/ForwardingStreamers.md publishes
+# all 534 of them; these are the three that any file in either corpus names,
+# and the rest are a lookup table in case a file needs one. StreamerDriven.md
+# 4.5.
 FORWARDING_STREAMER = {
     # a kBase of TList and TObjArray, in 240 files
     "TSeqCollection",
@@ -1394,12 +1389,12 @@ class Decoder:
         # this specification's; `custom` extends it with classes a caller has
         # diagnosed in a particular file.
         self.custom = CUSTOM_STREAMER | set(custom or ())
-        # And a second list, for the opposite reason: these have a *generated*
+        # A second list, for the opposite reason: these have a *generated*
         # Streamer that writes only their bases. ForwardingStreamers.md.
         self.forwarding = FORWARDING_STREAMER
         # In tolerant mode an object whose class cannot be read is skipped by its
-        # byte count and recorded, instead of failing the whole read. That is what
-        # StreamerDriven.md section 8 says a partial reader should do; it is off by
+        # byte count and recorded, instead of failing the whole read, as
+        # StreamerDriven.md section 8 says a partial reader should. It is off by
         # default so that the fixture checks stay strict.
         self.tolerant = tolerant
         self.unread: list[tuple[str, int]] = []   # (reason, buffer offset)
@@ -1422,9 +1417,9 @@ class Decoder:
         """The info a TStreamerBase element selects, where no version word does.
 
         By fBaseVersion when it is not negative or there is no checksum, and by
-        fBaseCheckSum otherwise (root/core/meta/src/TStreamerElement.cxx:762-765)
-        -- which is how a base whose class declares no version, fBaseVersion -1,
-        is found at all.
+        fBaseCheckSum otherwise (root/core/meta/src/TStreamerElement.cxx:762-765).
+        The checksum is the only way to find a base whose class declares no
+        version (fBaseVersion -1).
         """
         version, checksum = el.tail.get("fBaseVersion", -1), el.base_checksum
         if version >= 0 or checksum == 0:
@@ -1488,8 +1483,8 @@ class Decoder:
                          type_name=cls,
                          note="TTreeIndex: read with read_tree_index")
         if cls == "TString":
-            # TString::Streamer writes a bare counted string -- no version word
-            # and no byte count -- wherever the class appears, not only under
+            # TString::Streamer writes a bare counted string (no version word
+            # and no byte count) wherever the class appears, not only under
             # element code 65. A kStreamLoop of TString reaches here, and so
             # does an object slot whose class is TString.
             # ElementTypes.md 7.1.
@@ -1497,12 +1492,12 @@ class Decoder:
             return Value(name="TString", ftype=65, start=offset, end=end,
                          type_name="TString")
         if cls == "TObject":
-            # A TObject stored as an object in its own right -- a record, or a
-            # slot whose class is TObject -- is exactly the base of Buffer.md 7:
-            # a bare version word, fUniqueID, fBits and a pidf when referenced.
+            # A TObject stored as an object in its own right (a record, or a
+            # slot whose class is TObject) is the base of Buffer.md 7: a bare
+            # version word, fUniqueID, fBits and a pidf when referenced.
             # TObject::Streamer writes no byte count and there is no separate
-            # base inside it; taking the generic path read a version word here
-            # and then a TObject base after it, two bytes past the end.
+            # base inside it; the generic path read a version word here and
+            # then a TObject base after it, ending two bytes past the end.
             # Buffer.md 2.3, found by serialization/unframed-records.
             base = read_tobject(self.buf, offset)
             return Value(name="TObject", ftype=66, start=offset, end=base.end,
@@ -1608,15 +1603,15 @@ class Decoder:
         class's library it runs that Streamer, and without one it assumes there
         is **no version word** either and applies the elements from the object's
         first byte (root/io/io/src/TBufferFile.cxx:3412-3436). This is that
-        second reading, which is ROOT's for every class it knows only from the
+        second reading, which ROOT uses for every class it knows only from the
         file. The info is the one at the version the first two bytes give, else
         the class's first, as ROOT's fallback does. StreamerDriven.md 7.1.
 
-        None when the reading is not admissible -- it raises, or a TObject base
-        inside it does not carry the version word 1 that ROOT always writes
-        (Buffer.md 7) -- and the caller then takes the version-first reading of
-        ROOT's own Streamers. Which one was taken is recorded in `unframed`, so
-        that whoever knows the enclosing extent can tell a reading that does not
+        Returns None when the reading is not admissible (it raises, or a TObject
+        base inside it does not have the version word 1 that ROOT always writes,
+        Buffer.md 7); the caller then takes the version-first reading of ROOT's
+        own Streamers. Which one was taken is recorded in `unframed`, so that a
+        caller that knows the enclosing extent can tell a reading that does not
         fit it from a failure (within_extent).
         """
         by_version = self.infos.get(cls, {})
@@ -1685,8 +1680,8 @@ class Decoder:
 
         No version word and no byte count: the first byte of the object is the
         first byte of its first base. The base list comes from the class's own
-        streamer info, which for a version-0 class holds its bases and nothing
-        more -- TStreamerInfo::Build skips every data member of such a class
+        streamer info, which for a version-0 class holds only its bases, since
+        TStreamerInfo::Build skips every data member of such a class
         (root/io/io/src/TStreamerInfo.cxx:552-554). Any non-base element is
         therefore a member the streamer does not write and is ignored here.
         ForwardingStreamers.md section 3.
@@ -1717,7 +1712,7 @@ class Decoder:
 
         `TMatrixTSym<Element>::Streamer` hands `ReadClassBuffer` the *base*
         class's TClass (root/math/matrix/src/TMatrixTSym.cxx:2036), so the frame
-        carries TMatrixTBase's class version and the file holds an info for
+        has TMatrixTBase's class version and the file holds an info for
         TMatrixTBase and none for this class. Past the byte count come
         fNrows*(fNrows+1)/2 elements, row i holding fNcols-i of them from the
         diagonal on, with the lower triangle reconstructed rather than stored.
@@ -1766,11 +1761,11 @@ class Decoder:
         """A RooLinkedList: a bare version word, TObject, a count, then slots.
 
         `RooLinkedList::Streamer` opens with `WriteVersion(IsA())` and no
-        `useBcnt`, so **there is no byte count** -- the object begins with its
+        `useBcnt`, so **there is no byte count**: the object begins with its
         version word (root/roofit/roofitcore/src/RooLinkedList.cxx:890-922).
         Then a TObject base, an Int_t size, that many object slots, and a
-        TString. The info the file carries lists `_hashThresh`, which the
-        streamer never writes, and no slots at all. RooFit.md section 3.
+        TString. The info in the file lists `_hashThresh`, which the streamer
+        never writes, and no slots at all. RooFit.md section 3.
         """
         version = _i16(self.buf, offset)
         pos = skip_tobject(self.buf, offset + 2)
@@ -1792,9 +1787,9 @@ class Decoder:
                                  end=slot.end, type_name=slot.class_name or ""))
             pos = slot.end
         # ROOT reads the trailing TString only when 1 < version < 4, and the
-        # write branch has always written it -- so a version-1 record, written
-        # before the member existed, has none. Its info is the corroboration:
-        # the RooLinkedList info in stressRooFit_v522_ref.root lists TObject,
+        # write branch has always written it, so a version-1 record, written
+        # before the member existed, has none. The info corroborates this: the
+        # RooLinkedList info in stressRooFit_v522_ref.root lists TObject,
         # _hashThresh and _size, and no _name.
         if 1 < version < 4:
             _, end = _counted_string(self.buf, pos)
@@ -1809,10 +1804,10 @@ class Decoder:
 
         `RooRealVar::Streamer` never calls ReadClassBuffer
         (root/roofit/roofitcore/src/RooRealVar.cxx:1252-1308), so no info for
-        the class is written at all -- but the frame it opens with
-        `WriteVersion(IsA(), true)` carries a byte count, and
-        `SetByteCount(R__c, true)` closes it after the tail. The object is
-        therefore skippable by its byte count and only decoding it needs this.
+        the class is written at all. The frame it opens with
+        `WriteVersion(IsA(), true)` has a byte count, and
+        `SetByteCount(R__c, true)` closes it after the tail, so the object can
+        be skipped by its byte count; only decoding it needs this.
         RooFit.md section 2.
         """
         frame = read_frame(self.buf, offset)
@@ -1841,8 +1836,8 @@ class Decoder:
             pos = self.read_pointer_member(members, "_sharedProp", pos)
         elif version >= 4:
             # From version 4 they are written in place, by calling the object's
-            # own Streamer. This is the part no streamer info anywhere
-            # describes, and it is inside the byte count.
+            # own Streamer. No streamer info describes this part, and it is
+            # inside the byte count.
             tail = self.read_object("RooRealVarSharedProperties", pos)
             tail.name = "_sharedProp"
             members.append(tail)
@@ -1886,7 +1881,7 @@ class Decoder:
         """A RooCategory. Streamer-info driven at version 3 and above only.
 
         Below that its `Streamer` hand-writes the base and then a
-        RooCategorySharedProperties -- as an object slot at version 1 and as an
+        RooCategorySharedProperties, as an object slot at version 1 and as an
         embedded object at version 2
         (root/roofit/roofitcore/src/RooCategory.cxx:431-455). Neither is in any
         streamer info: the class's own info lists the base and, from version 3,
@@ -1922,8 +1917,8 @@ class Decoder:
 
         `RooRefArray::Streamer` builds a temporary TRefArray and streams that
         (root/roofit/roofitcore/src/RooAbsArg.cxx:2195-2228), so the bytes are
-        a TRefArray's with one more frame around them -- and the class it
-        derives from, TObjArray, never appears. RooFit.md section 4.
+        a TRefArray's with one more frame around them, and the class it derives
+        from, TObjArray, never appears. RooFit.md section 4.
         """
         frame = read_frame(self.buf, offset)
         if frame.end is None:
@@ -1985,8 +1980,8 @@ class Decoder:
     def read_branch_clones(self, offset: int) -> Value:
         """A TBranchClones. TBranchElement.md 12.1.
 
-        No file carries a streamer info for it, so this is the only way to read
-        one -- the same situation as TBasket and TTreeIndex.
+        No file has a streamer info for it, so this is the only way to read one,
+        as with TBasket and TTreeIndex.
         """
         frame = read_frame(self.buf, offset)
         if frame.end is None:
@@ -2001,11 +1996,11 @@ class Decoder:
         count = read_slot(self.buf, at, self.base)
         nested = None
         if count.kind == "object":
-            # The slot must be READ, not skipped. It holds a whole TBranch, and
-            # the classes that object declares -- TBranch itself, TLeafI, TLeaf --
-            # are referenced by position from the sub-branches in fBranches
-            # (Buffer.md 5.2). Skipping the body leaves those references
-            # unresolvable, which is how this was first got wrong.
+            # The slot must be READ, not skipped. It holds a complete TBranch,
+            # and the classes that object declares (TBranch itself, TLeafI,
+            # TLeaf) are referenced by position from the sub-branches in
+            # fBranches (Buffer.md 5.2). Skipping the body leaves those
+            # references unresolvable; an earlier version made that mistake.
             name, body = resolve_class(count, self.classes)
             nested = self.read_object(name, body)
             if nested.end != count.end:
@@ -2035,7 +2030,7 @@ class Decoder:
 
     #: The scalars TBranch::Streamer reads below class version 10, in order
     #: (root/tree/tree/src/TBranch.cxx:3035-3059), as (name, element code,
-    #: width). fEntries, fTotBytes and fZipBytes are Stat_t -- a double -- and
+    #: width). fEntries, fTotBytes and fZipBytes are Stat_t (a double) and
     #: fEntryNumber is an Int_t; both widen at version 10. TBranch.md 13.1.
     LEGACY_BRANCH_SCALARS = (
         ("fCompress", 3, 4), ("fBasketSize", 3, 4), ("fEntryOffsetLen", 3, 4),
@@ -2049,8 +2044,8 @@ class Decoder:
 
         The member order is taken from TBranch::Streamer rather than from the
         file's streamer info. The two agree element for element on every legacy
-        file measured -- which is a finding, not an assumption a reader should
-        rest on (TBranch.md 13.1) -- and they disagree at version 9 about the
+        file measured, which is a measurement rather than a guarantee a reader
+        should rely on (TBranch.md 13.1). They disagree at version 9 about the
         width of fBasketSeek, where the source is right and the info is not
         (13.3).
         """
@@ -2089,7 +2084,7 @@ class Decoder:
         for name in ("fBasketBytes", "fBasketEntry", "fBasketSeek"):
             # All three are read unconditionally, whatever the flag byte says:
             # the legacy streamer reads fMaxBaskets values after it and only
-            # fBasketSeek gives the byte a meaning -- 2 for 8-byte values, any
+            # fBasketSeek gives the byte a meaning, 2 for 8-byte values and any
             # other value for 4-byte ones (root/tree/tree/src/TBranch.cxx:3055-3066).
             flag = buf[pos]
             width = 8 if (name == "fBasketSeek" and flag == 2) else 4
@@ -2115,7 +2110,7 @@ class Decoder:
         Class versions below 4 are refused rather than guessed: v <= 2 omits
         fWindowWidth and fWindowHeight, v <= 3 omits kAutoExec, and v < 2 stops
         after fBatch (root/graf2d/gpad/src/TCanvas.cxx:2303-2357). No file here
-        contains one, and an untested branch would be worse than a refusal.
+        contains one, and a refusal is safer than an untested branch.
         """
         frame = read_frame(self.buf, offset)
         if frame.end is None:
@@ -2155,7 +2150,7 @@ class Decoder:
 
         A version word of 0 is followed by a checksum for a foreign class and by
         nothing for a class that declares version 0. Nothing in the stream says
-        which, so the file's own streamer info decides: an entry with
+        which, so the file's own streamer info is used: an entry with
         fClassVersion == 0 means no checksum follows.
         """
         if frame.version > 0:
@@ -2180,7 +2175,7 @@ class Decoder:
         """The element loop of StreamerDriven.md section 3.
 
         `counters` is shared with the object's base classes, because a counted
-        pointer may name a counter declared in a base -- ElementTypes.md 4.1.
+        pointer may name a counter declared in a base (ElementTypes.md 4.1).
         """
         if cls == "TObject":
             base = read_tobject(self.buf, offset)
@@ -2223,9 +2218,9 @@ class Decoder:
         """Every element of `info` in order, with no class-level framing.
 
         read_members with the streamer info already chosen and no byte count to
-        check against, which is what an unsplit branch's entry is
-        (ReadingEntries.md 3.3): the members' own serialisations concatenated,
-        with no byte count and no version word for the branch's class.
+        check against, for an unsplit branch's entry (ReadingEntries.md 3.3):
+        the members' own serialisations concatenated, with no byte count and no
+        version word for the branch's class.
         """
         pos = offset
         if counters is None:
@@ -2339,7 +2334,7 @@ class Decoder:
                     continue
                 cls, body_at = resolve_class(slot, self.classes)
                 # Go through read_object, not read_members, so that a class with a
-                # hand-written reader here -- TList, TObjArray, TClonesArray -- gets
+                # hand-written reader here (TList, TObjArray, TClonesArray) gets
                 # it. Reading TList through its streamer info instead produces a
                 # TSeqCollection base that its streamer never writes: the divergence
                 # of StreamerDriven.md section 7, in a real file.
@@ -2363,8 +2358,8 @@ class Decoder:
                     f"{el.name} names counter {el.count_name!r}, not yet seen")
             # No length is written: the counter is the only source (ElementTypes.md
             # 8). A counter of 0 writes the frame and nothing else, so the loop
-            # below simply does not run. Two stars in the type name means object
-            # slots rather than bare objects.
+            # below does not run. Two stars in the type name mean object slots
+            # rather than bare objects.
             slots = "**" in el.type_name
             cls = _bare_class(el.type_name)
             pos = frame.body
@@ -2407,7 +2402,7 @@ class Decoder:
     def read_tarray(self, cls: str, offset: int) -> Value:
         """A TArrayC/S/I/L/L64/F/D. spec/03-classes/TArray.md.
 
-        `fN:i32` then fN values, with no byte count and no version word -- the
+        `fN:i32` then fN values, with no byte count and no version word: the
         shortest hand-written streamer in ROOT, and the reason a kBase element is
         not always framed.
         """
@@ -2446,8 +2441,8 @@ class Decoder:
                         note = f"embedded basket, flag {read_embedded_basket(self.buf, body).basket.flag}"
                     else:
                         # Through read_object, so that a class with a reader of
-                        # its own -- a std::string, a TArray -- is dispatched
-                        # rather than looked up in the streamer info.
+                        # its own (a std::string, a TArray) is dispatched rather
+                        # than looked up in the streamer info.
                         inner_members = self.read_object(name, body).members
                 except UnsupportedClass as exc:
                     if not self.tolerant:
@@ -2464,8 +2459,8 @@ class Decoder:
                                      note=f"reference to {slot.reference}"))
             pos = slot.end
             if options and frame.version > 3:
-                # The option string. Present after *every* entry, empty or not,
-                # and it is the commonest way to desynchronise on a TList.
+                # The option string. Present after *every* entry, empty or not;
+                # missing it is the commonest way to desynchronise on a TList.
                 n = self.buf[pos]
                 pos += 1
                 if n == 255 and frame.version > 4:
@@ -2561,7 +2556,7 @@ class Decoder:
         # A fixed array of collections shares ONE frame and then repeats the
         # collection fArrayLength times. The stored fType is still 500, and
         # kOffsetL only appears after the read-time recompute of
-        # StreamerInfo.md 10, so fArrayLength is the only thing that says so.
+        # StreamerInfo.md 10, so only fArrayLength indicates it.
         # Collections.md 11.1.
         pos = frame.body
         for _ in range(max(el.array_length, 1)):
@@ -2617,13 +2612,13 @@ class Decoder:
         """A second version word, a count, then one column per member.
 
         `collection_version` is the version on the collection's own frame, not
-        the value class's: it decides the empty case below.
+        the value class's; the empty case below depends on it.
         """
         version, pos = self.resolve_bare_version(value, offset)
         count = _i32(self.buf, pos)
         pos += 4
         if count == 0 and collection_version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE:
-            # Nothing follows -- not even the empty columns. Byte-verified on an
+            # Nothing follows, not even the empty columns. Byte-verified on an
             # empty map<string,string> in uproot-issue465-flat.root, whose byte
             # count leaves no room for them. Collections.md 4.3.
             return pos
@@ -2661,7 +2656,7 @@ class Decoder:
 
         By name and not by checksum. The checksum in a member-wise header is
         scoped to the class ROOT has already resolved from the member's declared
-        type name, so it need not be unique across pairs -- and is not:
+        type name, so it need not be unique across pairs, and is not:
         `serialization/pairs` has two distinct pairs sharing one
         (Collections.md 8.2). Names differ only in whitespace between files, so
         they are compared with it removed.
@@ -2679,8 +2674,8 @@ class Decoder:
         Two things in this specification have that shape and ROOT reads them with
         the same action: a member-wise collection's column (Collections.md 4) and
         a split branch's member column (ReadingEntries.md 3.2). They also share
-        the once-per-column header of ReadingEntries.md 5.3, which is the reason
-        this cannot be a loop over read_element_value for every type.
+        the once-per-column header of ReadingEntries.md 5.3, so this cannot be a
+        loop over read_element_value for every type.
         """
         t = element.ftype
         width = element_width(element)
@@ -2690,7 +2685,7 @@ class Decoder:
             # A base in array mode is its own info read over the same array:
             # one column per member of the base, and nothing around them
             # (root/io/io/src/TStreamerInfoReadBuffer.cxx:1409-1410). Not the base
-            # once per element -- those differ as soon as the base has two
+            # once per element; the two differ as soon as the base has two
             # members. Collections.md 4.1 and 4.2.
             for member in self.base_info(element).elements:
                 offset = self.read_column(member, count, offset)
@@ -2708,18 +2703,16 @@ class Decoder:
             # kStreamLoop: a pointer whose length is another member of the class
             # (fCountName). In a split branch that member is a column on a
             # sibling branch, so the per-element lengths are not reachable from
-            # here -- but the column is framed exactly like 5.3's kStreamer case,
-            # one byte count for the whole of it, so its extent is known even
-            # though its contents are not. Byte-verified on
-            # uproot-issue433-splitlevel4.root.
+            # here. The column is framed like 5.3's kStreamer case, with one byte
+            # count for all of it, so its extent is known even though its
+            # contents are not. Byte-verified on uproot-issue433-splitlevel4.root.
             frame = read_frame(self.buf, offset)
             if frame.end is None:
                 raise FormatError(f"column {element.name} type 501 has no "
                                   f"byte count")
             return frame.end
-        # Everything else is the scalar encoding repeated, which is what
-        # ReadingEntries.md 5.3 says is the rule and 5.3's two families are the
-        # exceptions to.
+        # Everything else is the scalar encoding repeated: the rule of
+        # ReadingEntries.md 5.3, to which 5.3's two families are the exceptions.
         pos = offset
         for _ in range(count):
             pos = self.read_element_value(element, pos, counters or {}).end
@@ -2753,7 +2746,7 @@ class Decoder:
         pos = frame.body
         if stl == STL_STRING:
             # A column of std::string: bare counted strings back to back, with
-            # no count of their own -- the collection is the string.
+            # no count of their own, since the collection is the string.
             for _ in range(count):
                 _, pos = _counted_string(self.buf, pos)
             if pos != frame.end:
@@ -2806,8 +2799,8 @@ def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
                           tolerant: bool = False) -> tuple[Decoder, Value | None]:
     """decode_record, but hand back the Decoder even when the read fails.
 
-    A checker needs what the decoder saw on the way to the failure -- notably
-    which collections were member-wise, which is only in the data.
+    A checker needs what the decoder saw on the way to the failure, notably
+    which collections were member-wise, which only the data records.
     """
     start, end = payload_range(rec)
     decoder = Decoder(buf, rec.offset, infos, tolerant=tolerant)
@@ -2891,9 +2884,9 @@ def read_ref(buf: bytes, offset: int) -> TObjectBase:
     """A TRef payload: the TObject layout, with a pidf written unconditionally.
 
     TRef has no byte count and no version word of its own, and its fBits never
-    carries kIsReferenced, so read_tobject would stop two bytes early.
+    has kIsReferenced set, so read_tobject would stop two bytes early.
 
-    When fBits carries kHasUUID the trailing u16 is a counted string instead
+    When fBits has kHasUUID set the trailing u16 is a counted string instead
     (References.md 3.1), the payload is no longer 12 bytes, and there is no
     pidf: `pidf` is None on the returned value.
     """
@@ -2911,7 +2904,7 @@ def read_streamer_info_entries(buf: bytes, rec: Record) -> list[tuple[str, Slot]
     """Every entry of the StreamerInfo record's TList, as (class name, slot).
 
     SchemaEvolution.md section 6.1: the list is not purely TStreamerInfo. It can
-    carry one further entry, a nested TList named "listOfRules".
+    hold one further entry, a nested TList named "listOfRules".
     """
     entries: list[tuple[str, Slot]] = []
     classes: dict[int, str] = {}
@@ -3033,19 +3026,19 @@ def collection_value(el: Element) -> tuple[str, int]:
     """`(value type, fSTLtype to read it as)` for a TStreamerSTL element.
 
     From `fTypeName` for an ordinary collection member. A `This` element is
-    different: it is the whole of the info of a class that has a collection
-    proxy of its own -- ATLAS's `DataVector` -- and its type name is that class,
-    with no template argument. TStreamerInfo::Build records the value class in
+    different: it is the entire info of a class that has a collection proxy of
+    its own (ATLAS's `DataVector`), and its type name is that class, with no
+    template argument. TStreamerInfo::Build records the value class in
     the element's **title** instead, as `<Value>` or `<Value*>`
     (root/io/io/src/TStreamerInfo.cxx:421-429), and without a dictionary ROOT
     reads it back from there and emulates a `vector` of it, whatever fSTLtype
     says (root/io/io/src/TStreamerInfo.cxx:1000-1024). Collections.md 11.2.
     """
     if el.name != "This" or is_collection_name(el.type_name):
-        # An STL class's own info has a This element too -- `map<string,double>`
-        # stored as a branch of its own -- and ROOT builds its proxy from the
+        # An STL class's own info has a This element too (`map<string,double>`
+        # stored as a branch of its own), and ROOT builds its proxy from the
         # name, consulting the title only when there is none
-        # (root/io/io/src/TStreamerInfo.cxx:1002-1003). So the name decides here.
+        # (root/io/io/src/TStreamerInfo.cxx:1002-1003), so the name is used here.
         return value_type_name(el.type_name), el.tail.get("fSTLtype", 0)
     if el.title.startswith("<"):
         level = 0
@@ -3117,9 +3110,9 @@ def pair_element(member: str, type_name: str) -> Element:
 def synthesise_pair(name: str) -> StreamerInfo:
     """A streamer info for `pair<K,V>`, built from the type name alone.
 
-    A file may or may not carry one of its own -- ROOT's writer is inconsistent
-    about it and the corpora have it both ways (Collections.md section 8.1), so a
-    reader looks for it first and falls back to this. The layout is always
+    A file may or may not hold one of its own (ROOT's writer is inconsistent
+    about it and the corpora have it both ways, Collections.md section 8.1), so
+    a reader looks for it first and falls back to this. The layout is always
     `first` then `second`, from the two template arguments.
     """
     key, value = template_args(name)
@@ -3266,7 +3259,7 @@ def read_basket(buf: bytes, rec: Record, data: bytes | None = None) -> Basket:
         # A displacement array may follow, in the same count-prefixed form and
         # with NOTHING in the flag to announce it: a record basket is always
         # written header-only, so its flag is 0 or 80 whatever WriteBuffer
-        # appended. Only the arithmetic finds it. TBasket.md 5.3.
+        # appended. Only the arithmetic detects it. TBasket.md 5.3.
         after = data_end + 4 + 4 * (nev_buf + 1)
         if after < payload_start + rec.obj_len:
             count = _i32(data, after)
@@ -3323,7 +3316,7 @@ def basket_entry_range(rec: Record, basket: Basket, index: int) -> tuple[int, in
 
 # fLenType is the writer's sizeof and is not the on-disk width for these three;
 # TLeaf.md section 4.1. TLeafC is variable and TLeafF16/TLeafD32 depend on the
-# title, so neither appears here -- see leaf_width().
+# title, so neither appears here; see leaf_width().
 LEAF_WIDTH = {
     "TLeafO": 1, "TLeafB": 1, "TLeafS": 2, "TLeafI": 4,
     "TLeafL": 8, "TLeafG": 8, "TLeafF": 4, "TLeafD": 8,
@@ -3350,7 +3343,7 @@ class Leaf:
     count_slot: int       # where that tag points, absolute; -1 for none
     #: fMinimum and fMaximum, read only for a TLeafC, where they are Int_t and
     #: mean something a reader needs (TLeaf.md 9). None for every other class,
-    #: whose pair is of the leaf's own type and says nothing but a range.
+    #: whose pair is of the leaf's own type and is only a range.
     minimum: int | None = None
     maximum: int | None = None
 
@@ -3453,7 +3446,7 @@ class Branch:
 def truncated_width(cls: str, title: str) -> int:
     """Bytes per value of a TLeafF16 or TLeafD32. TLeaf.md section 7.
 
-    The packing is decided by the annotation in the title and nothing else.
+    The packing depends only on the annotation in the title.
     """
     letter = "f" if cls == "TLeafF16" else "d"
     at = title.find("/" + letter + "[")
@@ -3526,8 +3519,8 @@ def _counted_pointer(buf: bytes, value: Value, width: int | None,
                      count: int) -> list[int]:
     """The values of a kOffsetP member: a flag byte then `count` of them.
 
-    `width` of None derives the width from the bytes the member occupies, which
-    is how a legacy TBranch's fBasketSeek is read: its width is in its flag byte,
+    `width` of None derives the width from the bytes the member occupies, as
+    needed for a legacy TBranch's fBasketSeek, whose width is in its flag byte,
     not in the streamer info (TBranch.md 13.3).
     """
     span = value.end - value.start - 1
@@ -3560,9 +3553,9 @@ def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
     tag = _u32(buf, count_at)
     counter = None
     if tag & BYTE_COUNT_MASK:
-        # The counter leaf's first occurrence in this buffer is written in full,
-        # right here. Every other leaf that names it back-references this
-        # position, so that position is its identity. TLeaf.md section 3.1.
+        # The counter leaf's first occurrence in this buffer is written in full
+        # here. Every other leaf that names it back-references this position,
+        # so the position identifies it. TLeaf.md section 3.1.
         counter = _read_leaf(buf, m["fLeafCount"], base)
         counter.slot = count_at
     limits = {}
@@ -3602,9 +3595,10 @@ def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
     for index in range(max(count, 0)):
         slot = read_slot(buf, pos, base)
         if slot.kind == "object":
-            # The class may be a back-reference, and the class map is not to hand
-            # here, so identify the basket by parsing it: the key carries its own
-            # fClassName, and a correct parse ends exactly where the slot does.
+            # The class may be a back-reference, and the class map is not
+            # available here, so identify the basket by parsing it: the key has
+            # its own fClassName, and a correct parse ends exactly where the slot
+            # does.
             body = slot.offset + 8
             if slot.class_name is not None:
                 body += len(slot.class_name) + 1
@@ -3625,7 +3619,7 @@ def _branch_list(buf: bytes, entries: list[Value], base: int) -> list[Branch]:
     arrays of its own (TBranchElement.md 13.1): the data is in its sub-branches,
     which are ordinary TBranches with ordinary baskets. Raising on it would
     abandon the whole tree and leave those baskets unchecked, so its children take
-    its place, each carrying a note that says where it came from. The structure is
+    its place, each with a note recording where it came from. The structure is
     still visible in the record: `fBranches` of the parent holds the
     TBranchClones, and the byte assertions in `ttree/branch-clones` pin it.
     """
@@ -3635,9 +3629,9 @@ def _branch_list(buf: bytes, entries: list[Value], base: int) -> list[Branch]:
             m = _named(buf, entry.members or [])
             children = []
             # fBranchCount first, and it is not optional: it holds the count leaf
-            # -- `fHits_` in ttree/branch-clones -- that every sub-branch's
+            # (`fHits_` in ttree/branch-clones) that every sub-branch's
             # fLeafCount refers to by position. Dropping it makes those
-            # references unresolvable, which is how this was first got wrong.
+            # references unresolvable; an earlier version made that mistake.
             count = m.get("fBranchCount")
             if count is not None and count.members:
                 children.append(_read_branch(buf, count, base))
@@ -3663,8 +3657,8 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
             "TBranchClones streams ten TBranch fields and no TBranch base, so "
             "the generic branch layout does not apply: TBranchElement.md 13.1")
     # fFirstEntry arrived at TBranch version 11 and fSplitLevel at 7; below
-    # those the field does not exist and its value is 0 by definition -- a branch
-    # with no fFirstEntry starts at entry 0. TBranch.md 13.1.
+    # those the field does not exist and its value is 0 by definition (a branch
+    # with no fFirstEntry starts at entry 0). TBranch.md 13.1.
     n = _i32(buf, m["fMaxBaskets"].start)
     return Branch(
         slot=entry.start,
@@ -3707,7 +3701,7 @@ def _element_members(buf: bytes, m: dict, base: int) -> dict:
     """The eleven TBranchElement fields, or empty for a plain TBranch.
 
     Keyed off fType rather than off the class name, because TBranchObject and
-    the legacy container branches carry some of these and not others.
+    the legacy container branches have some of these and not others.
     TBranchElement.md section 2.
     """
     if "fType" not in m:
@@ -3734,7 +3728,7 @@ def _branch_ref(buf: bytes, value: Value | None, base: int) -> int:
     """fBranchCount / fBranchCount2: a back-reference, not a branch.
 
     Four bytes holding the map position of a branch written earlier in this same
-    record, exactly as fLeafCount does for a leaf. TBranchElement.md section 6.
+    record, as fLeafCount does for a leaf. TBranchElement.md section 6.
     Zero means the field is unset, which is every branch but a split container's
     members. Returns the absolute position, or -1.
     """
@@ -3753,7 +3747,7 @@ def _branch_ref(buf: bytes, value: Value | None, base: int) -> int:
 def _int_member(buf: bytes, value: Value) -> int:
     """An integral member, whatever width the streamer info gave it.
 
-    fEntries and its neighbours were Int_t or Stat_t -- a double -- below TTree
+    fEntries and its neighbours were Int_t or Stat_t (a double) below TTree
     class version 13, so the width cannot be assumed. TTree.md section 12.
     """
     if value.ftype in (3, 6, 13):
@@ -3771,9 +3765,9 @@ def _int_member(buf: bytes, value: Value) -> int:
 class TreeIndex:
     """A decoded TTreeIndex. Auxiliary.md section 2.
 
-    Hand-coded, and it has to be: TTreeIndex::Streamer never calls
-    ReadClassBuffer, so no streamer info for it is ever written to a file and
-    the streamer-driven algorithm cannot reach it.
+    Hand-coded because TTreeIndex::Streamer never calls ReadClassBuffer, so no
+    streamer info for it is ever written to a file and the streamer-driven
+    algorithm cannot reach it.
     """
 
     version: int
@@ -3827,9 +3821,9 @@ def read_tree_index(buf: bytes, offset: int) -> TreeIndex:
     if frame.version >= 2:
         minor_values, o = longs(o)
     index, o = longs(o)
-    # The arrays carry no count of their own, so a wrong fN is invisible inside
-    # the object. The byte count is the only redundancy there is: the three
-    # arrays must fill the frame exactly. Auxiliary.md invariant 1.
+    # The arrays have no count of their own, so a wrong fN is invisible inside
+    # the object. The byte count is the only redundancy: the three arrays must
+    # fill the frame exactly. Auxiliary.md invariant 1.
     if frame.end is not None and o != frame.end:
         raise FormatError(
             f"TTreeIndex at {offset}: fN {n} accounts for {o - frame.body} "
@@ -3856,8 +3850,8 @@ def element_width(element: Element) -> int | None:
 def derives_from(infos: list[StreamerInfo], name: str, ancestor: str) -> bool:
     """Is `ancestor` in `name`'s base-class chain, per the file's own infos?
 
-    A tree's record may be of any class deriving from TTree -- TNtuple, TNtupleD,
-    TChain -- so a reader cannot find trees by comparing the key's class name
+    A tree's record may be of any class deriving from TTree (TNtuple, TNtupleD,
+    TChain), so a reader cannot find trees by comparing the key's class name
     against "TTree". TTree.md section 1.
     """
     by_name = {i.name: i for i in infos}
@@ -3969,7 +3963,7 @@ def _resolve_leaf_refs(top: list[Branch], base: int) -> None:
     """Attach leaves whose fLeaves entry was only a reference.
 
     A branch's fLeaves can hold a back-reference to a leaf written in full
-    elsewhere in the same buffer -- inside another leaf's fLeafCount, for one.
+    elsewhere in the same buffer, for instance inside another leaf's fLeafCount.
     TLeaf.md section 3.1.
     """
     known: dict[int, Leaf] = {}
@@ -4120,9 +4114,9 @@ def branch_streamer_info(infos: list[StreamerInfo], branch: Branch) -> StreamerI
 
     TBranchElement.md section 5: fClassName names the class whose element list
     fID indexes into, not the branch's own type. The choice is made from the
-    branch's fields and never from bytes in the entry -- there is nothing in an
-    entry to identify a class with (ReadingEntries.md 5.1), which is why those
-    two fields are on the branch at all.
+    branch's fields and never from bytes in the entry: nothing in an entry
+    identifies a class (ReadingEntries.md 5.1), which is why those two fields
+    are on the branch.
     """
     if not branch.class_name:
         raise UnsupportedClass("branch has no fClassName")
@@ -4145,7 +4139,7 @@ def branch_streamer_info(infos: list[StreamerInfo], branch: Branch) -> StreamerI
 
 
 # fType values that mean "this node holds no bytes of its own", from
-# root/tree/tree/src/TBranchElement.cxx:5692 -- ReadingEntries.md section 2.
+# root/tree/tree/src/TBranchElement.cxx:5692; ReadingEntries.md section 2.
 INTERIOR_TYPES = (1, 2)
 SPLIT_NODE_ID = -2
 
@@ -4154,15 +4148,14 @@ class TreeReader:
     """Decodes entries of a tree's branches. ReadingEntries.md section 7.
 
     Written from the specification rather than from ROOT's source, like the rest
-    of this module, so that the two disagreeing is a detectable event. What it
-    reports is an end position: the point of the exercise is ReadingEntries.md
-    invariant 5, that the bytes a branch's entry occupies equal the bytes its
-    decoding consumes, and an end position is the only thing that can check it.
+    of this module, so that a disagreement between the two can be detected. It
+    reports an end position, which is what ReadingEntries.md invariant 5 needs:
+    the bytes a branch's entry occupies equal the bytes its decoding consumes.
 
     `fetch(seek)` returns `(record, buffer)` for the basket at that file offset,
     the record's object data uncompressed in place, or None when it cannot be
     read here. It is a parameter because decompressing a basket is the expensive
-    part of this and a caller normally caches it already.
+    part, and a caller normally caches it already.
     """
 
     def __init__(self, buf: bytes, tree: Tree, infos: list[StreamerInfo],
@@ -4172,8 +4165,8 @@ class TreeReader:
         self.buf = buf
         # The TTree record's own object data, in which Branch.embedded[i].block
         # is an offset. Without it a basket that was never written as a record is
-        # unreachable, which is most of a file written by TDirectory::WriteTObject
-        # (TBranch.md 5).
+        # unreachable, and that is most of the baskets in a file written by
+        # TDirectory::WriteTObject (TBranch.md 5).
         self.tree_payload = tree_payload
         self.tree = tree
         self.infos = infos
@@ -4182,12 +4175,12 @@ class TreeReader:
         self.fetch = fetch if fetch is not None else self._default_fetch
         self.branches = list(walk_branches(tree.branches))
         if tree.branch_ref is not None:
-            # Not in fBranches and it holds data all the same -- TTree.md 4.
+            # Not in fBranches, but it holds data. TTree.md 4.
             self.branches.append(tree.branch_ref)
         self.by_slot = {br.slot: br for br in self.branches}
         self.by_name = {br.name: br for br in self.branches}
-        # Who holds whom, for resolving a counter among siblings rather than
-        # through fBranchCount -- ReadingEntries.md 4.1.
+        # Parent-child structure, for resolving a counter among siblings rather
+        # than through fBranchCount. ReadingEntries.md 4.1.
         self._siblings: dict[int, list[Branch]] = {}
         def index(children: list[Branch]) -> None:
             for child in children:
@@ -4222,9 +4215,9 @@ class TreeReader:
                 f"fBasketSeek has {len(br.basket_seek)} entries")
         if not br.basket_seek[i] and i in br.embedded:
             # Never written as a record: the basket is inside the TTree record,
-            # and its raw block is the buffer its own offsets are relative to --
-            # the block start plays the part the record offset plays for a basket
-            # of its own. TBranch.md 5, TBasket.md 4.1.
+            # and its raw block is the buffer its own offsets are relative to.
+            # The block start plays the part the record offset plays for a
+            # basket of its own. TBranch.md 5, TBasket.md 4.1.
             emb = br.embedded[i]
             if self.tree_payload is None or emb.block < 0:
                 raise UnsupportedClass(
@@ -4252,11 +4245,11 @@ class TreeReader:
         """A Decoder over one basket.
 
         The base is the basket record's offset, because that is buffer position
-        0 for everything inside it -- the same convention as every other record
+        0 for everything inside it: the same convention as every other record
         (Buffer.md section 1), and what basket_entry_range already assumes. For an
         embedded basket the raw block start takes that role: ROOT reads the block
         into the basket's own buffer, so positions inside it are relative to the
-        block and not to the TTree record that carries it.
+        block and not to the TTree record that holds it.
         """
         key = (rec.offset, embedded)
         if key not in self._decoders:
@@ -4292,12 +4285,12 @@ class TreeReader:
         """The branch holding `count_name` for `br`. ReadingEntries.md 4.1.
 
         Resolved by NAME among this branch's siblings, and only then through
-        fBranchCount. ROOT does the opposite and it costs it data: the writer
-        builds the counter's name from this branch's own name and looks it up with
+        fBranchCount. ROOT does the opposite and loses data: the writer builds the
+        counter's name from this branch's own name and looks it up with
         TTree::GetBranch (root/tree/tree/src/TBranchElement.cxx:432-438), which
         searches the whole tree and returns the first match, so a tree holding two
-        split objects of one class records the FIRST object's counter on both --
-        ReadingEntries.md erratum 6, witnessed in alice_ESDs.root.
+        split objects of one class records the FIRST object's counter on both.
+        ReadingEntries.md erratum 6, observed in alice_ESDs.root.
         """
         prefix = br.name[:br.name.rfind(".") + 1]     # "" when there is no dot
         want = prefix + count_name
@@ -4318,7 +4311,7 @@ class TreeReader:
 
         A split member of a container whose type is `T *x; //[n]` needs a
         different n for every object in the entry, and the file holds them in the
-        sibling branch that carries n -- as a column of `objects` values, one per
+        sibling branch that holds n, as a column of `objects` values, one per
         object. ReadingEntries.md 4.2.
         """
         counter = self.counter_branch(br, count_name)
@@ -4366,7 +4359,8 @@ class TreeReader:
         """`(start, end, consumed)` for one entry. ReadingEntries.md section 7.
 
         `start` and `end` are the byte range the basket gives it and `consumed`
-        is where decoding actually stopped. Invariant 5 is that they are equal.
+        is where decoding stopped. Invariant 5 requires `end` and `consumed` to be
+        equal.
         """
         if not self.holds_data(br):
             raise FormatError(
@@ -4419,7 +4413,7 @@ class TreeReader:
         # 6.08/06 (root commit 2caaf15c2f0, 2017-02-24) and was backported to
         # 5.34/38: the collection proxy did not work in this path and ROOT wrote
         # the branch with no bytes in it at all. Every entry is empty, in both
-        # the scalar and the column form -- ReadingEntries.md 3.6.
+        # the scalar and the column form. ReadingEntries.md 3.6.
         if (start == end and el.cls == "TStreamerSTL"
                 and el.tail.get("fSTLtype") == STL_BITSET):
             return start
@@ -4428,8 +4422,8 @@ class TreeReader:
         if ft in (31, 41):
             objects = max(self.count_for(br, entry), 0)
             if OFFSET_P <= el.ftype < 60 and el.count_name:
-                # Every object has its own count, and they are in the sibling
-                # branch that carries the counter -- one value per object.
+                # Every object has its own count, held in the sibling branch
+                # that holds the counter, one value per object.
                 # ReadingEntries.md 4.2.
                 pos = start
                 for n in self.counts_column(br, el.count_name, entry, objects):
@@ -4454,9 +4448,9 @@ class TreeReader:
 class EmbeddedBasket:
     """A TBasket streamed into another buffer rather than written as a record.
 
-    `TBasket::Streamer` writes the whole TKey first
+    `TBasket::Streamer` writes the complete TKey first
     (`root/tree/tree/src/TBasket.cxx:1111`), so the layout is the same fields in
-    the same order as a record -- but the arrays and the data follow the header
+    the same order as a record, but the arrays and the data follow the header
     inline, and every offset is relative to `start` rather than to a record.
     """
 
@@ -4559,14 +4553,15 @@ def embedded_entry_range(emb: EmbeddedBasket, index: int) -> tuple[int, int]:
 
 # -- RNTuple -----------------------------------------------------------------
 #
-# Written from spec/05-rntuple/BinaryFormatSpecification.md -- ROOT's own
-# specification, tracked verbatim -- and from the errata beside it, which is the
-# whole point: where this reader and ROOT disagree, one of the two is wrong and
-# the disagreement is detectable. spec/05-rntuple/ERRATA.md 2, 3 and 5 are all
-# places where following the document literally would fail here.
+# Written from spec/05-rntuple/BinaryFormatSpecification.md (ROOT's own
+# specification, tracked verbatim) and from the errata beside it, so that where
+# this reader and ROOT disagree, one of the two is wrong and the disagreement can
+# be detected. spec/05-rntuple/ERRATA.md 2, 3 and 5 are all places where
+# following the document literally would fail here.
 #
 # Everything below the anchor is LITTLE-endian; the anchor is a TKey payload and
-# is big-endian like the rest of the file (NOTES.md 3). The helpers say which.
+# is big-endian like the rest of the file (NOTES.md 3). The helper names give
+# the byte order.
 
 
 def _u16le(b: bytes, o: int) -> int:
@@ -4628,7 +4623,7 @@ def read_rntuple_anchor(buf: bytes, rec: Record) -> RNTupleAnchor:
     not show them (ERRATA 2).
 
     The anchor is an ordinary TKey payload, so it may be compressed like any
-    other record -- RNTuple compresses it whenever compression is on, as
+    other record; RNTuple compresses it whenever compression is on, as
     rntuple/compressed shows. Until 2026-09-22 this read the raw file at the
     payload and took the first four bytes of a zlib stream for a byte count
     (PLAN-corpus.md C6). Every offset below is into the decompressed payload;
@@ -4720,8 +4715,8 @@ def read_rn_frame(buf: bytes, offset: int) -> RNFrame:
 
 
 def read_rn_string(buf: bytes, offset: int) -> tuple[str, int]:
-    """A u32 length then that many bytes -- NOT the counted string of
-    Conventions 5.1, which is where a reader coming from TFile goes wrong."""
+    """A u32 length then that many bytes, NOT the counted string of
+    Conventions 5.1; a reader coming from TFile easily confuses the two."""
     n = _u32le(buf, offset)
     return buf[offset + 4:offset + 4 + n].decode("utf-8"), offset + 4 + n
 
@@ -4966,8 +4961,8 @@ def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
 def read_rntuple(buf: bytes, rec: Record) -> tuple[RNTupleAnchor, RNSchema]:
     """The anchor and header schema of the RNTuple anchored at `rec`.
 
-    A compressed header envelope is decompressed first. RNTuple decides that on
-    equality -- `nbytes == len` means stored unmodified -- where the container
+    A compressed header envelope is decompressed first. RNTuple tests for that
+    by equality (`nbytes == len` means stored unmodified), where the container
     layer uses `>` and tolerates a raw payload longer than its length
     (spec/05-rntuple/NOTES.md 2).
     """

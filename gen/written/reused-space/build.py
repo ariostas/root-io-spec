@@ -2,9 +2,9 @@
 
 The write side of `spec/06-writing/WritingFiles.md` 2, and the counterpart of
 `data/container/gap-reused.root`, which ROOT wrote from the same sequence of
-operations. The two file names are deliberately the same length -- 30 characters
--- because a key carries the file's name and a record carries its own offset, so
-a name one byte longer would shift every record and make the comparison useless.
+operations. The two file names are deliberately the same length, 30 characters,
+because a key stores the file's name and a record stores its own offset, so a
+name one byte longer would shift every record and make the comparison useless.
 
 Three placements, the three of 2.3:
 
@@ -13,7 +13,7 @@ Three placements, the three of 2.3:
   the free entry is removed and the record lands at its original offset;
 * `snug` is written long and overwritten short, releasing 123 bytes;
 * `lodger` is 104 bytes and takes the front of those 123, leaving a 19-byte
-  remainder that carries its own negative `fNbytes`.
+  remainder with its own negative `fNbytes`.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def build() -> bytes:
     f.add(objstring("tail", "a record after both, so neither is at the end of the file"))
 
     # exact: shrink, then restore. The restore frees the short record's 125
-    # bytes, which coalesce with the 88 already free into the original 213 --
+    # bytes, which coalesce with the 88 already free into the original 213:
     # an exact fit, so the entry disappears.
     f.overwrite(objstring("exact", "short"))
     f.overwrite(objstring("exact", BIG))

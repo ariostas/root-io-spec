@@ -3,14 +3,13 @@
 The write side of `spec/06-writing/WritingFiles.md` 8.1, and the counterpart of
 `data/container/cycles.root`, which ROOT wrote from the same three calls. The two
 file names are both 26 characters and the two titles both 17, because a key
-carries each of them and a record carries its own offset -- one byte either way
-and nothing would line up.
+stores each of them and a record stores its own offset; one byte either way and
+nothing would line up.
 
 Writing a name that already exists does not replace anything. It adds a record,
-and its key goes **in front of** the keys already under that name, taking the
-first one's cycle plus one. The result is a key list in descending cycle order,
-which is not decoration: ROOT's lookups take the first match and never compare
-cycles.
+and its key goes in front of the keys already under that name, taking the first
+one's cycle plus one. The result is a key list in descending cycle order, which
+matters because ROOT's lookups take the first match and never compare cycles.
 """
 
 from __future__ import annotations

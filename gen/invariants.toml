@@ -2,10 +2,10 @@
 # label in the tools, and what accounts for each.
 #
 # `AGENTS.md` requires every entry to be checked. That rule was unenforced until
-# 2026-09-21, and `PLAN.md` §8.13 is why it mattered: the one entry found to
-# be *false* was also one nobody had wired up. This file is the other half of the
-# enforcement -- `tools/check_coverage.py --check` fails on an unchecked entry
-# that is not listed here, and on a listing that no longer applies.
+# 2026-09-21; `PLAN.md` §8.13 records that the one entry found to be false was
+# also one nobody had wired up. `tools/check_coverage.py --check` fails on an
+# unchecked entry that is not listed here, and on a listing that no longer
+# applies.
 #
 # `by` says what accounts for it:
 #
@@ -20,11 +20,11 @@
 #                 or a WriteError in rootwrite.py. Each write document's
 #                 Invariants section says which, and `reason` quotes it.
 #   not-checkable no file we can produce or hold exhibits it; why, in `reason`.
-#   unchecked     honestly not checked, and could be. This is the worklist, and
-#                 it should stay short.
+#   unchecked     not checked, and could be. This is the worklist, and it
+#                 should stay short.
 #
-# An entry here is not an excuse: `alias` and `structural` claims were each
-# verified by finding the check, and `unchecked` is a to-do, not a dismissal.
+# Each `alias` and `structural` claim was verified by finding the check.
+# `unchecked` entries are to-dos.
 
 # ---------------------------------------------------------------- container --
 
@@ -41,8 +41,8 @@ by the new 9.7.
 by = "structural"
 reason = """
 `rootfile.read_directory` accepts a record as a directory only when `fSeekDir`
-equals the record's own offset -- the self-check ROOT itself relies on. A record
-that fails it is not reported as a bad directory, it is not a directory, so the
+equals the record's own offset, the self-check ROOT itself relies on. A record
+that fails it is treated as not a directory rather than as a bad one, so the
 failure surfaces as Record 8.6 (keys whose fSeekPdir names no directory) and as
 the root directory going missing. Provoked in tools/test_container.py by changing
 a version word to 1005.
@@ -95,16 +95,16 @@ reason = """
 A wide key occurs only in a file past 2 GB, and no fixture is that large.
 `gen/cern/LARGE.toml` records the measured header, free-list, top-directory and
 key-list facts for eleven files from 1.3 GB to 15.9 GB, fetched by range request
-rather than held -- 38 wide keys between them -- and `fetch_cern.py --headers`
-checks this invariant on every one. That is the only evidence for this layout
-anywhere in the project.
+rather than held, with 38 wide keys between them; `fetch_cern.py --headers`
+checks this invariant on every one. They are the only evidence for this layout
+in the project.
 """
 
 [invariant."Record 8.9"]
 by = "alias"
 reason = """
 Checked as Directory 9.14, which folds the keep flag away with `abs(fCycle)` and so
-compares magnitudes exactly as this entry asks.
+compares magnitudes as this entry asks.
 """
 
 # ------------------------------------------------------------ serialization --
@@ -120,9 +120,9 @@ collection whose decoding does not land on its byte count fails that check, whic
 [invariant."Collections 14.8"]
 by = "structural"
 reason = """
-Stated in the document as a consumption check rather than a direct one, and that is
-how it runs: reading a TClonesArray body with the wrong fBits interpretation
-desynchronises and the byte count catches it, reported as StreamerDriven 10.1.
+The document states it as a consumption check, and it runs as one: reading a
+TClonesArray body with the wrong fBits interpretation desynchronises and the byte
+count catches it, reported as StreamerDriven 10.1.
 """
 
 [invariant."References 8.1"]
@@ -138,7 +138,7 @@ by = "structural"
 reason = """
 `decode_record` recurses into every nested object and compares what it consumed
 with the byte count as it returns; a mismatch is raised and reported under
-StreamerDriven 10.1, which is why that label carries both.
+StreamerDriven 10.1, so that label covers both.
 """
 
 [invariant."StreamerInfo 13.6"]
@@ -152,8 +152,8 @@ by = "structural"
 reason = """
 A TArray's extent is checked by consumption: `4 + fN x width` is what the reader
 advances, and a disagreement ends the enclosing object somewhere other than its
-byte count, failing StreamerDriven 10.1. TArray.md 5.1, which is the fN bound, is
-checked directly.
+byte count, failing StreamerDriven 10.1. TArray.md 5.1, the fN bound, is checked
+directly.
 """
 
 # ------------------------------------------------------------------- ttree --
@@ -195,8 +195,8 @@ TBasket 9.1.
 # three: gate 2 of `tools/check_write.py` runs `check_invariants.py` over our own
 # output, so every reading invariant applies to it under the reading label; gate 1
 # compares the bytes with a ROOT-written file; or `tools/rootwrite.py` raises a
-# WriteError as it writes. A write-side entry therefore carries no label of its
-# own by design -- it is the same fact, addressed to the writer.
+# WriteError as it writes. A write-side entry has no label of its own by design:
+# it states the same fact to the writer.
 
 [invariant."WritingFiles 14.1"]
 by = "write-gate"
@@ -261,8 +261,9 @@ reason = "§14, as Directories 9.14; WriterInvariants.md pairs the two explicitl
 [invariant."WritingFiles 14.16"]
 by = "write-gate"
 reason = """
-§14 says this one is the exception: it is a property of the *act* of writing, since
-a finished file cannot say which of two overlapping records was meant to be live.
+§14 names this one as the exception: it is a property of the act of writing, since
+a finished file does not record which of two overlapping records was meant to be
+live.
 `tools/rootwrite.py` checks it as it places each record, raising a WriteError.
 """
 
@@ -354,16 +355,16 @@ reason = "§9: checked as TBranch invariant 6."
 by = "write-gate"
 reason = """
 §9: checked as TLeaf invariants 9 to 11, which state `fLen <= fMaximum` where this
-entry states the equality -- a reader has to accept both and only a writer owes the
-stronger claim.
+entry states the equality. A reader has to accept both; only a writer must meet
+the stronger one.
 """
 
 [invariant."WritingTrees 9.14"]
 by = "not-checkable"
 reason = """
 §9 says so itself: not checkable over a finished file, because `rootwrite.py`
-enforces it by construction -- it gives a branch exactly one TLeafC and no way to
-add a second -- so no file exists that could violate it.
+enforces it by construction. It gives a branch exactly one TLeafC and no way to
+add a second, so no file exists that could violate it.
 """
 
 [invariant."WritingHistograms 10.5"]
@@ -371,7 +372,7 @@ by = "unchecked"
 reason = """
 §10 lists 1, 2, 3, 4, 6, 8 and 9 as checked and leaves 5 out. `fEntries >= 0` is
 trivial to add; the second half, `fTsumw <= fEntries` when every weight is 1, needs
-the writer's intent, since a file cannot say whether its weights were all 1.
+the writer's intent, since a file does not record whether its weights were all 1.
 On the worklist for the first half.
 """
 
@@ -381,7 +382,7 @@ reason = "§10: checked against ClassDef for every class in §11's table by tool
 
 [invariant."WritingGraphs 6.3"]
 by = "write-gate"
-reason = "§6: the general rule of WritingObjects §10, checked there -- and for a TGraph specifically by the closure check of StreamerDriven 10.5 under gate 2."
+reason = "§6: the general rule of WritingObjects §10, checked there, and for a TGraph by the closure check of StreamerDriven 10.5 under gate 2."
 
 [invariant."ElementLists 13.1"]
 by = "write-gate"

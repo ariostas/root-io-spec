@@ -3,44 +3,44 @@ file = "data/ttree/branch-clones.root"
 size = 22693
 
 description = """
-The one branch kind the corpora do not contain: a **`TBranchClones`**, with the
-only **`TBranchObject`** here as its parent.
+The branch kind the corpora do not contain: a **`TBranchClones`**, with the only
+`TBranchObject` here as its parent.
 
 Nothing in ROOT's modern interface makes one. `TTree::Branch` gives a
 `TBranchElement`; the only `new TBranchClones` in the codebase is in
 `TTree::BranchOld`, for a data member that is a pointer to a `TClonesArray`, at a
 split level other than 2. `Splitting.md` said of this class "appears in no file and
-has no known way to produce one" -- there is one, and this is it.
-TBranchElement.md 13.
+has no known way to produce one"; this case is a way. TBranchElement.md 13.
 
 **It derives from `TBranch` and streams no `TBranch` base.** After the `TNamed` at
-1484 come ten of `TBranch`'s own fields written individually -- `fCompress` through
-`fOffset`, at 1507 to 1562 -- and then nothing else of `TBranch`: no `fLeaves`, no
+1484 come ten of `TBranch`'s own fields written individually, `fCompress` through
+`fOffset`, at 1507 to 1562, and then nothing else of `TBranch`: no `fLeaves`, no
 `fBaskets`, no `fBasketSeek`, no `fFileName`, no `fIOFeatures`. A reader cannot
 reach this class through `TBranch`'s layout, and no `kBase` element says so.
 
-**And no streamer info describes it.** The file carries 23 infos, `TBranchObject`
-v1 and `TBranch` v13 among them, and no `TBranchClones` -- its `Streamer` never
-calls `WriteClassBuffer`. Like `TBasket` and `TTreeIndex`, the failure is that a
-reader cannot proceed rather than that it silently follows a fiction.
+**No streamer info describes it.** The file has 23 infos, `TBranchObject` v1 and
+`TBranch` v13 among them, and none for `TBranchClones`: its `Streamer` never
+calls `WriteClassBuffer`. As with `TBasket` and `TTreeIndex`, a reader fails by
+being unable to proceed rather than by silently following an info that does not
+describe the bytes.
 
-**`fBranchCount` must be read, not skipped.** The slot at 1563 holds a whole
-673-byte `TBranch` -- the count branch `fHits_` -- and the classes it declares are
-referenced by *position* from the sub-branches that follow. The first sub-branch's
+**`fBranchCount` must be read, not skipped.** The slot at 1563 holds a complete
+673-byte `TBranch`, the count branch `fHits_`, and the classes it declares are
+referenced by position from the sub-branches that follow. The first sub-branch's
 class tag at 2271 is `80 00 02 37`, a back-reference to map position 567, which is
-the `ff ff ff ff` **inside** `fBranchCount` at file offset 1567. Skip the body and
-that reference cannot be resolved; `tools/rootfile.py` failed exactly that way
-before it read the slot properly.
+the `ff ff ff ff` inside `fBranchCount` at file offset 1567. Skip the body and
+that reference cannot be resolved; `tools/rootfile.py` failed in this way before
+it read the slot properly.
 
 **The name lost its prefix.** The branch was created as `ev`, and the
 `TBranchClones` is called `fHits` rather than `ev.fHits`, because `BranchOld`
-passes `&branchname.Data()[1]` on the non-dotted path -- dropping the first
+passes `&branchname.Data()[1]` on the non-dotted path. That drops the first
 character on the assumption that it is a `*`, which ROOT's own comment there calls
 wrong. Its children are `fHits.fI`, `fHits.fX`, `fHits.fUniqueID`, `fHits.fBits`.
 
-Note `fEntries` is 3 while `fEntryNumber` is **0**: the clones branch keeps the
-entry count and not the entry number. And `fOffset` is 16, the offset of the
-member within the object, where a top-level branch would have 0.
+`fEntries` is 3 while `fEntryNumber` is 0: the clones branch keeps the entry
+count and not the entry number. `fOffset` is 16, the offset of the member within
+the object, where a top-level branch would have 0.
 
 The case needs a compiled dictionary, hence `classes.h`.
 """

@@ -19,8 +19,8 @@ gen/cases/<group>/<case>/
 
 An interpreted class has no `Streamer` method, so `TClass::IsForeign()` is true
 for it and ROOT writes **a version word of 0 followed by a checksum** instead of a
-version number. Most of the format does not care, which is why the other twenty
-cases here need no compiler. Three things do:
+version number. Most of the format is unaffected by this, so the other twenty
+cases here need no compiler. Three things are affected:
 
 - `TClonesArray`, which records its element class as the text `"<class>;<version>"`;
 - a member-wise collection whose value class is versioned, where the second
@@ -46,11 +46,11 @@ the generated file.
 
 ### Gotchas
 
-- **`classes.h` must be self-contained** — include the ROOT headers it needs. It
-  is compiled, not interpreted, so it does not inherit the interpreter's state.
-- **Keep `sizeof` out of the observable surface.** An element's `fSize` is the
-  writing machine's `sizeof`; `tools/normalize.py` masks it, but a case should
-  still avoid asserting one that is standard-library dependent.
+- **`classes.h` must be self-contained** and include the ROOT headers it needs.
+  It is compiled, not interpreted, so it does not inherit the interpreter's state.
+- **Avoid asserting on `sizeof`.** An element's `fSize` is the writing machine's
+  `sizeof`. `tools/normalize.py` masks it, but a case should still avoid
+  asserting one that is standard-library dependent.
 - **macOS: ACLiC needs an SDK the conda compiler understands.** With conda-forge
   ROOT the bundled clang targets an older Darwin, and a recent Xcode SDK fails to
   link with `unknown architecture arm64e.x1` followed by undefined symbols. Point
@@ -60,5 +60,5 @@ the generated file.
   SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk tools/generate.py
   ```
 
-  This is a property of the local toolchain, not of the repository, so no path is
-  hardcoded anywhere. Linux CI needs no such override.
+  This is a property of the local toolchain, so the repository hardcodes no SDK
+  path. Linux CI needs no such override.

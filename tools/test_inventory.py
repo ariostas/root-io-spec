@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Tests for tools/inventory.py.
 
-The tool runs against the pinned submodule, and that run is the check that
-matters. These cover the source scanning, where a silent mis-parse would produce
-a plausible-looking answer in the wrong direction — classifying a class as
-needing no specification when it does. Three real cases already went that way
-before the blanking and namespace passes existed, and each has a test here.
+The tool itself runs against the pinned submodule. These tests cover the
+source scanning, where a silent mis-parse would give a plausible answer that
+errs in the wrong direction: classifying a class as needing no specification
+when it does. Three real cases went that way before the blanking and namespace
+passes existed, and each has a test here.
 """
 
 import sys
@@ -57,8 +57,8 @@ class Classification(unittest.TestCase):
     def test_the_guard_variable_need_not_be_named_R__v(self):
         """`ROOT::v5::TFormula` and `ROOT::v5::TF1Data` call it `v`.
 
-        Assuming `R__v` would call this `delegating` — "a reader needs nothing"
-        — which is the wrong direction to be wrong in.
+        Assuming `R__v` would call this `delegating` ("a reader needs
+        nothing"), which understates what a reader needs.
         """
         _, kind = only("""
             void X::Streamer(TBuffer &b) {
@@ -70,7 +70,7 @@ class Classification(unittest.TestCase):
         self.assertEqual(kind, "guarded")
 
     def test_a_commented_out_read_class_buffer_does_not_count(self):
-        """`TStreamerInfo::Streamer` is exactly this, and it is the bootstrap."""
+        """`TStreamerInfo::Streamer` is this case, and it is the bootstrap."""
         _, kind = only("""
             void X::Streamer(TBuffer &R__b) {
                Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
@@ -97,10 +97,10 @@ class Classification(unittest.TestCase):
 
 
 class Extending(unittest.TestCase):
-    """Reads that follow `ReadClassBuffer`, which is the dangerous case.
+    """Reads that follow `ReadClassBuffer`.
 
-    Before this category existed the three classes here were `delegating` --
-    published as "a reader needs nothing" -- and the corpora had been reporting
+    Before this category existed the three classes here were `delegating`,
+    published as "a reader needs nothing", and the corpora had been reporting
     the consequence for months as a `TMatrixTSym` decoding 48 bytes of 3528.
     """
 
@@ -152,9 +152,9 @@ class Extending(unittest.TestCase):
 
     def test_a_legacy_case_after_a_break_does_not_count(self):
         """`RooBinning` dispatches with a `switch`, and its version-1 decode is
-        a sibling `case` of the one holding `ReadClassBuffer` -- so the reads are
-        in the same block. Counted, the class would be `extending`; it is
-        `guarded`, and the `switch` is what makes it so."""
+        a sibling `case` of the one holding `ReadClassBuffer`, so the reads are
+        in the same block. Counted, the class would be `extending`; the `switch`
+        makes it `guarded`."""
         _, kind = only("""
             void X::Streamer(TBuffer &R__b) {
                Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
@@ -175,8 +175,8 @@ class Extending(unittest.TestCase):
     def test_extending_outranks_guarded(self):
         """A class that both guards and extends must come out `extending`: the
         guard only matters below its threshold, the extra bytes at every version.
-        No class in ROOT is currently both, which is why the precedence is
-        pinned here rather than left to be discovered by a submodule bump."""
+        No class in ROOT is currently both, so the precedence is pinned here
+        rather than left to be discovered by a submodule bump."""
         _, kind = only("""
             void X::Streamer(TBuffer &R__b) {
                Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
@@ -189,7 +189,7 @@ class Extending(unittest.TestCase):
         self.assertEqual(kind, "extending")
 
     def test_a_second_read_class_buffer_is_not_extra_bytes(self):
-        """Those bytes are described by an info like the first lot."""
+        """An info describes those bytes as it does the first."""
         _, kind = only("""
             void X::Streamer(TBuffer &R__b) {
                if (R__b.IsReading()) {
@@ -231,11 +231,11 @@ class Overloads(unittest.TestCase):
                 for m in matches]
 
     def test_separately_both_halves_are_wrong(self):
-        """Neither half classifies correctly on its own, and they are wrong in
-        opposite directions: the dispatching form has no `ReadClassBuffer` and
-        reads `custom`, while the form that has one takes its version as a
-        parameter rather than from `ReadVersion` and reads `delegating`. The
-        class is neither -- it is streamer-info driven above version 3."""
+        """Neither half classifies correctly on its own, and they err in opposite
+        directions: the dispatching form has no `ReadClassBuffer` and comes out
+        `custom`, while the form that has one takes its version as a parameter
+        rather than from `ReadVersion` and comes out `delegating`. The class is
+        neither: it is streamer-info driven above version 3."""
         self.assertEqual([k for _, k in self.kinds()], ["custom", "delegating"])
 
     def test_together_they_are_guarded(self):
@@ -248,10 +248,10 @@ class Overloads(unittest.TestCase):
 class GuardPlacement(unittest.TestCase):
     """A version test only makes a class `guarded` if it gates the delegation.
 
-    Three classes in the pinned submodule -- TEntryList, TLeafF16, TLeafD32 --
+    Three classes in the pinned submodule (TEntryList, TLeafF16, TLeafD32)
     call ReadClassBuffer unconditionally and then consult the version only to
-    repair a title or a filename. Calling those `guarded` told a reader there
-    was a legacy layout below some threshold when there is none.
+    repair a title or a filename. Calling those `guarded` implied a legacy
+    layout below some threshold when there is none.
     """
 
     def test_version_test_after_the_call_is_still_delegating(self):
@@ -291,7 +291,7 @@ class GuardPlacement(unittest.TestCase):
         """RooCategory's shape: hand-decode 1 and 2, delegate for the rest.
 
         Stopping the guarded region at the first closing brace called this
-        `delegating`, which is the understating direction.
+        `delegating`, understating what a reader needs.
         """
         _, kind = only("""
             void X::Streamer(TBuffer &R__b) {
@@ -350,8 +350,8 @@ class QualifiedNames(unittest.TestCase):
     """An out-of-line definition may spell the scope itself.
 
     Matching only an unqualified name dropped `ROOT::RNTuple` and
-    `RooWorkspace::CodeRepo` from the inventory entirely -- and the first is an
-    `extending` class, so the omission was in the direction of "nothing to do".
+    `RooWorkspace::CodeRepo` from the inventory entirely, and the first is an
+    `extending` class, so the omission understated what a reader needs.
     """
 
     def test_a_namespace_qualified_definition_keeps_its_scope(self):
@@ -416,7 +416,7 @@ class AgainstTheSubmodule(unittest.TestCase):
                          inventory.DOCUMENT.read_text())
 
     def test_tqobject_streams_nothing(self):
-        """§5 of the document turns on this, and on nothing else."""
+        """§5 of the document depends on this alone."""
         self.assertEqual(self.found["TQObject"]["kind"], "custom")
 
     def test_the_two_formulas_are_separate_classes(self):
@@ -428,8 +428,8 @@ class AgainstTheSubmodule(unittest.TestCase):
         self.assertIn("TFormula_v5", self.found["ROOT::v5::TFormula"]["cite"])
 
     def test_the_three_extending_classes(self):
-        """The whole set, and it is small. `TMatrixTSym` is the one a physics
-        file is likely to hold; `HandWrittenStreamers.md` §3 and
+        """The complete set. `TMatrixTSym` is the one a physics file is likely
+        to hold; `HandWrittenStreamers.md` §3 and
         `check_invariants.EXTENDING` must agree with this list."""
         extending = {n for n, e in self.found.items()
                      if e["kind"] == "extending"}
@@ -437,8 +437,8 @@ class AgainstTheSubmodule(unittest.TestCase):
                          {"TMatrixTSym", "TPointSet3D", "ROOT::RNTuple"})
 
     def test_the_checker_knows_the_same_extending_set(self):
-        """Buffer.md invariant 9.9 is waived for exactly these classes, and the
-        waiver is a list in a second tool -- so the two are compared here."""
+        """Buffer.md invariant 9.9 is waived for these classes, and the waiver
+        is a list in a second tool, so the two are compared here."""
         import check_invariants
         extending = {n for n, e in self.found.items()
                      if e["kind"] == "extending"}

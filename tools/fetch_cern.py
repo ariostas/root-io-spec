@@ -2,16 +2,16 @@
 """Fetch the ROOT files CERN publishes, to measure the specification against.
 
 These are **not** reference files. `data/` holds files this project wrote and
-asserts byte for byte; these are files CERN published, and their only job is to
-answer "is the specification enough for a file nobody designed around it?". They
-are not committed -- `gen/cern/MANIFEST.sha256` records what was used.
+asserts byte for byte; these are files CERN published, used only to test whether
+the specification is enough for a file nobody designed around it. They are not
+committed; `gen/cern/MANIFEST.sha256` records what was used.
 
 Source: https://root.cern/files/ and its rootbench/ subdirectory.
 
-**Every file here was written by ROOT itself.** That is the point of this corpus
-as against `gen/foreign/`, which is uproot's regression suite and contains files
-uproot wrote: there, a failing invariant is a lead to be traced to a writer before
-it is evidence. Here it is evidence.
+**Every file here was written by ROOT itself.** This distinguishes it from
+`gen/foreign/`, uproot's regression suite, which contains files uproot wrote:
+there a failing invariant is a lead to be traced to a writer before it is
+evidence. Here it is evidence.
 
   tools/fetch_cern.py                    the core tier: 24 files, 5.5 MB
   tools/fetch_cern.py --tier physics     real production trees, 27 MB more
@@ -25,10 +25,9 @@ it is evidence. Here it is evidence.
 
 The multi-gigabyte files are never downloaded. root.cern serves
 `Accept-Ranges: bytes`, so `--headers` reads each one's header, free-segment
-record, top directory record and key list -- about 1.5 KB -- and checks them
-against the facts recorded in
-`gen/cern/LARGE.toml`. That is how the large-file layout of
-`spec/01-container/` gets exercised at all; no fixture covers it.
+record, top directory record and key list (about 1.5 KB) and checks them
+against the facts recorded in `gen/cern/LARGE.toml`. This is the only check of
+the large-file layout of `spec/01-container/`; no fixture covers it.
 """
 
 from __future__ import annotations
@@ -97,7 +96,7 @@ def top_directory_problems(header, directory, list_key, keys) -> list[str]:
     `directory` is the rootfile.Directory read out of the record at fBEGIN,
     `list_key` the key of its key-list record and `keys` the key images in that
     list. Invariant 6 is the free record's rule applied to every other wide key
-    in reach; 7 is TDirectoryFile::FillBuffer's condition
+    available; 7 is TDirectoryFile::FillBuffer's condition
     (root/io/io/src/TDirectoryFile.cxx:751-759).
     """
     out = []
@@ -172,7 +171,7 @@ def fetch_range(url: str, start: int, length: int) -> bytes:
 def large_url(row: dict) -> str:
     """Where a LARGE.toml row is read from: `path` under root.cern, or `url`.
 
-    Exactly one of the two. `url` is for files outside root.cern -- CERN Open
+    Exactly one of the two. `url` is for files outside root.cern: CERN Open
     Data serves the same `Accept-Ranges: bytes` from `https://opendata.cern.ch`
     followed by the EOS path of a record's `root://eospublic.cern.ch/` URI.
     """

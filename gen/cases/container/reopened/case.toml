@@ -3,14 +3,14 @@ file = "data/container/reopened.root"
 size = 1657
 
 description = """
-A file **created, closed, and then opened again and added to** — the other way a
-ROOT file comes to exist, and the one a writer meets the moment it stops
+A file created, closed, and then opened again and added to: the other way a
+ROOT file comes to exist, and the one a writer meets as soon as it stops
 producing files from scratch.
 
 Everything up to 372 is the base: the root directory record, `str;1`, and a
 `StreamerInfo` record describing `TObjString`. Everything from 806 on is the
-update, and the three writes it performs are the three options
-`TObject::Write` offers, each resolving differently:
+update, and its three writes use the three options `TObject::Write` offers,
+each resolving differently:
 
 * **a new name.** `two` is appended at the end of the file and appended to the
   key list with cycle 1;
@@ -18,25 +18,25 @@ update, and the three writes it performs are the three options
   its key inserted *before* the first with cycle 2
   ([§8.1](../../../spec/06-writing/WritingFiles.md#81-where-a-key-goes-in-the-list-and-what-cycle-it-gets));
 * **`WriteDelete`.** `two` is written again, and the old record is freed
-  **after** the new one is allocated
+  after the new one is allocated
   (`root/io/io/src/TDirectoryFile.cxx:1986`, `:2004-2007`). Because the old
   record was still live when the new one was placed, the new one cannot land on
   it; because the old key was still in the list when the new key was appended,
-  the cycle **advances**. `"overwrite"` is the same two operations in the other
-  order and gets the opposite answer on both counts — `container/reopen-gap`
-  shows it.
+  the cycle advances. `"overwrite"` is the same two operations in the other
+  order and gives the opposite result on both counts, as `container/reopen-gap`
+  shows.
 
-**What the close does is the rest of the case.** The `StreamerInfo` record at
-372 is **not rewritten**: `fSeekInfo` still points at it, because nothing used a
+**The rest of the case is what the close does.** The `StreamerInfo` record at
+372 is not rewritten: `fSeekInfo` still points at it, because nothing used a
 class the file did not already describe
 (`root/io/io/src/TFile.cxx:3497-3503`). The key list and the free-segment record
-both *are* rewritten, each freeing its old span before sizing the new one — which
-is why the free record at 806 sits exactly where the base's key list used to,
-and why the 243-byte gap at 904 is the rest of that span plus the base's own free
-record plus the freed `two;1`, all three coalesced.
+are both rewritten, each freeing its old span before sizing the new one. The
+free record at 806 therefore sits where the base's key list was, and the
+243-byte gap at 904 is the rest of that span plus the base's own free record
+plus the freed `two;1`, all three coalesced.
 
-The root directory record is the one thing rewritten **in place**: its 60-byte
-header at 224 carries the new `fSeekKeys` and `fNbytesKeys` and a fresh
+The root directory record is the only thing rewritten in place: its 60-byte
+header at 224 holds the new `fSeekKeys` and `fNbytesKeys` and a fresh
 `fDatimeM`, while `fDatimeC`, its key and the repeated name and title are
 untouched.
 

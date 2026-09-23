@@ -11,7 +11,7 @@
 /// above 60000 it also flips fPassing to false and lists the *absent* entries.
 /// `sparse` is optimised into the array form; `dense` is left in bits.
 ///
-/// **The four-argument constructor is essential.** TEntryList(name, title, tree)
+/// **The four-argument constructor is required.** TEntryList(name, title, tree)
 /// bakes the absolute path of the tree's file into fFileName via
 /// gSystem->PrependPathName (root/tree/tree/src/TEntryList.cxx:1311-1322),
 /// which would put this checkout's location into the fixture. The

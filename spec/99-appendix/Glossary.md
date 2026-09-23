@@ -1,12 +1,11 @@
 # Glossary
 
 Every term this specification uses with a meaning it does not have in ordinary
-English, and where that meaning is fixed. The short list of the terms a reader
-meets first is [Conventions §9](../00-conventions.md#9-terminology); this is the
-full one.
+English, and where that meaning is defined. [Conventions §9](../00-conventions.md#9-terminology)
+has a short list of the terms a reader meets first; this is the full list.
 
-Where a term is ROOT's own — a field name, a constant — it is spelled as ROOT
-spells it. Where this specification had to choose a word, that is said.
+A term that is ROOT's own, such as a field name or a constant, is spelled as ROOT
+spells it. Where this specification chose its own word, the entry says so.
 
 ## Container
 
@@ -16,12 +15,12 @@ spells it. Where this specification had to choose a word, that is said.
 | **Key** | The fixed-layout part of a record, describing where and what the payload is. [§2](../01-container/Record.md#2-key-layout) |
 | **Payload** | The bytes of a record after the key. Possibly compressed. |
 | **Object data** | A payload after decompression, as consumed by the serialization layer. |
-| **Record chain** | The records in file order, each found by adding the previous one's `fNbytes`. It is a walk, not an index, and nothing in `TFile::Open` uses it. [§1](../01-container/Record.md#1-the-record-chain) |
+| **Record chain** | The records in file order, each found by adding the previous one's `fNbytes`. It is walked, not indexed, and nothing in `TFile::Open` uses it. [§1](../01-container/Record.md#1-the-record-chain) |
 | **Cycle** | The small integer distinguishing successive versions of an object with the same name in a directory — the `;1` in `h;1`. [§4](../01-container/Record.md#4-cycles) |
 | **Directory record** | The record holding a `TDirectoryFile`'s own fields, including where its key list is. [Directories §2](../01-container/Directory.md#2-layout) |
 | **Key list** | The record a directory points at with `fSeekKeys`, holding a copy of every key in that directory. [§6](../01-container/Directory.md#6-key-lists) |
 | **Free segment** | A byte range occupied by no **live** record — a freed span still begins with a key-shaped header. The last entry is the unallocated tail beyond `fEND` rather than a range within the file. [Free segments](../01-container/FreeSegments.md) |
-| **Large-file flag** | `fVersion >= 1000000` in the header or a directory record, selecting 8-byte file offsets instead of 4. Three of them are independent. [File header §3](../01-container/FileHeader.md#3-fversion-and-the-large-file-flag), [Directories §3](../01-container/Directory.md#3-three-independent-large-file-flags) |
+| **Large-file flag** | `fVersion >= 1000000` in the header or a directory record, selecting 8-byte file offsets instead of 4. There are three, and they are independent. [File header §3](../01-container/FileHeader.md#3-fversion-and-the-large-file-flag), [Directories §3](../01-container/Directory.md#3-three-independent-large-file-flags) |
 | **Block header** | The nine bytes introducing one compressed block: a two-byte algorithm tag, a method byte, and two 24-bit little-endian sizes. [Compression §2](../01-container/Compression.md#2-block-header) |
 
 ## Serialization
@@ -30,7 +29,7 @@ spells it. Where this specification had to choose a word, that is said.
 |---|---|
 | **Buffer** | The byte sequence one record's object data lives in. Positions and the map are relative to its start, not to the file's. [Buffer framing §1](../02-serialization/Buffer.md#1-what-a-buffer-is) |
 | **Byte count** | A four-byte length with `kByteCountMask` (bit 30) set, giving the size of what follows. Authoritative: a reader that has consumed the wrong number of bytes MUST believe it. [§2](../02-serialization/Buffer.md#2-byte-counts), [§2.1](../02-serialization/Buffer.md#21-a-byte-count-is-authoritative) |
-| **Version word** | A two-byte signed class version in the stream, saying which layout of a class was written. Not a ROOT version. [§3](../02-serialization/Buffer.md#3-version-words) |
+| **Version word** | A two-byte signed class version in the stream, identifying which layout of a class was written. Not a ROOT version. [§3](../02-serialization/Buffer.md#3-version-words) |
 | **Class record** | The encoding that names a class the first time it appears in a buffer: `kNewClassTag`, then the name. [§5.1](../02-serialization/Buffer.md#51-a-new-class) |
 | **Class back-reference** / **class tag** | A later mention of the same class, as a map position with `kClassMask` set instead of the name. [§5.2](../02-serialization/Buffer.md#52-a-class-back-reference) |
 | **The map** | The per-buffer table from a **map position** to the class or object recorded there. Positions 0 and 1 are reserved, which is why `kMapOffset` is 2. [§6.2](../02-serialization/Buffer.md#62-positions-0-and-1-and-why-kmapoffset-is-2), [§6.3](../02-serialization/Buffer.md#63-the-map-is-per-buffer) |
@@ -48,7 +47,7 @@ spells it. Where this specification had to choose a word, that is said.
 | **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because the description is made of it. [Bootstrap classes](Bootstrap.md) |
 | **Object-wise** | A collection layout: a count, then each element written in full. [Collections §3](../02-serialization/Collections.md#3-object-wise) |
 | **Member-wise** | A collection layout: a count, then one column per member of the value class. Selected by `kStreamedMemberWise` in the version word. [§4](../02-serialization/Collections.md#4-member-wise) |
-| **Value class** | The type a collection holds. For a `std::map` it is `pair<K,V>`, whose streamer info a file **may or may not** carry, unpredictably; a reader must prefer a recorded one and synthesise the layout otherwise. [§8](../02-serialization/Collections.md#8-stdmap) |
+| **Value class** | The type a collection holds. For a `std::map` it is `pair<K,V>`, whose streamer info a file may or may not carry, unpredictably; a reader must prefer a recorded one and synthesise the layout otherwise. [§8](../02-serialization/Collections.md#8-stdmap) |
 | **PIDF** | The two-byte index, appended to a referenced `TObject`, of the `TProcessID` record that resolves its references. [References §2](../02-serialization/References.md#2-pidf-and-the-tprocessid-records) |
 
 ## `TTree`
@@ -72,13 +71,13 @@ spells it. Where this specification had to choose a word, that is said.
 ## RNTuple
 
 RNTuple is specified here by a [verbatim tracked copy](../05-rntuple/index.md) of
-ROOT's own specification for it, the one format ROOT documents properly, with this
-project's audit recorded beside it as errata and notes. Its terms
-— envelope, page, page list, cluster group, column, field — are defined in that
-document and are deliberately not duplicated or paraphrased here.
+ROOT's own specification, the only format ROOT documents properly, with this
+project's audit recorded beside it as errata and notes. Its terms (envelope,
+page, page list, cluster group, column, field) are defined in that document and
+are deliberately not duplicated or paraphrased here.
 
-The one RNTuple fact this specification does state is that its envelopes and page
-payloads are **little-endian** while the `ROOT::RNTuple` anchor, being an ordinary
-key payload, is big-endian ([Conventions §3](../00-conventions.md#3-byte-order)).
-Note that "cluster" and "column" mean related but not identical things in the two
-formats, so the `TTree` definitions above do not carry over.
+This specification states one RNTuple fact itself: envelopes and page payloads
+are **little-endian**, while the `ROOT::RNTuple` anchor, being an ordinary key
+payload, is big-endian ([Conventions §3](../00-conventions.md#3-byte-order)).
+"Cluster" and "column" mean related but not identical things in the two formats,
+so the `TTree` definitions above do not apply to RNTuple.

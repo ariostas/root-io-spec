@@ -4,13 +4,13 @@ size = 1854
 
 description = """
 Two nested subdirectories written by tools/rootwrite.py, holding the same five
-objects as the ROOT-written fixture container/directories -- and laid out
+objects as the ROOT-written fixture container/directories and laid out
 identically to it, record for record. Every byte of the two files agrees except
 each key's fDatime, the three UUIDs and the file's own name; tools/test_write.py
 asserts that.
 
-Exercises spec/06-writing/WritingFiles.md 5: a subdirectory record carries no
-name and title, so its fNbytesName is its fKeylen alone; its key spells its class
+Exercises spec/06-writing/WritingFiles.md 5: a subdirectory record has no name
+and title, so its fNbytesName is its fKeylen alone; its key spells its class
 TDirectory; its fSeekParent is the mother's fSeekDir; and each directory gets a
 key-list record of its own, keyed by its own name.
 """

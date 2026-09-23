@@ -3,11 +3,11 @@ file = "data/ttree/leaf-forms.root"
 size = 19002
 
 description = """
-Three of the six leaf forms TLeaf.md 13 listed as uncovered. The other three --
-`TLeafObject`, `TLeafElement`, and a leaf at a legacy class version -- were not
+Three of the six leaf forms TLeaf.md 13 listed as uncovered. The other three
+(`TLeafObject`, `TLeafElement`, and a leaf at a legacy class version) were not
 all missing: `tree-branchref` has a real `TLeafObject` and the split cases have
-**52** `TLeafElement`s between them, so only the legacy versions are still
-blocked, on `PLAN.md` 9.1.
+52 `TLeafElement`s between them, so only the legacy versions are still blocked,
+on `PLAN.md` 9.1.
 
 **`TLeafG` is eight bytes on disk.** `fLenType` is the writer's
 `sizeof(Long_t)`, 8 here and 4 on a 32-bit or Windows writer, and the on-disk
@@ -16,18 +16,16 @@ and take 8 bytes each in the leaf record, where `TLeafC`'s take 4. A reader must
 size the payload from the leaf's **class**, never from `fLenType`.
 
 **A two-dimensional leaf puts only the constant dimensions in `fLen`.** `a[n][3]/F`
-has `fTitle` `a[n][3]`, **`fLen` 3**, and a `fLeafCount` reference to the `n`
-leaf. The entry's element count is `counter x fLen` (TLeaf.md 5.3), so entry 0
-with `n` = 2 is six floats and entry 1 with `n` = 1 is three. **Nothing in the
-leaf says the array is two-dimensional**: on disk `a[n][3]` and a flat
-`a[m]` with `m = 3n` are the same bytes, and only the title's text recovers the
-shape.
+has `fTitle` `a[n][3]`, `fLen` 3, and a `fLeafCount` reference to the `n` leaf.
+The entry's element count is `counter x fLen` (TLeaf.md 5.3), so entry 0 with
+`n` = 2 is six floats and entry 1 with `n` = 1 is three. Nothing in the leaf says
+the array is two-dimensional: on disk `a[n][3]` and a flat `a[m]` with `m = 3n`
+are the same bytes, and only the title's text recovers the shape.
 
 **`TLeafC` uses the 255-escape.** Entry 0's string is `02 "ab"`, the short form
 of Conventions 5.1. Entry 1 is 300 characters, so it is `ff` then an `i32` 300
-then the bytes -- 305 bytes for a 300-character string. Both forms are in the
-same basket, which is the case a reader that implements only one of them gets
-wrong.
+then the bytes: 305 bytes for a 300-character string. Both forms are in the same
+basket, so a reader that implements only one of them fails on it.
 
 **`fLen` on a `TLeafC` is the longest string seen plus one**, here 301, not 1 and
 not the size of the `char[400]` the branch was given. `fMaximum` is 301 as well.

@@ -49,11 +49,11 @@ void gen(const char *out)
    auto fAtomic   = model->MakeField<std::atomic<int>>("fAtomic");
    auto fNested   = model->MakeField<std::vector<std::vector<int>>>("fNested");
 
-   // Double32_t has to be asked for BY NAME. It is a typedef for double, so
-   // MakeField<Double32_t> instantiates the double field and the alias is lost --
-   // the name is the only thing that carries it. This is also the fixture's
-   // witness for the exception in ERRATA 7: the field keeps a SplitReal32 column
-   // in an uncompressed ntuple, where every fundamental type drops to unsplit.
+   // Double32_t has to be requested by name. It is a typedef for double, so
+   // MakeField<Double32_t> instantiates the double field and the alias is lost;
+   // only the type name keeps it. This field is also the fixture's instance of
+   // the exception in ERRATA 7: it keeps a SplitReal32 column in an
+   // uncompressed ntuple, where every fundamental type drops to unsplit.
    model->AddField(ROOT::RFieldBase::Create("fDouble32", "Double32_t").Unwrap());
 
    ROOT::RNTupleWriteOptions opts;

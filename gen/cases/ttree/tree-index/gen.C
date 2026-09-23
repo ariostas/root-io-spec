@@ -1,11 +1,11 @@
 /// A TTreeIndex: the one class in this layer that publishes no streamer info.
 ///
-/// TTree::BuildIndex creates a TTreeIndex and hangs it off fTreeIndex. Its
+/// TTree::BuildIndex creates a TTreeIndex and stores it in fTreeIndex. Its
 /// Streamer is fully hand-written (root/tree/treeplayer/src/TTreeIndex.cxx:631)
-/// -- it never calls ReadClassBuffer or WriteClassBuffer -- so **no
-/// TStreamerInfo for TTreeIndex is written into the file**. Every other class
-/// in Auxiliary.md is discoverable from the file it appears in; this one has to
-/// be hard-coded from the specification.
+/// and never calls ReadClassBuffer or WriteClassBuffer, so **no TStreamerInfo
+/// for TTreeIndex is written into the file**. Every other class in Auxiliary.md
+/// can be discovered from the file it appears in; this one has to be hard-coded
+/// from the specification.
 ///
 /// Ten entries with two Run values and five Event values each, so the index is
 /// a real permutation rather than the identity: fIndexValues is 1,1,1,1,1,

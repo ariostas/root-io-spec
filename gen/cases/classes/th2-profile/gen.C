@@ -1,23 +1,23 @@
 /// The two histogram classes a writer reaches for after TH1: TH2 and TProfile.
 ///
 /// Both have hand-written Streamers in both directions and both insert their
-/// own members *after* the TH1 base, which is the whole reason they need their
-/// own procedure -- `classes/histogram` covers TH1F and TH1D, whose records
-/// end at the TArray base.
+/// own members after the TH1 base, which is why they need their own procedure;
+/// `classes/histogram` covers TH1F and TH1D, whose records end at the TArray
+/// base.
 ///
-/// Four records, each carrying something the other three do not:
+/// Four records, each with something the other three lack:
 ///
 ///  * `h2f` is a TH2F with fixed-width bins, an explicit Sumw2() and fills that
-///    land outside the range in **x** and in **y**, separately. A cell is
-///    incremented either way, and neither fill reaches fTsumw -- so fEntries is
-///    6 while fTsumw is 4, and the pair is what distinguishes the two.
-///  * `h2d` is a TH2D with **variable edges on both axes**, which is the only
+///    land outside the range in x and in y, separately. A cell is incremented
+///    either way, and neither fill reaches fTsumw, so fEntries is 6 while
+///    fTsumw is 4.
+///  * `h2d` is a TH2D with variable edges on both axes, which is the only
 ///    way a non-empty fXbins reaches a Y axis anywhere in data/, and it is
 ///    filled with weights so the four y sums are not the x sums.
-///  * `p1` is a TProfile with unit weights, so fBinSumw2 stays **empty** while
-///    fSumw2 does not -- a profile's fSumw2 is allocated by its constructor and
-///    holds sum(w*y*y), which is nothing like a TH1's.
-///  * `p2` is a TProfile with a **Y range**, a non-default fErrorMode, and
+///  * `p1` is a TProfile with unit weights, so fBinSumw2 stays empty while
+///    fSumw2 does not. A profile's fSumw2 is allocated by its constructor and
+///    holds sum(w*y*y), which is unlike a TH1's.
+///  * `p2` is a TProfile with a Y range, a non-default fErrorMode, and
 ///    weighted fills, so fBinSumw2 is populated. One of its fills is outside
 ///    the Y range and increments nothing at all, fEntries included.
 void gen(const char *out)

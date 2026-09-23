@@ -12,7 +12,8 @@ bit in the version word.
 What this case pins down:
 
 - Every collection member is framed `byteCount version`, where the version is
-  TStreamerInfo's own class version, 10 -- not the collection's, and not a count.
+  TStreamerInfo's own class version, 10. It is not the collection's version and
+  not a count.
 - kStreamedMemberWise is bit 14 of that version word, so a member-wise frame
   reads 0x400A where an object-wise one reads 0x000A.
 - Object-wise is `count` then each element in full. Member-wise is a *second*

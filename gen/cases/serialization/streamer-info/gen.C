@@ -8,8 +8,8 @@
 /// There is deliberately no std::string member, and so no TStreamerSTLstring.
 /// An element's fSize is the writer's sizeof, and sizeof(std::string) is 24 with
 /// libc++ but 32 with libstdc++, so a file containing one is not reproducible
-/// across platforms and cannot serve as a reference file. That is the fSize trap
-/// of spec/02-serialization/StreamerInfo.md section 7 showing up in practice.
+/// across platforms and cannot serve as a reference file. This is the fSize trap
+/// of spec/02-serialization/StreamerInfo.md section 7.
 /// sizeof(std::vector<int>) is 24 in both, so the vector is safe.
 ///
 /// TStreamerBase is covered by serialization/object-tags, whose StreamerInfo

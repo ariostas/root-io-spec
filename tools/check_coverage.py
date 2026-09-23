@@ -3,22 +3,19 @@
 
 `AGENTS.md` requires every numbered entry under an `Invariants` heading to be
 added to `tools/check_invariants.py` and confirmed against a corrupted fixture.
-Nothing enforced that, and `PLAN.md` §8.13 is why it matters: the one entry
-found to be **false** was also one that had never been wired up. An invariant
-nobody checks is a claim, and this project's whole method is that claims are
-checked twice.
-
-So this tool makes the rule enforceable. It reads every entry out of `spec/`,
-matches it against the labels the tools actually report, and requires every
-unmatched entry to be accounted for in `gen/invariants.toml` with a reason.
+This tool enforces the rule. `PLAN.md` §8.13 records why: the one entry found
+to be **false** had also never been wired up. It reads every
+entry out of `spec/`, matches it against the labels the tools report, and
+requires every unmatched entry to be accounted for in `gen/invariants.toml`
+with a reason.
 
     tools/check_coverage.py            the report
     tools/check_coverage.py --check    what CI runs: fail on an unaccounted entry
 
-An entry is **checked** when some tool contains its label as a literal string --
-`self.bad("Directory 9.15", ...)` or the same label in a returned tuple. That is a
-deliberately shallow test: it proves a check exists, not that the check is right.
-Depth is what the corrupted-fixture rule is for, and this tool cannot see it.
+An entry is **checked** when some tool contains its label as a literal string,
+as in `self.bad("Directory 9.15", ...)` or a returned tuple. The test is
+deliberately shallow: it proves a check exists, not that it is right. The
+corrupted-fixture rule covers correctness, and this tool cannot see it.
 """
 
 from __future__ import annotations

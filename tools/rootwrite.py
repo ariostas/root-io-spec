@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Pure-Python ROOT file writer, built from `spec/06-writing/`.
 
-It is the executable form of that layer, in the same way `tools/rootfile.py` is
-the executable form of the reading layers -- and, like it, deliberately an
-independent implementation: written from the specification rather than from
-ROOT's writing code, so that the two disagreeing is a detectable event.
+It is the executable form of that layer, as `tools/rootfile.py` is of the
+reading layers. Like it, it is an independent implementation, written from the
+specification rather than from ROOT's writing code, so a disagreement between
+the two is detectable.
 
-Three properties are on purpose:
+Three properties are deliberate:
 
 * **Deterministic.** The timestamp and the UUID are inputs, not read from the
   clock, so a file is byte-reproducible and `data/written/` needs no digest
@@ -105,8 +105,8 @@ def pack_datime(year: int, month: int, day: int,
     """TDatime's packed form (`root/core/base/src/TDatime.cxx:392`).
 
     Six bit fields in one 32-bit word, with the year biased by 1995. A writer
-    that has no meaningful time still has to put something here; 0 is legal and
-    ROOT prints it as 1995-00-00.
+    with no meaningful time must still write something; 0 is legal and ROOT
+    prints it as 1995-00-00.
     """
     if not 1995 <= year <= 1995 + 63:
         raise WriteError(f"year {year} is outside TDatime's range 1995-2058")
@@ -146,9 +146,9 @@ def framed(version: int, body: bytes) -> bytes:
 def tobject(bits: int = 0, unique_id: int = 0) -> bytes:
     """A `TObject` base: version 1, `fUniqueID`, `fBits` (Buffer.md 3).
 
-    Ten bytes, and unframed -- `TObject::Streamer` writes no byte count. ROOT
-    masks kIsOnHeap and kNotDeleted out of `fBits` on the way to the file, so a
-    writer that has no bits to set writes 0.
+    Ten bytes, unframed: `TObject::Streamer` writes no byte count. ROOT masks
+    kIsOnHeap and kNotDeleted out of `fBits` when writing, so a writer with no
+    bits to set writes 0.
     """
     return u16(1) + u32(unique_id) + u32(bits)
 
@@ -180,15 +180,15 @@ def _u24le(v: int) -> bytes:
 def zlib_blocks(data: bytes, level: int) -> bytes | None:
     """`data` as one or more ROOT compression blocks, or None if it did not pay.
 
-    Each block is a 9-byte header -- `ZL`, method 8, then the compressed and
+    Each block is a 9-byte header (`ZL`, method 8, then the compressed and
     uncompressed sizes as 24-bit **little-endian** fields inside an otherwise
-    big-endian format -- followed by a zlib stream (`Compression.md` 2 and 4).
+    big-endian format) followed by a zlib stream (`Compression.md` 2 and 4).
     A payload above `MAX_ZIP_BUF` is split into blocks of that many
     *uncompressed* bytes each, and the block count is stored nowhere
     (`Compression.md` 7).
 
-    Returns None when the result is not smaller than the input, which is the
-    condition ROOT uses to fall back to storing the payload raw
+    Returns None when the result is not smaller than the input, the condition
+    under which ROOT stores the payload raw
     (`root/io/io/src/TKey.cxx:276-284`).
     """
     import zlib
@@ -245,10 +245,10 @@ class Key:
     def parse(cls, data: bytes, off: int) -> "Key":
         """Read a key image back, which only an **update** has to do.
 
-        A writer that creates a file never reads one; a writer that reopens one
-        has to, because the keys already in a directory go into the new key
-        list verbatim (`spec/06-writing/WritingFiles.md` 13.3). Small form
-        only, which is what `reopen` restricts itself to.
+        A writer that reopens a file must read them, because the keys already
+        in a directory go into the new key list verbatim
+        (`spec/06-writing/WritingFiles.md` 13.3). Small form only, as `reopen`
+        is.
         """
         nbytes, version, obj_len = struct.unpack(">ihi", data[off:off + 10])
         datime, key_len, cycle = struct.unpack(">Ihh", data[off + 10:off + 18])
@@ -300,12 +300,12 @@ class Obj:
     cycle: int = CYCLE
     #: Set when the record must not be compressed whatever the file says.
     raw: bool = False
-    #: A payload that cannot be built until earlier records are placed -- the
+    #: A payload that cannot be built until earlier records are placed: the
     #: TTree record, which needs its baskets' offsets. Called as
     #: builder(key_len, placed) once the position is known.
     builder: object = None
-    #: A basket is a key that is deliberately absent from the directory's key
-    #: list, because TKey(TDirectory*) never appends it (WritingTrees.md 6).
+    #: A basket's key is absent from the directory's key list, because
+    #: TKey(TDirectory*) never appends it (WritingTrees.md 6).
     in_key_list: bool = True
 
 
@@ -315,8 +315,8 @@ class _Placed:
     payload: bytes
     listed: bool = True
     #: Where the allocator put it, and how many bytes the chosen free span had
-    #: over -- 0 for an exact fit, -1 at the end of the file, otherwise the size
-    #: of the remainder this record has to mark (`WritingFiles.md` 2.3).
+    #: left over: 0 for an exact fit, -1 at the end of the file, otherwise the
+    #: size of the remainder this record has to mark (`WritingFiles.md` 2.3).
     offset: int = 0
     left: int = -1
 
@@ -327,9 +327,9 @@ class _Placed:
 class Deleted:
     """A record released during the write, by name.
 
-    ROOT reaches this state in one session two ways: `TDirectoryFile::Delete`,
-    and the `"overwrite"` option to `TObject::Write`, which frees the old key
-    before allocating the new one
+    ROOT reaches this state within one session in two ways:
+    `TDirectoryFile::Delete`, and the `"overwrite"` option to `TObject::Write`,
+    which frees the old key before allocating the new one
     (`root/io/io/src/TDirectoryFile.cxx:1977-1985`). Either way the record's
     bytes stay on disk and its span goes back on the free list
     (`spec/06-writing/WritingFiles.md` 2.4).
@@ -337,11 +337,11 @@ class Deleted:
 
     def __init__(self, name: str, cycle: int | None = None):
         self.name = name
-        #: Which cycle goes. None means the **newest**, which is what
+        #: Which cycle is deleted. None means the **newest**, which is what
         #: `TDirectoryFile::GetKey` returns and what both write options use
-        #: (`root/io/io/src/TDirectoryFile.cxx:1979`, `:1986`); an integer is
-        #: ROOT's `Delete("name;N")`, the only form that deletes a key at all
-        #: -- `Delete("name")` decodes to cycle 9999 and touches memory only
+        #: (`root/io/io/src/TDirectoryFile.cxx:1979`, `:1986`). An integer is
+        #: ROOT's `Delete("name;N")`, the only form that deletes a key at all;
+        #: `Delete("name")` decodes to cycle 9999 and touches memory only
         #: (`root/io/io/src/TDirectoryFile.cxx:1229`, `:1246`).
         self.cycle = cycle
 
@@ -349,7 +349,7 @@ class Deleted:
 class Replaced:
     """A record written first and the one it replaces freed afterwards.
 
-    ROOT's `"WriteDelete"`. It is not `delete` and `add` in the other order:
+    ROOT's `"WriteDelete"`. This is not `delete` and `add` in reverse order:
     `TDirectoryFile::WriteTObject` takes the victim from the list **before** it
     creates the new key (`root/io/io/src/TDirectoryFile.cxx:1986`) and deletes
     it after the write (`:2004-2007`), so the key the new one displaces is the
@@ -364,7 +364,7 @@ class Replaced:
 class FreeList:
     """Where a record goes: `spec/06-writing/WritingFiles.md` 2.
 
-    The allocator's state, not a report about it. `entries` is kept sorted by
+    The allocator's working state. `entries` is kept sorted by
     `fFirst` and every `fLast` is **inclusive**, so a span's length is
     `fLast - fFirst + 1`.
     """
@@ -383,8 +383,8 @@ class FreeList:
     def reopened(cls, entries, end: int) -> "FreeList":
         """The allocator's state as an existing file records it.
 
-        An update inherits the free list rather than starting one, which is the
-        whole of what it has to know about where the file's bytes already went
+        An update inherits the free list rather than starting one; that is all
+        it needs to know about where the file's bytes already went
         (`spec/06-writing/WritingFiles.md` 13.2). `entries` is the free-segment
         record decoded, in order, with inclusive `fLast`.
         """
@@ -405,9 +405,9 @@ class FreeList:
         """Choose an offset for a record of `n` bytes.
 
         Returns `(offset, left)`, where `left` is the number of bytes the chosen
-        span has over -- 0 for an exact fit, and **-1** when the record went at
-        the end of the file, where no marker is written. `left` is never 1, 2 or
-        3: step 2 of 2.2 guarantees it.
+        span has left over: 0 for an exact fit, and **-1** when the record went
+        at the end of the file, where no marker is written. Step 2 of 2.2
+        ensures `left` is never 1, 2 or 3.
         """
         if n <= 0:
             raise WriteError("a record cannot be empty")
@@ -442,7 +442,7 @@ class FreeList:
     def release(self, first: int, last: int) -> tuple[int, int]:
         """Free the inclusive span `[first, last]`, merging with its neighbours.
 
-        Returns the **merged** span, which is where the marker goes -- it may
+        Returns the **merged** span, which is where the marker goes; it may
         start before `first` (`spec/06-writing/WritingFiles.md` 2.4).
         """
         merged = None
@@ -483,8 +483,8 @@ class FreeList:
 class Directory:
     """One directory in the file: the root directory, or a subdirectory.
 
-    A subdirectory differs from the root one in four places and nowhere else
-    (`spec/06-writing/WritingFiles.md` 5): its record payload carries no name
+    A subdirectory differs from the root one in four places only
+    (`spec/06-writing/WritingFiles.md` 5): its record payload has no name
     and title, so `fNbytesName` is the key length alone; its key's `fSeekPdir`
     and its record's `fSeekParent` name the mother; its key's class name on disk
     is `TDirectory`; and its key-list record is keyed by its own name rather than
@@ -551,17 +551,17 @@ class Directory:
     def append_key(self, rec: "_Placed") -> int:
         """Put a record's key in this directory's list, and return its cycle.
 
-        `TDirectoryFile::AppendKey` (`root/io/io/src/TDirectoryFile.cxx:225-256`),
-        which is four lines and decides both questions a writer has about a key
-        list -- where the entry goes and what number it carries:
+        `TDirectoryFile::AppendKey` (`root/io/io/src/TDirectoryFile.cxx:225-256`)
+        is four lines and decides both where the entry goes and what cycle it
+        gets:
 
         * a name not already present is **appended at the end**, with cycle 1;
         * a name that is present is inserted **before the first key of that
           name**, and takes that key's cycle plus one.
 
         Because every insertion goes to the front of its name's run, the first
-        match is always the highest cycle -- which is what makes ROOT's lookups
-        work, since they take the first match and never compare cycles
+        match is always the highest cycle. ROOT's lookups rely on this: they take
+        the first match and never compare cycles
         (`spec/06-writing/WritingFiles.md` 8.1).
         """
         for i, other in enumerate(self.listed):
@@ -574,7 +574,7 @@ class Directory:
     def delete(self, name: str, cycle: int | None = None) -> None:
         """Release the space of a record of this name.
 
-        The record's bytes stay where they are -- nothing is moved or cleared --
+        The record's bytes stay where they are (nothing is moved or cleared),
         and its span goes back on the free list with a marker over its first four
         bytes (`spec/06-writing/WritingFiles.md` 2.4). Its key leaves this
         directory's key list, so the record becomes unreachable by name while
@@ -582,8 +582,8 @@ class Directory:
 
         This is ROOT's `TDirectoryFile::Delete`, and also the first half of the
         `"overwrite"` option to `TObject::Write`, which frees before it allocates
-        (`root/io/io/src/TDirectoryFile.cxx:1977-1985`) -- which is what lets the
-        replacement land in the space the original released.
+        (`root/io/io/src/TDirectoryFile.cxx:1977-1985`), so the replacement can
+        land in the space the original released.
 
         `cycle` selects one; the default is the **newest**, the one an
         unqualified lookup would return (8.1).
@@ -594,10 +594,10 @@ class Directory:
         """`delete` the record of this name, then add this one.
 
         ROOT's `"overwrite"` in one call. Because the space is released first,
-        a replacement of the same size lands at the same offset -- an exact fit
-        (`spec/06-writing/WritingFiles.md` 2.3) -- and because the old key has
-        left the list before the new one is appended, the **cycle does not
-        advance** (13.5).
+        a replacement of the same size lands at the same offset as an exact fit
+        (`spec/06-writing/WritingFiles.md` 2.3). Because the old key has left
+        the list before the new one is appended, the **cycle does not advance**
+        (13.5).
         """
         self.delete(obj.name)
         self.add(obj)
@@ -605,11 +605,10 @@ class Directory:
     def write_delete(self, obj: Obj) -> None:
         """Add this record, then release the one it replaces.
 
-        ROOT's `"WriteDelete"`. The same two operations as `overwrite` in the
-        other order, and the order is the whole difference: the new record is
-        allocated while the old one is still live, so it cannot land on it, and
-        the new key is appended while the old key is still in the list, so it
-        takes the next **cycle** (13.5).
+        ROOT's `"WriteDelete"`: the same two operations as `overwrite` in the
+        other order. The new record is allocated while the old one is still
+        live, so it cannot land on it, and the new key is appended while the old
+        key is still in the list, so it takes the next **cycle** (13.5).
         """
         self.writer._sequence.append((self, Replaced(obj)))
 
@@ -629,8 +628,8 @@ class Directory:
     def record_key(self, seek_key: int, obj_len: int) -> Key:
         """The key at the head of this directory's own record.
 
-        The root directory's carries the file's class and a `fSeekPdir` of 0,
-        which is an artefact of ROOT's construction order
+        The root directory's key has the file's class and a `fSeekPdir` of 0,
+        an artefact of ROOT's construction order
         (`spec/06-writing/WritingFiles.md` 4.1).
         """
         if self.is_root:
@@ -686,14 +685,14 @@ class Directory:
 
         `fDatimeC` and `fDatimeM` are one value in a file this writer creates.
         ROOT sets both at construction and refreshes `fDatimeM` on every header
-        rewrite (`root/io/io/src/TDirectoryFile.cxx:315-316`, `:2175`), which in
-        a single-pass write lands in the same second -- and which in an
-        **update** does not, so `datime_c` carries the value the file already
-        had (`spec/06-writing/WritingFiles.md` 13.6).
+        rewrite (`root/io/io/src/TDirectoryFile.cxx:315-316`, `:2175`). In a
+        single-pass write both land in the same second; in an **update** they do
+        not, so `datime_c` keeps the value the file already had
+        (`spec/06-writing/WritingFiles.md` 13.6).
 
-        This is the part an update rewrites, and the only part: it is written in
-        place at `fSeekDir + fNbytesName`, past the key and past the repeated
-        name and title, neither of which is touched (5.3).
+        This is the only part an update rewrites: it is written in place at
+        `fSeekDir + fNbytesName`, past the key and the repeated name and title,
+        neither of which is touched (5.3).
         """
         created = self.writer.datime if self.datime_c is None else self.datime_c
         body = (u16(DIR_VERSION) + u32(created)
@@ -718,9 +717,9 @@ class Directory:
 class _Base:
     """Everything an update has to read out of the file it is about to change.
 
-    Five records and nothing else: the header, the root directory record, the
-    key list, the free-segment record, and -- only as two numbers it copies
-    forward -- the `StreamerInfo` record
+    Five records only: the header, the root directory record, the key list,
+    the free-segment record, and the `StreamerInfo` record, of which it only
+    copies two numbers forward
     (`spec/06-writing/WritingFiles.md` 13.2).
     """
 
@@ -798,8 +797,8 @@ class FileWriter:
         if len(uuid) != 16:
             raise WriteError("a TUUID is 16 bytes")
         # fCompress is algorithm * 100 + level (FileHeader.md 5.8). Only ZLIB
-        # is implemented here; the others are somebody else's standards
-        # (spec/index.md, what is out of scope).
+        # is implemented here; the other codecs are external standards and out
+        # of scope (spec/index.md).
         if compress != 0 and not 101 <= compress <= 109:
             raise WriteError(
                 f"fCompress {compress} is not 0 or ZLIB (101-109); "
@@ -809,12 +808,12 @@ class FileWriter:
                              "directory record; see Directory.md 5")
         self.file_name = file_name
         self.title = title
-        #: Whether to append the `listOfRules` entry ROOT appends. Optional --
-        #: ROOT never reads it back
+        #: Whether to append the `listOfRules` entry ROOT appends. It is
+        #: optional: ROOT never reads it back
         #: (`spec/02-serialization/SchemaEvolution.md` 6.2) and the rules it
-        #: ships apply to versions this writer does not emit. Left on by
-        #: default for the same reason `kIsCompiled` is reproduced: it is what
-        #: makes a record comparable byte for byte with a ROOT-written one
+        #: holds apply to versions this writer does not emit. On by default for
+        #: the same reason `kIsCompiled` is reproduced: it makes a record
+        #: comparable byte for byte with a ROOT-written one
         #: (`spec/06-writing/WritingObjects.md` 8.6).
         self.emit_rules = emit_rules
         self.version = version
@@ -842,12 +841,12 @@ class FileWriter:
         """An update: a writer positioned to add to a file that already exists.
 
         `spec/06-writing/WritingFiles.md` 13. `file_name` is the path the file
-        is being opened *as*, which is what every key written from here carries
-        -- deliberately not what the file records about itself, because ROOT
+        is being opened *as*, which every key written from here carries. It is
+        deliberately not the name the file records about itself, because ROOT
         does not restore that either (13.6). Everything else is inherited:
         `fVersion`, `fCompress`, `fNbytesName`, the UUID and the title all come
-        off the file, and the compression level the caller might have wanted is
-        discarded exactly as `TFile::Open` discards it.
+        from the file, and any compression level the caller wanted is discarded
+        as `TFile::Open` discards it.
         """
         if data[0:4] != b"root":
             raise WriteError("not a ROOT file")
@@ -913,7 +912,7 @@ class FileWriter:
 
         Map positions are measured from the start of the record
         (`WritingObjects.md` 4), so a payload cannot be built until the key is
-        sized -- and a histogram's key length depends on its name and title.
+        sized, and a histogram's key length depends on its name and title.
         """
         self.root.add_hist(hist)
 
@@ -951,8 +950,8 @@ class FileWriter:
         """`payload` as it goes on disk, compressed if that is smaller.
 
         ROOT does not attempt compression below 257 bytes
-        (`root/io/io/src/TKey.cxx:262-264`); matching that is not required, but
-        it keeps a diff against a ROOT-written file readable.
+        (`root/io/io/src/TKey.cxx:262-264`). Matching that is not required, but
+        keeps a diff against a ROOT-written file readable.
         """
         level = compression_level(self.compress)
         if level == 0 or len(payload) <= MIN_COMPRESS:
@@ -963,10 +962,10 @@ class FileWriter:
     # -- the file's own key, which names the file and the root directory ----
 
     def _self_key(self, seek_key: int, obj_len: int, seek_pdir: int = 0) -> Key:
-        """A key carrying the file's name, title and class `TFile`.
+        """A key with the file's name, title and class `TFile`.
 
         The root directory record, the key list and the free list all use it,
-        which is why none of the three can be identified by its key
+        so none of the three can be identified by its key
         (`spec/01-container/Directory.md` 6.2).
         """
         key = Key(class_name="TFile", name=self.file_name, title=self.title,
@@ -979,8 +978,8 @@ class FileWriter:
     def nbytes_name(self) -> int:
         """`fNbytesName`: the key plus the name and title repeated after it.
 
-        The header carries the **root** directory's value; a subdirectory's is a
-        different number and lives only in its own record
+        The header holds the **root** directory's value; a subdirectory's is a
+        different number and is stored only in its own record
         (`spec/01-container/Directory.md` 1).
         """
         return self.root.nbytes_name
@@ -992,8 +991,8 @@ class FileWriter:
         """One record: a key, and the payload as it goes on disk.
 
         `fObjlen` stays the **uncompressed** length whatever happens to the
-        payload, because `fObjlen > fNbytes - fKeylen` is the only thing that
-        tells a reader the payload is compressed (`Compression.md` 1).
+        payload, because `fObjlen > fNbytes - fKeylen` is the only indication
+        to a reader that the payload is compressed (`Compression.md` 1).
         """
         stored = self._stored(payload)
         key = Key(class_name=class_name, name=name, title=title,
@@ -1005,8 +1004,8 @@ class FileWriter:
     def _record_of(self, obj: Obj, pos: int, seek_pdir: int) -> _Placed:
         """One record from an Obj, honouring its key version and tail.
 
-        `seek_pdir` is the owning directory's `fSeekDir`, which is what says
-        which directory the record belongs to -- the key list is a copy, not the
+        `seek_pdir` is the owning directory's `fSeekDir`, which records which
+        directory the record belongs to; the key list is a copy, not the
         authority (`spec/01-container/Directory.md` 9.7).
         """
         stored = obj.payload if obj.raw else self._stored(obj.payload)
@@ -1019,17 +1018,16 @@ class FileWriter:
 
     def to_bytes(self) -> bytes:
         #: Every write, in the order it happens. Records are placed by the
-        #: allocator rather than appended, so a record can land on the bytes of
-        #: one that was released -- which is legal, and which is why the file is
-        #: assembled chronologically and the overlap check tracks what is *live*
-        #: rather than what has been written
-        #: (`spec/06-writing/WritingFiles.md` 2).
+        #: allocator rather than appended, so a record can legally land on the
+        #: bytes of one that was released. The file is therefore assembled
+        #: chronologically, and the overlap check tracks what is *live* rather
+        #: than what has been written (`spec/06-writing/WritingFiles.md` 2).
         ops: list[tuple[str, int, object, int]] = []
         free = (FreeList() if self._base is None
                 else FreeList.reopened(self._base.entries, self._base.end))
 
         def emit(off: int, left: int, blob) -> None:
-            """A record, and the remainder marker if its span had bytes over."""
+            """A record, and the remainder marker if its span had bytes left over."""
             n = blob.key.nbytes if isinstance(blob, _Placed) else len(blob)
             ops.append(("rec", off, blob, n))
             if left > 0:
@@ -1072,8 +1070,8 @@ class FileWriter:
                 # A subdirectory's record is placed where ROOT places it: at
                 # creation, before anything it holds, with fSeekKeys still 0
                 # (WritingFiles.md 5.1). Its payload is filled in at the end,
-                # once the key lists have addresses -- it is 60 bytes either way,
-                # which is what lets ROOT rewrite it in place.
+                # once the key lists have addresses; it is 60 bytes either way,
+                # so ROOT can rewrite it in place.
                 key = item.record_key(0, DIR_RECORD_LEN)
                 pos, left = free.place(key.nbytes)
                 item.seek_dir = pos
@@ -1086,8 +1084,8 @@ class FileWriter:
                 continue
             victim = None
             if isinstance(item, Replaced):
-                # The victim is chosen before the new record exists, which is
-                # the whole difference from `overwrite` (13.5).
+                # The victim is chosen before the new record exists; this is
+                # what distinguishes it from `overwrite` (13.5).
                 victim = next((p for p in home.listed
                                if p.key.name == item.obj.name), None)
                 if victim is None:
@@ -1111,7 +1109,7 @@ class FileWriter:
             if rec.listed:
                 # The cycle is decided by the list, not by the caller: it is
                 # whatever AppendKey returns (WritingFiles.md 8.1). An object
-                # that asked for one explicitly keeps it -- a TBasket does.
+                # that asked for one explicitly, such as a TBasket, keeps it.
                 cycle = home.append_key(rec)
                 if obj.cycle == CYCLE:
                     rec.key.cycle = cycle
@@ -1121,8 +1119,8 @@ class FileWriter:
                 drop(victim.offset, victim.offset + victim.key.nbytes - 1)
 
         # The StreamerInfo record: a TList named "StreamerInfo", written before
-        # the key lists because that is TFile::Close's order, and deliberately
-        # *not* in any key list (WritingFiles.md 6).
+        # the key lists because that is TFile::Close's order, and *not* in any
+        # key list (WritingFiles.md 6).
         seek_info = nbytes_info = 0
         info_record = None
         if base is not None and not self.infos:
@@ -1162,8 +1160,8 @@ class FileWriter:
                 continue
             if d.seek_keys:
                 # WriteKeys always reallocates, freeing the old record before
-                # it sizes the new one, which is why a key list so often lands
-                # back on its own address (root/io/io/src/TDirectoryFile.cxx:2200,
+                # it sizes the new one, so a key list often lands back on its
+                # own address (root/io/io/src/TDirectoryFile.cxx:2200,
                 # 13.4).
                 drop(d.seek_keys, d.seek_keys + d.nbytes_keys - 1)
             images = b"".join(p.key.to_bytes() for p in d.listed)
@@ -1182,8 +1180,8 @@ class FileWriter:
 
         # The free list (FreeSegments.md 2, WritingFiles.md 9). Its own record
         # is placed before its entries can be serialized, and placing it can
-        # remove an entry -- so the payload is sized first and zero-padded to
-        # that size if the list came out shorter, exactly as ROOT does
+        # remove an entry, so the payload is sized first and zero-padded to
+        # that size if the list came out shorter, as ROOT does
         # (`root/io/io/src/TFile.cxx:2649-2657`).
         if base is not None and base.seek_free:
             # WriteFree does the same, and before it counts the entries
@@ -1218,7 +1216,7 @@ class FileWriter:
         out[45:47] = u16(1)                       # TUUID version
         out[47:63] = self.uuid if base is None else base.uuid
 
-        # Every directory record's payload is known only now, because each names
+        # Each directory record's payload is known only now, because it names
         # its own key list.
         for d in self.subdirs:
             d.record.payload = d.payload()
@@ -1232,11 +1230,11 @@ class FileWriter:
                                            BEGIN + dir_key.nbytes + dir_left - 1),
                                4))
         else:
-            # An update rewrites the directory **header** in place and nothing
-            # else of the record: not the key, not the repeated name and title
-            # (root/io/io/src/TDirectoryFile.cxx:2175, 13.6). The key is why a
-            # file updated under a different path disagrees with itself about
-            # its own name.
+            # An update rewrites only the directory **header** in place, not the
+            # key or the repeated name and title
+            # (root/io/io/src/TDirectoryFile.cxx:2175, 13.6). Because the key is
+            # kept, a file updated under a different path disagrees with itself
+            # about its own name.
             ops.append(("patch", BEGIN + base.nbytes_name, root.header(),
                         DIR_RECORD_LEN))
         emit(seek_free, free_left,
@@ -1245,7 +1243,7 @@ class FileWriter:
 
         # Assemble, in the order the writes happen. A record placed in released
         # space lands on the bytes of the record that used to be there, which is
-        # legal and is how ROOT reuses a gap -- so the check is that no two
+        # legal and is how ROOT reuses a gap. The check is therefore that no two
         # records are live over the same byte, not that nothing is written twice.
         # The file can be longer than fEND: releasing the last record moves fEND
         # back and ROOT does not truncate (WritingFiles.md 2.4), so the bytes of
@@ -1260,9 +1258,9 @@ class FileWriter:
         live = bytearray(physical)
         if base is not None:
             # Everything the file already held is live except what its free list
-            # says is not. A reopened writer never has to enumerate the records
-            # it is not touching -- the free list is the whole of what it knows,
-            # and that is exactly what ROOT knows too (13.2).
+            # marks free. A reopened writer never enumerates the records it is
+            # not touching: the free list is all it knows, as it is all ROOT
+            # knows (13.2).
             live[BEGIN:base.end] = b"\x01" * (base.end - BEGIN)
             for first, last in base.entries:
                 live[first:min(last + 1, base.end)] = bytes(
@@ -1310,7 +1308,7 @@ class Payload:
     Map positions are measured from the start of the **record**, key included
     (`Buffer.md` 1), so the key's length is an input. A writer that measures
     from the start of the object data instead produces class tags that are off
-    by `fKeylen` -- readable only by a reader that makes the same mistake.
+    by `fKeylen`, readable only by a reader that makes the same mistake.
     """
 
     def __init__(self, key_len: int):
@@ -1346,15 +1344,15 @@ class Payload:
             self.raw(u32(CLASS_MASK | self.classes[name]))
         else:
             self.raw(u32(NEW_CLASS_TAG))
-            # The one null-terminated string in the format.
+            # The only null-terminated string in the format.
             self.raw(name.encode("utf-8") + b"\x00")
             self.classes[name] = tag_pos + MAP_OFFSET
 
     def slot(self, class_name: str, version: int, build, key=None) -> None:
         """A pointer slot: a byte count, a class record, then the object.
 
-        The object carries its own byte count and version word inside this
-        one, so the outer count covers the class record as well.
+        The object has its own byte count and version word inside this one, so
+        the outer count covers the class record as well.
         """
         start = len(self.buf)
         record_pos = self.pos
@@ -1387,8 +1385,8 @@ class Payload:
         """A `TList` at version 5 (`StreamerInfo.md` 4).
 
         `entries` are callables appending one object slot each. Every entry is
-        followed by an option-length byte, which is 0 when there is no option
-        -- the single most common way to desynchronise on this record.
+        followed by an option-length byte, which is 0 when there is no option.
+        Missing it is the most common way to desynchronise on this record.
         """
         def body(p: Payload) -> None:
             p.tobject(bits)
@@ -1405,10 +1403,9 @@ class Payload:
 
         `embedded` picks the framing, and getting it wrong is an 18-byte error:
 
-        * a **pointer** member -- `TStreamerInfo::fElements`, `fType` 63/64 --
-          is a slot, so the record is preceded by a class record naming the
-          class;
-        * a **member object** -- `TTree::fBranches`, `fType` 61 -- is the bare
+        * a **pointer** member (`TStreamerInfo::fElements`, `fType` 63/64) is a
+          slot, so the record is preceded by a class record naming the class;
+        * a **member object** (`TTree::fBranches`, `fType` 61) is the bare
           framed object, with no class record at all.
 
         `count` overrides the entry count, which is the index of the last
@@ -1502,7 +1499,7 @@ class Element:
                 r.raw(i32(self.ftype) + i32(self.size)
                       + i32(self.array_length) + i32(self.array_dim))
                 for v in self.indices():
-                    # fMaxIndex is i32, but fMaxIndex[1] carries a checksum
+                    # fMaxIndex is i32, but fMaxIndex[1] holds a checksum
                     # whose top bit may be set (StreamerInfo.md 9), so it is
                     # emitted as an unsigned word and reads back negative.
                     r.raw(u32(v & 0xFFFFFFFF))
@@ -1534,23 +1531,19 @@ class Info:
         total = self.checksum if self.checksum is not None else checksum(self)
 
         def body(q: Payload) -> None:
-            # kIsCompiled is an artifact of ROOT's writer and is persisted
-            # (StreamerInfo.md 6). A reader ignores it; reproducing it is what
+            # ROOT leaves kIsCompiled set in the info's fBits, and it is
+            # persisted (StreamerInfo.md 6). A reader ignores it; reproducing it
             # lets a record be compared byte for byte with a ROOT-written one.
             q.tnamed(self.name, self.title, bits=K_IS_COMPILED)
             q.raw(u32(total) + i32(abs(self.class_version)))
             q.tobjarray("", [e.write for e in self.elements])
 
-        # ROOT leaves kIsCompiled set in the info's fBits, and it is persisted
-        # (StreamerInfo.md 6). It is an artifact of the writer, ignorable on
-        # read -- but reproducing it is what makes a byte comparison against a
-        # ROOT-written record possible.
         p.slot("TStreamerInfo", STREAMER_INFO_VERSION, body, key=id(self))
 
 
-#: The type names an integer member can carry without being an enum. Anything
-#: else at fType 3 is one, which is how an enum can be recognised in a record
-#: at all -- see looks_like_enum.
+#: The type names an integer member can have without being an enum. Anything
+#: else at fType 3 is an enum; this is the only way to recognise one in a
+#: record (see looks_like_enum).
 PRIMITIVE_TYPE_NAMES = {
     "bool", "char", "signed char", "unsigned char", "short", "unsigned short",
     "int", "unsigned int", "long", "unsigned long", "long long",
@@ -1565,7 +1558,7 @@ K_IS_OWNER = 1 << 14
 
 #: The `listOfRules` ROOT appends for the classes this writer emits, read out of
 #: the fixtures it is compared against. Each applies to a source version this
-#: writer never produces, which is why emitting them is optional and why
+#: writer never produces, so emitting them is optional;
 #: `spec/06-writing/WritingObjects.md` 8.6 says a writer may leave them out.
 #: Note the trailing space: `TSchemaRule::AsString` ends every field with one.
 KNOWN_RULES = {
@@ -1591,9 +1584,9 @@ def rule_list(rules):
     `TObjString`s, one per rule, each rendered by `TSchemaRule::AsString`
     (`spec/02-serialization/SchemaEvolution.md` 6.1). ROOT appends it last and
     unconditionally, from the *class's* rule set with no reference to the
-    version being written -- so the rules it ships may apply to no data in the
-    file. Returns a callable of the same shape as `Info.write`, so it goes in
-    the list beside the infos.
+    version being written, so its rules may apply to no data in the file.
+    Returns a callable of the same shape as `Info.write`, so it goes in the
+    list beside the infos.
     """
     def write(p: "Payload") -> None:
         def body(q: "Payload") -> None:
@@ -1629,8 +1622,8 @@ def looks_like_enum(ftype: int, type_name: str) -> bool:
     """Whether an element describes an enum member, from the record alone.
 
     `TStreamerInfo::Build` stores every enum as an Int_t with `fType` 3, so the
-    two are indistinguishable by type code -- but `fTypeName` keeps the enum's
-    own qualified name. ROOT's own checksum code uses exactly this test
+    two are indistinguishable by type code, but `fTypeName` keeps the enum's
+    own qualified name. ROOT's own checksum code uses this test
     (`root/io/io/src/TStreamerInfo.cxx:3612-3620`), so it is the rule rather
     than a guess. It matters because an enum folds an extra 1 into the
     checksum. See `spec/02-serialization/StreamerInfo.md` 11.1.
@@ -1652,8 +1645,8 @@ def _counter_start(title: str) -> int | None:
     """Where the counter's `[` starts in a comment, or None.
 
     Only `/` and whitespace may precede it, so an ordinary comment that happens
-    to contain brackets -- `// x position [0, 1]` -- contributes nothing to the
-    checksum. ROOT's rule, `TVirtualStreamerInfo::GetElementCounterStart`,
+    to contain brackets, such as `// x position [0, 1]`, contributes nothing to
+    the checksum. ROOT's rule, `TVirtualStreamerInfo::GetElementCounterStart`,
     `root/core/meta/src/TVirtualStreamerInfo.cxx:98-110`; the looser plain search
     belongs to checksum variants 6 and below (`StreamerInfo.md` 11).
     """
@@ -1698,7 +1691,7 @@ def checksum(info: Info) -> int:
 # Histograms, spec/06-writing/WritingHistograms.md.
 # ---------------------------------------------------------------------------
 
-#: TH1::fMaximum and fMinimum when unset. Not a value -- a sentinel.
+#: TH1::fMaximum and fMinimum when unset: a sentinel, not a value.
 NO_LIMIT = -1111.0
 #: TObject::kMustCleanup, which ROOT sets on a histogram (it lives in a
 #: directory), and the two bits it leaves on TH1::fFunctions.
@@ -1718,7 +1711,7 @@ class Axis:
 
     `edges` holds `nbins + 1` bin edges for a variable-width axis and is the
     only way `fXbins` is non-empty; for a fixed-width axis it is None and
-    `xmin`/`xmax` carry the range.
+    `xmin`/`xmax` give the range.
     """
 
     name: str = "xaxis"
@@ -1741,8 +1734,8 @@ class Axis:
     label_size: float = 0.035
     tick_length: float = 0.03
     #: None takes gStyle's per-axis default, which is 0 for the Y axis and 1
-    #: for X and Z -- the reason the three attribute blocks of a ROOT-written
-    #: histogram are not identical (`WritingHistograms.md` 4.1).
+    #: for X and Z, so the three attribute blocks of a ROOT-written histogram
+    #: are not identical (`WritingHistograms.md` 4.1).
     title_offset: float | None = None
     title_size: float = 0.035
     title_color: int = 1
@@ -1794,8 +1787,8 @@ class Stats:
 
     The first five are `TH1`'s and every histogram writes them. The last three
     are written by the classes that have a second dimension: a `TH2` adds all
-    three, in `fScalefactor`'s company, and a `TProfile` adds `tsumwy` and
-    `tsumwy2` only -- it has no `fTsumwxy` (`WritingHistograms.md` 7 and 8).
+    three, next to `fScalefactor`, and a `TProfile` adds only `tsumwy` and
+    `tsumwy2`, since it has no `fTsumwxy` (`WritingHistograms.md` 7 and 8).
     """
 
     entries: float = 0.0
@@ -1851,15 +1844,16 @@ def stats_from_cells(cells, axis: Axis, sumw2=None) -> Stats:
     """Statistics for binned input, using bin centres.
 
     The exact values ROOT would have written are unrecoverable once the data is
-    binned -- it accumulates the true x of each fill. Bin centres are the best a
-    writer starting from a histogram can do, and the result is self-consistent.
+    binned, since ROOT accumulates the true x of each fill. Bin centres are the
+    best a writer starting from a histogram can do, and the result is
+    self-consistent.
 
     Two of the five need care:
 
     * `entries` counts **fills**, not weight. From binned data the count is
       gone, so the sum of the contents is used; for unit weights the two agree.
     * `tsumw2` is the sum of squared *weights*, which is not the sum of squared
-      bin contents. When `sumw2` is known it is exactly its in-range sum;
+      bin contents. When `sumw2` is known it is its in-range sum;
       without it, unit weights are assumed and it equals `tsumw`.
     """
     centre = _centres(axis)
@@ -1891,7 +1885,7 @@ def stats_from_cells_2d(cells, xaxis: Axis, yaxis: Axis, sumw2=None) -> Stats:
 
     A fill that is outside the range in **either** axis increments its cell and
     none of the seven sums, so the in-range region is the rectangle
-    `1 <= binx <= nx`, `1 <= biny <= ny` -- not "every cell but the first and
+    `1 <= binx <= nx`, `1 <= biny <= ny`, not "every cell but the first and
     last" (`WritingHistograms.md` 7.1).
     """
     nx, ny = xaxis.nbins, yaxis.nbins
@@ -1919,7 +1913,7 @@ def stats_from_profile(cells, sumw2, bin_entries, axis: Axis,
     sum(w*y) and `sumw2` is sum(w*y*y), so `fTsumwy` and `fTsumwy2` are their
     in-range sums **exactly**, and `fTsumw`/`fTsumw2` come the same way from
     `bin_entries` and `bin_sumw2`. Only `fTsumwx` and `fTsumwx2` need bin
-    centres, and only `fEntries` is unrecoverable -- it counts fills, and a
+    centres, and only `fEntries` is unrecoverable: it counts fills, and a
     weighted fill moves `bin_entries` by its weight instead (§8.3).
     """
     centre = _centres(axis)
@@ -1962,7 +1956,7 @@ class _Histogram:
     contour: list | None = None
 
     #: The Y and Z axes as the concrete class needs them. A 1-D histogram and a
-    #: profile carry a one-bin placeholder for each; a TH2 has a real Y axis.
+    #: profile have a one-bin placeholder for each; a TH2 has a real Y axis.
     def axes(self) -> tuple:
         return (self.axis, Axis(name="yaxis"), Axis(name="zaxis"))
 
@@ -1990,9 +1984,9 @@ class _Histogram:
 
         q.raw(i32(len(self.cells)))            # fNcells
         # All three axes are always present. The Y axis's fTitleOffset is 0
-        # rather than 1 in ROOT's default style, which is why the three
-        # attribute blocks are not identical in a ROOT-written file; Axis
-        # applies that per name. Free, like the rest of TAttAxis.
+        # rather than 1 in ROOT's default style, so the three attribute blocks
+        # differ in a ROOT-written file; Axis applies that per name. Free, like
+        # the rest of TAttAxis.
         for ax in self.axes():
             ax.write(q)
         q.raw(i16(self.bar_offset) + i16(self.bar_width))
@@ -2024,7 +2018,7 @@ class _Histogram:
 class Hist1D(_Histogram):
     """A `TH1F` or `TH1D`: the `TH1` base at version 8, then the `TArray` base.
 
-    `cells` holds `nbins + 2` values -- underflow, the bins, overflow -- and its
+    `cells` holds `nbins + 2` values (underflow, the bins, overflow), and its
     length is `TH1::fNcells`. `sumw2` is either None or the same length.
     """
 
@@ -2063,9 +2057,9 @@ class Hist2D(_Histogram):
     `biny * (nx + 2) + binx`, so the first `nx + 2` of them are the whole
     underflow row of y (`WritingHistograms.md` 7.1).
 
-    `yaxis` is a real `TAxis` rather than the one-bin placeholder a `TH1F`
-    carries, and it is the only axis a writer has to fill in twice: `fNbins`
-    there and the `y` half of every cell index have to agree.
+    `yaxis` is a real `TAxis` rather than the one-bin placeholder of a `TH1F`,
+    and it is the only axis a writer has to fill in twice: `fNbins` there and
+    the `y` half of every cell index must agree.
     """
 
     yaxis: Axis | None = None
@@ -2118,7 +2112,7 @@ class Profile(_Histogram):
 
     * `cells` is the `TH1D`'s `TArrayD` base and holds **sum(w * y)**;
     * `sumw2` is `TH1::fSumw2` and holds **sum(w * y * y)**, and unlike a
-      `TH1`'s it is never absent -- the constructor allocates it;
+      `TH1`'s it is never absent, because the constructor allocates it;
     * `bin_entries` is `TProfile::fBinEntries` and holds **sum(w)**;
     * `bin_sumw2` is `TProfile::fBinSumw2` and holds **sum(w * w)**. It is
       empty until a weight other than 1 arrives.
@@ -2126,9 +2120,9 @@ class Profile(_Histogram):
     What a reader calls the bin content is `cells[i] / bin_entries[i]`, computed
     on demand and stored nowhere (`WritingHistograms.md` 8.2).
 
-    `ymin` and `ymax` are the accepted range in y; equal values -- 0 and 0 from
-    the ordinary constructor -- mean "no range", and that is the only thing
-    that distinguishes "unset" from a range of zero width.
+    `ymin` and `ymax` are the accepted range in y. Equal values (0 and 0 from
+    the ordinary constructor) mean "no range"; nothing else distinguishes
+    "unset" from a range of zero width.
     """
 
     sumw2: list | None = None
@@ -2174,14 +2168,13 @@ class Profile(_Histogram):
 
 
 # ---------------------------------------------------------------------------
-# The streamer infos for the histogram chain. Fourteen classes, and a writer
-# that wants its histograms readable by anything but ROOT has to emit them.
+# The streamer infos for the histogram chain. Fourteen classes, which a writer
+# must emit for its histograms to be readable by anything but ROOT.
 #
 # They are built in dependency order so that each TStreamerBase element takes
-# its fBaseCheckSum from the info built just before it: an error in one
-# checksum then shows up twice, which is what makes the arrangement worth the
-# awkwardness. Two checksums cannot be computed here and are supplied --
-# spec/02-serialization/StreamerInfo.md 11.2 says why.
+# its fBaseCheckSum from the info built just before it (see InfoSet). Two
+# checksums cannot be computed here and are supplied;
+# spec/02-serialization/StreamerInfo.md 11.2 explains why.
 # ---------------------------------------------------------------------------
 
 def _basic(name, title, ftype, size, type_name, **kw) -> Element:
@@ -2211,8 +2204,7 @@ class InfoSet:
     Each `TStreamerBase` element needs the base class's checksum
     (`StreamerInfo.md` 9), so the classes are built bases-first and every base
     entry takes its value from the info built earlier. An error in one checksum
-    then shows up twice, which is what makes the arrangement worth its
-    awkwardness.
+    then shows up twice, which justifies the awkward arrangement.
     """
 
     def __init__(self):
@@ -2231,8 +2223,8 @@ class InfoSet:
         """The infos ROOT would write, in ROOT's own order.
 
         The order is class registration order, which is neither alphabetical nor
-        dependency order. A reader does not care; matching it is what lets a
-        record be compared with a ROOT-written one byte for byte.
+        dependency order. Only a byte-for-byte comparison with a ROOT-written
+        record needs it.
         """
         return [self.by_name[n] for n in order if n in self.by_name]
 
@@ -2266,8 +2258,8 @@ class InfoSet:
             _basic("fMarkerStyle", "Marker style", 2, 2, "short"),
             _basic("fMarkerSize", "Marker size", 5, 4, "float"),
         ]))
-        # TString's info carries no elements at all, so its checksum -- which
-        # the class does have -- cannot come from them.
+        # TString's info has no elements, so its checksum (which the class
+        # does have) cannot be computed from them.
         add(Info("TString", 2, [], checksum=0x00017419))
         add(Info("TCollection", 3, [
             _base("TObject", "Basic ROOT object", 66, 1, cs("TObject")),
@@ -2300,9 +2292,8 @@ class InfoSet:
         """`TArray`, `TArrayF` and `TArrayD`, for their checksums only.
 
         No ROOT-written file contains an info for any of them: their streamers
-        are hand-written, so nothing marks them
-        (`WritingObjects.md` 7.2). The checksums are needed all the same, as the
-        base of `TH1F` and `TH1D`.
+        are hand-written, so nothing marks them (`WritingObjects.md` 7.2). The
+        checksums are still needed, for the bases of `TH1F` and `TH1D`.
         """
         add, cs = self.add, self.cs
         # fN is kCounter (6) rather than kInt (3) because TArrayF::fArray
@@ -2316,7 +2307,7 @@ class InfoSet:
                 _base("TArray", "Abstract array base class", 0, 1,
                       cs("TArray")),
                 # fSize is the *element* type's size, not a pointer's, and
-                # fCountClass is the class that declares fN -- TArray, not the
+                # fCountClass is the class that declares fN: TArray, not the
                 # concrete one (`ElementLists.md` sections 1 and 3).
                 Element("TStreamerBasicPointer", "fArray",
                         f"[fN] Array of fN {word}s",
@@ -2326,18 +2317,18 @@ class InfoSet:
             ]))
 
 
-#: The title a TStreamerBase element carries for each concrete TArray.
+#: The title of the TStreamerBase element for each concrete TArray.
 ARRAY_TITLES = {"F": "Array of floats", "D": "Array of doubles"}
 
-#: The order ROOT records the histogram classes in, which is registration
-#: order -- neither alphabetical nor dependency order. It is a property of the
+#: The order ROOT records the histogram classes in: registration order, which
+#: is neither alphabetical nor dependency order. It is a property of the
 #: *file*: the first object's class comes first, then its bases as they were
 #: built, then whatever each later object adds. Filtering this one list
 #: reproduces both reference files, `data/classes/histogram.root` (a TH1F then
 #: a TH1D) and `data/classes/th2-profile.root` (a TH2F, a TH2D, then two
 #: TProfiles), because neither contains a class the other's first object needs.
-#: A reader does not care; matching it is what lets a StreamerInfo record be
-#: compared with a ROOT-written one byte for byte.
+#: Only a byte-for-byte comparison of a StreamerInfo record with a ROOT-written
+#: one needs it.
 HISTOGRAM_INFO_ORDER = (
     "TH1F", "TH2F", "TH2", "TH1", "TNamed", "TObject", "TAttLine", "TAttFill",
     "TAttMarker", "TAxis", "TAttAxis", "THashList", "TList", "TSeqCollection",
@@ -2366,7 +2357,7 @@ def histogram_infos(classes=("TH1F",)) -> list:
 
     `classes` names the concrete histogram classes the file holds, from
     `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`. The bases each one needs are
-    added for it -- a `TProfile` pulls in `TH1D`, a `TH2F` pulls in `TH2` -- and
+    added for it (a `TProfile` pulls in `TH1D`, a `TH2F` pulls in `TH2`), and
     the `TArray` infos are built for their checksums without being emitted.
     """
     wanted = set(classes)
@@ -2382,8 +2373,8 @@ def _histogram_set(wanted: set) -> InfoSet:
     """The `InfoSet` a histogram file needs, built bases-first.
 
     Shared with `graph_infos`, because a `TGraph` declares a `TH1F*` and a
-    pointer member drags the pointee's whole info chain into the file even when
-    it is null (`WritingGraphs.md` 5).
+    pointer member pulls the pointee's complete info chain into the file even
+    when it is null (`WritingGraphs.md` 5).
     """
     s = InfoSet()
     add, cs = s.add, s.cs
@@ -2498,8 +2489,8 @@ def _histogram_set(wanted: set) -> InfoSet:
                   cs("TH1D")),
             Element("TStreamerObjectAny", "fBinEntries",
                     "number of entries per bin", 62, 24, "TArrayD"),
-            # An unscoped enum, so fTypeName is the bare EErrorType -- and an
-            # enum folds an extra 1 into TProfile's checksum
+            # An unscoped enum, so fTypeName is the bare EErrorType; an enum
+            # folds an extra 1 into TProfile's checksum
             # (`StreamerInfo.md` 11.1).
             _basic("fErrorMode", "Option to compute errors", 3, 4,
                    "EErrorType", is_enum=True),
@@ -2520,15 +2511,15 @@ GRAPH_UNSET = NO_LIMIT
 #: What ROOT writes for a graph's attribute bases. Unlike a histogram's, none of
 #: it comes from gStyle: TAttLine and TAttMarker are default-constructed and
 #: TAttFill is initialised explicitly in every TGraph constructor
-#: (`root/hist/hist/src/TGraph.cxx:202`). So a graph's line colour is 1 where a
-#: histogram's is 602, and its fill style 1000 where a histogram's is 1001
-#: (`WritingGraphs.md` 3.1).
+#: (`root/hist/hist/src/TGraph.cxx:202`). A graph's line colour is therefore 1
+#: where a histogram's is 602, and its fill style 1000 where a histogram's is
+#: 1001 (`WritingGraphs.md` 3.1).
 GRAPH_LINE_DEFAULTS = (1, 1, 1)
 GRAPH_FILL_DEFAULTS = (0, 1000)
 GRAPH_MARKER_DEFAULTS = (1, 1, 1.0)
 #: TGraph::kClipFrame, set by every constructor through TGraph::Build
-#: (`root/hist/hist/src/TGraph.cxx:174`). A graph does *not* carry
-#: TObject::kMustCleanup, which a histogram in the same directory does
+#: (`root/hist/hist/src/TGraph.cxx:174`). A graph does *not* have
+#: TObject::kMustCleanup set, which a histogram in the same directory does
 #: (`WritingGraphs.md` 3.1).
 GRAPH_BITS = 0x400
 
@@ -2537,8 +2528,8 @@ def counted_pointer(values, pack=f64) -> bytes:
     """A counted array member: one flag byte, then the values.
 
     `spec/02-serialization/ElementTypes.md` 4. The flag is 1 when the pointer is
-    non-null and 0 when it is, and an empty array is written as the flag alone --
-    ROOT writes 1 followed by nothing for a zero count, which is what
+    non-null and 0 when it is null. An empty array is written as the flag
+    alone: ROOT writes 1 followed by nothing for a zero count, which is what
     `fNpoints == 0` produces.
     """
     return b"\x01" + b"".join(pack(v) for v in values)
@@ -2548,13 +2539,13 @@ def counted_pointer(values, pack=f64) -> bytes:
 class Graph:
     """A `TGraph` at class version 5, or a `TGraphErrors` at version 3.
 
-    `x` and `y` are the points in the order they go on disk -- ROOT stores them
+    `x` and `y` are the points in the order they go on disk; ROOT stores them
     as given and sorts nothing (`WritingGraphs.md` 3.2). `ex` and `ey` make it a
     `TGraphErrors`; both or neither.
 
-    `fHistogram` is left null, which is what a graph ROOT has never drawn carries
-    and what a writer should emit: ROOT rebuilds the histogram on demand, and
-    letting it build one before `Write()` multiplies the record's size by six
+    `fHistogram` is left null, as in a graph ROOT has never drawn, and a writer
+    should emit it that way: ROOT rebuilds the histogram on demand, and letting
+    it build one before `Write()` multiplies the record's size by six
     (`WritingGraphs.md` 3.4).
     """
 
@@ -2613,10 +2604,9 @@ class Graph:
         q.raw(counted_pointer(self.y))
 
         # fFunctions is fType 64, a real pointer, so it is an object slot with a
-        # class record -- not TH1's in-place `//->` form. And its fBits are 0
-        # where a histogram's list carries 0x14000: a graph's list is a bare
-        # `new TList` (`root/hist/hist/src/TGraph.cxx:839`) that nothing has
-        # adopted.
+        # class record, not TH1's in-place `//->` form. Its fBits are 0 where a
+        # histogram's list has 0x14000: a graph's list is a bare `new TList`
+        # (`root/hist/hist/src/TGraph.cxx:839`) that nothing has adopted.
         def functions(r: Payload) -> None:
             r.tobject()
             r.raw(counted_string("") + i32(0))
@@ -2643,9 +2633,9 @@ class Graph:
                    title=self.title, payload=self.payload(key_len))
 
 
-#: A graph file's registration order. `TH1F` and its whole chain are in it
-#: because `TGraph::fHistogram` is a `TH1F*`, and the three `TArray` infos with
-#: them -- which a histogram file does *not* carry (`WritingGraphs.md` 5).
+#: A graph file's registration order. `TH1F` and its complete chain are in it
+#: because `TGraph::fHistogram` is a `TH1F*`, and with them the three `TArray`
+#: infos, which a histogram file does *not* contain (`WritingGraphs.md` 5).
 GRAPH_INFO_ORDER = (
     "TGraph", "TNamed", "TObject", "TAttLine", "TAttFill", "TAttMarker",
     "TH1F", "TH1", "TArrayF", "TArray", "TAxis", "TAttAxis", "TArrayD",
@@ -2657,9 +2647,9 @@ GRAPH_INFO_ORDER = (
 def graph_infos(classes=("TGraph",)) -> list:
     """Every `TStreamerInfo` a graph file needs, in ROOT's own order.
 
-    Nineteen of them for a file holding one `TGraph` and one `TGraphErrors`, and
-    eighteen for a file holding a single `TGraph` -- because `fHistogram` is a
-    `TH1F*`. See `WritingGraphs.md` 5.
+    Nineteen for a file holding one `TGraph` and one `TGraphErrors`, and
+    eighteen for a file holding a single `TGraph`; the count is this high
+    because `fHistogram` is a `TH1F*`. See `WritingGraphs.md` 5.
     """
     unknown = set(classes) - {"TGraph", "TGraphErrors"}
     if unknown:
@@ -2682,7 +2672,7 @@ def graph_infos(classes=("TGraph",)) -> list:
                 48, 8, "double*", count_version=5, count_name="fNpoints",
                 count_class="TGraph"),
         # fType 64, not 63: fFunctions is a plain pointer here, so it is written
-        # as an object slot with a class record -- unlike TH1's, which is `//->`
+        # as an object slot with a class record, unlike TH1's, which is `//->`
         # and streamed in place (`WritingGraphs.md` 3.2).
         Element("TStreamerObjectPointer", "fFunctions",
                 "Pointer to list of functions (fits and user)", 64, 8,
@@ -2717,12 +2707,12 @@ def tree_infos(leaf_kinds=("I", "F")) -> list:
     `leaf_kinds` names the concrete leaf classes used: `I` for `TLeafI`, `F` for
     `TLeafF`, `D` for `TLeafD`, `C` for `TLeafC`.
 
-    Eighteen infos for a two-branch tree, and three of them are there for
-    reasons a writer would not guess: `TBranchRef` and `TRefTable` because
-    `TTree::fBranchRef` is a **null** pointer and a null still forces its
-    class's info to be written, and `ROOT::TIOFeatures` because it is a member
-    -- a class with no `ClassDef` at all, whose version word on disk is
-    therefore 0 followed by a checksum (`WritingObjects.md` 2).
+    Eighteen infos for a two-branch tree, three of them for non-obvious
+    reasons: `TBranchRef` and `TRefTable` because `TTree::fBranchRef` is a
+    **null** pointer and a null still forces its class's info to be written, and
+    `ROOT::TIOFeatures` because it is a member. It is a class with no
+    `ClassDef` at all, so its version word on disk is 0 followed by a checksum
+    (`WritingObjects.md` 2).
     """
     s = InfoSet()
     add, cs = s.add, s.cs
@@ -2923,7 +2913,7 @@ def tree_infos(leaf_kinds=("I", "F")) -> list:
 
 #: Per leaf kind: the element type of fMinimum/fMaximum, its width and the type
 #: name a streamer info records for them. `TLeafC` keeps `Int_t` here like every
-#: other leaf -- its own values are bytes, but its range members are not
+#: other leaf: its own values are bytes, but its range members are not
 #: (`WritingTrees.md` 4.5).
 LEAF_SCALARS = {
     "I": (3, 4, "int"),
@@ -2942,7 +2932,7 @@ LEAF_FORMATS = {"I": ">i", "F": ">f", "D": ">d", "L": ">q", "S": ">h",
 #: fLenType: the bytes one element occupies. It is *not* sizeof(fMinimum) for a
 #: TLeafC, which stores one byte per character (`WritingTrees.md` 4.5).
 LEAF_LEN_TYPES = {"C": 1}
-#: The letter a leaflist uses for each, which is also what fTitle carries.
+#: The letter a leaflist uses for each, which also appears in fTitle.
 LEAF_LETTERS = {"I": "I", "F": "F", "D": "D", "L": "L", "S": "S", "B": "B",
                 "O": "O", "C": "C"}
 
@@ -2991,7 +2981,7 @@ class Leaf:
     length: int = 1
     #: fLeafCount: the leaf holding this one's per-entry count.
     counter: "Leaf | None" = None
-    #: fIsRange, which a counter leaf carries and nothing else.
+    #: fIsRange, which only a counter leaf sets.
     is_range: bool = False
     is_unsigned: bool = False
     offset: int = 0
@@ -3003,7 +2993,7 @@ class Leaf:
         if self.kind not in LEAF_SCALARS:
             raise WriteError(f"unknown leaf kind {self.kind!r}")
         if self.title is None:
-            # fTitle carries the dimensions and fName does not; Draw and Scan
+            # fTitle holds the dimensions and fName does not; Draw and Scan
             # parse this string (WritingTrees.md 3.1).
             dims = ""
             if self.counter is not None:
@@ -3024,9 +3014,8 @@ class Leaf:
     def variable(self) -> bool:
         """Whether this leaf's entries differ in length.
 
-        True for a counted array and for a `TLeafC`, and those are the two
-        things that force the branch's `fEntryOffsetLen` non-zero
-        (`WritingTrees.md` 4.5).
+        True for a counted array and for a `TLeafC`, the two cases that force
+        the branch's `fEntryOffsetLen` non-zero (`WritingTrees.md` 4.5).
         """
         return self.kind == "C" or self.counter is not None
 
@@ -3034,10 +3023,10 @@ class Leaf:
         """One entry's bytes.
 
         A `TLeafC` writes a counted string and **an empty one writes nothing at
-        all** -- not even the length byte, because `WriteFastArrayString`
-        returns first (`root/io/io/src/TBufferFile.cxx:2038`). That asymmetry is
-        the whole difficulty of the class; `WritingTrees.md` 4.5 and
-        `spec/04-ttree/TLeaf.md` 9 are the two halves of it.
+        all**, not even the length byte, because `WriteFastArrayString`
+        returns first (`root/io/io/src/TBufferFile.cxx:2038`). This asymmetry is
+        the main difficulty of the class; `WritingTrees.md` 4.5 and
+        `spec/04-ttree/TLeaf.md` 9 cover the writing and reading sides.
         """
         if self.kind == "C":
             if isinstance(values, bytes):
@@ -3092,8 +3081,8 @@ class BasketBuffer:
     """One basket's entries, closed and waiting to be written.
 
     A branch holds one of these per flush. Two of the fields are snapshots of
-    branch state at the moment the basket was *closed* rather than now, because
-    ROOT rewrites both while filling continues: `buffer_size` is the branch's
+    branch state when the basket was *closed*, because ROOT rewrites both while
+    filling continues: `buffer_size` is the branch's
     `fBasketSize` then (`WritingTrees.md` 7.3) and `nev_buf_size` is the
     `fEntryOffsetLen` the basket was created with (§5.1).
     """
@@ -3116,7 +3105,7 @@ class Branch:
     title: str | None = None
     compress: int = 0
     basket_size: int = DEFAULT_BASKET_SIZE
-    #: Non-zero iff the baskets carry an entry-offset array, which is required
+    #: Non-zero iff the baskets have an entry-offset array, which is required
     #: exactly when the entries are not all the same length.
     entry_offset_len: int = 0
     first_entry: int = 0
@@ -3133,9 +3122,9 @@ class Branch:
             self.title = f"{self.leaf.title}/{LEAF_LETTERS[self.leaf.kind]}"
         if self.leaf.variable and self.entry_offset_len == 0:
             self.entry_offset_len = DEFAULT_ENTRY_OFFSET_LEN
-        #: fEntryOffsetLen as it was when the open buffer was created, which is
-        #: what that basket records as fNevBufSize (WritingTrees.md 5.1). It
-        #: differs from fEntryOffsetLen as soon as one flush has shrunk that.
+        #: fEntryOffsetLen as it was when the open buffer was created, which
+        #: that basket records as fNevBufSize (WritingTrees.md 5.1). It differs
+        #: from fEntryOffsetLen once a flush has shrunk the latter.
         self.capacity = self.entry_offset_len
 
     @property
@@ -3163,9 +3152,9 @@ class Branch:
         ROOT shrinks the value at flush so the array does not stay large
         unnecessarily: above 10, and when `4 x fNevBuf` is smaller, it becomes
         10 for fewer than three entries and `4 x fNevBuf` otherwise
-        (`root/tree/tree/src/TBranch.cxx:3225-3227`). Nothing on the read side
-        uses the value beyond "is it non-zero", so reproducing this is only
-        about matching ROOT byte for byte.
+        (`root/tree/tree/src/TBranch.cxx:3225-3227`). The read side only checks
+        whether the value is non-zero, so this is reproduced only to match ROOT
+        byte for byte.
         """
         n = self.entry_offset_len
         if n > 10 and 4 * self.entries < n:
@@ -3205,7 +3194,7 @@ class Branch:
     def baskets(self) -> list:
         """Every basket this branch writes, in flush order.
 
-        Closes the open buffer first, which is what `TTree::Write` does through
+        Closes the open buffer first, as `TTree::Write` does through
         `FlushBaskets`, so calling this twice adds nothing.
         """
         self.flush()
@@ -3222,8 +3211,8 @@ class Branch:
         """One basket, as a record of its own.
 
         Its key is 19 bytes longer than the strings account for, because
-        `TBasket`'s own header lives inside `fKeylen` -- and its version is
-        1004, so the two offsets are 8 bytes wide whatever the file's size. Its
+        `TBasket`'s own header is inside `fKeylen`, and its version is 1004, so
+        the two offsets are 8 bytes wide whatever the file's size. Its
         `fCycle` is the basket number, which nothing reads
         (`root/tree/tree/src/TBasket.cxx:1293`).
         """
@@ -3247,8 +3236,8 @@ class Branch:
     def write(self, p: Payload, keys: list) -> None:
         """The branch's own record, inside the tree's `fBranches`.
 
-        `keys` is this branch's basket keys in flush order, which is where the
-        three counted arrays come from: a writer cannot build this record until
+        `keys` is this branch's basket keys in flush order, from which the three
+        counted arrays are built, so a writer cannot build this record until
         every basket is placed (`WritingTrees.md` 7.1).
         """
         n = len(keys)
@@ -3322,7 +3311,7 @@ class Tree:
     cluster_range_end: list = field(default_factory=list)
     cluster_size: list = field(default_factory=list)
     #: How many times every branch has been flushed, and how many of those
-    #: rounds were automatic -- only the latter move fFlushedBytes (§7.5).
+    #: rounds were automatic; only the latter move fFlushedBytes (§7.5).
     rounds: int = 0
     automatic_rounds: int = 0
 
@@ -3416,10 +3405,10 @@ class Tree:
         self.entries += 1
 
     def records(self) -> list:
-        """The baskets, then the tree record. In that order, necessarily.
+        """The baskets, then the tree record, which must come last.
 
-        Any entries still in an open buffer are flushed first -- one more basket
-        per branch -- because a tree record cannot describe a basket that is not
+        Any entries still in an open buffer are flushed first (one more basket
+        per branch), because a tree record cannot describe a basket that is not
         on disk. Baskets go out in flush order, all branches of round 0 before
         any of round 1, which is the order ROOT's `FlushBaskets` produces.
         """
@@ -3474,23 +3463,23 @@ class Tree:
             q.raw(i64(self.auto_save) + i64(self.auto_flush)
                   + i64(self.estimate))
             # fClusterRangeEnd and fClusterSize: counted pointers of
-            # fNClusterRange values each. With no closed range, that is a single
-            # *absent* flag byte each and nothing behind it; otherwise a present
-            # flag and exactly fNClusterRange values (7.4).
+            # fNClusterRange values each. With no closed range, each is a single
+            # *absent* flag byte and nothing after it; otherwise a present flag
+            # and exactly fNClusterRange values (7.4).
             for values in (self.cluster_range_end, self.cluster_size):
                 if values:
                     q.raw(b"\x01" + b"".join(i64(v) for v in values))
                 else:
                     q.raw(b"\x00")
             q.raw(io_features())
-            # TTree::fBranches is the one TObjArray in the record that ROOT
+            # TTree::fBranches is the only TObjArray in the record that ROOT
             # marks kIsOwner.
             q.tobjarray("", [
                 (lambda b: (lambda r: b.write(r, keys[b.name])))(br)
                 for br in self.branches
             ], bits=0x4000, embedded=True)
             # fLeaves holds references to the leaves already written inside
-            # fBranches -- the same objects, not copies.
+            # fBranches: the same objects, not copies.
             q.tobjarray("", [
                 (lambda leaf: (lambda r: r.reference(id(leaf))))(br.leaf)
                 for br in self.branches

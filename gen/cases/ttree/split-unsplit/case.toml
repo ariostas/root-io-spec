@@ -13,22 +13,21 @@ side by side so the difference can be read off the bytes.
   sp    fID -2, fBranches nobjects 3, fWriteBasket 0
   un    fID -1, fBranches nobjects 0, fWriteBasket 1
 
-What this case pins down:
+What this case covers:
 
 - **fID is the discriminator, not fSplitLevel.** Both branches have the same
   fClassName (UEv), the same fCheckSum (0x1e7526d6), the same fType (0) and the
   same fStreamerType (-1). What separates them is fID: -2 means the columns are
   in fBranches, -1 means the whole object is in this branch's baskets. See
   Splitting.md section 6.
-- The split branch has **no baskets of its own** (fWriteBasket 0) and the
-  unsplit one has no sub-branches (fBranches nobjects 0). Each holds exactly one
-  of the two things.
-- fEntryOffsetLen tells them apart a second way: 1000 on the split node, which
-  takes the tree's fDefaultEntryOffsetLen, and 12 on the unsplit branch, whose
-  entries are variable-size serialised objects and so need an offset array.
-  A fixed-width member branch such as fB has 0.
-- fSplitLevel is 99 and 0 here and does match what was asked for -- but that is
-  a coincidence of this case, not a rule; Splitting.md section 4.2 has a tree
+- The split branch has no baskets of its own (fWriteBasket 0) and the unsplit
+  one has no sub-branches (fBranches nobjects 0). Each holds one of the two.
+- fEntryOffsetLen also tells them apart: 1000 on the split node, which takes the
+  tree's fDefaultEntryOffsetLen, and 12 on the unsplit branch, whose entries are
+  variable-size serialised objects and so need an offset array. A fixed-width
+  member branch such as fB has 0.
+- fSplitLevel is 99 and 0 here and matches what was asked for, but that is a
+  coincidence of this case, not a rule; Splitting.md section 4.2 has a tree
   where it does not.
 
 Three entries with identical values written through both branches, so a reader

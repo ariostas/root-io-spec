@@ -1,12 +1,12 @@
 /// A TBranchRef and its TRefTable, which is how a TRef is resolved in a tree.
 ///
-/// TTree::BranchRef creates a TBranchRef -- a branch that is *not* in
-/// fBranches, but in the tree's own fBranchRef member. Two things about it are
-/// easy to get wrong and are the point of this case.
+/// TTree::BranchRef creates a TBranchRef, a branch that is not in fBranches but
+/// in the tree's own fBranchRef member. This case covers two things about it
+/// that are easy to get wrong.
 ///
 /// **It is compressed even in an uncompressed file.** TBranchRef's constructor
 /// hard-codes fCompress = 1 (root/tree/tree/src/TBranchRef.cxx:62), so its
-/// basket carries a zlib block header while every other basket here is raw.
+/// basket starts with a zlib block header while every other basket here is raw.
 ///
 /// **Its basket is not written unless you ask.** TTree::FlushBasketsImpl walks
 /// only GetListOfBranches (root/tree/tree/src/TTree.cxx:5255-5265), and

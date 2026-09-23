@@ -5,36 +5,36 @@ size = 16782
 description = """
 Baskets written inside the TTree record rather than as records of their own.
 
-The same two branches as ttree/basket -- n/I and a[n]/F, three entries -- so the
+The same two branches as ttree/basket (n/I and a[n]/F, three entries), so the
 two files differ only in how the baskets were written and can be compared field
 by field. This one was written with TDirectory::WriteTObject, which does not go
 through TTree::Write's flush, so the baskets were still in memory when
 TBranch::Streamer ran. It contains no TBasket record at all.
 
-What this case pins down:
+What this case shows:
 
 - An embedded basket is an ordinary object slot whose class is TBasket, and its
-  body begins with the whole TKey -- there is no byte count and no version word
+  body begins with the complete TKey. There is no byte count and no version word
   in front of the key fields, because TBasket::Streamer streams the key first.
 - fKeylen is 65, the same as in a record, and it still covers the key and the
   19-byte basket header: 849 + 65 = 914, where the raw block begins.
 - fNbytes, fSeekKey and fSeekPdir are 0: the key was never placed in a file.
-  fObjlen is 31935, which is fBufferSize - fKeylen -- a capacity, not a length.
+  fObjlen is 31935, which is fBufferSize - fKeylen: a capacity, not a length.
   A reader must not use it, and TBasket.md section 3's arithmetic test does not
   apply here. The flag says what follows instead.
 - The flag is 12 for branch n (2 = no offset array, +10 = the data follows) and
   11 for branch a (1 = an offset array, +10). Neither value can occur in a
   basket record, where the flag is only ever 0 or 80.
 - The entry-offset array's leading count is fNevBuf = 3, NOT fNevBuf + 1. That
-  extra element is a property of the record form alone.
-- The offsets are 65, 69, 77 -- the same three values ttree/basket writes -- and
+  extra element belongs to the record form alone.
+- The offsets are 65, 69, 77, the same three values ttree/basket writes, and
   they index the raw block from its start, whose first fKeylen bytes are the
   reserved key area rather than entry data.
 - fBasketSeek, fBasketBytes, fTotBytes and fZipBytes are all 0, and fBaskets has
   one non-null slot.
 - fBasketEntry[fWriteBasket] is 0, not fEntryNumber: the terminator is written
   when a basket is closed out, and this one never was. TBranch.md section 10
-  takes the last basket's end from fEntryNumber for exactly this reason.
+  takes the last basket's end from fEntryNumber for this reason.
 """
 
 spec = [
@@ -264,7 +264,7 @@ offset = 1546
 type = "u8"
 value = 11
 
-# --- the offset array, which here comes BEFORE the data --------------------
+# --- the offset array, which here comes before the data --------------------
 
 [[bytes]]
 name = "the count is fNevBuf, not fNevBuf + 1: the record form's extra element is not written here"

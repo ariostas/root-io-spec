@@ -3,38 +3,36 @@ file = "data/classes/tarray-histogram.root"
 size = 25864
 
 description = """
-The other half of `classes/tarray`: a file that **does** carry a `TStreamerInfo`
+The other half of `classes/tarray`: a file that does have a `TStreamerInfo`
 for a concrete `TArray`, so TArray.md 2's "wrong by one byte" can be checked
 against bytes rather than asserted.
 
 **Writing a `TH2F` is not enough.** A `TH2F` written with `Write()`, or held in a
-`TObjArray`, gives fifteen streamer infos and not one of them is `TArrayF` --
+`TObjArray`, gives fifteen streamer infos and none of them is `TArrayF`:
 `TH1`'s hand-written `Streamer` never asks for it. Putting the `TH2F` in a
-**`TTree` branch** does produce it, along with `TArray` and `TArrayD`, because
+`TTree` branch does produce it, along with `TArray` and `TArrayD`, because
 creating the branch builds the streamer info of every class in the hierarchy.
-Across the two corpora, 16 of the 39 files containing a histogram carry a
-concrete `TArray` info and 23 do not, from ROOT 3.05 to 6.26 -- so this is not a
-version difference but a difference in how the object reached the file.
+Across the two corpora, 16 of the 39 files containing a histogram have a
+concrete `TArray` info and 23 do not, from ROOT 3.05 to 6.26. The difference is
+in how the object reached the file, not in the ROOT version.
 
 **What the info says is not what the bytes are.** `TArrayF`'s info lists a
-`TArray` base and `fArray` at code **45** (`kOffsetP + kFloat`) counting `fN`,
+`TArray` base and `fArray` at code 45 (`kOffsetP + kFloat`) counting `fN`,
 and a counted pointer always begins with a one-byte present flag
-(ElementTypes.md 4). `TArray::Streamer` does not write one. So the info would
+(ElementTypes.md 4). `TArray::Streamer` does not write one, so the info would
 read `1 + 4 + 49 x 4 = 201` bytes where the file has `4 + 49 x 4 = 200`.
 
 `fN` is 49 because a `TH2F` of 5 x 5 bins has `(5 + 2) x (5 + 2)` cells. The two
-filled bins land at global cells 8 and 23, which is what the assertions at 969
-and 1029 pin: the values follow `fN` **immediately**, with no flag byte between
-them.
+filled bins land at global cells 8 and 23, and the assertions at 969 and 1029
+pin them: the values follow `fN` immediately, with no flag byte between them.
 
 A reader that follows this info does not fail. It reads one byte too many and
-takes every later member from one byte late -- StreamerDriven.md 7, in the
-smallest form it takes.
+takes every later member from one byte late: the smallest instance of
+StreamerDriven.md 7.
 
 The entry itself is not decodable from the file: the branch is an unsplit `TH2F`
 whose class writes its own `Streamer`, so `check_invariants.py` reports it as a
-`SKIPPED` branch-basket rather than checking it. That is the same fact from the
-reader's side.
+`SKIPPED` branch-basket rather than checking it.
 """
 
 spec = [
@@ -127,7 +125,7 @@ offset = 8550
 type = "i32"
 value = 6
 
-# --- what the bytes actually are ------------------------------------------
+# --- what the bytes are ---------------------------------------------------
 #
 # 00 00 00 31 | 49 floats, starting immediately. No flag byte.
 # 933           937                                       1133

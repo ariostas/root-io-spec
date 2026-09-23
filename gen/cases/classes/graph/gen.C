@@ -1,11 +1,11 @@
-/// TGraph and TGraphErrors, the two graph classes a writer actually needs.
+/// TGraph and TGraphErrors, the two graph classes a writer needs.
 ///
 /// A TGraph is a TNamed plus three attribute bases, fNpoints, and two counted
 /// arrays of doubles. Nothing else in it is data: fHistogram stays null until
 /// something draws or fits the graph, and fFunctions is an empty TList that is
 /// written all the same.
 ///
-/// Three objects, each carrying something the others do not:
+/// Three objects, each with something the others lack:
 ///   g   a plain graph, fMinimum and fMaximum left at their sentinel
 ///   gr  the same points with symmetric errors: TGraphErrors adds fEX and fEY
 ///   gm  a graph with an explicit Y range, so fMinimum and fMaximum are values

@@ -2,13 +2,13 @@
 ///
 /// The encoding is chosen by TClonesArray::kBypassStreamer, BIT(12), and that bit
 /// is written into the TObject base so that the file is self-describing. Set (the
-/// default) means the objects are transposed into one column per member, exactly
-/// as a member-wise collection but with no second version word and no
+/// default) means the objects are transposed into one column per member, as in
+/// a member-wise collection but with no second version word and no
 /// kStreamedMemberWise bit. Clear means one Char_t presence flag per slot,
 /// followed by the object in full when the flag is 1.
 ///
 /// fSecond leaves slot 0 empty to show that an empty slot still costs its flag
-/// byte -- the thing the shipped documentation omits.
+/// byte, which the shipped documentation omits.
 ///
 /// Pt comes from classes.h and is compiled first; see gen/common/README.md. It
 /// needs a real ClassDef because a TClonesArray records its element class as the

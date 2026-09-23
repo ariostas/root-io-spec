@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Tests for the two checks that keep this project's own claims checkable.
 
-`tools/check_coverage.py` is the published-invariant audit, and its whole value is
-that it fails, so these drive the three ways it can: an entry with no check and no
-reason, a reason for something that is checked after all, and a label a tool
-reports that no document publishes.
+`tools/check_coverage.py` is the published-invariant audit. These tests drive
+the three ways it fails: an entry with no check and no reason, a reason for
+something that is checked after all, and a label a tool reports that no
+document publishes.
 
-`check_citations.check_cited_files` is the same idea for evidence rather than
-rules: a `.root` the specification names must be fetchable, or the measurement
-resting on it cannot be reproduced. That went unnoticed twice before it was a
-check.
+`check_citations.check_cited_files` does the same for evidence: a `.root` the
+specification names must be fetchable, or the measurement resting on it cannot
+be reproduced. That went unnoticed twice before it was a check.
 """
 
 import subprocess
@@ -84,10 +83,10 @@ class TheToolFails(unittest.TestCase):
         """Adding an entry nothing checks is the case R2 was."""
         path = REPO / "spec/01-container/Compression.md"
         text = path.read_text()
-        # The end of section 9's numbered list, which is where an eighth entry
-        # would go. Not "## 10. Errata": since 2026-09-22 section 9.1 sits
-        # between the list and section 10, and an entry appended after it is
-        # part of 9.1's prose rather than an invariant.
+        # The end of section 9's numbered list, where an eighth entry would go.
+        # Not "## 10. Errata": since 2026-09-22 section 9.1 sits between the list
+        # and section 10, and an entry appended after it would be part of 9.1's
+        # prose rather than an invariant.
         marker = "\n### 9.1 What an `RBlob` is not"
         self.assertIn(marker, text)
         doctored = text.replace(

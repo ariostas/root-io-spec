@@ -1,12 +1,11 @@
 /// Gate 3 for `written/leafc`: ROOT reads a TLeafC branch this project wrote.
 ///
-/// The empty string is the case that matters. It occupies no bytes in the
-/// basket, so ROOT recovers it from the entry-offset array alone -- the buffer
-/// is filled with a sentinel before every GetEntry here, so a value ROOT leaves
-/// untouched fails rather than passing on the previous entry's contents.
+/// The empty string is the important case. It occupies no bytes in the basket,
+/// so ROOT recovers it from the entry-offset array alone. The buffer is filled
+/// with a sentinel before every GetEntry here, so a value ROOT leaves untouched
+/// fails rather than passing on the previous entry's contents.
 ///
-/// Anything ROOT says on either stream fails the case too, so the absence of
-/// output is half the assertion.
+/// Any ROOT output on either stream also fails the case.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -58,7 +57,7 @@ void verify(const char *path)
    if (lf->GetMaximum() != 301) printf("FAIL fMaximum %d\n", lf->GetMaximum());
    if (lf->IsRange()) printf("FAIL fIsRange is set on a TLeafC\n");
 
-   // And the values. TString rather than char[] so the sentinel is visible.
+   // The values. TString rather than char[] so the sentinel is visible.
    char s[512];
    Int_t n = 0;
    t->SetBranchAddress("n", &n);

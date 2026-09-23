@@ -3,9 +3,9 @@
 
 Reads every record of every file given, applies the streamer-driven read of
 `spec/02-serialization/StreamerDriven.md` in tolerant mode, and reports what it
-could not interpret and why. This is the complement to `check_invariants.py`:
-that one asks whether the reference files satisfy the specification, this one asks
-whether the specification is enough for a file nobody designed around it.
+could not interpret and why. `check_invariants.py` asks whether the reference
+files satisfy the specification; this asks whether the specification is enough
+for a file nobody designed around it.
 
   tools/coverage_probe.py file.root [more.root ...]
   tools/coverage_probe.py --summary corpus/*.root     one line per file
@@ -37,8 +37,8 @@ def container_offsets(buf: bytes, header, records) -> set[int]:
     """Offsets of the records that are the container's own bookkeeping.
 
     Identified structurally rather than by class name: the class on a directory
-    record is whatever TFile subclass wrote the file -- TStorageFactoryFile,
-    ND::TND280Output -- and RNTuple's own writer leaves the class name of the keys
+    record is whatever TFile subclass wrote the file (TStorageFactoryFile,
+    ND::TND280Output), and RNTuple's own writer leaves the class name of the keys
     list and the free list **empty**. spec/01-container/Record.md section 3.
     """
     out = {header.begin}
@@ -91,10 +91,9 @@ def probe(path: Path, quiet: bool = False
             continue
         label = f"  {rec.class_name:16} {str(rec.name)[:20]:20}"
         if rec.name == "StreamerInfo" and rec.class_name == "TList":
-            # Read above, by the dedicated reader of StreamerInfo.md. Routing it
-            # through the generic decoder would report every TStreamerInfo entry
-            # as unreadable, since a file does not describe its own bootstrap
-            # classes.
+            # Read above by the dedicated reader of StreamerInfo.md. The generic
+            # decoder would report every TStreamerInfo entry as unreadable, since
+            # a file does not describe its own bootstrap classes.
             outcome["decoded"] += 1
             show(f"{label} decoded (bootstrap reader)")
             continue
@@ -110,11 +109,10 @@ def probe(path: Path, quiet: bool = False
             show(f"{label} NO CODEC  {exc}")
             continue
         except (rootfile.FormatError, IndexError, ValueError, struct.error) as exc:
-            # One record whose payload cannot be decompressed is one blocked
-            # record, not an unreadable file. Until 2026-09-22 this escaped to
-            # the per-file handler, so an RNTuple file with one multi-page RBlob
-            # (Compression.md 9.1) was written off whole and its other records
-            # were never measured.
+            # A payload that cannot be decompressed blocks one record, not the
+            # file. Until 2026-09-22 this escaped to the per-file handler, so an
+            # RNTuple file with one multi-page RBlob (Compression.md 9.1) was
+            # written off whole and its other records were never measured.
             outcome["blocked"] += 1
             why = f"{rec.class_name}: payload not decompressible: {exc}"
             if rec.class_name == "RBlob":
@@ -181,8 +179,8 @@ def main(argv: list[str]) -> int:
             o, r = probe(path, quiet)
         except (rootfile.FormatError, struct.error, IndexError, ValueError,
                 OSError, RecursionError) as exc:
-            # A file the container layer itself cannot walk. Worth knowing
-            # about, and it must not stop the rest of the corpus.
+            # A file the container layer cannot walk. Report it and carry on
+            # with the rest of the corpus.
             total["unreadable"] += 1
             reasons[f"file not walkable: {type(exc).__name__}: {exc}"] += 1
             print(f"{path.name[:44]:44} {version_of(path):10} "

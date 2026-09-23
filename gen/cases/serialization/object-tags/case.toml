@@ -9,7 +9,7 @@ class, one class back-reference (the second TObjString), and one object
 back-reference (the repeated pointer), which is every form an object slot can
 take apart from a null.
 
-The two back-reference values are the evidence that buffer map positions are
+The two back-reference values show that buffer map positions are
 measured from the start of the *record*, key included, and not from the start of
 the payload: the class reference is 85 while the kNewClassTag word it names sits
 83 bytes into the record, and kMapOffset is 2.

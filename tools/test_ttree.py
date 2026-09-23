@@ -417,8 +417,8 @@ class BitsetColumn(unittest.TestCase):
         body = self.one([1, 0, 1, 1]) + self.one([0, 0, 1, 0])
         framed = (rootfile.BYTE_COUNT_MASK | (2 + len(body))).to_bytes(4, "big") \
             + (10).to_bytes(2, "big") + body
-        # Padded, so that a wrong count reads zeros rather than running off the
-        # end: the byte count is what has to catch it, not the buffer's length.
+        # Padded so a wrong count reads zeros rather than running off the end;
+        # the byte count must catch it, not the buffer's length.
         decoder = rootfile.Decoder(framed + b"\x00" * 16, 0, [])
         self.assertEqual(decoder.read_column(self.EL(), 2, 0), len(framed))
         # The byte count covers the whole column, so a wrong count is caught by
@@ -493,10 +493,10 @@ class InteriorNodes(unittest.TestCase):
 class LegacyBranchLayout(unittest.TestCase):
     """TBranch.md 13.1: the member order below class version 10.
 
-    No fixture can cover it -- the writers are ROOT 3 and ROOT 4 -- so the
+    No fixture can cover it (the writers are ROOT 3 and ROOT 4), so the
     evidence is the three corpus files, and these tests pin what the reader does
     with the version gates and the fBasketSeek width selector. The nested objects
-    are stubbed, because what is being tested is the scalar layout around them.
+    are stubbed, because the test is of the scalar layout around them.
     """
 
     STUB = 6                           # bytes each stubbed nested object takes
@@ -605,8 +605,8 @@ class CounterResolution(unittest.TestCase):
     fBranchCount names.
 
     The witness is alice_ESDs.root, which cannot be committed, so these build the
-    shape by hand: two split objects of one class whose sub-branches carry no
-    parent prefix, which is what makes ROOT's by-name lookup ambiguous.
+    shape by hand: two split objects of one class whose sub-branches have no
+    parent prefix, which makes ROOT's by-name lookup ambiguous.
     """
 
     def branch(self, name, slot, count_slot=-1, children=()):
@@ -649,8 +649,8 @@ class CounterResolution(unittest.TestCase):
             reader.counter_branch(reader.by_slot[302], "fNbytes").slot, 301)
 
     def test_fbranchcount_is_the_fallback_when_no_name_matches(self):
-        # Not a weakening: with no sibling of that name, the recorded pointer is
-        # the best the file offers, and it is what ROOT uses.
+        # With no sibling of that name, the recorded pointer is the best the
+        # file offers, and it is what ROOT uses.
         reader = self.reader()
         self.assertEqual(
             reader.counter_branch(reader.by_slot[201], "fNothing").slot, 100)

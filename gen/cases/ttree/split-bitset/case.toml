@@ -3,35 +3,35 @@ file = "data/ttree/split-bitset.root"
 size = 19383
 
 description = """
-A `std::bitset` member of a split branch, which is neither packed nor, at every
-ROOT version, written at all.
+A `std::bitset` member of a split branch, which is not packed and, at some ROOT
+versions, not written at all.
 
 A bitset reaches the file as a `TStreamerSTL` with fSTLtype 8 (kSTLbitset) and
-fCtype 0 -- `TStreamerSTL` sets fCtype to 0 for a bitset and checks nothing
+fCtype 0; `TStreamerSTL` sets fCtype to 0 for a bitset and checks nothing
 else (root/core/meta/src/TStreamerElement.cxx:1808-1809). Its branch is an
 ordinary object-wise collection of `bool`:
 
     40 00 00 16  00 0a  00 00 00 10  01 00 01 00 00 01 00 01 01 00 01 00 00 01 00 01
     byte count   ver    count 16     sixteen bools, least significant bit first
 
-Sixteen bits cost twenty-six bytes. **The bits are not packed** and the count is
+Sixteen bits cost twenty-six bytes. **The bits are not packed**, and the count is
 written even though the width is in the type name.
 
-The bit order is bit 0 first -- `bitset::operator[]` order, not the order the
-literal reads in. Entry 0 alone cannot show that, because 0xA5A5 is symmetric
-under the reversal; entry 2 holds 0xA5A5 >> 2 = 0x2969 and settles it.
+The bit order is bit 0 first, which is `bitset::operator[]` order rather than the
+order the literal reads in. Entry 0 alone cannot show that, because 0xA5A5 is
+symmetric under the reversal; entry 2 holds 0xA5A5 >> 2 = 0x2969 and settles it.
 
-The point of the case is the other half. Before the ROOT-8574 fix the collection
-proxy did not work in this path and ROOT wrote the branch with **no bytes in it
-at all** -- every entry zero-length, the basket's fLast equal to its fKeylen.
-That form is in the foreign corpus: `uproot-mc10events.root`, written by ROOT
-6.08/04, has eleven such branches, in both the scalar and the fType 31 column
-form, and every one of them is empty. The fix is root commit 2caaf15c2f0
+The case exists mainly for the other form. Before the ROOT-8574 fix the
+collection proxy did not work in this path and ROOT wrote the branch with no
+bytes in it at all: every entry zero-length, the basket's fLast equal to its
+fKeylen. That form is in the foreign corpus: `uproot-mc10events.root`, written by
+ROOT 6.08/04, has eleven such branches, in both the scalar and the fType 31
+column form, and every one of them is empty. The fix is root commit 2caaf15c2f0
 (2017-02-24), which is in v6-08-06 and was backported to v5-34-38, so 6.08/04 is
 one patch release short of it.
 
-A reader therefore has to accept both, and cannot tell which it is from the
-branch: only the entry's length says so. ReadingEntries.md 3.6.
+A reader therefore has to accept both, and cannot tell which it has from the
+branch; only the entry's length shows it. ReadingEntries.md 3.6.
 """
 
 spec = [

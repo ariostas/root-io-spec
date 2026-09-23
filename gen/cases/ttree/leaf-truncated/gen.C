@@ -1,9 +1,9 @@
 /// The four ways a truncated floating-point leaf can be stored.
 ///
 /// Float16_t (leaflist code `f`) and Double32_t (code `d`) both have a
-/// with-factor form and a truncated-mantissa form, and which one applies is
-/// decided by the annotation in the leaf title -- not by the leaf class, and
-/// not by fLenType, which stays 4 and 8 whatever the values on disk are.
+/// with-factor form and a truncated-mantissa form, and the annotation in the
+/// leaf title selects which one applies. The leaf class does not, and neither
+/// does fLenType, which stays 4 and 8 whatever the values on disk are.
 ///
 ///   a/f            no annotation  -> 3 bytes, mantissa truncated to 12 bits
 ///   b/f[0,100,10]  a real range   -> 4 bytes, a scaled UInt_t
@@ -11,8 +11,7 @@
 ///   d/d[0,0,8]     nbits only     -> 3 bytes, mantissa truncated to 8 bits
 ///
 /// a and c are the same declaration shape and differ by one byte per entry, in
-/// opposite directions from what the class names suggest. That asymmetry is the
-/// point of the case.
+/// the opposite direction from what the class names suggest.
 ///
 /// Two identical entries, so a wrong width shows up as a shifted second entry
 /// rather than only as a wrong total.

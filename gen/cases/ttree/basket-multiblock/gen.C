@@ -2,14 +2,14 @@
 ///
 /// TBasket.md 7: "TBasket performs its own multi-block splitting with the same
 /// constants as the container layer", and the constant is kMAXZIPBUF = 0xffffff
-/// (`root/core/zip/inc/RZip.h:40`). So a basket needs more than 16 MB of
-/// UNCOMPRESSED payload to have two blocks -- which is why no fixture had one.
+/// (`root/core/zip/inc/RZip.h:40`). A basket needs more than 16 MB of
+/// uncompressed payload to have two blocks, which is why no fixture had one.
 ///
-/// The way to commit it is to make the payload compress hard: 2.1M Double_t all
+/// The payload is made to compress well enough to commit: 2.1M Double_t all
 /// equal, 16.8 MB, which LZMA at level 9 stores in under 3 KB. The file is a
-/// few kilobytes and the block structure is the real thing.
+/// few kilobytes and has a real two-block structure.
 ///
-/// One entry, because the point is the size of one basket rather than the
+/// One entry, because the case is about the size of one basket rather than the
 /// number of them, and SetBasketSize keeps it in one.
 void gen(const char *out)
 {

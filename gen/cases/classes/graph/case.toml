@@ -10,18 +10,18 @@ two counted arrays of doubles, then fFunctions, fHistogram, fMinimum, fMaximum a
 fOption. Its attribute values come from the class's own constructor rather than
 from gStyle -- TAttFill(0, 1000) is an explicit base initialiser -- so a graph's
 line colour is 1 where a histogram's is 602 and its fill style 1000 where a
-histogram's is 1001. fBits is 0x400, TGraph::kClipFrame, and **not** the
-kMustCleanup a histogram in the same directory carries.
+histogram's is 1001. fBits is 0x400, TGraph::kClipFrame, not the kMustCleanup
+that a histogram in the same directory has.
 
 fFunctions is an empty TList, created unconditionally by every constructor and
 written as a real object slot with a class record -- fType 64, unlike TH1's
 `//->` fType 63 -- and its own fBits are 0.
 
 **fHistogram is why the file has nineteen streamer infos for three small
-objects.** It is a TH1F* and it is null in g and gr, but a pointer member drags
-the pointee's whole info chain in anyway: TH1F, TH1, TAxis, TAttAxis, THashList
-and -- unlike any histogram file -- TArrayF, TArray and TArrayD as well. A file
-holding one TGraph and nothing else carries eighteen of them, 11708 bytes of
+objects.** It is a TH1F* and it is null in g and gr, but a pointer member brings
+in the pointee's full info chain anyway: TH1F, TH1, TAxis, TAttAxis, THashList
+and, unlike any histogram file, TArrayF, TArray and TArrayD as well. A file
+holding one TGraph and nothing else has eighteen of them, 11708 bytes of
 StreamerInfo record for a 198-byte object.
 
 Object gm shows what happens when the pointer is not null: TGraph::SetMinimum goes

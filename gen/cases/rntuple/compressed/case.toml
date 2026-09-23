@@ -6,44 +6,41 @@ file = "data/rntuple/compressed.root"
 # 490, and the divergence is in the StreamerInfo record at 950.
 
 description = """
-**A compressed RNTuple page.** Every other RNTuple case here calls
-`opts.SetCompression(0)`, and `rntuple/anchor` says why: it keeps the envelopes
-readable in place, so the assertions are about the format rather than about a
-codec. That was the right call for those cases and it hid something for all of
-them. With compression off an `RBlob` payload is stored raw, so
+A compressed RNTuple page. Every other RNTuple case here calls
+`opts.SetCompression(0)` so that the envelopes are readable in place and the
+assertions are about the format rather than a codec (`rntuple/anchor` explains).
+The side effect is that an `RBlob` payload is stored raw in all of them, so
 [Compression §9](../../../spec/01-container/Compression.md)'s chain invariants
-never run on one. This case turns compression on, which is what RNTuple does by
-default, and they do.
+never run on one. This case turns compression on, which is RNTuple's default,
+so they do.
 
-**The finding: a sealed page's block chain stops 8 bytes short of its payload.**
-The page `RBlob` here is at 381 with `fNbytes` 109 and `fKeylen` 42, so its
-payload is 423..490. Its one `ZL` block declares 50 compressed bytes, so the
-chain ends at `423 + 9 + 50` = **482**. The eight bytes from 482 to 490 are the
-page's XXH3-64 checksum, appended **after** compression and counted **outside**
-`fObjLen` -- `kNBytesPageChecksum` is `sizeof(std::uint64_t)`
+**A sealed page's block chain stops 8 bytes short of its payload.** The page
+`RBlob` here is at 381 with `fNbytes` 109 and `fKeylen` 42, so its payload is
+423..490. Its one `ZL` block declares 50 compressed bytes, so the chain ends at
+`423 + 9 + 50` = 482. The eight bytes from 482 to 490 are the page's XXH3-64
+checksum, appended after compression and counted outside `fObjLen`:
+`kNBytesPageChecksum` is `sizeof(std::uint64_t)`
 (`root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74`) and a page is sealed as
 `nBytesZipped + nBytesChecksum` (`root/tree/ntuple/src/RPageStorage.cxx:751`).
-Assert 482 and 490 together and the gap is the finding, the same way
-`rntuple/anchor` asserts 1122 and 1130 for ERRATUM 3.
+The assertions check 482 and 490 together, as `rntuple/anchor` does with 1122
+and 1130 for ERRATUM 3.
 
-**What makes it a scope and not an exception**, and the reason this file has four
-`RBlob`s rather than one: the header envelope at 234, the page list at 490 and
-the footer at 609 all close **flush** with their payloads, and only the page at
-381 is short. An envelope's checksum is inside its own declared length; a page's
-is not. One record being 8 bytes short would be a curiosity -- three closing
-exactly and the fourth not is the distinction, and it is what
-`Compression.md` §9.1 states.
+The file has four `RBlob`s rather than one to show that this is a rule for
+pages and not an exception. The header envelope at 234, the page list at 490 and
+the footer at 609 all close flush with their payloads; only the page at 381 is
+short. An envelope's checksum is inside its own declared length; a page's is
+not. `Compression.md` §9.1 states this distinction.
 
-**Why `fObjLen` is 2048 and not the file's size**: it is the *uncompressed* page,
+`fObjLen` is 2048, not the file's size, because it is the uncompressed page:
 512 entries of `std::int32_t`. The values run in blocks of 64 so that zlib has
-runs to find; 512 distinct values would be stored raw and would demonstrate
-nothing. zlib rather than RNTuple's default zstd, because §3 already pins the
-`ZL` block header and this case is about the framing around it, not the codec.
+runs to find; 512 distinct values would be stored raw. zlib rather than
+RNTuple's default zstd, because §3 already pins the `ZL` block header and this
+case is about the framing around it, not the codec.
 
 The block header and the checksum are asserted as bytes because they are
-**portable**: the arm64 libstdc++ container writes `5a 4c 08 32 00 00 00 08 00`
+portable: the arm64 libstdc++ container writes `5a 4c 08 32 00 00 00 08 00`
 and `fb 9e c3 08 fa 1f 77 e6` at the same offsets, identical to libc++. Only the
-file's total length differs, and that is the `ROOT::RNTuple` streamer info far
+file's total length differs, because of the `ROOT::RNTuple` streamer info far
 below.
 """
 
@@ -59,8 +56,8 @@ digest        = false
 digest_reason = """
 `std::uint64_t` resolves to `unsigned long long` with libc++ and `unsigned long`
 with libstdc++, so ROOT::RNTuple's seven 64-bit members are recorded as fType 17
-`ULong64_t` on one and fType 14 `unsigned long` on the other -- a LENGTH
-difference a mask cannot undo, and the whole 2-byte difference in this file's
+`ULong64_t` on one and fType 14 `unsigned long` on the other: a length
+difference a mask cannot undo, and all of the 2-byte difference in this file's
 size. It is in the StreamerInfo record at 950; every byte asserted here is at or
 below 490. ElementTypes.md 2.4, PLAN.md 9.6
 """
@@ -79,7 +76,7 @@ role   = "the header envelope -- compressed, and its chain closes flush"
 offset = 381
 nbytes = 109
 class  = "RBlob"
-role   = "THE PAGE: one sealed page, whose chain stops 8 bytes short"
+role   = "the page: one sealed page, whose block chain stops 8 bytes short"
 [[records]]
 offset = 490
 nbytes = 119

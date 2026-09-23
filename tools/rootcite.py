@@ -1,14 +1,13 @@
 """Render `root/<path>:<line>` citations as links to the pinned ROOT commit.
 
-The specification cites the reference implementation constantly, as a path plus a
-line number (see `spec/00-conventions.md` §7). This turns each such citation into
-a link into root-project/root at exactly the commit the `root/` submodule is
-pinned to, so a citation resolves to the code it was written against rather than
-to whatever `main` happens to say later.
+The specification cites the reference implementation as a path plus a line
+number (see `spec/00-conventions.md` §7). This turns each citation into a link
+into root-project/root at the commit the `root/` submodule is pinned to, so it
+resolves to the code it was written against rather than to a later `main`.
 
 It is a plain Python-Markdown treeprocessor rather than a site-generator hook, so
-it works under any renderer built on Python-Markdown -- Zensical and MkDocs both
-are. Keeping it engine-neutral is deliberate: see `PLAN.md`.
+it works under any renderer built on Python-Markdown, Zensical and MkDocs
+included. `PLAN.md` explains why it is kept engine-neutral.
 
 Only a `<code>` span whose *entire* content is a citation is linked, so ordinary
 prose mentioning a file name is left alone.
@@ -50,9 +49,9 @@ class RootCiteTreeprocessor(Treeprocessor):
         self.base, self.commit = base.rstrip("/"), commit
 
     def run(self, root):
-        # Every match is collected before anything is mutated. Inserting the
-        # wrapper into a tree that is still being walked makes the walker descend
-        # into the new element and wrap the same <code> again, without end.
+        # Collect every match before mutating. Inserting the wrapper into a tree
+        # that is still being walked makes the walker descend into the new
+        # element and wrap the same <code> again, without end.
         pending = []
         for parent in root.iter():
             if parent.tag == "a":

@@ -3,41 +3,40 @@ file = "data/written/reopen-add.root"
 size = 1657
 
 description = """
-A file **reopened and added to**, written by `tools/rootwrite.py` from
+A file reopened and added to, written by `tools/rootwrite.py` from
 [`WritingFiles.md` §13](../../../spec/06-writing/WritingFiles.md).
 
-**This file and `data/container/reopened.root` are the same 1657 bytes**, bar
-each key's `fDatime`, the file's own name and two UUIDs — 158 bytes across 35
-runs, and not one of them structural. ROOT performed the same sequence on the
-same base, which is what makes the comparison worth having: an update is where a
-writer has to reproduce decisions it did not make.
+**This file and `data/container/reopened.root` are the same 1657 bytes**, except
+each key's `fDatime`, the file's own name and two UUIDs: 158 bytes across 35
+runs, none of them structural. ROOT performed the same sequence on the same base.
+An update is where a writer has to reproduce decisions it did not make, so this
+comparison is a strong one.
 
-The base is built here and handed to `FileWriter.reopen` as bytes; nothing else
-crosses. So the file agreeing with ROOT's says two things at once — that the
-base was byte-identical to ROOT's, and that the update reached ROOT's answer
-from it knowing only what the file says.
+The base is built here and handed to `FileWriter.reopen` as bytes, and nothing
+else is passed. The file agreeing with ROOT's therefore shows both that the base
+was byte-identical to ROOT's and that the update reached ROOT's result from it
+using only what the file contains.
 
 Three writes follow the reopen:
 
 * **a new name.** `two` is appended and its key appended, cycle 1;
-* **the same name again.** `str;2` at 1147, its key inserted *in front of*
+* **the same name again.** `str;2` at 1147, its key inserted in front of
   `str;1`;
 * **`WriteDelete`.** `two` is written again at 1259 *before* the old record is
   freed, so it cannot land on it, and its key is appended while the old key is
   still in the list, so the cycle advances to 2. `written/reopen-reuse` shows
-  `overwrite` getting the opposite answer on both counts.
+  `overwrite` doing the opposite on both counts.
 
 **The `StreamerInfo` record at 372 is not rewritten.** `fSeekInfo` still points
 at the base's, because nothing used a class the file did not already describe
-(`root/io/io/src/TFile.cxx:3497-3503`). That early-out is the difference between
-an update that touches three records and one that touches four and leaves a 3 KB
-hole.
+(`root/io/io/src/TFile.cxx:3497-3503`). Without that early-out the update would
+touch four records instead of three and leave a 3 KB hole.
 
-**The rest of the layout is the close sequence in the bytes.** The free record
-at 806 is exactly where the base's key list was, because `WriteKeys` frees its
-own record before sizing the new one and `WriteFree` is allocated afterwards out
-of what is left. The 243-byte gap at 904 is the rest of that span, the base's own
-free record, and the freed `two;1`, all three coalesced into one entry.
+The rest of the layout follows from the close sequence. The free record at 806 is
+where the base's key list was, because `WriteKeys` frees its own record before
+sizing the new one and `WriteFree` is allocated afterwards out of what is left.
+The 243-byte gap at 904 is the rest of that span, the base's own free record,
+and the freed `two;1`, all three coalesced into one entry.
 """
 
 spec = [

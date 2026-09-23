@@ -1,6 +1,6 @@
 /// Three levels of splitting, and the count-branch convention.
 ///
-/// NTop holds an NDet, which holds a std::vector<NHit>. Split, that is the full
+/// NTop holds an NDet, which holds a std::vector<NHit>. Split, that is the
 /// shape of a real physics branch in miniature:
 ///
 ///   nt            fType 0, fID -2   the split node
@@ -11,15 +11,15 @@
 ///   nt/fDet/fHits/fE   fType 41
 ///   nt/fRun       fType 0
 ///
-/// What it is here to pin down:
+/// What it covers:
 ///
 /// - fType 2 is the second of the two interior node types, and like fType 1 it
 ///   has no leaf and no basket.
 /// - The count branch's title ends in an underscore, and the member branches'
-///   leaf titles name it in brackets -- `fId[fHits_]`. That is the only place
-///   the count relationship is written down in a form a human can read; the
+///   leaf titles name it in brackets: `fId[fHits_]`. That is the only place
+///   the count relationship is written in a form a human can read; the
 ///   machine-readable form is each member branch's fBranchCount.
-/// - fSplitLevel decrements with depth, so the same tree carries several values.
+/// - fSplitLevel decrements with depth, so the same tree has several values.
 ///
 /// Three entries with collections of three different sizes, one of them empty,
 /// and compression off.

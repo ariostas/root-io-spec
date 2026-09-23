@@ -1,36 +1,35 @@
 /// The three ROOT containers whose `Streamer` is hand-written at every version
 /// and which the specification did not describe: `TMap`, `TExMap` and `TBtree`.
-/// `tools/inventory.py` named them; this is the file that pins their bytes.
+/// `tools/inventory.py` listed them; this file pins their bytes.
 ///
 /// Each is written under its own key, uncompressed, so every offset below is a
 /// file offset.
 ///
-/// `TMap` and `TBtree` are `TCollection`s, so `Write()` writes each *element*
-/// under its own key unless `kSingleKey` is given -- which is why that flag is
-/// here and not in any other case.
+/// `TMap` and `TBtree` are `TCollection`s, so `Write()` writes each element
+/// under its own key unless `kSingleKey` is given. That flag is used here and in
+/// no other case.
 ///
-/// The `TMap` deliberately stores one `TObjString` as the value of **both**
-/// pairs. A map's entries are pointer-streamed, so the second occurrence is a
+/// The `TMap` stores one `TObjString` as the value of both pairs on purpose. A
+/// map's entries are pointer-streamed, so the second occurrence is a
 /// back-reference rather than a second copy, and the file shows both forms of
-/// the object tag in eleven bytes of each other.
+/// the object tag within eleven bytes of each other.
 ///
 /// The `TExMap` gets four entries in a table sized for five, which `Expand`
-/// turns into eleven slots. `fSize` is the capacity and `fTally` the count,
-/// both are on disk and they differ here, so a reader cannot use one where the
-/// other is meant.
+/// turns into eleven slots. `fSize` is the capacity and `fTally` the count. Both
+/// are on disk and they differ here, so a reader cannot use one for the other.
 ///
 /// Two of the four hashes are even, and `Assoc_t::SetHash` forces bit 0 to mark
 /// the slot in use, so the file stores 7 for 6 and 11 for 10. The slot follows
-/// from the *stored* hash, which puts the entries in slots 0, 3, 7 and 9 --
-/// neither contiguous nor in insertion order, since the write loop walks the
-/// table by slot. The entry added last is the first on disk.
+/// from the stored hash, which puts the entries in slots 0, 3, 7 and 9: neither
+/// contiguous nor in insertion order, since the write loop walks the table by
+/// slot. The entry added last is the first on disk.
 ///
-/// The `TBtree` is order 3 with five entries, which is enough to split the root
-/// node -- though none of that structure reaches the file. A `TBtree` streams
-/// its six shape integers and then hands the elements to
-/// `TSeqCollection::Streamer`, which is generated, whose `TCollection` base
-/// dispatches back to a hand-written `Streamer`. That path is the reason this
-/// case exists as much as the three classes are.
+/// The `TBtree` is order 3 with five entries, enough to split the root node,
+/// though none of that structure reaches the file. A `TBtree` streams its six
+/// shape integers and then hands the elements to the generated
+/// `TSeqCollection::Streamer`, whose `TCollection` base dispatches back to a
+/// hand-written `Streamer`. This case exists for that path as much as for the
+/// three classes.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "the hand-written containers", 0);

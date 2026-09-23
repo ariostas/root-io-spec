@@ -4,32 +4,32 @@ size = 15838
 
 description = """
 The two histogram classes past `TH1` that a writer of ordinary physics output
-needs: **`TH2`** and **`TProfile`**. `classes/histogram` covers `TH1F` and
-`TH1D`, whose records stop at the `TArray` base; these two insert their own
-members *after* the `TH1` base and so need their own procedure
+needs: `TH2` and `TProfile`. `classes/histogram` covers `TH1F` and `TH1D`,
+whose records stop at the `TArray` base; these two insert their own members
+after the `TH1` base and so need their own procedure
 ([Writing histograms](../../../spec/06-writing/WritingHistograms.md) 7 and 8).
 
-Four records, each carrying something the other three do not:
+Four records, each with something the other three lack:
 
 * `h2f` is a `TH2F` with fixed-width bins, an explicit `Sumw2()`, and fills that
-  land outside the range in **x** and in **y** separately. Either way a cell is
-  incremented and no statistic is, so `fEntries` is 6 while `fTsumw` is 4 -- the
+  land outside the range in x and in y separately. Either way a cell is
+  incremented and no statistic is, so `fEntries` is 6 while `fTsumw` is 4: the
   in-range region of a `TH2` is a rectangle, not "every cell but the ends".
-* `h2d` is a `TH2D` with **variable edges on both axes**, which is the only
+* `h2d` is a `TH2D` with variable edges on both axes, which is the only
   non-empty `fXbins` on a Y axis anywhere in `data/`, and it is filled with
   weights so the four y sums are not the x sums.
-* `p1` is a `TProfile` with unit weights, so `fBinSumw2` is **empty** while
-  `fSumw2` is not -- a profile's `fSumw2` is allocated by its constructor and
-  holds sum(w*y*y), which is nothing like a `TH1`'s sum of squared weights.
-* `p2` is a `TProfile` with a **Y range**, `fErrorMode` `kERRORSPREAD`, and
+* `p1` is a `TProfile` with unit weights, so `fBinSumw2` is empty while
+  `fSumw2` is not. A profile's `fSumw2` is allocated by its constructor and
+  holds sum(w*y*y), which is unlike a `TH1`'s sum of squared weights.
+* `p2` is a `TProfile` with a Y range, `fErrorMode` `kERRORSPREAD`, and
   weighted fills, so `fBinSumw2` is populated. One of its fills is outside
   `fYmin`..`fYmax` and increments nothing at all, `fEntries` included.
 
-Nothing a reader must compute is stored: a profile's bin content is
+Derived values are not stored: a profile's bin content is
 `fArray[i] / fBinEntries[i]` and its error needs `fSumw2` and `fBinSumw2` too, so
-all four of its parallel arrays are load-bearing.
+a reader needs all four of its parallel arrays.
 
-The `StreamerInfo` record holds **eighteen** infos and a nineteenth entry that
+The `StreamerInfo` record holds eighteen infos and a nineteenth entry that
 is not one: a `listOfRules` with a single read rule resetting `fBinSumw2` for
 `TProfile` versions 1 to 5. A file written at version 7 cannot use it, which is
 why `data/written/th2-profile.root` matches this record only up to it.

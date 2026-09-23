@@ -1,6 +1,6 @@
 # Licensing
 
-Two licences, because this repository holds two different kinds of thing, and one
+This repository holds two kinds of material under two licences, plus one
 directory that belongs to somebody else.
 
 | What | Licence | Full text |
@@ -14,24 +14,23 @@ Copyright (c) 2026, Andres Rios Tascon.
 
 ## Why the split
 
-The specification is a document, and the point of it is that other projects
-describe the format the same way; CC-BY-4.0 lets them quote and adapt it with
-attribution.
+The specification is a document meant to let other projects describe the format
+the same way. CC-BY-4.0 lets them quote and adapt it with attribution.
 
-The reference files are meant to be **vendored as test vectors** by readers in
-any language, together with the `case.toml` assertions that go with them and the
-generators that made them. BSD-3-Clause makes that unambiguous, including for a
-closed-source implementation. If you copy a fixture, copy its `case.toml` with
-it: the assertions are what make the bytes useful, and
-[CONTRIBUTING.md](CONTRIBUTING.md) explains the format.
+The reference files are meant to be vendored as test vectors by readers in any
+language, together with their `case.toml` assertions and the generators that made
+them. BSD-3-Clause makes that unambiguous, including for a closed-source
+implementation. If you copy a fixture, copy its `case.toml` with it, since the
+assertions are what make the bytes useful; [CONTRIBUTING.md](CONTRIBUTING.md)
+explains the format.
 
 ## The one exception
 
 `spec/05-rntuple/BinaryFormatSpecification.md` is a **byte-for-byte copy of
-ROOT's own RNTuple specification**, tracked so that this project's RNTuple errata
-have something fixed to be errata against; `tools/sync_rntuple.py --check` fails
-in CI if it drifts. It is the ROOT project's document under ROOT's licence, not
-ours, and no correction is ever made inside it — corrections go in
+ROOT's own RNTuple specification**. It is tracked so that this project's RNTuple
+errata refer to a fixed text, and `tools/sync_rntuple.py --check` fails in CI if
+it drifts. It is the ROOT project's document under ROOT's licence, not ours, and
+no correction is ever made inside it. Corrections go in
 `spec/05-rntuple/ERRATA.md`, which is ours and is CC-BY-4.0 like the rest of
 `spec/`.
 
@@ -52,17 +51,17 @@ others are fetched into the untracked `build/` on demand. What is committed is a
 manifest of their digests (`gen/foreign/MANIFEST.sha256`, `gen/cern/`) and the
 reasons each file is listed.
 
-Two of those sources, roottest and rntuple-validation, are under
-**LGPL-2.1**, which the BSD-3-Clause licence of `data/` could not carry. The
-rule is also what keeps every reference file's provenance simple: each one is
-the output of a generator in `gen/`, run against the pinned ROOT or written by
-`tools/rootwrite.py`. `tools/test_provenance.py` holds both halves on every
-push. It fails on a tracked ROOT file that no case generates, and on any tracked
-file byte-identical to a file in `root/roottest/`.
+Two of those sources, roottest and rntuple-validation, are under **LGPL-2.1**,
+which the BSD-3-Clause licence of `data/` could not carry. The rule also keeps
+every reference file's provenance simple: each one is the output of a generator
+in `gen/`, run against the pinned ROOT or written by `tools/rootwrite.py`.
+`tools/test_provenance.py` enforces both on every push. It fails on a tracked
+ROOT file that no case generates, and on any tracked file byte-identical to a
+file in `root/roottest/`.
 
-A fact a third-party file taught this project is carried the other way: by a
-new fixture that reproduces it, as `data/rntuple/map.root` does for the
-`std::map` finding and `data/serialization/unframed-records.root` for the
+When a third-party file teaches this project a fact, the fact is recorded by a
+new fixture that reproduces it: `data/rntuple/map.root` does this for the
+`std::map` finding, and `data/serialization/unframed-records.root` for the
 unframed `TDatime` record first seen in go-hep's corpus.
 
 ## Citing this
@@ -76,5 +75,5 @@ CC-BY-4.0 is satisfied by naming the project and linking to it:
 
 This is an independent description of a format, written from ROOT's published
 source. It is not endorsed by, released by, or a product of the ROOT project or
-CERN. Where this specification and ROOT disagree, ROOT is right — that is stated
-in `spec/index.md` and it is a licensing statement as much as a technical one.
+CERN. Where this specification and ROOT disagree, ROOT is right. `spec/index.md`
+states this, and it is a licensing statement as much as a technical one.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for tools/sync_rntuple.py, and for the properties of the tracked copy.
 
-The tool's real check is `--check` against the pinned submodule, which CI runs.
-These cover the two things that check cannot cover itself: that drift is actually
+The tool's main check is `--check` against the pinned submodule, which CI runs.
+These tests cover what that check cannot test about itself: that drift is
 detected rather than reported as success, and that the promises
 spec/05-rntuple/UPSTREAM.md makes about the copy hold.
 
@@ -30,10 +30,9 @@ TRACKED = REPO / "spec/05-rntuple/BinaryFormatSpecification.md"
 def _have_gitlink() -> bool:
     """Whether `git rev-parse HEAD:root` can run here.
 
-    It can in a checkout, with or without the submodule fetched, which is the
-    case that matters. It cannot in a bare copy of the tree -- the scratch
-    directory the container regeneration mounts, say -- and a test that cannot
-    run should skip rather than error.
+    It can in a checkout, with or without the submodule fetched. It cannot in a
+    bare copy of the tree, such as the scratch directory the container
+    regeneration mounts, and there the test should skip rather than error.
     """
     try:
         sync_rntuple.pinned_commit()
@@ -88,8 +87,8 @@ class SyncAgainstSubmodule(unittest.TestCase):
         self.assertEqual(quietly("--check"), 0)
 
     def test_a_single_appended_byte_is_detected(self):
-        # The failure mode the tool exists for: an edit in place. One newline is
-        # enough, and it must not be reported as success.
+        # The failure mode the tool exists for: an edit in place. A single
+        # appended newline must be detected.
         original = TRACKED.read_bytes()
         backup = tempfile.NamedTemporaryFile(delete=False)
         backup.write(original)
@@ -118,8 +117,8 @@ class ErrataAreCitedAndTracked(unittest.TestCase):
         self.assertTrue(headings, "ERRATA.md has no entries")
 
     def test_every_erratum_cites_the_submodule(self):
-        # An erratum without a citation is an opinion. Each section between two
-        # `## ` headings must carry at least one root/...:NN citation.
+        # Each section between two `## ` headings must have at least one
+        # root/...:NN citation.
         import re
         sections = re.split(r"^## \d+\. ", self.TEXT, flags=re.M)[1:]
         for i, body in enumerate(sections, 1):
@@ -130,10 +129,10 @@ class ErrataAreCitedAndTracked(unittest.TestCase):
 class ByteOrderFormats(unittest.TestCase):
     """check_bytes.py gained little-endian formats for RNTuple's envelopes.
 
-    A ROOT file with an RNTuple in it has both byte orders, and the boundary is
-    the anchor's last byte -- so a case has to say which at every offset, and
-    getting it wrong has to fail rather than read a plausible number. These are
-    the two the first RNTuple fixture actually turned up.
+    A ROOT file with an RNTuple in it has both byte orders, with the boundary at
+    the anchor's last byte, so a case has to say which at every offset, and
+    getting it wrong must fail rather than read a plausible number. These are
+    the two cases the first RNTuple fixture turned up.
     """
 
     def setUp(self):
@@ -148,13 +147,13 @@ class ByteOrderFormats(unittest.TestCase):
             self.assertTrue(f[name + "le"].startswith("<"), name + "le")
 
     def test_a_little_endian_envelope_preamble(self):
-        # type 1 in the low 16 bits, length 240 in the upper 48 -- the header
+        # type 1 in the low 16 bits, length 240 in the upper 48: the header
         # envelope of rntuple/anchor.
         buf = bytes([0x01, 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00])
         ok = [{"offset": 0, "type": "u64le", "value": (240 << 16) | 1, "name": "le"}]
         self.assertEqual(self.check_bytes.check(buf, ok, "x"), [])
         # The same bytes read big-endian are a different, plausible-looking
-        # number, which is why the suffix has to be explicit.
+        # number, so the suffix has to be explicit.
         bad = [{"offset": 0, "type": "u64", "value": (240 << 16) | 1, "name": "be"}]
         self.assertEqual(len(self.check_bytes.check(buf, bad, "x")), 1)
 
@@ -176,7 +175,7 @@ def _fundamental_table(text: str) -> dict[str, str]:
     start = lines.index("### Fundamental Types")
     head = next(i for i in range(start, len(lines))
                 if lines[i].startswith("| Column Type / Fundamental C++ Type"))
-    # `std::byte` is the one header the document namespaces; strip on both
+    # `std::byte` is the only header the document namespaces; strip on both
     # sides rather than special-case it.
     types = [c.strip().strip("`").replace("std::", "")
              for c in lines[head].split("|")[2:-1]]
@@ -196,10 +195,10 @@ class EveryAnchorReads(unittest.TestCase):
     """Every RNTuple in data/ reads through its anchor to its header schema.
 
     Every other test here names its fixture, and until 2026-09-22 all of them
-    named uncompressed ones -- so nothing in CI ever handed read_rntuple_anchor a
+    named uncompressed ones, so nothing in CI gave read_rntuple_anchor a
     compressed anchor, and it could not read one (PLAN-corpus.md C6). Walking
-    every fixture instead of a list means a new RNTuple case is covered the day
-    it is committed, whatever it was written to demonstrate.
+    every fixture instead of a list covers a new RNTuple case as soon as it is
+    committed, whatever it was written to demonstrate.
     """
 
     def test_every_anchor_reads_and_one_is_compressed(self):
@@ -218,18 +217,17 @@ class EveryAnchorReads(unittest.TestCase):
                 read += 1
                 compressed += rec.compressed
         self.assertGreater(read, 0)
-        # Without this the test could pass by never meeting the case it exists
-        # for, if rntuple/compressed were ever regenerated with compression off.
+        # Without this the test would pass vacuously if rntuple/compressed were
+        # ever regenerated with compression off.
         self.assertGreater(compressed, 0)
 
 
 class FundamentalTypeTable(unittest.TestCase):
     """The tracked table against a file, so the two cannot drift apart.
 
-    The same idea as check_versions.py for class versions: a claim that is a
-    table of names is exactly the kind that rots without anything failing, and
-    here both sides move -- the document on a submodule bump, the file when ROOT
-    changes a default.
+    The same idea as check_versions.py for class versions: a table of names can
+    go stale without anything failing, and here both sides move, the document on
+    a submodule bump and the file when ROOT changes a default.
     """
 
     FIXTURE = REPO / "data/rntuple/fundamental-types.root"
@@ -297,8 +295,9 @@ def _child_name_claims(text: str) -> dict[str, str]:
         if line.startswith("#### ") or line.startswith("### "):
             section = line.lstrip("# ").strip()
         elif section and "`_0`" in line:
-            # Any mention is the claim: the wording varies -- "named `_0`", "the
-            # name of the child field is `_0`", "their names are `_0`, `_1`, ...".
+            # Any mention counts as the claim, since the wording varies: "named
+            # `_0`", "the name of the child field is `_0`", "their names are `_0`,
+            # `_1`, ...".
             claims[section] = line.strip()
     return claims
 
@@ -500,7 +499,7 @@ class UserClassMapping(unittest.TestCase):
 
     `rntuple/user-class` is a struct with a base class, two enums, a vector of
     itself and a transient member, so the record shape is checked twice in one
-    file -- at top level and inside a collection.
+    file: at top level and inside a collection.
     """
 
     FIXTURE = REPO / "data/rntuple/user-class.root"
@@ -555,8 +554,8 @@ class UserClassMapping(unittest.TestCase):
         self.assertEqual([f.name for f in self.children("fHit.:_0")], ["fBaseId"])
 
     def test_a_transient_member_has_no_field(self):
-        # fScratch is marked //! in classes.h. Its absence is the claim; that
-        # nothing else shifted is what the byte assertions check.
+        # fScratch is marked //! in classes.h. This checks its absence; the byte
+        # assertions check that nothing else shifted.
         self.assertNotIn("fHit.fScratch", self.by_path)
         self.assertFalse([f for f in self.schema.fields if "Scratch" in f.name])
 
@@ -756,8 +755,8 @@ class SchemaOnlyFields(unittest.TestCase):
 class WriterDefaults(unittest.TestCase):
     """*Defaults* against RNTupleWriteOptions, and *Naming* against the validator.
 
-    Neither needs a file: both are claims about the writer, and the header is the
-    witness. Parsed out of the tracked copy so the table cannot drift.
+    Neither needs a file: both are claims about the writer, checked against its
+    header. Parsed out of the tracked copy so the table cannot drift.
     """
 
     SOURCE = REPO / "root/tree/ntuple/inc/ROOT/RNTupleWriteOptions.hxx"

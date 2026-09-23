@@ -5,8 +5,8 @@
 #include "Rtypes.h"
 #include <vector>
 
-/// The content class. It has a real dictionary, so its frame carries a plain
-/// version word -- 1 -- rather than a 0 and a checksum, and it holds a
+/// The content class. It has a real dictionary, so its frame has a plain version
+/// word (1) rather than a 0 and a checksum, and it holds a
 /// collection of its own so that the two frames appear back to back.
 class PtrItem {
 public:

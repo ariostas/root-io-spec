@@ -1,10 +1,10 @@
 # Pitfalls
 
-Things that are true, unobvious, and have cost somebody time — each one stated in
-a sentence or two with a link to where it is specified. Most were found by
-reading ROOT's source against real bytes; thirteen of them were found by reading
-*this specification* against files it was not written from, and were errors here
-before they were warnings to you.
+Facts that are unobvious and have cost somebody time, each stated in a sentence
+or two with a link to where it is specified. Most were found by comparing ROOT's
+source with real bytes. Thirteen were found by checking this specification
+against files it was not written from, and were errors in it before they were
+listed here.
 
 Read once before implementing, and again when a decode is wrong by two or four
 bytes.
@@ -12,16 +12,16 @@ bytes.
 ## 1. The container
 
 **A file has two byte orders in it.** Everything in the `TFile` layer is
-big-endian; an RNTuple's envelopes and pages are little-endian. Read the wrong
-way, a length is a plausible number rather than an obvious error.
+big-endian; an RNTuple's envelopes and pages are little-endian. A length read
+with the wrong byte order is a plausible number rather than an obvious error.
 [Conventions §3](../00-conventions.md#3-byte-order)
 
 **"Is this payload compressed" is an inequality, not a difference.** The test is
-`fObjlen > fNbytes - fKeylen`. A payload *longer* than `fObjlen` is stored raw
-with slack after it, which RNTuple's own key writer produces — and a reader using
-`!=` then tries to decompress the payload, finds no valid block header at its start,
-and rejects the whole file. (The slack sits *after* the object data and is never
-read as a header.)
+`fObjlen > fNbytes - fKeylen`. A payload longer than `fObjlen` is stored raw
+with slack after it, as RNTuple's own key writer produces. A reader using `!=`
+tries to decompress such a payload, finds no valid block header at its start, and
+rejects the whole file. (The slack sits after the object data and is never read
+as a header.)
 [Compression §1.1](../01-container/Compression.md#11-why-the-test-is-an-inequality)
 
 **`fEND` is at most the file size, not equal to it.** ROOT compares the two only
@@ -33,63 +33,65 @@ opens a file through the directory and key lists; a hole in the chain stops a
 walker but not a reader.
 [Records and keys §1](../01-container/Record.md#1-the-record-chain)
 
-**A directory record is not identified by its class name.** A `TFile` subclass —
-CMS's `TStorageFactoryFile`, RNTuple's minimal writer, which leaves the name
-empty — is still a directory. Recognise the structure.
+**A directory record is not identified by its class name.** A `TFile` subclass,
+such as CMS's `TStorageFactoryFile`, is still a directory, and RNTuple's minimal
+writer leaves the name empty. Recognise the structure.
 [Directories §6.2](../01-container/Directory.md#62-the-key-list-record-cannot-be-identified-from-its-key)
 
 **`fSeekParent` is not reliably the parent directory.** Before ROOT 6.38 it held
-the *top* directory's offset for every nested directory; from 6.38 it holds the
-mother's, and files written before that are everywhere. Reconstruct the tree from
+the top directory's offset for every nested directory; from 6.38 it holds the
+mother's, and files written before 6.38 are everywhere. Reconstruct the tree from
 the keys instead.
 [Directories §4.3](../01-container/Directory.md#43-fseekparent-do-not-use-it-for-parentage)
 
 **A key-list entry is not always `fKeylen` bytes long.** Step to the next one by
-the bytes you parsed — 18 or 26 fixed, then three counted strings — never by adding
+the bytes you parsed (18 or 26 fixed, then three counted strings), never by adding
 `fKeylen`. A directory entry written by ROOT 5.32 or earlier is four bytes longer
-than the `fKeylen` it reports, because it spells its class `TDirectoryFile` where
-the record's own key spells it `TDirectory`. A reader that adds `fKeylen` frames the
-*next* entry from the middle of this one, and both spellings occur in one file.
+than the `fKeylen` it reports, because it names its class `TDirectoryFile` where
+the record's own key names it `TDirectory`. A reader that adds `fKeylen` starts
+parsing the next entry in the middle of this one, and both spellings occur in one
+file.
 [Directories §6.5](../01-container/Directory.md#65-an-images-length-is-what-it-parses-to-never-its-fkeylen)
 
 **A string's length comes from the entry, never from the leaf's `fLen`.** `fLen`
-on a `TLeafC` is a buffer size, and in a fast-merged file — which is what `hadd`
-produces by default — it can be smaller than the longest string in the same
-baskets. ROOT then truncates the value and says nothing; a reader that trusts the
-counted string in the entry gets it right.
+on a `TLeafC` is a buffer size, and in a fast-merged file (what `hadd` produces
+by default) it can be smaller than the longest string in the same baskets. ROOT
+then truncates the value silently; a reader that uses the counted string in the
+entry gets it right.
 [TLeaf §9.1](../04-ttree/TLeaf.md#91-flen-is-the-readers-buffer-size-and-it-can-be-too-small)
 
 **A basket key written by ROOT 4.02 or later always uses the large-file
 layout**, whatever the file's size, because `TBasket` adds 1000 to `fVersion`
-unconditionally — and **one written before 4.02 never does**. Take the width
-from the key's own `fVersion`, as for any other key.
+unconditionally. One written before 4.02 never does. Take the width from the
+key's own `fVersion`, as for any other key.
 [TBasket §1](../04-ttree/TBasket.md#1-a-basket-is-a-key-with-extra-fields)
 
 ## 2. Framing
 
 **Buffer position 0 is the start of the key, not of the payload.** Every
 back-reference is expressed as a buffer position, so a reader that decompresses
-into a fresh array and counts from zero computes every one of them wrong, by
-exactly `fKeylen`. [Buffer framing §1](../02-serialization/Buffer.md#1-what-a-buffer-is)
+into a fresh array and counts from zero gets every one of them wrong by
+`fKeylen`. [Buffer framing §1](../02-serialization/Buffer.md#1-what-a-buffer-is)
 
 **A byte count is a lower bound on an object's length, not its length.** Three
-classes keep writing after the frame they opened — `TMatrixTSym` is the one you
-will meet — and nothing warns, because `CheckByteCount` is satisfied.
+classes keep writing after the frame they opened, and nothing warns, because
+`CheckByteCount` is satisfied. The one you are likely to meet is `TMatrixTSym`.
 [Buffer framing §2.4](../02-serialization/Buffer.md#24-an-object-may-be-longer-than-its-byte-count-says)
 
-**A version word of 0 has two different meanings**, and the file does not say
-which: a class that declares version 0, or a foreign class whose checksum
-follows. The file's own streamer info decides.
+**A version word of 0 has two different meanings**, and nothing at that point
+in the stream tells them apart: a class that declares version 0, or a foreign
+class whose checksum follows. Look it up in the file's own streamer info.
 [Buffer framing §4](../02-serialization/Buffer.md#4-a-version-word-of-0-has-two-different-meanings)
 
 **A record's payload does not always begin with a byte count.** `TArray` begins
-with a count of elements, `TRef` with a version word, a `TBasket` with entry data
-— and on a pre-ROOT-5 file an ordinary class may too.
+with a count of elements, `TRef` with a version word, and a `TBasket` with entry
+data. On a pre-ROOT-5 file, an ordinary class's payload may also begin without
+one.
 [Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)
 
 **`kIsReferenced` changes the length of a `TObject` base**, from 10 bytes to 12.
-It is a bit in `fBits`, which you have to read before you know how long the thing
-you are reading is. [References §1](../02-serialization/References.md#1-the-extra-word-on-a-referenced-tobject)
+It is a bit in `fBits`, so you have to read `fBits` before you know the length
+of the object you are reading. [References §1](../02-serialization/References.md#1-the-extra-word-on-a-referenced-tobject)
 
 **`fUniqueID` is truncated to 24 bits when that bit is set**, so the value you
 read is not the value the writer held.
@@ -97,7 +99,7 @@ read is not the value the writer held.
 
 ## 3. Streamer information
 
-**A recorded streamer info can be fiction.** A class with a hand-written
+**A recorded streamer info can be wrong.** A class with a hand-written
 `Streamer` still has one, and nothing in the file marks it. `TList`'s info lists
 two base classes its streamer never writes.
 [Streamer-driven reading §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes),
@@ -109,8 +111,8 @@ no version word, no byte count, no members.
 [Forwarding streamers](ForwardingStreamers.md)
 
 **A `kBase` element is not "read the base by its streamer info".** It dispatches
-to the base's own `Streamer` first, so a `TQObject` base occupies **zero** bytes
-while its info sits in the file with zero elements.
+to the base's own `Streamer` first, so a `TQObject` base occupies zero bytes
+while its info is in the file with zero elements.
 [Streamer-driven reading §4](../02-serialization/StreamerDriven.md#4-base-classes)
 
 **`fSize` is the writer's `sizeof`, not the on-disk width**, and it differs
@@ -130,17 +132,17 @@ records the resolved type of a typedef. All of 4, 14, 16 and 17 are eight bytes.
 class other than the one you are decoding.
 [Element types §4](../02-serialization/ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)
 
-**A `TStreamerSTL` element's `fType` is 500, not 300**, on everything ROOT 5 and
-later wrote — the code says `kStreamer`, and the layout is an STL collection
+**A `TStreamerSTL` element's `fType` is 500, not 300**, in everything ROOT 5 and
+later wrote. The code says `kStreamer`, but the layout is an STL collection
 anyway. [Streamer information §10](../02-serialization/StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
 
 **The version word inside a 500/501 frame is not the constant 10.** It is
-`TStreamerInfo`'s own class version in the writing ROOT: **8 or less** before 5.26,
+`TStreamerInfo`'s own class version in the writing ROOT: 8 or less before 5.26,
 9 until 6.35, 10 from 6.36. [Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)
 
 **The order of infos in the `StreamerInfo` record is not a property of the file.**
-It is the order the writing process happened to register classes in, and two
-files with identical content can differ in it.
+It is the order in which the writing process happened to register classes, and
+two files with identical content can differ in it.
 [Streamer information §3.4](../02-serialization/StreamerInfo.md#34-in-no-guaranteed-order-is-stronger-than-it-sounds)
 
 **Some codes cannot occur in a file at all.** Anything in the `kSkip`, `kConv`,
@@ -151,8 +153,8 @@ Implementing them is wasted effort.
 ## 4. Values
 
 **A `Bool_t` on disk need not be 0 or 1.** An unassigned member reaches the file
-as ROOT's heap fill pattern, `0x99` in every byte — deterministically, and for
-every type, not only `Bool_t`.
+as ROOT's heap fill pattern, `0x99` in every byte. This is deterministic, and it
+applies to every type, not only `Bool_t`.
 [Element types §2.5](../02-serialization/ElementTypes.md#25-a-value-can-be-0x99-because-nobody-wrote-one)
 
 **`Long_t` and `ULong_t` occupy 8 bytes on disk even where they are 4 in
@@ -168,11 +170,11 @@ escape, and the NUL-terminated names in class records.
 carries a streamer info for `string`.
 [Collections §10.1](../02-serialization/Collections.md#101-a-stdstring-object-has-no-frame-either)
 
-**`Double32_t` is not a type, it is an annotation**, and its width on disk is
-decided by the element's *title*: 4 bytes for a packed range or a plain
-`Double32_t`, 3 bytes for a truncated mantissa, and never the 8 the name suggests.
-An annotation of `[0,0,15]` is *wider* on disk than `[0,0,14]`, and two members of
-the same type in one class can have different widths.
+**`Double32_t` is not a type, it is an annotation**, and its width on disk is set
+by the element's title: 4 bytes for a packed range or a plain `Double32_t`, 3
+bytes for a truncated mantissa, and never the 8 the name suggests. An annotation
+of `[0,0,15]` is wider on disk than `[0,0,14]`, and two members of the same type
+in one class can have different widths.
 [Element types §5.2](../02-serialization/ElementTypes.md#52-the-three-encodings)
 
 **A `pair<K,V>`'s checksum does not identify the class.** ROOT can compute it
@@ -193,13 +195,13 @@ the write side.
 own streamer infos. [The tree record §1](../04-ttree/TTree.md#1-finding-the-trees-in-a-file)
 
 **A branch's last basket is often inside the tree record**, not a record of its
-own — a whole `TKey` embedded in object data, which `fBasketSeek` reports as 0.
-Miss it and you lose the tail of the branch.
+own: a whole `TKey` embedded in object data, which `fBasketSeek` reports as 0.
+A reader that misses it loses the tail of the branch.
 [TBasket §4.1](../04-ttree/TBasket.md#41-the-embedded-layout)
 
 **A basket with no entry-offset array is not necessarily fixed-length.** A flag
-of 80 means the offsets were *not written* and must be regenerated from the
-branch's leaf. The two cases look identical otherwise.
+of 80 means the offsets were not written and must be regenerated from the
+branch's leaf. Otherwise the two cases look identical.
 [TBasket §5.2](../04-ttree/TBasket.md#52-with-kgenerateoffsetmap-the-array-holds-sizes)
 
 **When `fNevBuf` is 0 no offset array is written even though the flag says there
@@ -211,7 +213,7 @@ count. [TBasket §5](../04-ttree/TBasket.md#5-the-entry-offset-array)
 [Branches §7](../04-ttree/TBranch.md#7-the-entry-counters)
 
 **`fEntries` on the tree may disagree with its branches by design.**
-`TTree::SetEntries(-1)` warns about exactly that rather than refusing.
+`TTree::SetEntries(-1)` warns about that case rather than refusing.
 [The tree record §3](../04-ttree/TTree.md#3-fentries-is-a-counter-not-a-derived-quantity)
 
 **An interior branch of a split tree has no leaves and no baskets.** It is a
@@ -229,12 +231,12 @@ through `fSplitLevel >= 100`.
 per value — including the value class's version word.
 [Reading entries §5](../04-ttree/ReadingEntries.md#5-what-one-members-bytes-look-like)
 
-**`TBasket` and `TTreeIndex` have no streamer info at all.** That is the better
-failure: you cannot follow a wrong one.
+**`TBasket` and `TTreeIndex` have no streamer info at all.** This is easier to
+handle than a wrong one, which a reader might follow.
 [TBasket](../04-ttree/TBasket.md), [Auxiliary §2](../04-ttree/Auxiliary.md#2-ttreeindex-the-one-class-with-no-streamer-info)
 
 **`TBranch` below class version 10 is not streamer-info driven**, and the
-*is-present* byte of `fBasketSeek` doubles as a width selector at version 9.
+is-present byte of `fBasketSeek` also selects the width at version 9.
 [Branches §13](../04-ttree/TBranch.md#13-class-versions)
 
 ## 6. Three that are ROOT's bugs, not yours
@@ -245,17 +247,18 @@ is fine; ROOT's value is not. [Leaves §9](../04-ttree/TLeaf.md#9-tleafc)
 
 **A `TLeafC` cannot be followed by another leaf in a leaflist.** `fOffset`
 doubles as an in-memory offset and a `TLeafC` contributes 1, so `c/C:x/I` reads
-`x` from the second byte of the string — silently, at write time as well as read.
+`x` from the second byte of the string. This happens silently, at write time as
+well as at read time.
 [Leaves §3.2](../04-ttree/TLeaf.md#32-foffset-is-a-position-in-the-entry)
 
 **A counted array's counter branch is resolved over the whole tree, so two split
 objects of one class share the first object's counter.** `fBranchCount` is set from
 a name looked up across every branch (`root/tree/tree/src/TBranchElement.cxx:438`),
-and when the sub-branches carry no parent prefix both objects' counted members point
-at the same counter. In `alice_ESDs.root` ROOT reads **0** elements for
-`PrimaryVertex.fIndices` whose entries hold 18, 22, 6 and 13 — silent data loss, in
-a file ROOT itself published. A reader must resolve the counter **among the
-branch's siblings** instead of following the recorded `fBranchCount`.
+and when the sub-branches have no parent prefix both objects' counted members point
+at the same counter. In `alice_ESDs.root`, a file ROOT itself published, ROOT
+silently reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22,
+6 and 13. A reader must resolve the counter **among the branch's siblings** instead
+of following the recorded `fBranchCount`.
 [Reading entries §4.1](../04-ttree/ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
 
 All three are recorded as bug candidates in `PLAN.md` §7.1, with the byte-level

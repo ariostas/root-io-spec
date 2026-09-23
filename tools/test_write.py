@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Tests for `tools/rootwrite.py`, the writer of `spec/06-writing/`.
 
-Two of these are unusual and are the reason the file exists:
+Two of these are the main reason the file exists:
 
 * `StreamerInfoBytes` builds a `StreamerInfo` record from the procedure in
   `spec/06-writing/WritingObjects.md` and asserts it is **byte-identical** to
-  the one ROOT wrote in `data/container/file-minimal.root`. Every rule in that
-  document is in the comparison: byte counts, version words, the class map's
+  the one ROOT wrote in `data/container/file-minimal.root`. The comparison
+  covers every rule in that document: byte counts, version words, the class map's
   two mapping positions, `TList`'s option bytes, `TObjArray` as a pointer slot,
   the checksum in `fMaxIndex[1]`, and `kIsCompiled` in the info's own `fBits`.
 * `Checksums` recomputes `fCheckSum` for every streamer info in every reference
-  file and requires it to match, with a named exception list -- which is how the
-  limits of recomputation in `spec/02-serialization/StreamerInfo.md` 11.2 are
-  kept honest.
+  file and requires it to match, with a named exception list; this checks the
+  limits of recomputation stated in `spec/02-serialization/StreamerInfo.md` 11.2.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ sys.path.insert(0, str(REPO / "tools"))
 import rootfile  # noqa: E402
 import rootwrite as rw  # noqa: E402
 
-#: TObjString as ROOT records it, which is what file-minimal.root contains.
+#: TObjString as ROOT records it in file-minimal.root.
 TOBJSTRING_INFO = rw.Info("TObjString", 1, [
     rw.Element("TStreamerBase", "TObject", "Basic ROOT object", 66, 0, "BASE",
                base_version=1, base_checksum=0x901BC02D),
@@ -40,10 +39,10 @@ TOBJSTRING_INFO = rw.Info("TObjString", 1, [
 def streamer_infos(path: pathlib.Path):
     """Every streamer info in a file, or an empty list if it has none.
 
-    The record may be compressed, in which case `object_data` hands back a
-    buffer with the payload decompressed in place. A record whose codec is not
-    available in this environment is skipped rather than failing the test, the
-    same convention `tools/check_invariants.py` uses.
+    The record may be compressed, in which case `object_data` returns a buffer
+    with the payload decompressed in place. A record whose codec is not
+    available in this environment is skipped rather than failing the test, as
+    in `tools/check_invariants.py`.
     """
     buf, header, records = rootfile.load(path)
     if header.seek_info <= header.begin:
@@ -88,24 +87,24 @@ class StreamerInfoBytes(unittest.TestCase):
 class Checksums(unittest.TestCase):
     """`fCheckSum` recomputed from each info's own elements.
 
-    The exceptions are the substance of the test: they are the ways a checksum
-    can fail to be recomputable from a record, each documented in
-    `spec/02-serialization/StreamerInfo.md` 11.2 and each -- bar one --
-    reproduced exactly by the tests below from the class definition instead.
+    The exceptions are the ways a checksum can fail to be recomputable from a
+    record. Each is documented in `spec/02-serialization/StreamerInfo.md` 11.2,
+    and all but one are reproduced exactly by the tests below from the class
+    definition instead.
     """
 
     #: A class-version-0 info lists only its bases, but the checksum still
     #: folds the members. test_omitted_member reproduces THashList's value.
     OMITTED_MEMBERS = {"THashList", "TSeqCollection"}
-    #: Members ROOT rewrites for I/O -- std::array recorded as a fixed C array,
-    #: std::unique_ptr as a plain pointer -- keep their *declared* type name in
+    #: Members ROOT rewrites for I/O (std::array recorded as a fixed C array,
+    #: std::unique_ptr as a plain pointer) keep their *declared* type name in
     #: the checksum. test_transformed_type_name reproduces both values.
     TRANSFORMED = {"TF1", "CollectionForms", "RooAbsReal"}
     #: ROOT's own value is wrong here: the checksum was computed before the
     #: members were known and cached forever (PLAN.md 7.1 item 8).
-    #: All four carry 0x0b5fb752, and the fourth is in a different file written
-    #: by a different program, which is what makes it a constant ROOT produces
-    #: rather than a coincidence of one fixture.
+    #: All four have 0x0b5fb752, and the fourth is in a different file written
+    #: by a different program, so it is a constant ROOT produces rather than a
+    #: coincidence of one fixture.
     PAIR_BUG = {"pair<TString,PHit*>", "pair<int,string>",
                 "pair<int,vector<short> >", "pair<string,vector<int> >"}
     #: Every mismatch now has a named cause. TPad used to be listed here; it
@@ -147,13 +146,13 @@ class Checksums(unittest.TestCase):
                         f"file 0x{info.checksum:08x}")
         self.assertEqual(unexpected, [])
         # A floor, so adding a fixture cannot fail this; the exception list
-        # above is what makes the test strict.
+        # above keeps the test strict.
         self.assertGreater(matched, 690)
 
     def test_bracket_locator_is_strict(self):
         """Only a `[` preceded by `/` and whitespace folds into the checksum.
 
-        `TPad` is the witness: four of its members carry a title like
+        `TPad` shows it: four of its members have a title like
         `X bottom left corner of pad in NDC [0,1]`. A plain search for `[` folds
         `0,1` and misses ROOT's value; ROOT's own locator folds nothing.
         `StreamerInfo.md` 11 step 3.
@@ -219,15 +218,15 @@ class Checksums(unittest.TestCase):
             if e.type_name.endswith("*") and e.name in (
                     "fFormula", "fParams", "fComposition"):
                 inner = e.type_name[:-1]
-                # The default template argument is spelled out, which is what
-                # makes this unguessable from the record.
+                # The default template argument is spelled out, so this
+                # cannot be guessed from the record.
                 e.type_name = f"unique_ptr<{inner},default_delete<{inner}> >"
         self.assertEqual(rw.checksum(rw.Info("TF1", 12, elements)),
                          info.checksum)
 
-        # RooAbsReal is the third witness, and the one that shows the spelling
-        # is not TF1's habit: its unique_ptr member is recorded as
-        # RooNumIntConfig* and the checksum folds the default deleter too.
+        # RooAbsReal is the third case and shows the spelling is not specific
+        # to TF1: its unique_ptr member is recorded as RooNumIntConfig* and the
+        # checksum folds the default deleter too.
         info = self.infos_named("data/classes/roofit.root", "RooAbsReal")[0]
         elements = self.elements_of(info)
         for e in elements:
@@ -245,8 +244,8 @@ class Checksums(unittest.TestCase):
         shared = [i for i in pairs if i.checksum == 0x0B5FB752]
         self.assertEqual(len(shared), 3)
         # Three distinct layouts, three distinct recomputed values, none of
-        # them the one ROOT wrote -- and the fourth pair, which escaped the
-        # caching, is recomputable like any other class.
+        # them the one ROOT wrote. The fourth pair, which escaped the caching,
+        # is recomputable like any other class.
         computed = {rw.checksum(rw.Info(i.name, 1, self.elements_of(i)))
                     for i in shared}
         self.assertEqual(len(computed), 3)
@@ -260,17 +259,17 @@ class Checksums(unittest.TestCase):
         """0x0B5FB752 is a constant, not a coincidence of one fixture.
 
         `data/classes/roofit.root` was generated from RooFit rather than from
-        `gen/cases/serialization/pairs`, and its `pair<string,vector<int> >` --
-        a layout that appears in neither of the three -- carries the same
-        checksum. StreamerInfo.md 11.2.
+        `gen/cases/serialization/pairs`, and its `pair<string,vector<int> >`, a
+        layout that appears in none of the three, has the same checksum.
+        StreamerInfo.md 11.2.
         """
         info = self.infos_named("data/classes/roofit.root",
                                 "pair<string,vector<int> >")[0]
         self.assertEqual(info.checksum, 0x0B5FB752)
         computed = rw.checksum(rw.Info(info.name, 1, self.elements_of(info)))
         self.assertNotEqual(computed, info.checksum)
-        # And distinct from all three of the pairs.root values, so it is not
-        # simply one of those layouts under another name.
+        # It also differs from all three pairs.root values, so it is not one
+        # of those layouts under another name.
         _, _, infos = streamer_infos(REPO / "data/serialization/pairs.root")
         others = {rw.checksum(rw.Info(i.name, 1, self.elements_of(i)))
                   for i in infos
@@ -283,8 +282,8 @@ class Histograms(unittest.TestCase):
 
     `data/classes/histogram.root` and `data/written/histogram.root` hold the
     same two histograms, one written by ROOT and one by this project. Every
-    object-bearing record in them is byte-identical, which is what
-    `spec/06-writing/WritingHistograms.md` rests on.
+    object-bearing record in them is byte-identical, which
+    `spec/06-writing/WritingHistograms.md` relies on.
     """
 
     def records(self, path):
@@ -343,12 +342,12 @@ class Histograms(unittest.TestCase):
     def test_infos_match_roots_element_by_element(self):
         """Including fSize, which is deliberate.
 
-        `fSize` is `sizeof` on the writing machine, so this is the assertion
-        that would fail first if a standard library disagreed with the values
-        `tools/rootwrite.py` hardcodes -- `sizeof(TAxis)` 216,
+        `fSize` is `sizeof` on the writing machine, so this assertion would
+        fail first if a standard library disagreed with the values
+        `tools/rootwrite.py` hardcodes: `sizeof(TAxis)` 216,
         `sizeof(TString)` 24. A reader must never use the field
-        (`StreamerInfo.md` 7); a writer still has to put something in it, and
-        putting ROOT's value there is what keeps the records comparable.
+        (`StreamerInfo.md` 7); a writer still has to fill it, and ROOT's value
+        keeps the records comparable.
         """
         _, _, infos = streamer_infos(REPO / "data/classes/histogram.root")
         theirs = {i.name: i for i in infos}
@@ -378,7 +377,7 @@ class Derived(unittest.TestCase):
 
     `data/classes/th2-profile.root` and `data/written/th2-profile.root` hold the
     same four objects. All four data records are byte-identical, and so is the
-    **whole** `StreamerInfo` record -- eighteen infos and the `listOfRules` entry
+    **entire** `StreamerInfo` record: eighteen infos and the `listOfRules` entry
     ROOT appends for `TProfile`, which this writer now emits
     (`WritingObjects.md` 8.6).
     """
@@ -403,7 +402,7 @@ class Derived(unittest.TestCase):
         """All four, in one pass, so a name that vanishes fails rather than passes."""
         root_buf, root_recs = self.records("data/classes/th2-profile.root")
         mine_buf, mine_recs = self.records("data/written/th2-profile.root")
-        # The two directory records differ in name, which is the whole
+        # The two directory records differ in name, which is the only
         # difference between the files.
         self.assertEqual(sorted(k for k in root_recs if not k.endswith(".root")),
                          sorted(k for k in mine_recs if not k.endswith(".root")))
@@ -415,7 +414,7 @@ class Derived(unittest.TestCase):
     def test_the_whole_streamer_info_record_is_roots(self):
         """Eighteen infos and the `listOfRules`, all 11789 bytes.
 
-        This was "identical bar one entry" until the writer learned to emit the
+        This was "identical except one entry" until the writer emitted the
         rules (`WritingObjects.md` 8.6). The entry is a `TList`, not an info, so
         `read_streamer_infos` still reports eighteen on both sides.
         """
@@ -431,7 +430,7 @@ class Derived(unittest.TestCase):
 
     def test_the_profile_rule_is_the_one_root_writes(self):
         """One read rule for TProfile versions 1 to 5, which version 7 cannot
-        use -- emitted verbatim so the record can be compared (8.6)."""
+        use; emitted verbatim so the record can be compared (8.6)."""
         buf, _, records = rootfile.load(REPO / "data/written/th2-profile.root")
         header = rootfile.read_header(buf)
         rec = [r for r in records if r.offset == header.seek_info][0]
@@ -493,7 +492,7 @@ class Derived(unittest.TestCase):
         st = rw.stats_from_profile(sumwy, sumwy2, entries, axis,
                                    bin_sumw2=bin_sumw2)
         # Five of the six are exact, because a profile stores sum(w*y) and
-        # sum(w*y*y) per cell rather than throwing them away.
+        # sum(w*y*y) per cell rather than discarding them.
         self.assertEqual((st.tsumw, st.tsumw2, st.tsumwx, st.tsumwx2,
                           st.tsumwy, st.tsumwy2),
                          (4.0, 9.5, 2.5, 2.0, 11.0, 38.0))
@@ -521,7 +520,7 @@ class Derived(unittest.TestCase):
             rw.Profile("p", "", xaxis, [0.0] * 5, rw.Stats())
 
     def test_the_y_axis_title_offset_is_zero_by_name(self):
-        """gStyle's per-axis default, and the one asymmetry in the three blocks."""
+        """gStyle's per-axis default, the only asymmetry in the three blocks."""
         self.assertEqual(rw.Axis(name="xaxis").title_offset, 1.0)
         self.assertEqual(rw.Axis(name="yaxis").title_offset, 0.0)
         self.assertEqual(rw.Axis(name="zaxis").title_offset, 1.0)
@@ -533,7 +532,7 @@ class Trees(unittest.TestCase):
     """The writer's tree against the one ROOT wrote.
 
     `data/ttree/basket.root` and `data/written/tree.root` hold the same tree,
-    and both basket records and the `TTree` record are byte-identical -- keys
+    and both basket records and the `TTree` record are byte-identical, keys
     included, once the wall-clock timestamp is masked. The file names are the
     same length on purpose, because a branch stores its baskets' offsets.
     """
@@ -586,7 +585,7 @@ class Trees(unittest.TestCase):
         self.assertEqual(len(basket.key_extra), 19)
         # fCycle is the basket number, and nothing reads it.
         self.assertEqual(basket.cycle, 0)
-        # And a basket is never in the directory's key list.
+        # A basket is never in the directory's key list.
         self.assertFalse(basket.in_key_list)
 
     def test_offset_array_only_when_entries_vary(self):
@@ -638,12 +637,12 @@ class Trees(unittest.TestCase):
     def test_streamer_info_entries_are_identical(self):
         """All eighteen infos, byte for byte, against ROOT's own record.
 
-        The two records cannot be compared whole: ROOT's carries a nineteenth
+        The two records cannot be compared whole: ROOT's has a nineteenth
         entry of I/O rules that a file written at version 20 cannot use
-        (below). Everything before it is identical -- which is a stricter claim
-        than the element-by-element comparison above, because it also covers the
-        subclass tail of every element, and `tools/element_lists.py` found four
-        wrong values there that nothing else looked at.
+        (below). Everything before it is identical. This is stricter than the
+        element-by-element comparison above because it also covers the
+        subclass tail of every element, where `tools/element_lists.py` found
+        four wrong values that nothing else checked.
         """
         ours = self.written()
         root_buf, _, root_recs = rootfile.load(REPO / "data/ttree/basket.root")
@@ -660,7 +659,7 @@ class Trees(unittest.TestCase):
         self.assertEqual(rw.i32(19), mine[17:21])
 
     def test_without_the_rules_it_differs_by_exactly_one_entry(self):
-        """The rules are optional, and this is the whole of what they cost.
+        """The rules are optional, and this is all they add.
 
         `FileWriter(emit_rules=False)` drops the entry; the record is then
         shorter and its entry count is 18, and nothing else changes.
@@ -682,8 +681,8 @@ class Trees(unittest.TestCase):
 
         ROOT's list has a nineteenth entry, a `listOfRules` of two read rules
         for `TTree` versions <= 16 and <= 18. A file written at version 20
-        cannot use them, so the writer omits them -- which is why only this
-        record differs between the two files.
+        cannot use them, so the writer omits them, and only this record
+        differs between the two files.
         """
         buf, _, records = rootfile.load(REPO / "data/ttree/basket.root")
         header = rootfile.read_header(buf)
@@ -695,7 +694,7 @@ class Trees(unittest.TestCase):
         self.assertEqual(len(rules), 2)
         for rule in rules:
             self.assertIn('sourceClass="TTree"', rule)
-        # And they are the two this writer emits, character for character --
+        # They are the two this writer emits, character for character,
         # including the trailing space TSchemaRule::AsString leaves.
         self.assertEqual(rules, rw.KNOWN_RULES["TTree"])
 
@@ -705,10 +704,10 @@ class Clusters(unittest.TestCase):
 
     `data/ttree/clusters.root` and `data/written/cluster.root` hold the same
     nineteen entries in the same five baskets with the same two cluster ranges,
-    and every basket record and the `TTree` record is byte-identical. That is
-    what covers the three counted arrays at a length other than 1 -- five
+    and every basket record and the `TTree` record is byte-identical. This
+    covers the three counted arrays at a length other than 1 (five
     `fBasketSeek` values, five `fBasketBytes`, six `fBasketEntry` and the zero
-    padding to `fMaxBaskets` -- and both cluster arrays.
+    padding to `fMaxBaskets`) and both cluster arrays.
     """
 
     def written(self) -> bytes:
@@ -788,9 +787,9 @@ class Clusters(unittest.TestCase):
     def test_max_baskets_is_the_floor_or_one_past_the_last(self):
         """10 until there are ten baskets, then fWriteBasket + 1.
 
-        The three arrays are that long whichever it is, and the count is what a
-        reader parses the record with, so getting it wrong desynchronises
-        everything after `fBaskets` (`WritingTrees.md` 4).
+        The three arrays have that length either way, and a reader parses the
+        record with that count, so a wrong value desynchronises everything
+        after `fBaskets` (`WritingTrees.md` 4).
         """
         few = self.branch_of(3)
         self.assertEqual((few.write_basket, few.max_baskets), (3, 10))
@@ -829,10 +828,10 @@ class Graphs(unittest.TestCase):
     """`TGraph` and `TGraphErrors` against the ones ROOT wrote.
 
     `data/written/graph.root` and `data/classes/graph.root` hold the same two
-    objects under the same names, and both records are byte-identical -- as is the
-    **whole** `StreamerInfo` record, all 12169 bytes of nineteen infos. `TGraph`
-    and `TGraphErrors` have no I/O rules, so there is no `listOfRules` entry here
-    to get right.
+    objects under the same names, and both records are byte-identical, as is the
+    **entire** `StreamerInfo` record, all 12169 bytes of nineteen infos. `TGraph`
+    and `TGraphErrors` have no I/O rules, so there is no `listOfRules` entry
+    here.
     """
 
     ROOTS = "data/classes/graph.root"
@@ -887,7 +886,7 @@ class Graphs(unittest.TestCase):
                                  theirs[name].class_version)
 
     def test_a_graph_file_describes_the_tarray_family(self):
-        """Which a histogram file does not (`WritingGraphs.md` 5)."""
+        """A histogram file does not (`WritingGraphs.md` 5)."""
         names = [i.name for i in rw.graph_infos()]
         for cls in ("TArray", "TArrayF", "TArrayD", "TH1F", "TH1"):
             self.assertIn(cls, names, cls)
@@ -941,8 +940,8 @@ class LeafC(unittest.TestCase):
     """A `TLeafC` branch against `data/ttree/strings.root`.
 
     `data/written/leafc.root` holds the same two branches and the same three
-    strings -- `"ab"`, the empty one, and 300 characters -- and both basket
-    records and the whole `TTree` record are byte-identical to ROOT's, keys
+    strings (`"ab"`, the empty one, and 300 characters), and both basket
+    records and the entire `TTree` record are byte-identical to ROOT's, keys
     included, once the timestamp is masked. The two file names are the same
     length because a branch stores its baskets' offsets.
     """
@@ -1025,7 +1024,7 @@ class LeafC(unittest.TestCase):
         self.assertEqual(len(leaf.pack("y" * 255)), 260)
 
     def test_the_offset_array_repeats_for_an_empty_entry(self):
-        """Read out of the finished file, where a reader would find it."""
+        """Read from the finished file, as a reader would."""
         buf, _, records = rootfile.load(REPO / self.MINE)
         rec = [r for r in records
                if r.class_name == "TBasket" and r.name == "s"][0]
@@ -1055,7 +1054,7 @@ class LeafC(unittest.TestCase):
         self.assertEqual(leaf.minimum, 0)
         self.assertEqual(leaf.len_type, 1)
         self.assertFalse(leaf.is_range)
-        # fTitle carries no dimensions: a TLeafC has none to carry.
+        # fTitle has no dimensions: a TLeafC has none.
         self.assertEqual(leaf.title, "s")
 
     def test_flen_never_falls_back(self):
@@ -1078,14 +1077,13 @@ class Subdirectories(unittest.TestCase):
 
     The two files hold the same five objects at the same three levels, and the
     written one's name was chosen to be the same length, so they have the same
-    length and the same record boundaries. Everything else is the assertion: the
-    whole 1854 bytes agree once the three fields `spec/06-writing/WritingFiles.md`
-    marks free are set aside -- each key's `fDatime`, the three UUIDs, and the
-    file's own name.
+    length and the same record boundaries. The test asserts that all 1854 bytes
+    agree once the three fields `spec/06-writing/WritingFiles.md` marks free are
+    set aside: each key's `fDatime`, the three UUIDs, and the file's own name.
 
-    That makes every offset, `fNbytesName`, `fSeekParent` and `fSeekKeys` in both
-    subdirectory records ROOT's own value rather than this project's reading of
-    `TDirectoryFile.cxx`.
+    Every offset, `fNbytesName`, `fSeekParent` and `fSeekKeys` in both
+    subdirectory records is therefore ROOT's own value rather than this
+    project's reading of `TDirectoryFile.cxx`.
     """
 
     ROOTS = "data/container/directories.root"
@@ -1126,7 +1124,7 @@ class Subdirectories(unittest.TestCase):
         self.assertEqual(mine, theirs)
 
     def test_the_layout_is_roots(self):
-        """Stated separately, so a failure says *what* moved."""
+        """Checked separately, so a failure shows *what* moved."""
         _, _, mine = self.load(self.MINE)
         _, _, theirs = self.load(self.ROOTS)
         shape = lambda rs: [(r.offset, r.nbytes, r.key_len, r.obj_len,
@@ -1143,7 +1141,7 @@ class Subdirectories(unittest.TestCase):
         for rec in subs:
             d = rootfile.read_directory(buf, rec)
             self.assertEqual(d.nbytes_name, rec.key_len, rec.name)
-            # And therefore the fields start where the key ends.
+            # So the fields start where the key ends.
             self.assertEqual(d.fields_offset, rec.offset + rec.key_len)
 
     def test_a_subdirectory_key_spells_its_class_tdirectory(self):
@@ -1151,7 +1149,7 @@ class Subdirectories(unittest.TestCase):
         for rec in records:
             if rec.name in ("alpha", "beta"):
                 self.assertEqual(rec.class_name, "TDirectory")
-        # And the key length accounts for that spelling, not TDirectoryFile's.
+        # The key length accounts for that spelling, not TDirectoryFile's.
         alpha = next(r for r in records if r.offset == 401)
         self.assertEqual(alpha.key_len,
                          26 + rw.string_len("TDirectory")
@@ -1209,7 +1207,7 @@ class Subdirectories(unittest.TestCase):
             f.to_bytes()
 
     def test_the_payload_is_sixty_bytes_whatever_the_offsets(self):
-        """Which is what lets ROOT rewrite a directory record in place."""
+        """This lets ROOT rewrite a directory record in place."""
         f = rw.FileWriter("data/written/x.root")
         f.mkdir("a")
         data = f.to_bytes()
@@ -1239,15 +1237,15 @@ class Determinism(unittest.TestCase):
 def free_fields_blanked(data: bytes, name: bytes, extra=()) -> bytes:
     """`data` with every field a writer is free to choose blanked out.
 
-    The timestamps, the UUIDs and the file's own name -- which is why two files
-    compared this way must have names of the same length, or nothing after the
-    first one would line up. Every span but the header UUID comes from parsing
-    the file, so a record that moved would be compared at its new place and fail.
+    The timestamps, the UUIDs and the file's own name. Two files compared this
+    way must have names of the same length, or nothing after the first one would
+    line up. Every span but the header UUID comes from parsing the file, so a
+    record that moved would be compared at its new place and fail.
 
     `extra` is for timestamps this cannot reach: the key of a record that has
     been **released** is still on disk behind the gap marker, and a dead key
-    cannot be parsed out of a file. Each one has to be named by offset, which is
-    a claim in its own right about what is in the gap.
+    cannot be parsed out of a file. Each has to be named by offset, which is
+    itself a claim about what is in the gap.
     """
     buf = bytearray(data)
     for off in extra:
@@ -1404,7 +1402,7 @@ class Evolution(unittest.TestCase):
         self.assertEqual([len(i.elements) for i in infos], [1, 2])
 
     def test_each_record_decodes_through_its_own_version(self):
-        """The version word is the only thing that chooses (8.1)."""
+        """Only the version word selects the info (8.1)."""
         buf, _, infos = self.infos()
         header = rootfile.read_header(buf)
         records = rootfile.read_records(buf, header)
@@ -1472,7 +1470,7 @@ class Evolution(unittest.TestCase):
         return f.to_bytes()
 
     def test_a_base_elements_checksum_comes_from_the_base_info(self):
-        """StreamerInfo 13.7, which is obligation five of 8.1."""
+        """StreamerInfo 13.7, obligation five of 8.1."""
         bottom, top = self.base_pair()
         base = top.elements[0]
         self.assertEqual(base.base_checksum, bottom.checksum)
@@ -1501,9 +1499,9 @@ class Evolution(unittest.TestCase):
         element must match *an* info for that class, not whichever one a lookup
         by name happens to keep. Until 2026-09-22 the check compared against the
         last info of that name, and failed a file whose base element named the
-        earlier one -- 15 of the 34 failures PLAN-corpus.md C5 reported. The
+        earlier one: 15 of the 34 failures PLAN-corpus.md C5 reported. The
         other 19 were a writer's genuinely unmatched checksums, and the second
-        half of this test is that those are still caught.
+        half of this test checks that those are still caught.
         """
         import check_invariants
         bottom, top = self.base_pair()
@@ -1529,7 +1527,7 @@ class Evolution(unittest.TestCase):
 
     def test_a_disagreeing_base_version_is_not_an_error(self):
         """StreamerInfo 9.2: it names the version built against, not the one in
-        the file beside it. Five corpus files rely on that being allowed."""
+        the file beside it. Five corpus files rely on this."""
         import check_invariants
         bottom, _ = self.base_pair()
         _, top = self.base_pair(base_version=4)
@@ -1574,7 +1572,7 @@ class Updates(unittest.TestCase):
     #: The `fDatime` of two keys inside the 243-byte gap at 904: the base's
     #: free-segment record, which began at 954, and `two;1`, which began at
     #: 1042 and was freed by the WriteDelete. Both are dead and neither was
-    #: cleared -- releasing a record writes four bytes and moves on (2.4).
+    #: cleared: releasing a record writes four bytes and nothing else (2.4).
     ADD_STALE = (964, 1052)
     #: The same for `reopen-reuse`'s 208-byte gap at 1164, whose two dead
     #: timestamps are of different kinds: 1215 is a **key image** inside the
@@ -1601,11 +1599,11 @@ class Updates(unittest.TestCase):
                                 self.GAP_STALE))
 
     def test_the_dead_keys_behind_the_marker_are_the_only_other_difference(self):
-        """A released record keeps its key, timestamp and all (2.4).
+        """A released record keeps its key, timestamp included (2.4).
 
         Everything in the 243-byte gap at 904 matches ROOT's byte for byte
-        except the two `fDatime` fields of the keys buried in it, which is the
-        evidence that neither writer clears what it releases.
+        except the two `fDatime` fields of the keys buried in it, which shows
+        that neither writer clears what it releases.
         """
         ours = free_fields_blanked(self.add_ours,
                                    b"data/written/reopen-add.root")

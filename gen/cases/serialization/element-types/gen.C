@@ -1,7 +1,7 @@
 /// The element type codes no other case reaches.
 ///
 ///   7    kCharStar     n:i32 then n bytes, no terminator and no 255-escape
-///   501  kStreamLoop   a counted array of objects, the count NOT stored
+///   501  kStreamLoop   a counted array of objects, the count not stored
 ///   81   kObject + kOffsetL
 ///   82   kAny    + kOffsetL
 ///

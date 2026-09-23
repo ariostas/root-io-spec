@@ -15,7 +15,7 @@ What this case pins down:
 - The encoding is chosen by TClonesArray::kBypassStreamer, BIT(12), and that bit is
   written into the TObject base so that the file is self-describing. `bypass` has
   fBits 0x00001000 and `plain` has 0x00000000.
-- With the bit set -- the default -- the objects are transposed: one column per
+- With the bit set (the default), the objects are transposed: one column per
   member of the element class, the TObject base first. There is no second version
   word and no kStreamedMemberWise bit, unlike an STL collection: the element class
   version comes from the "Pt;2" string and the mode from fBits.

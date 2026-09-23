@@ -11,11 +11,11 @@ The six shapes a `pair<K,V>` member takes in a member-wise `std::map`, and the
 empty case.
 
 `serialization/collections` covers `map<int,int>` and the fact that ROOT wrote no
-streamer info for its `pair<int,int>`. This case is the rest of the story, and it
+streamer info for its `pair<int,int>`. This case covers the rest, and it
 contradicts the simple version of that claim: **whether a file carries a pair's
 streamer info is not predictable.** Four of this file's six pairs have one and
 two do not, and the split is not by member type. Across both corpora it is 28
-present and 23 absent. A reader looks the pair up by name and synthesises only
+present and 23 absent. A reader looks the pair up by name and synthesises it only
 when it is missing.
 
 One column shape per member:
@@ -23,22 +23,21 @@ One column shape per member:
 | Member type | Column of *n* values |
 |---|---|
 | `std::string` | one shared byte count and version, then *n* counted strings |
-| `TString` | *n* counted strings, **no shared frame at all** |
+| `TString` | *n* counted strings, no shared frame |
 | a class | *n* objects, each with its own byte count and version |
 | a collection | one shared frame, then *n* object-wise collections |
 | a pointer | *n* object slots |
 
-The `TString` row against the `std::string` row is the one worth reading twice:
-the same-looking data, one with a frame and one without, decided only by which
-element class the member has.
+The `TString` and `std::string` rows hold similar-looking data, one with a frame
+and one without; only the member's element class decides which.
 
-**fEmpty is the trap.** An empty member-wise collection writes its count and then
-nothing -- not even the columns' own headers
+**fEmpty writes no column headers.** An empty member-wise collection writes its
+count and then nothing, not even the columns' own headers
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199`, where ROOT does nothing
-for `!nobjects` above TStreamerInfo version 6). Sixteen bytes for the whole
-member. A reader that always reads a column header desynchronises here, and a
+for `!nobjects` above TStreamerInfo version 6). The whole member is sixteen
+bytes. A reader that always reads a column header desynchronises here, and a
 reader that never reads one desynchronises on a split branch, where the header
-*is* written for an empty column.
+is written for an empty column.
 
 **The checksums are not unique.** `pair<int,string>`, `pair<int,vector<short> >`
 and `pair<TString,PHit*>` all carry `0x0b5fb752` in this file, in both their
@@ -56,20 +55,19 @@ spec = [
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
 
-# This file cannot have a portable normalized digest, and no masking can give it
-# one. libstdc++ carries doc comments on std::pair's members and libc++ does not,
-# so the synthesised pair<string,int>'s two TStreamerElement titles are "The
-# first member" and "The second member" on Linux and empty on macOS -- 35 bytes
-# against 2. It is a *length* difference, and a mask can restore a value but not
-# a length. PLAN.md section 9.6.
+# This file cannot have a portable normalized digest. libstdc++ carries doc
+# comments on std::pair's members and libc++ does not, so the synthesised
+# pair<string,int>'s two TStreamerElement titles are "The first member" and "The
+# second member" on Linux and empty on macOS: 35 bytes against 2. A mask can
+# restore a value but not a length. PLAN.md section 9.6.
 #
-# Nothing else about the case is exempt: its 34 byte assertions run everywhere,
-# and none of them touches fTitle.
+# The case's 34 byte assertions still run everywhere, and none of them touches
+# fTitle.
 digest        = false
 digest_reason = """
 libstdc++ gives std::pair's members doc comments and libc++ does not, so the
-synthesised pair<string,int>'s element titles differ in LENGTH between them -- 35
-bytes against 2 -- and a mask cannot restore a length. The byte assertions still
+synthesised pair<string,int>'s element titles differ in length between them (35
+bytes against 2), and a mask cannot restore a length. The byte assertions still
 run. PLAN.md 9.6
 """
 
@@ -91,8 +89,8 @@ class  = "TList"
 role   = "StreamerInfo"
 # The two records below sit after the StreamerInfo record, so their offsets are
 # the libc++ ones; with libstdc++ they are 3173 and 3303. Nothing checks these
-# entries -- they are here to describe the file -- but the difference is real and
-# is the whole reason this case has no `size` and no digest.
+# entries, which only describe the file, but the difference is real and is why
+# this case has no `size` and no digest.
 [[records]]
 offset = 3140
 nbytes = 130
@@ -168,7 +166,7 @@ value = 1
 
 # --- fTStrKey: map<TString,int>, {"pq":3} ---------------------------------
 #
-# A TString column has NO shared frame: the counted strings follow the count
+# A TString column has no shared frame: the counted strings follow the count
 # directly. Compare offset 362 above.
 
 [[bytes]]

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Tests for tools/check_versions.py.
 
-The tool itself runs against the pinned submodule and the real documents, which
-is the check that matters. These cover the table parsing, where the shapes are
-irregular enough that a silent mis-parse is the likely failure — and where one
-already happened: a citation's line number read as a class version.
+The tool itself runs against the pinned submodule and the real documents.
+These tests cover the table parsing, whose irregular shapes make a silent
+mis-parse the likely failure; one already happened, a citation's line number
+read as a class version.
 """
 
 import sys
@@ -130,8 +130,8 @@ class SectionBoundaries(unittest.TestCase):
 
 
 #: The docs workflow checks out without submodules and still runs every test
-#: here, so anything that reads the pinned ROOT source has to say it needs it
-#: rather than fail. unittest reports the skip, so it is not silent.
+#: here, so a test that reads the pinned ROOT source skips rather than fails.
+#: unittest reports the skip.
 HAVE_SUBMODULE = (check_versions.SUBMODULE / "io" / "io" / "src").is_dir()
 
 
@@ -152,8 +152,8 @@ class SubmoduleExtraction(unittest.TestCase):
 
     def test_an_ambiguous_name_keeps_every_version(self):
         # ROOT's tests and tutorials define classes called Event and Track, so a
-        # lookup by bare name is not safe and the tool must refuse rather than
-        # pick. This asserts the ambiguity is visible, not that it is resolved.
+        # lookup by bare name is unsafe and the tool must refuse rather than
+        # pick. This asserts only that the ambiguity is visible.
         self.assertGreater(len(self.known.get("Event", set())), 1)
 
 

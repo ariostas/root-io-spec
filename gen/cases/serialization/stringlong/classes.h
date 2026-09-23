@@ -6,8 +6,8 @@
 #include "TString.h"
 #include "TStringLong.h"
 
-/// `TStringLong` has no user anywhere in ROOT -- only its own header, its source
-/// and a LinkDef mention it -- so the only way to get one into a file is to put
+/// `TStringLong` has no user anywhere in ROOT (only its own header, its source
+/// and a LinkDef mention it), so the only way to get one into a file is to put
 /// it in a class of one's own. `fPlain` is the control: the same text in a
 /// `TString`, so the two encodings sit side by side in one record.
 class SText : public TObject {

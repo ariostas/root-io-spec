@@ -3,13 +3,13 @@ file = "data/serialization/double32.root"
 size = 1545
 
 description = """
-Double32_t and Float16_t members, whose on-disk width is decided by the element's
+Double32_t and Float16_t members, whose on-disk width is set by the element's
 comment string rather than by its declared type.
 
 All six members hold 1.5 except fRange, which holds 0.5. The widths are 4, 4, 3,
 3, 4 and 3 bytes, so fBits15 is wider than fBits14: GetRange records a bit count
 only when it is below 15, and above that the member degrades to a plain 4-byte
-float and the element does not even carry the kHasRange bit. The trailing Int_t
+float and the element does not carry the kHasRange bit. The trailing Int_t
 sentinel pins the last width.
 
 The assertions cover the raw encodings rather than the decoded values, since the

@@ -5,23 +5,23 @@ Three gates, in increasing strength (`spec/06-writing/index.md` 2):
 
 1. the bytes match the committed copy in `data/written/`, and every `[[bytes]]`
    assertion in the case's `case.toml` holds;
-2. `tools/rootfile.py` reads the file and `tools/check_invariants.py` accepts it
-   -- this project's reader and the specification's own invariants, applied to
-   bytes this project wrote rather than bytes ROOT wrote;
+2. `tools/rootfile.py` reads the file and `tools/check_invariants.py` accepts it:
+   this project's reader and the specification's invariants, applied to bytes
+   this project wrote rather than bytes ROOT wrote;
 3. with `--root`, ROOT opens the file, its `verify.C` finds the values that went
-   in, and **nothing** on either stream looks like a ROOT diagnostic -- except
-   the lines a case declares in `expected_diagnostics`, which must then actually
-   appear.
+   in, and **nothing** on either stream looks like a ROOT diagnostic, except the
+   lines a case declares in `expected_diagnostics`, which must then appear.
 
   tools/check_write.py                 gates 1 and 2 over every case
   tools/check_write.py --root          all three
   tools/check_write.py --accept        rewrite data/written/ after a deliberate change
   tools/check_write.py gen/written/objstring
 
-Unlike `data/`'s other files these are byte-reproducible, because a writer has no
-reason to consult a clock: `tools/rootwrite.py` takes the timestamp and the UUID
-as inputs. So the digest here is a plain sha256 of the file, not the normalized
-digest `tools/normalize.py` computes for the ROOT-written fixtures.
+Unlike `data/`'s other files these are byte-reproducible, because
+`tools/rootwrite.py` takes the timestamp and the UUID as inputs rather than
+reading a clock. The digest here is therefore a plain sha256 of the file, not
+the normalized digest `tools/normalize.py` computes for the ROOT-written
+fixtures.
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ import rootfile  # noqa: E402
 
 MANIFEST = REPO / "data/written/MANIFEST.sha256"
 
-#: Any of these in ROOT's output fails gate 3. The point of the gate is that a
-#: wrong class version or a wrong byte count makes ROOT talk, and a writer that
-#: ignores what it says has not been checked at all.
+#: Any of these in ROOT's output fails gate 3. A wrong class version or a wrong
+#: byte count makes ROOT print a diagnostic, so the gate treats any diagnostic as
+#: a failure.
 ROOT_DIAGNOSTICS = ("Error in <", "Warning in <", "Fatal in <", "SysError in <",
                     "Break in <", "R__unzip", "CheckByteCount")
 
@@ -109,11 +109,11 @@ def read_back(buf: bytes, case: dict) -> list[str]:
 def verify_with_root(case_dir: Path, path: Path, case: dict) -> list[str]:
     """Gate 3: ROOT opens it, agrees about the values, and says nothing.
 
-    A case may declare `expected_diagnostics`: lines ROOT is *supposed* to print,
-    because they are about the session and not about the file. The only one so
-    far is the `no dictionary` warning every class a writer invented produces.
-    A declared line is required to appear -- a stale declaration fails the case
-    the same way an undeclared warning does -- and nothing else is forgiven.
+    A case may declare `expected_diagnostics`: lines ROOT is expected to print
+    because they are about the session, not the file. The only one so far is
+    the `no dictionary` warning every class a writer invented produces. A
+    declared line must appear, so a stale declaration fails the case as an
+    undeclared warning does; no other diagnostic is allowed.
     """
     macro = case_dir / "verify.C"
     if not macro.exists():
@@ -175,7 +175,7 @@ def main(argv: list[str]) -> int:
         buf = build(case_dir)
 
         # Gate 1. A writer is deterministic, so the committed file is a plain
-        # copy and any difference is a change in behaviour worth looking at.
+        # copy and any difference is a change in behaviour.
         digest = hashlib.sha256(buf).hexdigest()
         if accept:
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -216,7 +216,7 @@ def main(argv: list[str]) -> int:
             + "".join(f"{d}  {p}\n" for p, d in sorted(digests.items())))
 
     # Gate 2's second half, over every written file at once, so the count it
-    # prints is the specification's own invariants applied to our bytes.
+    # prints covers all the written files.
     if files:
         inv = subprocess.run(
             [sys.executable, str(REPO / "tools/check_invariants.py")]

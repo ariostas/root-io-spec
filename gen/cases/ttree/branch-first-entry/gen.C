@@ -3,17 +3,17 @@
 /// TBranch::SetFirstEntry is called from exactly one place in ROOT that is not
 /// a user: TBranchSTL::Fill, when it meets an object class it has not seen
 /// before and creates a sub-branch for it mid-stream
-/// (root/tree/tree/src/TBranchSTL.cxx:285). The new sub-branch is told the
-/// entry number it was born at, and that number reaches disk.
+/// (root/tree/tree/src/TBranchSTL.cxx:285). The new sub-branch is given the
+/// entry number at which it was created, and that number reaches disk.
 ///
-/// A TBranchSTL is built only for a TOP-LEVEL branch of a collection with
+/// A TBranchSTL is built only for a top-level branch of a collection with
 /// pointers, at a split level above TTree::kSplitCollectionOfPointers
 /// (root/tree/tree/src/TTree.cxx:2516-2518). ttree/split-ptr-collection has the
-/// other shape -- the same collection as a member of a holder class -- which
-/// goes through TBranchElement instead and never reaches this code.
+/// other shape, the same collection as a member of a holder class, which goes
+/// through TBranchElement instead and never reaches this code.
 ///
-/// So: two empty entries, then two with a hit. The sub-branch is created at
-/// entry 2 and carries fFirstEntry 2, while the top-level branch has 0.
+/// Two empty entries, then two with a hit. The sub-branch is created at entry 2
+/// and has fFirstEntry 2, while the top-level branch has 0.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "a branch born mid-stream", 0);

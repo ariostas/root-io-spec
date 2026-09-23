@@ -5,17 +5,17 @@ size = 19609
 description = """
 A TBranchRef and its TRefTable: the branch that is not in fBranches.
 
-TTree::BranchRef creates a branch with a fixed identity -- name "TRefTable",
-title "List of branch numbers with referenced objects"
-(root/tree/tree/src/TBranchRef.cxx:58-59) -- and hangs it off TTree::fBranchRef
-rather than adding it to fBranches. Three things follow, and all three are
-assertions here.
+TTree::BranchRef creates a branch with a fixed identity (name "TRefTable",
+title "List of branch numbers with referenced objects",
+root/tree/tree/src/TBranchRef.cxx:58-59) and attaches it to TTree::fBranchRef
+rather than adding it to fBranches. The three consequences below are all
+asserted here.
 
 **It counts towards the tree's byte totals but a walk over fBranches misses
 it.** The tree records fTotBytes 546 and fZipBytes 489; the two ordinary
 branches sum to 365 and 365. The missing 181 and 124 are the TBranchRef's. This
-is why TTree.md invariant 1 has to add fBranchRef by name, and this fixture is
-what caught the omission.
+is why TTree.md invariant 1 has to add fBranchRef by name; this fixture caught
+the omission.
 
 **It is compressed in an uncompressed file.** Its constructor hard-codes
 fCompress = 1 (root/tree/tree/src/TBranchRef.cxx:62), so it is the only branch
@@ -27,7 +27,7 @@ TTree::FlushBasketsImpl iterates GetListOfBranches
 (root/tree/tree/src/TTree.cxx:5255-5265), which does not contain fBranchRef, so
 TTree::Write never flushes it. Without the explicit FlushBaskets() in gen.C the
 file has a TBranchRef with fWriteBasket 0 and the references cannot be resolved
-at all -- which is what an ordinary small file written by a user looks like.
+at all, which is what an ordinary small file written by a user looks like.
 """
 
 spec = [

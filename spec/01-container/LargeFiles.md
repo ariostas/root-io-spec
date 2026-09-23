@@ -1,14 +1,14 @@
 # Files larger than 2 GB
 
-Every offset in a ROOT file starts life 4 bytes wide. Past a threshold the writer
-widens some of them to 8, and it does so **structure by structure**, under five
-different conditions, with no single flag that says the file is in the wide form.
-This page collects everything that changes and states each condition once; the
-layouts themselves stay in the documents that own them.
+Every offset in a ROOT file is initially 4 bytes wide. Past a threshold the writer
+widens some of them to 8. It does so **structure by structure**, under five
+different conditions, and no single flag marks the file as being in the wide form.
+This page lists everything that changes and states each condition once; the
+layouts themselves are in the documents that define them.
 
-The threshold is `kStartBigFile` = **2000000000**
-(`root/io/io/inc/TFile.h:278`) — two thousand million, not 2 GiB — and every
-comparison against it is strictly greater-than.
+The threshold is `kStartBigFile` = 2000000000 (`root/io/io/inc/TFile.h:278`),
+two thousand million rather than 2 GiB. Every comparison against it is strictly
+greater-than.
 
 ## 1. Five switches, five conditions
 
@@ -21,25 +21,24 @@ comparison against it is strictly greater-than.
 | Free-list entry | version `1001` | **that entry's `fLast`** exceeds it | `root/io/io/src/TFree.cxx:111` |
 
 Only the first is a property of the file. The other four are properties of the
-individual structure, they disagree with each other routinely, and **each one
-carries its own version word** — which is the only thing a reader should ever
-size from.
+individual structure and often disagree with each other. **Each one has its own
+version word**, and a reader should size each structure from that word alone.
 
-> A file over 2 GB therefore contains a mixture. §5 walks one: a 5.25 GB file
-> whose header is wide, whose first key and root directory record are narrow, and
-> whose free list holds both entry widths interleaved.
+> A file over 2 GB therefore contains a mixture. §5 walks through one: a 5.25 GB
+> file whose header is wide, whose first key and root directory record are narrow,
+> and whose free list holds both entry widths interleaved.
 
 ### 1.1 A key's width is not decided by where the key is
 
 Every writing constructor calls `TKey::Build` with `filepos == -1`
 (`root/io/io/src/TKey.cxx:206`, `:222`, `:248`, `:338`), and `Build` then
-substitutes **the file's current end**, not the key's eventual offset
-(`root/io/io/src/TKey.cxx:456`). So in a file that has already grown past 2 GB,
-a key written into a reused gap near the front of the file is in the wide form,
-with an 8-byte `fSeekKey` holding a small number.
+substitutes the file's current end, not the key's eventual offset
+(`root/io/io/src/TKey.cxx:456`). In a file that has already grown past 2 GB, a
+key written into a reused gap near the front of the file is therefore wide, with
+an 8-byte `fSeekKey` holding a small number.
 
-In `volume.root` the free-list record sits at offset **105 159 358** and its key
-says `fVersion` = **1004**:
+In `volume.root` the free-list record is at offset 105 159 358 and its key has
+`fVersion` = 1004:
 
 ```
 00 00 03 3a  03 ec  00 00 02 fe  35 32 d1 c9  00 3c  00 01
@@ -48,36 +47,36 @@ says `fVersion` = **1004**:
 └──── fSeekKey, 8 B ───┘  └─── fSeekPdir, 8 B ───┘
 ```
 
-`fSeekKey` is 105 159 358 — nowhere near the threshold — in an 8-byte field,
+`fSeekKey` is 105 159 358, far below the threshold, but it is in an 8-byte field
 because `fEND` was 5 253 395 573 when the key was built.
 
-The converse also holds and matters more: a key written **before** the file
+The converse also holds and is more important: a key written **before** the file
 crossed the threshold stays narrow, however large the file later becomes. The
-first key of that same file, at `fBEGIN`, is `fVersion` 4 with 4-byte offsets.
+first key of the same file, at `fBEGIN`, has `fVersion` 4 and 4-byte offsets.
 
-> This is an erratum against this specification's own earlier text, which is now
-> corrected in [Directories §3](Directory.md#3-three-independent-large-file-flags):
-> the key flag was stated there as a test on the key's own offset.
+> This corrects this specification's earlier text (erratum 2), which stated the
+> key flag as a test on the key's own offset. The fix is also made in
+> [Directories §3](Directory.md#3-three-independent-large-file-flags).
 
 ### 1.2 The directory record has two writers that disagree
 
-`TDirectoryFile::FillBuffer` — the path that produces the record on disk —
-widens on the three offsets it is about to write
-(`root/io/io/src/TDirectoryFile.cxx:751-759`).
+`TDirectoryFile::FillBuffer`, which produces the record on disk, widens on the
+three offsets it is about to write (`root/io/io/src/TDirectoryFile.cxx:751-759`).
 `TDirectoryFile::Streamer`, which serialises the same class through a `TBuffer`,
 widens on `fEND` instead (`root/io/io/src/TDirectoryFile.cxx:1827`). The two
-conditions are independent: a 3 GB file whose directories all live below the
-threshold gets narrow records from the first and wide records from the second.
+conditions are independent: in a 3 GB file whose directories all lie below the
+threshold, the first writes narrow records and the second wide ones.
 
-Both produce the same *layout* for a given version word, so a reader that sizes
-from the version word is unaffected. It is stated here because a **writer** that
-picks one condition and applies it everywhere will not reproduce ROOT's bytes.
+Both produce the same layout for a given version word, so a reader that sizes
+from the version word is unaffected. A writer that applies one condition
+everywhere will not reproduce ROOT's bytes.
 
 ## 2. The file header
 
-The wide header is 75 bytes rather than 63, and three fields double. Field
-meanings and the narrow layout are [File header §2](FileHeader.md#2-layout);
-this is the wide diagram, which that page gives only as a column of offsets.
+The wide header is 75 bytes rather than 63, and three fields double in width.
+Field meanings and the narrow layout are in
+[File header §2](FileHeader.md#2-layout); that page gives the wide layout only
+as a column of offsets, so the diagram is here.
 
 ```
  0                   1                   2                   3
@@ -120,26 +119,25 @@ this is the wide diagram, which that page gives only as a column of offsets.
 ```
 
 > As in the small layout, the 4-byte grid stops being accurate at `fUnits` (offset
-> 40), which is one byte: every field after it straddles a row boundary, so the
+> 40), which is one byte. Every field after it straddles a row boundary, so the
 > rows below it show order rather than column position. The offset table in
-> [FileHeader §2.2](FileHeader.md#22-field-offsets) is
-> authoritative.
+> [FileHeader §2.2](FileHeader.md#22-field-offsets) is authoritative.
 
-`fBEGIN` never widens, and neither do the three lengths — `fNbytesFree`,
+`fBEGIN` never widens, and neither do the three lengths: `fNbytesFree`,
 `fNbytesName` and `fNbytesInfo` are record lengths, and
 [Records §5](Record.md#5-payload-size-limits) bounds a record well below 2 GB.
 
-`fUnits` is set to 8 alongside the flag and is **informational only**; a reader
+`fUnits` is set to 8 alongside the flag and is informational only; a reader
 MUST select the layout from `fVersion`
 ([File header §3](FileHeader.md#3-fversion-and-the-large-file-flag)).
 
 ## 3. The wide key
 
 `fSeekKey` and `fSeekPdir` both become 8 bytes, moving `fClassName` from offset
-26 to 34 ([Records §2](Record.md#2-key-layout)). Bytes 0-17 are unchanged —
-`fNbytes` and `fObjlen` stay 4-byte signed, and [Records §5](Record.md#5-payload-size-limits)
-keeps a record well below 2 GiB anyway, so no length in the key ever widens.
-What changes is everything from byte 18:
+26 to 34 ([Records §2](Record.md#2-key-layout)). Bytes 0-17 are unchanged:
+`fNbytes` and `fObjlen` stay 4-byte signed, and
+[Records §5](Record.md#5-payload-size-limits) keeps a record well below 2 GiB, so
+no length in the key widens. Everything from byte 18 changes:
 
 ```
  0                   1                   2                   3
@@ -162,13 +160,12 @@ nowhere for `fPidOffset` to live.
 
 > **The top 16 bits of the `fSeekPdir` word are not address bits.** They hold
 > `fPidOffset` (`root/io/io/src/TKey.cxx:670`, `root/io/io/src/TKey.cxx:1281-1282`),
-> and a reader MUST mask before using the offset — see
+> and a reader MUST mask before using the offset; see
 > [Records §3.6](Record.md#36-fseekpdir-and-the-packed-fpidoffset). A non-zero
-> `fPidOffset` is also the second thing that forces the wide key
-> (`root/io/io/src/TKey.cxx:696-704`), independently of any file size, which is
-> why a small file can contain one.
+> `fPidOffset` also forces the wide key (`root/io/io/src/TKey.cxx:696-704`)
+> regardless of file size, so a small file can contain one.
 
-A key image inside a key list follows the same rule and carries its own version
+A key image inside a key list follows the same rule and has its own version
 word, so widths may vary within one list
 ([Directories §6](Directory.md#6-key-lists)).
 
@@ -193,24 +190,24 @@ An entry is 18 bytes instead of 10, and its version word is 1001 rather than 1
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
-The test is on `fLast` alone, so a segment that *starts* below the threshold and
-ends above it is wide, and one entry's width says nothing about its neighbours'.
-`volume.root` has 19 narrow and 32 wide entries in one record, ordered by
-`fFirst`, so the two forms interleave in the middle of the list.
+The test is on `fLast` alone, so a segment that starts below the threshold and
+ends above it is wide, and one entry's width implies nothing about its
+neighbours'. `volume.root` has 19 narrow and 32 wide entries in one record,
+ordered by `fFirst`, so the two forms interleave in the middle of the list.
 
-**The trailing sentinel is what usually crosses first.** The free list always
-ends with an entry that begins at `fEND` and runs past it
-([Free segments §5](FreeSegments.md#5-the-trailing-segment)), and its `fLast` is
-the next whole multiple of 1 000 000 000 above `fEND` — 3 000 000 000 for a
-2.24 GB file, 6 000 000 000 for a 5.25 GB one. That is why every large file in
-§6 has at least one wide entry, and why a file just under the threshold has
-none: `CMS_7250E9A5…root` ends at 1 997 354 026, its sentinel's `fLast` is
-exactly 2 000 000 000, and 2 000 000 000 is not *greater than* 2 000 000 000.
+**The trailing sentinel usually crosses first.** The free list always ends with
+an entry that begins at `fEND` and runs past it
+([Free segments §5](FreeSegments.md#5-the-trailing-segment)). Its `fLast` is the
+next whole multiple of 1 000 000 000 above `fEND`: 3 000 000 000 for a 2.24 GB
+file, 6 000 000 000 for a 5.25 GB one. Every large file in §6 therefore has at
+least one wide entry, and a file just under the threshold has none:
+`CMS_7250E9A5…root` ends at 1 997 354 026, its sentinel's `fLast` is
+2 000 000 000, and 2 000 000 000 is not greater than 2 000 000 000.
 
 ## 5. One file, byte by byte
 
-`volume.root` — ROOT 5.19/03, 5 253 395 573 bytes — read by two HTTP range
-requests. The mixture is the point.
+`volume.root` (ROOT 5.19/03, 5 253 395 573 bytes), read by two HTTP range
+requests. It shows both widths in one file.
 
 **The header** (bytes 0-74), wide:
 
@@ -232,7 +229,7 @@ requests. The mixture is the point.
 | `fUnits` | 40 | 8 |
 | `fSeekInfo` | 45-52 | 105 191 774 |
 
-**The first key** (offset 100), narrow — `fVersion` 4, `fKeylen` 52, a 4-byte
+**The first key** (offset 100), narrow: `fVersion` 4, `fKeylen` 52, a 4-byte
 `fSeekKey` of 100 and a 4-byte `fSeekPdir` of 0:
 
 ```
@@ -241,13 +238,13 @@ requests. The mixture is the point.
 ```
 
 **The root directory record** (offset 172, after the repeated name and title),
-narrow — version **5**, with `fSeekDir` 100, `fSeekParent` 0 and `fSeekKeys`
+narrow: version 5, with `fSeekDir` 100, `fSeekParent` 0 and `fSeekKeys`
 105 159 233 in 4-byte fields, and the twelve zero bytes the narrow form writes
 after the UUID (`root/io/io/src/TDirectoryFile.cxx:786`).
 
-**The key-list record** (offset 105 159 233): its own key is *wide*
-(`fVersion` 1004, `fKeylen` 60) and the single key image inside it is wide too —
-`fSeekKey` 5 252 483 583, an offset that no 4-byte field could hold:
+**The key-list record** (offset 105 159 233): its own key is wide
+(`fVersion` 1004, `fKeylen` 60), and so is the single key image inside it, with
+`fSeekKey` 5 252 483 583, which no 4-byte field could hold:
 
 ```
 00 00 00 01                                       nkeys = 1
@@ -257,20 +254,20 @@ after the UUID (`root/io/io/src/TDirectoryFile.cxx:786`).
 00 04 00 62 00 04 00 62                           slack, not an entry
 ```
 
-Those last eight bytes are the hazard
-[Directories §6.1](Directory.md#61-the-count-is-authoritative) describes: past
-the threshold ROOT allocates the key-list payload 8 bytes longer than it fills
+The last eight bytes are the hazard described in
+[Directories §6.1](Directory.md#61-the-count-is-authoritative): past the
+threshold ROOT allocates the key-list payload 8 bytes longer than it fills
 (`root/io/io/src/TDirectoryFile.cxx:2209`), and the slack is uninitialised heap.
 Here `fObjlen` is 65 while the count and the one image account for 57. A parser
-driven by the payload length rather than by `nkeys` reads `00 04 00 62` as the
-start of a second key — a plausible-looking `fNbytes`, and a version word of 4.
+that follows the payload length rather than `nkeys` reads `00 04 00 62` as the
+start of a second key, with a plausible `fNbytes` and a version word of 4.
 
 **The free-list record** (offset 105 159 358): a wide key over a payload of 51
 entries, 19 narrow then 32 wide, ending in the sentinel
 `(5 253 395 573, 6 000 000 000)`.
 
-And from `lhcb2.root`, whose `fEND` is 4 947 894 760, the same structure with an
-offset past 4 GB where even an unsigned 32-bit reader fails:
+The same structure in `lhcb2.root`, whose `fEND` is 4 947 894 760, has an offset
+past 4 GB, where even an unsigned 32-bit reader fails:
 
 ```
 00 00 00 7b  03 ec  00 00 00 12  3c 8b 22 4d  00 69  00 01
@@ -284,19 +281,18 @@ offset past 4 GB where even an unsigned 32-bit reader fails:
 ## 6. Evidence, and how it is checked
 
 No committed fixture is over 2 GB and none can be. The evidence is eleven files
-published by the ROOT team and by CERN Open Data, read by HTTP range request — a few hundred bytes
-each, nothing downloaded — with every field recorded in `gen/cern/LARGE.toml`
-and re-measured by:
+published by the ROOT team and by CERN Open Data, read by HTTP range requests of
+a few hundred bytes each without downloading the files. Every field is recorded
+in `gen/cern/LARGE.toml` and re-measured by:
 
 ```sh
 tools/fetch_cern.py --headers
 ```
 
-which parses each file's header, its whole free-segment record, its top
-directory record at `fBEGIN` and that directory's key list with
-`tools/rootfile.py`, and fails if any recorded field, the entry-width counts, the
-`nfree` agreement or the sentinel rule has drifted. The four ranges cost about
-1.5 KB a file.
+This parses each file's header, its full free-segment record, its top directory
+record at `fBEGIN` and that directory's key list with `tools/rootfile.py`, and
+fails if any recorded field, the entry-width counts, the `nfree` agreement or the
+sentinel rule has changed. The four ranges cost about 1.5 KB a file.
 
 | File | ROOT | `fEND` | Free entries | Why it is listed |
 |---|---|---|---|---|
@@ -312,8 +308,8 @@ directory record at `fBEGIN` and that directory's key list with
 | `071ab81e…root` (CMS Run2024F RAW) | 6.30/03 | 3 274 820 145 | 2 wide | the newest writer, and a `TStorageFactoryFile` free record above the boundary; Open Data |
 | `00041836_00008626_1.ew.dst` (LHCb) | 5.34/21 | 5 786 425 072 | 1 wide | the last ROOT 5 series; Open Data |
 
-The top directory and its key list, read since 2026-09-23, reach the ordinary
-keys the free record could not:
+The top directory and its key list (read since 2026-09-23) give access to
+ordinary keys, which the free record does not:
 
 | File | Directory record | Top keys | Wide | Largest `fSeekKey` |
 |---|---|---|---|---|
@@ -329,21 +325,26 @@ keys the free record could not:
 | `071ab81e…root` | 1005 | 6 | 6 | 3 274 771 239 |
 | `00041836_00008626_1.ew.dst` | 1005 | 3 | 3 | 5 786 412 835 |
 
-Three things in it are worth having. **Seven keys hold an `fSeekKey` past 4 GB**,
-in four files, which no 32-bit field could. **Three large files have a narrow
-directory record**, because §1.2's `FillBuffer` rule looks at the record's own
-three offsets and theirs are all below the threshold — each key list lies in
-the first 106 MB of its file. And **`Event100000.root` mixes the two key widths in one list**:
-the first `TTree` cycle, at 1 019 932 163, and the `TProcessID` are narrow, the
-second cycle and both histograms are wide — §1.1's converse on ordinary keys,
-where until now only the key at `fBEGIN` showed it. Every wide key reached has
-`fSeekPdir` equal to `fBEGIN` once masked and `fPidOffset` 0.
+The table shows:
 
-`CMS_7250E9A5…` and `AOD.067184…` are the control: sub-threshold files whose
-every structure is narrow, including the sentinel whose `fLast` is exactly
-2 000 000 000. The CMS pair is the sharpest version of it — the same experiment's
-`TStorageFactoryFile` writer on both sides of the boundary, all narrow at 1.997 GB
-under 5.22/00 and all wide at 3.27 GB under 6.30/03.
+- Seven keys hold an `fSeekKey` past 4 GB, in four files; no 32-bit field could
+  hold them.
+- Three large files have a narrow directory record. §1.2's `FillBuffer` rule
+  looks at the record's own three offsets, and in these files all three are below
+  the threshold: each key list lies in the first 106 MB of its file.
+- `Event100000.root` mixes the two key widths in one list. The first `TTree`
+  cycle, at 1 019 932 163, and the `TProcessID` are narrow; the second cycle and
+  both histograms are wide. This is §1.1's converse on ordinary keys, not only
+  on the key at `fBEGIN`.
+
+Every wide key read has `fSeekPdir` equal to `fBEGIN` once masked, and
+`fPidOffset` 0.
+
+`CMS_7250E9A5…` and `AOD.067184…` are the controls: sub-threshold files in which
+every structure is narrow, including the sentinel whose `fLast` is
+2 000 000 000. The two CMS files are the closest comparison: the same
+experiment's `TStorageFactoryFile` writer on both sides of the boundary, all
+narrow at 1.997 GB under 5.22/00 and all wide at 3.27 GB under 6.30/03.
 
 ## 7. Reading
 
@@ -351,22 +352,22 @@ under 5.22/00 and all wide at 3.27 GB under 6.30/03.
    `fEND`, `fSeekFree` and `fSeekInfo` are 8 bytes and the fixed part is 75 bytes.
    Subtract 1 000 000 to recover the release. Do **not** use `fUnits`.
 2. Take every other width from the structure's own version word, never from the
-   header's flag and never from an offset's magnitude:
-   a key is wide when its `fVersion > 1000`, a directory record when its version
-   word is `> 1000`, a free entry when its version word is `> 1000`.
+   header's flag or an offset's magnitude: a key is wide when its
+   `fVersion > 1000`, a directory record when its version word is `> 1000`, a
+   free entry when its version word is `> 1000`.
 3. In a wide key, mask `fSeekPdir`: the offset is the low 48 bits and the top 16
    are `fPidOffset`.
 4. Size each key image in a key list and each entry in a free list
-   individually, and iterate a key list exactly `nkeys` times.
+   individually, and iterate a key list `nkeys` times.
 5. Hold every offset in a 64-bit signed integer. `fEND` above 2³¹ is ordinary,
    above 2³² occurs, and `fLast` on the trailing free entry exceeds `fEND` by
    design.
 
 ## 8. Invariants
 
-Checked by `tools/fetch_cern.py --headers` over the eleven files of §6 rather
-than by `tools/check_invariants.py`, which has no file large enough — except
-invariant 7, which both check.
+Checked by `tools/fetch_cern.py --headers` over the eleven files of §6. Except
+for invariant 7, which both tools check, they are not checked by
+`tools/check_invariants.py`, which has no file large enough.
 
 1. `fVersion >= 1000000` **if** `fEND > 2000000000`; the reverse holds on every
    known file but is not guaranteed, because the flag is never cleared once set
@@ -377,27 +378,27 @@ invariant 7, which both check.
 3. The last free entry's `fLast` is greater than `fEND`.
 4. An entry's version word is `> 1000` **iff** its `fLast > 2000000000`. A
    reader that sizes entries by comparing `fLast` with the threshold instead of
-   by reading the version word desynchronises here and nowhere else.
+   reading the version word loses sync here and nowhere else.
 5. Every entry satisfies `0 <= fFirst <= fLast <= fEND`, except the trailing
    entry, whose `fLast` passes `fEND` by design.
-6. When a key is wide — the free-segment record's own, the top directory's
-   key-list record's own, or a key image in that list — its `fSeekPdir` masked
-   to 48 bits is `fBEGIN` and its `fPidOffset` is 0. This is the project's only
-   measurement of the packed field on files it did not write: 20 wide key
-   images and 18 wide record keys over the eleven files.
+6. When a key is wide (the free-segment record's own key, the top directory's
+   key-list record's own key, or a key image in that list), its `fSeekPdir`
+   masked to 48 bits is `fBEGIN` and its `fPidOffset` is 0. This is the
+   project's only measurement of the packed field on files it did not write: 20
+   wide key images and 18 wide record keys over the eleven files.
 7. The top directory record's version word is `> 1000` **iff** one of its
    `fSeekDir`, `fSeekParent` and `fSeekKeys` exceeds 2 000 000 000
    (`root/io/io/src/TDirectoryFile.cxx:751-759`). Three of the eleven files are
    large and still have a narrow record by this rule. Unlike the rest of this
-   list it needs no large file to fail, so `tools/check_invariants.py` checks it
-   too, on every directory record of every file. Of the 820 in reach — `data/`,
-   both corpora and `root/roottest/` — the only two that disagree are
-   the two g4tools files of `gen/foreign/`, each of which writes its root
-   directory at version 1001 with every offset under 200 KB.
+   list it needs no large file to fail, so `tools/check_invariants.py` also
+   checks it on every directory record of every file. Of the 820 available in
+   `data/`, both corpora and `root/roottest/`, the only two that disagree are the
+   two g4tools files of `gen/foreign/`, each of which writes its root directory
+   at version 1001 with every offset under 200 KB.
 
-Each is a mutation test in `tools/test_large_files.py`, which takes the measured
-reading of `volume.root` as the good case and breaks one invariant at a time, so
-none of the seven can pass vacuously.
+Each invariant has a mutation test in `tools/test_large_files.py`, which takes
+the measured reading of `volume.root` as the good case and breaks one invariant
+at a time, so none of the seven can pass vacuously.
 
 ## 9. Errata
 

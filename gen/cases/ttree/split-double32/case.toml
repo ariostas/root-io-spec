@@ -6,15 +6,15 @@ description = """
 Truncated floats inside a split branch, where no TLeafD32 is involved.
 
 ttree/leaf-truncated covers Double32_t and Float16_t reached through a leaflist,
-where the leaf class is TLeafD32 or TLeafF16 and the annotation lives in the
-*leaf's* title. A split branch never produces those classes: every leaf of a
-TBranchElement is a TLeafElement, and a TLeafElement carries no width at all
+where the leaf class is TLeafD32 or TLeafF16 and the annotation is in the leaf's
+title. A split branch never produces those classes: every leaf of a
+TBranchElement is a TLeafElement, and a TLeafElement records no width at all
 (TLeaf.md section 8).
 
-So for a split Double32_t member the width can only come from the **streamer
-element's** title in the file's StreamerInfo record. That is what this case is
-for: six members, five of them truncated floats, all behind identical
-TLeafElement leaves, and nothing in the branch or the leaf distinguishing them.
+For a split Double32_t member the width can therefore only come from the
+**streamer element's** title in the file's StreamerInfo record. This case has six
+members, five of them truncated floats, all behind identical TLeafElement leaves,
+with nothing in the branch or the leaf distinguishing them.
 
   member   element title   fStreamerType   bytes per entry
   fPlain   (empty)         9               4
@@ -26,13 +26,13 @@ TLeafElement leaves, and nothing in the branch or the leaf distinguishing them.
 
 fPlain, fRange and fBits are indistinguishable from the branch record: same
 fStreamerType 9, same leaf class, same fEntryOffsetLen 0. fHalf and fHBits share
-fStreamerType 19 and differ in width. The basket payloads -- three entries each,
-compression off -- are 12, 12, 12, 12, 9 and 12 bytes, which is the only place
-the difference shows without reading the StreamerInfo record.
+fStreamerType 19 and differ in width. The basket payloads (three entries each,
+compression off) are 12, 12, 12, 12, 9 and 12 bytes, the only place the
+difference shows without reading the StreamerInfo record.
 
 A reader that takes the width of a split member from the branch, or from the
-leaf, will get four of these six wrong. The rule is
-ElementTypes.md section 5, applied to the element fID indexes.
+leaf, will get four of these six wrong. The rule is ElementTypes.md section 5,
+applied to the element fID indexes.
 """
 
 spec = [

@@ -1,12 +1,11 @@
 # References
 
-`TRef`, `TRefArray`, `TProcessID`, and the extra word a referenced `TObject`
-carries.
+`TRef`, `TRefArray`, `TProcessID`, and the extra word written after a referenced
+`TObject`.
 
-A reference is ROOT's way of pointing at an object that lives in a *different*
-record, possibly in a different file. It is not a byte offset. It is a pair — a
-process identity and a 24-bit serial number — and resolving it means finding the
-object that carries the same pair.
+A reference points at an object in a different record, possibly in a different
+file. It is not a byte offset but a pair of a process identity and a 24-bit
+serial number, and resolving it means finding the object with the same pair.
 
 This is the only part of the serialization layer where reading one record is not
 enough to interpret it, and the only part where a bit in `fBits` changes the
@@ -26,11 +25,11 @@ version:i16   fUniqueID:u32   fBits:u32   [ pidf:u16 ]
 trailing `u16` is written at `root/core/base/src/TObject.cxx:1047-1048` and read
 at `root/core/base/src/TObject.cxx:1005-1010`.
 
-> **Nothing but the bit announces it.** The streamer info is identical either
-> way, the byte count of the enclosing object absorbs the difference, and a
-> reader that hardcodes 10 bytes desynchronises by two on the first referenced
-> object and then reads plausible garbage. `fBits` must be inspected before the
-> base's length is known.
+> **Only the bit indicates it.** The streamer info is identical either way and
+> the byte count of the enclosing object absorbs the difference. A reader that
+> hardcodes 10 bytes is off by two from the first referenced object onward and
+> reads plausible garbage. The base's length is not known until `fBits` has been
+> inspected.
 
 `fUniqueID` is masked on write when the object is referenced:
 
@@ -40,8 +39,8 @@ at `root/core/base/src/TObject.cxx:1005-1010`.
 | `kIsReferenced` set | `fUniqueID & 0x00FFFFFF` | `root/core/base/src/TObject.cxx:1036-1037` |
 
 The masked-off byte is the writing session's index into its in-memory process-id
-table (§5), which is meaningless in another process. The asymmetry matters
-because `TRef` takes the *unmasked* branch — see §3.
+table (§5), which is meaningless in another process. `TRef` takes the unmasked
+branch; see §3.
 
 > Demonstrated by `serialization/references`: the `TObjString` at 517 has `fBits`
 > `0x00000018`, so its `TObject` base runs 523–535 and ends with `00 00`, and the
@@ -50,9 +49,9 @@ because `TRef` takes the *unmasked* branch — see §3.
 ## 2. `pidf` and the `TProcessID` records
 
 `pidf` is an index into the **file's own key namespace**. The process id it
-denotes is the record keyed `ProcessID<pidf>` in the file's top-level directory
-— `%d`, with no zero padding (`root/io/io/src/TFile.cxx:2016-2018`, written at
-`root/io/io/src/TFile.cxx:3476-3477`).
+denotes is the record keyed `ProcessID<pidf>` in the file's top-level directory,
+formatted with `%d` and no zero padding (`root/io/io/src/TFile.cxx:2016-2018`,
+written at `root/io/io/src/TFile.cxx:3476-3477`).
 
 ```
 process id for a reference = pidf + the record's key fPidOffset
@@ -60,7 +59,7 @@ process id for a reference = pidf + the record's key fPidOffset
 
 `fPidOffset` is normally 0. It is non-zero only for a key copied verbatim from
 another file, and it is packed into the top 16 bits of a large key's `fSeekPdir`
-— see [Record §3.6](../01-container/Record.md#36-fseekpdir-and-the-packed-fpidoffset).
+([Record §3.6](../01-container/Record.md#36-fseekpdir-and-the-packed-fpidoffset)).
 It is added at every site that reads a `pidf`
 (`root/core/base/src/TObject.cxx:1009`, `root/core/base/src/TRef.cxx:502`,
 `root/core/cont/src/TRefArray.cxx:530`).
@@ -70,8 +69,8 @@ It is added at every site that reads a `pidf`
 
 ### 2.1 The `TProcessID` record
 
-**Every data member of `TProcessID` is transient or static**
-(`root/core/base/inc/TProcessID.h:81-89`), so the payload is exactly a `TNamed`.
+Every data member of `TProcessID` is transient or static
+(`root/core/base/inc/TProcessID.h:81-89`), so the payload is only a `TNamed`.
 Class version 1 (`root/core/base/inc/TProcessID.h:118`), streamer-info-driven,
 byte-counted.
 
@@ -86,35 +85,34 @@ byte-counted.
 | `fName` | `ProcessID<n>` as the **originating** file named it |
 | `fTitle` | the process UUID, 36 ASCII characters |
 
-Two traps:
-
-- **`fName` is not authoritative.** `WriteTObject(pid, name)` names the *key*,
+- **`fName` is not authoritative.** `WriteTObject(pid, name)` names the key,
   not the object (`root/io/io/src/TFile.cxx:3477`), so after a file-to-file copy
   the payload can say `ProcessID3` in a record keyed `ProcessID0`. Only the key
   name indexes `pidf`.
 - **`fUniqueID` of the `TProcessID` is not the `pidf`.** It is the writer's
   session-local table index (`root/core/base/src/TProcessID.cxx:142`). Ignore it.
 
-The **UUID in `fTitle` is the only stable identity**, and it is also the key's
-title, so a reader can obtain it without decompressing anything.
+The UUID in `fTitle` is the only stable identity. It is also the key's title,
+so a reader can obtain it without decompressing anything.
 
 > Demonstrated by `serialization/references`: the record keyed `ProcessID0` has
 > key title `5cad9593-b110-11f1-9a7a-b10c080abeef` and a payload of 70 bytes that
-> is nothing but a `TNamed`, with `fUniqueID` and `fBits` both zero.
+> is only a `TNamed`, with `fUniqueID` and `fBits` both zero.
 
 ### 2.2 The record precedes what needs it
 
 `TFile::WriteProcessID` appends the record the first time a reference is written
-(`root/io/io/src/TFile.cxx:3468-3482`), so `ProcessID0` sits *before* the object
-whose `pidf` names it. A reader MUST NOT assume references are resolvable in one
-forward pass of the record chain; resolve them against the key list instead.
+(`root/io/io/src/TFile.cxx:3468-3482`), so `ProcessID0` is placed before the
+object whose `pidf` names it. A reader MUST NOT assume references are resolvable
+in one forward pass of the record chain; resolve them against the key list
+instead.
 
 There is no count of process ids in the file header. ROOT recovers it by walking
 the key list and counting keys whose class name is `TProcessID`
 (`root/io/io/src/TFile.cxx:946-953`).
 
 > A null `TRef` is enough to create a `ProcessID0` record:
-> `TRef::Streamer` calls `WriteProcessID` for every `TRef` that does not carry
+> `TRef::Streamer` calls `WriteProcessID` for every `TRef` that does not have
 > `kHasUUID` (`root/core/base/src/TRef.cxx:517`, `root/core/base/src/TRef.cxx:524`),
 > and `TFile::WriteProcessID` substitutes the session's process id for a null
 > argument (`root/io/io/src/TFile.cxx:3464-3465`). A `kHasUUID` `TRef` writes a UUID
@@ -130,64 +128,62 @@ version:i16   fUniqueID:u32   fBits:u32   pidf:u16
 
 Twelve bytes, fixed. The version word is `TObject`'s, written by the embedded
 `TObject::Streamer` call (`root/core/base/src/TRef.cxx:489`), even though `TRef`
-itself has a `ClassDef` version of 1 (`root/core/base/inc/TRef.h:64`). A reader
-that expects a byte count, or that reads the version word as `TRef`'s, is wrong
-about both.
+itself has a `ClassDef` version of 1 (`root/core/base/inc/TRef.h:64`). There is
+no byte count, and the version word is not `TRef`'s.
 
-The three fields:
+The fields:
 
 - **`fUniqueID`** is the referenced object's id. A `TRef` is not itself
-  referenced, so `kIsReferenced` is clear in *its* `fBits`, so `TObject::Streamer`
-  takes the **unmasked** branch (`root/core/base/src/TObject.cxx:1029`) and the
-  writing session's process-table index reaches the disk in the top byte.
+  referenced, so `kIsReferenced` is clear in its own `fBits`. `TObject::Streamer`
+  therefore takes the unmasked branch (`root/core/base/src/TObject.cxx:1029`),
+  and the writing session's process-table index is written in the top byte.
 
   > **A reader MUST apply `& 0x00FFFFFF`.** The referenced object's own
-  > `fUniqueID` *is* masked, so the two do not compare equal byte-for-byte
+  > `fUniqueID` is masked, so the two do not compare equal byte-for-byte
   > whenever the writing session held more than one process id. ROOT's own
   > masking is at `root/core/base/src/TProcessID.cxx:333`.
 
-- **`fBits`** of the `TRef` carries `kHasUUID` (`BIT(5)`) and, in bits 16–23, a
+- **`fBits`** of the `TRef` holds `kHasUUID` (`BIT(5)`) and, in bits 16–23, a
   `TExec` index for action-on-demand (§3.1, §3.2).
-- **`pidf`** resolves as §2.
+- **`pidf`** is resolved as in §2.
 
 ### 3.1 The `kHasUUID` variant
 
-If `fBits & 0x20` is set, the trailing `u16` is replaced by a **`TString`** —
-a bare counted string holding a UUID (`root/core/base/src/TRef.cxx:490-499` read,
+If `fBits & 0x20` is set, the trailing `u16` is replaced by a **`TString`**, a
+bare counted string holding a UUID (`root/core/base/src/TRef.cxx:490-499` read,
 `root/core/base/src/TRef.cxx:517-522` write). The member's length is then
 variable, and a reader MUST branch on the bit.
 
 > Demonstrated by `serialization/references`: the `TRef` record's payload is 12
-> bytes beginning at 571 with `00 01`, a version word — the following record's
+> bytes beginning at 571 with `00 01`, a version word; the following record's
 > key starts at 583.
 >
-> And by `serialization/ref-variants`: `ruuid` has `fBits = 0x00000020` and a
-> counted string of 36 where the `pidf` would be, so its payload is **47 bytes**
+> Also by `serialization/ref-variants`: `ruuid` has `fBits = 0x00000020` and a
+> counted string of 36 where the `pidf` would be, so its payload is 47 bytes
 > and the next record's key starts 47 bytes on.
 
 **`fUniqueID` means something different in this form.** For an ordinary `TRef` it
 is the target's id within a `TProcessID`; for a `kHasUUID` one it indexes
-`gROOT`'s `TProcessUUID` table (`root/core/base/src/TRef.cxx:490-497`). The two
-are both plain `u32` and **nothing but the bit distinguishes them**.
+`gROOT`'s `TProcessUUID` table (`root/core/base/src/TRef.cxx:490-497`). Both are
+plain `u32`, and only the bit distinguishes them.
 
 ### 3.2 The `TExec` index
 
-Bits 16–23 of a `TRef`'s `fBits` hold **`1 +` the index** of a `TExec` in
-`TRef`'s list of execs, stored by `TRef::SetAction`
+Bits 16–23 of a `TRef`'s `fBits` hold `1 +` the index of a `TExec` in `TRef`'s
+list of execs, stored by `TRef::SetAction`
 (`root/core/base/src/TRef.cxx:428-437`). Zero means no action, so the numbering
 is one-based.
 
-On reading, those bits come off the wire with the rest of `fBits` in
-`TObject::Streamer` (`root/core/base/src/TObject.cxx:1003`). `TRef::Streamer` then
-sets the same bit range again from a different source — the *streamer element's*
-unique id, carried in as `GetTRefExecId()`
-(`root/core/base/src/TRef.cxx:508-509`) — which matters to ROOT's in-memory state
-and not at all to a reader: the on-disk meaning is entirely in `fBits`.
+On reading, those bits are read with the rest of `fBits` in `TObject::Streamer`
+(`root/core/base/src/TObject.cxx:1003`). `TRef::Streamer` then sets the same bit
+range again from a different source, the streamer element's unique id, passed in
+as `GetTRefExecId()` (`root/core/base/src/TRef.cxx:508-509`). This affects ROOT's
+in-memory state but not a reader: the on-disk meaning is entirely in `fBits`.
 
-It is a number, not a flag, and **it does not change the layout**: such a `TRef`
-is still 12 bytes and still ends in a `pidf`. A reader that ignores the field
-reads the reference correctly; one that treats `fBits` as a set of independent
-flags will invent several.
+The field is a number, not a flag, and **it does not change the layout**: such a
+`TRef` is still 12 bytes and still ends in a `pidf`. A reader that ignores the
+field reads the reference correctly; one that treats `fBits` as a set of
+independent flags will see several spurious ones.
 
 > Demonstrated by `serialization/ref-variants`: `rexec1` has
 > `fBits = 0x00010000` and `rexec2` `0x00020000`, both twelve bytes with
@@ -195,7 +191,7 @@ flags will invent several.
 
 ## 4. `TRefArray`
 
-Unlike `TRef`, this one is framed: byte count and version word
+Unlike `TRef`, `TRefArray` is framed with a byte count and version word
 (`root/core/cont/src/TRefArray.cxx:545`, `root/core/cont/src/TRefArray.cxx:562`).
 Class version 1 (`root/core/cont/inc/TRefArray.h:104`), hand-written streamer.
 
@@ -210,8 +206,8 @@ Class version 1 (`root/core/cont/inc/TRefArray.h:104`), hand-written streamer.
 | … | `pidf` | `u16` | **one for the whole array** |
 | … | `fUIDs` | `nobjects` × `u32` | |
 
-`TSeqCollection` and `TCollection` are **not** streamed as base classes; only
-`TObject` and then `fName` by hand
+`TSeqCollection` and `TCollection` are not streamed as base classes; only
+`TObject` and then `fName` are written, by hand
 (`root/core/cont/src/TRefArray.cxx:546-556`). Every entry shares the one `pidf`,
 so a `TRefArray` cannot span processes.
 
@@ -240,43 +236,44 @@ The serial comes from a per-session counter, and the top byte is the session's
 index into its own process-id table, or `0xFF` as an escape when there are more
 than 254 (`root/core/base/src/TProcessID.cxx:176-184`).
 
-**Neither of those is what a file means.** On disk the top byte is either zeroed
-(a referenced object, §1) or a stale session artefact (a `TRef`, §3), and the
-process is named by `pidf`, which is a *file* index. A reader should therefore:
+**Neither of these is what the value means in a file.** On disk the top byte is
+either zeroed (a referenced object, §1) or a stale session artefact (a `TRef`,
+§3), and the process is named by `pidf`, which is a file index. A reader should
+therefore:
 
 1. take the serial as `fUniqueID & 0x00FFFFFF`;
 2. take the process from `pidf + fPidOffset`, never from `fUniqueID`;
 3. never compare two `fUniqueID` words directly.
 
-ROOT's own comment at `root/core/base/src/TRef.cxx:75` — "the pidf is stored in
-the bits 24->31 of the fUniqueID of the TRef" — describes the in-memory encoding.
-Read as a statement about the file it is wrong, and it is the most likely source
-of a reader bug.
+ROOT's own comment at `root/core/base/src/TRef.cxx:75`, "the pidf is stored in
+the bits 24->31 of the fUniqueID of the TRef", describes the in-memory encoding.
+As a statement about the file it is wrong, and it is the most likely source of a
+reader bug.
 
-A session that exhausts the 24-bit serial space allocates a **new** `TProcessID`
+A session that exhausts the 24-bit serial space allocates a new `TProcessID`
 and resets the counter (`root/core/base/src/TProcessID.cxx:164-174`), so more
 than one `ProcessID<n>` record in a file does not imply more than one session.
 
 ## 6. Resolving a reference
 
-The process half is self-contained; the object half is not.
+The process half can be resolved from the file; the object half cannot.
 
 **In the file:** `pidf` → key `ProcessID<pidf>` → the UUID in its title. The
-serial is in the bytes. Together they name "object *N* in process *P*"
+serial is in the bytes. Together they identify "object *N* in process *P*"
 unambiguously.
 
-**Not in the file:** where object *N* lives. A `TRef` stores no seek, no key
-name, no branch name. ROOT resolves it only because reading the target object
+**Not in the file:** where object *N* is. A `TRef` stores no seek, no key name
+and no branch name. ROOT resolves it only because reading the target object
 registered it in an in-memory table keyed by id
 (`root/core/base/src/TObject.cxx:1018`), which `TRef::GetObject` then looks up
 (`root/core/base/src/TRef.cxx:392`). A third-party reader must build the same
 index itself by scanning every record's `TObject` header, and the target is
 explicitly permitted to be in another file.
 
-Inside a `TTree` there is a shortcut: `TRefTable`, carried in the `TBranchRef`
+Inside a `TTree` there is a shortcut: `TRefTable`, stored in the `TBranchRef`
 baskets, maps a serial to the branch that holds it, and records the process UUIDs
 it used in a persistent `fProcessGUIDs` (`root/core/cont/inc/TRefTable.h:49`).
-Outside a `TTree` there is nothing.
+Outside a `TTree` there is no such table.
 
 ## 7. Reading
 
@@ -291,8 +288,8 @@ At a `TRef` member (type code 61, class `TRef`):
 
 1. Read 12 bytes as `version:i16 fUniqueID:u32 fBits:u32`, then either a `u16`
    `pidf` or, if `fBits & 0x20`, a counted string.
-2. There is no byte count to resynchronise on. Getting this wrong is
-   unrecoverable until the enclosing object ends.
+2. There is no byte count to resynchronise on. An error here cannot be
+   recovered from until the enclosing object ends.
 3. The reference is `(process(pidf + fPidOffset), fUniqueID & 0x00FFFFFF)`.
 
 To turn `pidf` into a process:
@@ -306,7 +303,7 @@ To turn `pidf` into a process:
 1. A `TObject` base with `fBits & 0x10` occupies 12 bytes; one without occupies
    10. This is checked indirectly, through the byte count of the enclosing
    object ([Streamer-driven reading §10](StreamerDriven.md#10-invariants)):
-   getting the length wrong desynchronises everything after it.
+   a wrong length shifts everything after it.
 2. Every `pidf` appearing in a file, plus its record's `fPidOffset`, names a key
    `ProcessID<n>` that exists in that file's top-level directory.
 3. Every `TProcessID` record's payload is a `TNamed` whose `fTitle` is 36
@@ -316,12 +313,12 @@ To turn `pidf` into a process:
    `10 or 12 + |fName| + 1 + 4 + 4 + 2 + 4 × nobjects`, and `nobjects` is not
    negative.
 6. The `fUniqueID` of an object whose `fBits & 0x10` is set has a zero top byte.
-7. A `TRef` payload is exactly 12 bytes when its `fBits` does not carry
-   `kHasUUID`. When it does, the payload is 10 bytes plus a counted string and
-   ends exactly where the record's payload ends (§3.1).
+7. A `TRef` payload is exactly 12 bytes when its `fBits` does not have
+   `kHasUUID` set. When it does, the payload is 10 bytes plus a counted string
+   and ends exactly where the record's payload ends (§3.1).
 
 Invariant 6 holds for objects but deliberately **not** for `TRef` or for
-`TRefArray::fUIDs`, which is the whole point of §3 and §4.
+`TRefArray::fUIDs` (§3 and §4).
 
 ## 9. Errata
 
@@ -348,7 +345,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/ref-variants` | The `kHasUUID` form (§3.1) and a `TExec` index in `fBits`, twice (§3.2) |
 
 No fixture covers a non-zero `pidf`, a non-zero `fPidOffset`, or a `fUniqueID`
-whose top byte survives to disk. Those three do need state from a second ROOT
-session or a second file, which a single generator macro cannot produce — but
-`kHasUUID` and the `TExec` index turned out not to: neither arises from a plain
-`TRef(obj)`, and the generator sets both up directly instead.
+whose top byte survives to disk. Those three need state from a second ROOT
+session or a second file, which a single generator macro cannot produce.
+`kHasUUID` and the `TExec` index do not: neither arises from a plain
+`TRef(obj)`, and the generator sets both up directly.

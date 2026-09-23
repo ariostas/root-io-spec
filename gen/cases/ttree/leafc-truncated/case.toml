@@ -3,22 +3,22 @@ file = "data/ttree/leafc-truncated.root"
 size = 17807
 
 description = """
-A TLeafC whose fLen is smaller than the longest string in its own baskets, which
-is a shape ROOT writes and then misreads.
+A TLeafC whose fLen is smaller than the longest string in its own baskets, a
+shape ROOT writes and then misreads.
 
 TLeafC::FillBasket raises fLen and fMaximum together, so a tree filled the
 ordinary way always has fLen == fMaximum: tree "short" has 3 and 3, tree "long"
 has 11 and 11. A **fast clone** copies baskets wholesale, never runs FillBasket,
-and widens only fMaximum through TLeafC::IncludeRange -- so tree "merged", cloned
-from "short" and then fed both, has fLen 3 and fMaximum 11.
+and widens only fMaximum through TLeafC::IncludeRange. Tree "merged", cloned
+from "short" and then fed both, therefore has fLen 3 and fMaximum 11.
 
-fLen is what sizes the read buffer: ReadFastArrayString clamps to fLen - 1
-characters. So ROOT returns "01" for each of merged's last three entries while the
-basket at 2297 holds all ten characters of each, with a count byte of 10. Nothing
-is printed. hadd fast-merges by default, so files of this shape exist in the wild.
+fLen sizes the read buffer: ReadFastArrayString clamps to fLen - 1 characters.
+ROOT returns "01" for each of merged's last three entries while the basket at
+2297 holds all ten characters of each, with a count byte of 10. Nothing is
+printed. hadd fast-merges by default, so files of this shape exist in the wild.
 
 A reader must take a string's length from the counted string in the entry and
-never from fLen, and it then reads this file correctly where ROOT does not.
+never from fLen; it then reads this file correctly where ROOT does not.
 """
 
 spec = ["spec/04-ttree/TLeaf.md", "spec/04-ttree/TBasket.md"]
@@ -165,7 +165,7 @@ offset = 3144
 type = "i64"
 value = 2297
 
-# --- The bytes ROOT will not give back ------------------------------------
+# --- The bytes ROOT truncates on reading ----------------------------------
 [[bytes]]
 name = "merged's second basket: a count byte of 10, not 2"
 offset = 2365

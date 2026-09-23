@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """Verify every citation in `spec/`: source lines, and the files they measure.
 
-`spec/00-conventions.md` §7 promises that citations refer to the pinned commit.
-This checks that the promise holds: that each cited file exists in the submodule
-and that each cited line number is within that file. It catches the failure mode
-the convention is otherwise vulnerable to -- a citation that silently goes stale
-when the submodule is bumped.
+`spec/00-conventions.md` §7 says citations refer to the pinned commit. This
+checks that each cited file exists in the submodule and that each cited line
+number is within that file, so a citation cannot silently go stale when the
+submodule is bumped.
 
-It also checks the other kind of citation, which went stale twice before anyone
-noticed: a **file** the specification names as evidence must be a fixture in
-`data/` or listed in a corpus manifest, so that `fetch_foreign.py` or
-`fetch_cern.py` can fetch it and the measurement can be reproduced. On 2026-09-18
-`aod_flushed.root` and `gallery.root` were cited and in no manifest; on 2026-09-21
-so were the four `TGeoManager` files carrying `StreamerInfo.md` §9.2's whole
-`fBaseVersion` table (`PLAN.md` §8.13). Both were fixed by hand. This is what
-stops a third.
+It also checks cited **files**, which went stale twice before anyone noticed: a
+file the specification names as evidence must be a fixture in `data/` or listed
+in a corpus manifest, so that `fetch_foreign.py` or `fetch_cern.py` can fetch it
+and the measurement can be reproduced. On 2026-09-18 `aod_flushed.root` and
+`gallery.root` were cited and in no manifest; on 2026-09-21 so were the four
+`TGeoManager` files holding all of `StreamerInfo.md` §9.2's `fBaseVersion`
+table (`PLAN.md` §8.13). Both were fixed by hand.
 
 A third source needs no manifest: `root/roottest/`, which the pinned submodule
 ships. The files the specification cites from it are the table rows of
-`gen/cern/README.md` that begin with a `root/roottest/` path, and each must exist
-in the submodule, so that a bump which drops one fails here rather than leaving a
+`gen/cern/README.md` that begin with a `root/roottest/` path. Each must exist in
+the submodule, so a bump that drops one fails here rather than leaving a
 citation nothing can reproduce.
 
 Requires the submodule to be checked out. Needs no third-party packages.
@@ -40,10 +38,9 @@ SUBMODULE = REPO / "root"
 
 # Documents this project does not write and must not edit. `spec/05-rntuple/`
 # holds a verbatim tracked copy of ROOT's own RNTuple specification; a citation
-# inside it is upstream's text, so a stale one here would fail a check against a
-# file nothing in this repository is allowed to change -- see
-# spec/05-rntuple/UPSTREAM.md. tools/sync_rntuple.py is what keeps that file
-# honest instead.
+# inside it is upstream's text, and a stale one could not be fixed without
+# editing the copy (see spec/05-rntuple/UPSTREAM.md). tools/sync_rntuple.py
+# checks that file instead.
 NOT_OURS = {REPO / "spec/05-rntuple/BinaryFormatSpecification.md"}
 
 # Citations appear inside inline code spans; see tools/rootcite.py for the
@@ -84,9 +81,8 @@ def check(paths: list[Path]) -> list[str]:
     return failures
 
 
-#: The front pages quote the citation total, and it drifted three times in one
-#: session of editing before this check existed. The number is cheap to verify and
-#: a stale one undermines every other measurement beside it.
+#: The front pages quote the citation total, which drifted three times in one
+#: session of editing before this check existed.
 PUBLISHED = (
     ("README.md", r"(\d+) source citations"),
     ("spec/index.md", r"(\d+) source\ncitations"),

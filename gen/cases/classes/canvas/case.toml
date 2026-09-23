@@ -6,40 +6,40 @@ description = """
 A `TCanvas` written in batch mode by the pinned ROOT: class version 8, wrapping a
 `TPad` at class version 13.
 
-It is the largest fixture here, 64 KB, and almost all of it is honest weight: a
-canvas adds `gROOT`'s **800-entry list of colours** to its own list of primitives
-before streaming, so the record carries 800 `TColor`s. Every one of them is read
-through a streamer info; none of it is what the case is about.
+At 64 KB it is the largest fixture here, and nearly all of that is colours: a
+canvas adds `gROOT`'s 800-entry list of colours to its own list of primitives
+before streaming, so the record holds 800 `TColor`s. Each is read through a
+streamer info, and none of them is what the case is about.
 
 **Two empty base classes, six bytes apart, with different byte counts.**
-`TVirtualPad`'s frame opens at 317 with byte count 96 and its streamer info has
+`TVirtualPad`'s frame opens at 317 with byte count 96, and its streamer info has
 five elements, the fifth a `kBase` for `TQObject`. `TObject` + `TAttLine` +
-`TAttFill` + `TAttPad` account for all 96 bytes, so **`TQObject` occupies none** --
+`TAttFill` + `TAttPad` account for all 96 bytes, so `TQObject` occupies none:
 its `Streamer` is hand-written to read and write nothing. Immediately after, at
-417, `TAttBBox2D` -- also with no members of its own -- writes **six bytes**: a
+417, `TAttBBox2D`, which also has no members of its own, writes six bytes: a
 byte count of 2 and a version word of 0. One is `ClassDef(…, 1)` with a `-`
 pragma, the other `ClassDef(…, 0)` with a `+`, and the file records neither fact.
 Canvas.md 3.
 
-The read desynchronises without the `TQObject` rule, immediately and
-unrecoverably: `tools/rootfile.py` then reports
+Without the `TQObject` rule the read goes out of step at once and cannot
+recover; `tools/rootfile.py` then reports
 `version word 0 for TAttCanvas with checksum 0x0`.
 
-**The last seven bytes are not members.** `kMoveOpaque`, `kResizeOpaque`,
+The last seven bytes are not members. `kMoveOpaque`, `kResizeOpaque`,
 `kShowEventStatus`, `kAutoExec` and `kMenuBar` are bits of `fBits` written as
 individual `Bool_t`s, and `fBatch` at 49671 is written and then discarded on read.
 The trailing region is seven fields but eight bytes: fHighLightColor is an i16,
 and it is the only one of the seven that is a persistent data member.
 `TCanvas`'s streamer info ends at `fCatt` and mentions none of them.
 
-**And the member names in the source reach the file in no form.** The streamer is
-written as `b.ClassMember("fDoubleBuffer", "Int_t"); b >> fDoubleBuffer;`, and
-`TBufferFile::ClassMember` is empty -- the annotations exist for `TBufferJSON`.
+The member names in the source do not reach the file. The streamer is written
+as `b.ClassMember("fDoubleBuffer", "Int_t"); b >> fDoubleBuffer;`, and
+`TBufferFile::ClassMember` is empty; the annotations exist for `TBufferJSON`.
 Canvas.md 2.
 
-`fDISPLAY` is the literal string `$DISPLAY`, not the environment variable, which is
-what makes this fixture portable. `fWindowWidth` and `fWindowHeight` are 0 in batch
-mode while `fCw` and `fCh` are the real 296 x 172.
+`fDISPLAY` is the literal string `$DISPLAY`, not the environment variable, so
+the fixture is portable. `fWindowWidth` and `fWindowHeight` are 0 in batch mode,
+while `fCw` and `fCh` are the real 296 x 172.
 """
 
 spec = [
@@ -49,25 +49,25 @@ spec = [
 root_version = "6.40.04"
 compression  = { algorithm = "none", setting = 0 }
 
-# This file cannot have a portable normalized digest, and the reason is not about
-# its content: the fourteen streamer infos are byte-for-byte the same on macOS and
-# Linux -- same names, versions, checksums and element counts, and the record is
-# 14982 bytes on both -- but they appear in a DIFFERENT ORDER.
+# This file cannot have a portable normalized digest, although its content is
+# the same everywhere. The fourteen streamer infos are byte-for-byte the same on
+# macOS and Linux (same names, versions, checksums and element counts, and the
+# record is 14982 bytes on both), but they appear in a different order.
 # `TFile::WriteStreamerInfo` iterates `gROOT->GetListOfStreamerInfo()`
 # (root/io/io/src/TFile.cxx:3509), which is registration order across the whole
-# process, so it follows dictionary and shared-library initialisation order. A
+# process and so follows dictionary and shared-library initialisation order. A
 # canvas pulls infos out of libCore, libGraf and libGpad at once, which is why
 # this is the first fixture to trip on it.
 #
-# It cannot be normalised away either. The record carries class and object
+# It cannot be normalised away either. The record stores class and object
 # back-references as byte positions (Buffer.md 6), so the same infos in a
-# different order are different bytes throughout, not a value a mask can zero.
+# different order differ in bytes throughout, and no mask can zero that.
 # StreamerInfo.md 3.4 records the fact; the 32 byte assertions still run, and
 # none of them is inside the StreamerInfo record.
 digest        = false
 digest_reason = """
 The fourteen streamer infos are identical on both standard libraries but appear in
-a different ORDER, because `TFile::WriteStreamerInfo` writes them in the order
+a different order, because `TFile::WriteStreamerInfo` writes them in the order
 `gROOT->GetListOfStreamerInfo()` holds them -- process-wide registration order,
 which follows library initialisation. Back-references inside the record are byte
 positions, so reordering changes bytes throughout and no mask can undo it. The 32

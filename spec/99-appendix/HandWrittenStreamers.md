@@ -2,21 +2,21 @@
 
 [Streamer-driven reading](../02-serialization/StreamerDriven.md) is the
 specification for almost every class in a ROOT file: the `TStreamerInfo` recorded
-*in the file* describes the bytes, and a reader needs no per-class knowledge to
+in the file describes the bytes, and a reader needs no per-class knowledge to
 decode them. The exception is a class that replaces the `Streamer` its `ClassDef`
-would have generated — and **nothing in the file says which classes those are**.
+would have generated, and **nothing in the file says which classes those are**.
 A reader that trusts the streamer info decodes such a class into plausible
 garbage, with no error and no byte count mismatch to warn it.
 
-So the set matters, and it has to come from ROOT's source rather than from a
-file. This page is that set, extracted from the pinned submodule by
-`tools/inventory.py` and checked in CI, so a class that acquires or loses a
-hand-written `Streamer` in a later release cannot pass unnoticed.
+The set therefore has to come from ROOT's source rather than from a file. This
+page lists it, extracted from the pinned submodule by `tools/inventory.py` and
+checked in CI, so a class that gains or loses a hand-written `Streamer` in a later
+release cannot go unnoticed.
 
-A **generated** `Streamer` can diverge too, in one specific way: for a class
-whose version is 0 and which was selected plainly, `rootcling` writes a body that
-calls its bases and returns. Those classes are the same tool's second output,
-[Forwarding streamers](ForwardingStreamers.md).
+A generated `Streamer` can also diverge, in one specific way: for a class whose
+version is 0 and which was selected with a plain `#pragma link`, `rootcling`
+writes a body that calls its bases and returns. Those classes are listed by the
+same tool in [Forwarding streamers](ForwardingStreamers.md).
 
 <!-- BEGIN GENERATED: summary -->
 | Classification | Count | What a reader has to do |
@@ -38,44 +38,44 @@ Of the `custom` and `extending` classes, which are the ones a reader must know:
 
 ## 1. Why most of them cost a reader nothing
 
-Defining `Streamer` yourself is not the same as changing the bytes. Sorting the
-definitions by what the reading branch actually does splits them four ways:
+Defining `Streamer` yourself does not necessarily change the bytes. Sorted by
+what the reading branch does, the definitions fall into four kinds:
 
 `delegating`
 :   The reading branch calls `ReadClassBuffer` with no version test around it,
-    and reads nothing afterwards. Whatever else the function does — rebuilding
-    caches, fixing up back-pointers, re-registering objects — happens *after*
-    the bytes are consumed, and the bytes themselves are exactly what the
-    streamer info describes. `RooWorkspace` is the clearest case: its `Streamer`
-    exists to run `ioStreamerPass2()` over every node it just read
+    and reads nothing afterwards. Whatever else the function does (rebuilding
+    caches, fixing up back-pointers, re-registering objects) happens after the
+    bytes are consumed, and the bytes are what the streamer info describes.
+    `RooWorkspace` is a clear example: its `Streamer` exists to run
+    `ioStreamerPass2()` over every node it just read
     (`root/roofit/roofitcore/src/RooWorkspace.cxx:2540`).
 
 `extending`
 :   The reading branch calls `ReadClassBuffer` **and then reads more bytes of its
-    own**. The streamer info describes a prefix of the object and stops. This is
-    the one kind that looks harmless and is not: see §3.
+    own**. The streamer info describes only a prefix of the object. This kind
+    looks harmless but is not; see §3.
 
 `guarded`
 :   The reading branch calls `ReadClassBuffer` above a version threshold and
-    hand-decodes below it. **The call has to be inside the version test**: a
+    hand-decodes below it. The call has to be inside the version test. A
     streamer that delegates unconditionally and then consults the version only
     to repair a title or a filename is `delegating`, not `guarded`, because
     there is no legacy layout for a reader to implement. `TEntryList`,
-    `TLeafF16` and `TLeafD32` are that shape and `tools/inventory.py`
-    classified them as `guarded` until 2026-09-18. `TH2F` takes the generated path at class version 3
-    and above and has two legacy shapes beneath it
+    `TLeafF16` and `TLeafD32` have that shape; `tools/inventory.py` classified
+    them as `guarded` until 2026-09-18. `TH2F` takes the generated path at class
+    version 3 and above and has two legacy shapes below it
     (`root/hist/hist/src/TH2.cxx:3977`). Every version a ROOT 6 file contains is
-    on the generated side, so these cost a reader nothing *for current files*;
-    the legacy layouts need a pre-6 ROOT to test against and are tracked as gaps
-    in `PLAN.md` §9.1.
+    on the generated side, so these cost a reader nothing for current files. The
+    legacy layouts need a pre-6 ROOT to test against and are tracked as gaps in
+    `PLAN.md` §9.1.
 
 `custom`
 :   The reading branch never calls `ReadClassBuffer`. The streamer info does not
-    describe the bytes at **any** version. These need hand-written text, and a
-    class here that the specification does not account for is a hole.
+    describe the bytes at any version. These need hand-written text, and a class
+    here that the specification does not account for is a gap in it.
 
-The counts above are the honest scope of per-class work: not "every persistable
-class", and not "every class with a hand-written `Streamer`" either.
+The counts above are the actual scope of per-class work: neither "every
+persistable class" nor "every class with a hand-written `Streamer`".
 
 ## 2. `custom` — the streamer info never describes the bytes
 
@@ -153,18 +153,18 @@ fails on one that is not. `gap` is the worklist.
 ## 3. `extending` — the streamer info describes a prefix and stops
 
 Three classes call `ReadClassBuffer` and then read further bytes of their own.
-They are the dangerous kind, for three reasons that compound:
+They are the most dangerous kind, for three reasons:
 
-- **Nothing frames the extra bytes.** They are not in the class's streamer info,
-  not in any other class's, and not announced by a version word of their own.
+- **Nothing frames the extra bytes.** They are not in the class's streamer info
+  or in any other class's, and have no version word of their own.
 - **They are outside the byte count.** In all three cases the byte count that
   precedes the version word covers only the streamer-info-driven part, so
-  `CheckByteCount` succeeds for a reader that stops early — and for ROOT, which
-  goes on reading past it.
+  `CheckByteCount` succeeds both for a reader that stops early and for ROOT,
+  which continues reading past it.
 - **The class may have no streamer info at all.** For `TMatrixTSym` ROOT records
-  an info for the *base* class and none for the class itself, because the
-  `Streamer` hands `ReadClassBuffer` the base's `TClass`. A reader looking the
-  class up by name finds nothing.
+  an info for the base class and none for the class itself, because the
+  `Streamer` passes the base's `TClass` to `ReadClassBuffer`. A reader looking
+  the class up by name finds nothing.
 
 Every row is resolved in `streamers.toml`, like `custom`.
 
@@ -177,10 +177,10 @@ Every row is resolved in `streamers.toml`, like `custom`.
 <!-- END GENERATED -->
 
 A reader that treats these as `delegating` stops at the end of the framed part
-and reports no error. That is what this page said until 2026-09-17, and the
-corpora had been showing the consequence for as long: five `TMatrixTSym<double>`
-records in one file, each decoding 48 bytes of 3528 or 13736 and passing every
-consistency check on the way (`PLAN.md` §9.8).
+and reports no error. This page classified them that way until 2026-09-17, and
+the corpora showed the consequence throughout: five `TMatrixTSym<double>` records
+in one file, each decoding 48 bytes of 3528 or 13736 and passing every
+consistency check (`PLAN.md` §9.8).
 
 ## 4. `guarded` — hand-written below a version threshold
 
@@ -321,42 +321,39 @@ consistency check on the way (`PLAN.md` §9.8).
 
 A `kBase` element does **not** mean "read the base class by its streamer info".
 `TStreamerBase::ReadBuffer` dispatches to the base class's own `Streamer`
-whenever the class has one — `fStreamerFunc`, taken from
+whenever the class has one (`fStreamerFunc`, taken from
 `TClass::GetStreamerFunc()` at `root/core/meta/src/TStreamerElement.cxx:760` and
-called at `:820` — and falls back to `ReadClassBuffer`, with the version word
+called at `:820`). It falls back to `ReadClassBuffer`, with the version word
 that implies, only when there is none.
 
-So a base contributes whatever its `Streamer` writes, and the table above is the
-list of cases where that is not what its streamer info says. The extreme is
-`TQObject`, whose `Streamer` reads nothing and writes nothing in either
-direction (`root/core/base/src/TQObject.cxx:1033-1040`): a `TQObject` base
-occupies **zero bytes**, not a framed empty object and not a bare version word.
+A base therefore contributes whatever its `Streamer` writes, and the tables
+above list the cases where that differs from its streamer info. The extreme case
+is `TQObject`, whose `Streamer` reads and writes nothing
+(`root/core/base/src/TQObject.cxx:1033-1040`): a `TQObject` base occupies zero
+bytes, not a framed empty object and not a bare version word.
 
-That resolves the `H1display.root` reading recorded in `PLAN.md` §9.9. A `TPad`
+This explains the `H1display.root` reading recorded in `PLAN.md` §9.9. A `TPad`
 in that file has a `TVirtualPad` v2 base listing five `kBase` elements ending in
 `TQObject`, and counting bytes showed `TObject` + `TAttLine` + `TAttFill` +
-`TAttPad` exhausting the frame with nothing left for `TQObject`. The bytes were
-right. The question the note left open — "what does a `kBase` element whose class
-has no persistent members occupy on disk?" — was the wrong question: it is not
-about having no members. `TQObject` contributes nothing because its `Streamer`
-was written to contribute nothing, and a class with no members whose `Streamer`
-is generated from a `ClassDef` above 0 still writes a byte count and a version
-word. That is not true of every generated streamer: the 534 classes of
-[Forwarding streamers](ForwardingStreamers.md) write **neither**, which is the
-case that document exists for.
+`TAttPad` filling the frame with nothing left for `TQObject`. The bytes were
+right. The note there asked what a `kBase` element whose class has no persistent
+members occupies on disk, but having no members is not the cause. `TQObject`
+contributes nothing because its `Streamer` was written to contribute nothing; a
+class with no members whose `Streamer` is generated from a `ClassDef` above 0
+still writes a byte count and a version word. Not every generated streamer does:
+the 534 classes of [Forwarding streamers](ForwardingStreamers.md) write neither.
 
-**A reader cannot derive this from the file.** The file even carries a
-`TQObject` streamer info, with zero elements, which is precisely the fiction
+**A reader cannot derive this from the file.** The file even has a `TQObject`
+streamer info, with zero elements, which is the kind of misleading info
 [Streamer-driven reading §7](../02-serialization/StreamerDriven.md) describes.
-The class name is the only signal, which is what this page is for.
+The class name is the only signal, and this page provides the list.
 
 ## 7. What the extraction does and does not see
 
 `tools/inventory.py` reads the submodule's sources with comments and string
-literals blanked out, so that neither can be mistaken for code. Both cases are
-real:
+literals blanked out, so that neither can be mistaken for code. Both occur:
 
-- `TStreamerInfo::Streamer` has its `ReadClassBuffer` call **commented out** and
+- `TStreamerInfo::Streamer` has its `ReadClassBuffer` call commented out and
   replaced by a hand-written sequence (`root/io/io/src/TStreamerInfo.cxx:5615`).
   Counting the commented line would classify the format's own bootstrap class as
   needing no specification.
@@ -365,30 +362,30 @@ real:
   (`root/hist/hist/src/TFormula_v5.cxx:3469`). The current `TFormula` is a
   different class with a different classification, and merging them would hide
   one behind the other. Namespaces are tracked by brace, which is only sound once
-  braces inside string literals are gone — and that file parses formula syntax.
-- The opposite spelling has to be handled too. `ROOT::RNTuple::Streamer` is
-  defined **qualified**, at file scope with no `namespace` block around it
+  braces inside string literals are removed, and that file parses formula syntax.
+- The qualified spelling has to be handled too. `ROOT::RNTuple::Streamer` is
+  defined qualified, at file scope with no `namespace` block around it
   (`root/tree/ntuple/src/RNTuple.cxx:25`), and so is
   `RooWorkspace::CodeRepo::Streamer`
   (`root/roofit/roofitcore/src/RooWorkspace.cxx:2427`). Matching only an
-  unqualified name dropped both from this page entirely — including the one class
-  in §3 that the RNTuple specification already documents.
+  unqualified name would drop both from this page, including the class in §3
+  that the RNTuple specification already documents.
 - A version dispatch need not be a comparison. `RooBinning` selects its layout
   with `switch (R__v)` and hand-decodes version 1 in a `case`
-  (`root/roofit/roofitcore/src/RooBinning.cxx:298`); tested for comparisons alone
-  it read as `delegating`, which is the reading that tells a reader it needs
+  (`root/roofit/roofitcore/src/RooBinning.cxx:298`). A test for comparisons
+  alone classifies it as `delegating`, which would tell a reader it needs
   nothing.
 
-Two declarations are deliberately **not** counted:
+Two declarations are deliberately not counted:
 `TParameter<Long64_t>::Streamer` and `TNDArrayT<double>::Streamer` are forward
 declarations with no body, added so a `-fmodules` build can compile the
 dictionary (`root/core/base/inc/TParameter.h:195-203`). The definitions are
-generated. A plain grep reports both as hand-written and sends a reader to
-specify two classes that need nothing.
+generated. A plain grep reports both as hand-written, which would lead a reader
+to specify two classes that need nothing.
 
-What it does not see: a class whose bytes come from an *adopted* streamer —
-`TClass::AdoptStreamer`, the `extstrm` branch at
-`root/core/meta/src/TStreamerElement.cxx:826` — rather than from a `Streamer`
+The extraction does not see a class whose bytes come from an adopted streamer
+(`TClass::AdoptStreamer`, the `extstrm` branch at
+`root/core/meta/src/TStreamerElement.cxx:826`) rather than from a `Streamer`
 member function. The STL collection proxies in §2 reach files that way, and they
 are in the table because they also define `Streamer`; a class that used only the
 adopted path would not be. No such class is known here, and the gap is recorded

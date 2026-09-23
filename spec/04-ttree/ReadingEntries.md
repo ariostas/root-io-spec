@@ -6,24 +6,24 @@ unsplit branch and for every kind of split one.
 Prerequisites: [TBranch](TBranch.md), [TBasket](TBasket.md), [TLeaf](TLeaf.md),
 [TBranchElement](TBranchElement.md), [Splitting](Splitting.md).
 
-Everything before this document says where the bytes are. This one says what they
-mean. The two halves are genuinely different problems: locating an entry is the
-same arithmetic for every branch in every file, and interpreting it depends on
-four fields of the branch and on a streamer element the branch only points at.
+The documents before this one describe where the bytes are; this one describes
+what they mean. Locating an entry is the same arithmetic for every branch in every
+file. Interpreting it depends on four fields of the branch and on a streamer
+element the branch only points at.
 
 ## 1. Locating the entry
 
-Unchanged from [TBranch §10](TBranch.md#10-reading), and worth restating because
+This is the procedure of [TBranch §10](TBranch.md#10-reading), restated because
 the rest of this document assumes it. Given a branch and an entry number:
 
 1. Find the basket index *i* with `fBasketEntry[i] <= entry < fBasketEntry[i+1]`.
 2. Read that basket ([TBasket](TBasket.md)). **It need not be a record**: when
    `fBasketSeek[i]` is 0 the basket is embedded in the `TTree` record itself
    ([TBranch §5](TBranch.md#5-fbaskets-is-written-and-is-usually-empty)), and its
-   raw block plays the part the record offset plays below — every offset in step 3
-   is relative to the block start. A reader that can only fetch a basket by file
-   offset cannot read such an entry at all, and in a file written by
-   `TDirectory::WriteTObject` that is every entry it has.
+   raw block takes the place of the record below: every offset in step 3 is
+   relative to the block start. A reader that can only fetch a basket by file
+   offset cannot read such an entry, and in a file written by
+   `TDirectory::WriteTObject` every entry is of this kind.
 3. The entry's byte range within the basket payload is:
 
 | | start | end |
@@ -32,44 +32,43 @@ the rest of this document assumes it. Given a branch and an entry number:
 | the basket has an entry-offset array, and *j* = `fNevBuf - 1` | `fEntryOffset[j]` | **`fLast`** |
 | it does not | `fKeylen + j × fNevBufSize` | start + `fNevBufSize` |
 
-**The last entry's end is `fLast`, not an array element.** The array has one slot
-more than there are entries, and that extra slot is never written: `TBasket::Update`
-stores `fEntryOffset[fNevBuf] = offset` and *then* increments `fNevBuf`
-(`root/tree/tree/src/TBasket.cxx:1190-1203`), so after the final entry the slot at
-`fNevBuf` still holds whatever it held before — 0 in a fresh buffer. A reader taking
-`fEntryOffset[j+1]` for the last entry gets an end of 0 and a negative width.
-[TBasket §5.1](TBasket.md#51-three-things-to-get-right) and §8 step 8 already say this;
-the table above did not.
-
 where *j* = `entry − fBasketEntry[i]`
 (`root/tree/tree/src/TBranch.cxx:1738-1748`). The number of bytes the read then
 consumes is exactly the width of that range
 (`root/tree/tree/src/TBranch.cxx:1751-1752`).
 
-Which of the two cases applies is decided when the branch is created, and for a
-`TBranchElement` the rule is narrow: `fEntryOffsetLen` is 0 — no offset array —
-unless the branch is a container node, or `fStreamerType` is `kBase` or below,
-`kCharStar`, `kBits`, or above `kFloat16`
-(`root/tree/tree/src/TBranchElement.cxx:361-363`). So a column of `Int_t` has no
-offset array and a column of `TString` does, and `fBits` has one because a
-referenced `TObject` writes two extra bytes.
+**The last entry's end is `fLast`, not an array element.** The array has one slot
+more than there are entries, and that extra slot is never written: `TBasket::Update`
+stores `fEntryOffset[fNevBuf] = offset` and *then* increments `fNevBuf`
+(`root/tree/tree/src/TBasket.cxx:1190-1203`), so after the final entry the slot at
+`fNevBuf` still holds whatever it held before, which is 0 in a fresh buffer. A
+reader taking `fEntryOffset[j+1]` for the last entry gets an end of 0 and a
+negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and §8
+step 8 say the same.
+
+Which of the two cases applies is decided when the branch is created. For a
+`TBranchElement`, `fEntryOffsetLen` is 0 (no offset array) unless the branch is a
+container node, or `fStreamerType` is `kBase` or below, `kCharStar`, `kBits`, or
+above `kFloat16` (`root/tree/tree/src/TBranchElement.cxx:361-363`). A column of
+`Int_t` therefore has no offset array and a column of `TString` has one; `fBits`
+has one because a referenced `TObject` writes two extra bytes.
 
 ## 2. Which branches hold data at all
 
 A node with sub-branches reads its own basket only when `fType` is 3 or 4
-(`root/tree/tree/src/TBranchElement.cxx:2749-2752`). Every other interior node —
-`fType` 1, `fType` 2, and `fType` 0 with `fID` −2 — consumes **zero bytes** and
-exists only to be descended through; ROOT's own test for a split node is in
+(`root/tree/tree/src/TBranchElement.cxx:2749-2752`). Every other interior node
+(`fType` 1, `fType` 2, and `fType` 0 with `fID` −2) consumes **zero bytes** and
+exists only to be descended through. ROOT's own test for a split node is at
 `root/tree/tree/src/TBranchElement.cxx:5692`.
 
 ## 3. What an entry contains
 
-Six shapes, and the first four are short enough to give in full.
+There are six shapes; the first four are short enough to give in full.
 
 ### 3.1 A count branch: one `Int_t` and nothing else
 
 `fType` 3 and 4. The entry is a single four-byte big-endian `Int_t`, with no byte
-count, no version word and no framing of any kind
+count, no version word and no other framing
 (`root/tree/tree/src/TBranchElement.cxx:4339` for `fType` 4,
 `root/tree/tree/src/TBranchElement.cxx:4527` for `fType` 3).
 
@@ -84,7 +83,7 @@ fDet.fHits   entry 0   00 00 00 02
 ### 3.2 A member of a split container: a bare packed column
 
 `fType` 31 and 41. The entry is *n* values of the member's type, back to back,
-with no count and no framing. *n* is not in this entry — it is the count branch's
+with no count and no framing. *n* is not in this entry; it is the count branch's
 value for the same entry (§4).
 
 Same file, the two members of that collection:
@@ -100,19 +99,19 @@ fDet.fHits.fE    entry 0   00 00 00 00 3f 00 00 00      0.0f, 0.5f
 ```
 
 **An empty collection gives an empty entry**, not a zero or a marker. Entry 1
-occupies no bytes at all, which is why a variable-length column needs the offset
-array of §1 and cannot be found by multiplication.
+occupies no bytes, so a variable-length column needs the offset array of §1; its
+entries cannot be located by multiplication.
 
 ### 3.3 An unsplit object: no framing of its own, but its members have theirs
 
-`fType` 0 with `fID` −1. The entry is the members' own serialisations
-concatenated — there is **no byte count and no version word for the branch's
+`fType` 0 with `fID` −1. The entry is the members' own serialisations,
+concatenated. There is **no byte count and no version word for the branch's
 class** (`root/tree/tree/src/TBranchElement.cxx:4619`, which applies the member
 actions directly to the object).
 
 This is easy to get wrong, because an entry often *starts* with something that
 looks like a class header. From `ttree/split-unsplit`, whose `un` branch holds a
-whole `UEv` — a class deriving from `UBase { Int_t fB; }` and adding `Int_t fI`
+whole `UEv`, a class deriving from `UBase { Int_t fB; }` and adding `Int_t fI`
 and `Double_t fD`:
 
 ```
@@ -120,7 +119,7 @@ and `Double_t fD`:
 └─ UBase's byte count and version, then fB ─┘   fI            fD
 ```
 
-The leading `40 00 00 06` is a byte count of **6**, covering the version word and
+The leading `40 00 00 06` is a byte count of 6, covering the version word and
 `fB` only. It belongs to the `UBase` base-class element, not to `UEv`. If `UEv`
 had a header of its own the count would cover all 22 bytes. A reader that treats
 the first four bytes of an unsplit entry as the object's byte count will be
@@ -128,7 +127,7 @@ right for some classes and wrong for others, with no way to tell which.
 
 ### 3.4 A counted array: a flag byte, then *n* values
 
-`fType` ≤ 2 with `fBranchCount` set — the `Int_t n; Float_t *x; //[n]` shape.
+`fType` ≤ 2 with `fBranchCount` set: the `Int_t n; Float_t *x; //[n]` shape.
 The element type is `kOffsetP + T`, and its serialisation is **one leading byte
 followed by *n* values of T**.
 
@@ -150,17 +149,17 @@ from `fX`'s entry (`root/tree/tree/src/TBranchElement.cxx:4649`).
 ### 3.5 A custom streamer
 
 `fType` < 0. The entry is whatever the class's own `Streamer` writes
-(`root/tree/tree/src/TBranchElement.cxx:4712`). By ROOT's convention that begins
-with a four-byte byte count with bit 30 set and a two-byte version, but the
-specification cannot say more: the whole point of `fType` −1 is that the class
-does not follow the streamer-info layout. No fixture covers it; see §8.
+(`root/tree/tree/src/TBranchElement.cxx:4712`). By ROOT's convention it begins
+with a four-byte byte count with bit 30 set and a two-byte version, but this
+specification cannot say more: `fType` −1 means that the class does not follow
+the streamer-info layout. No fixture covers it; see §8.
 
 ### 3.6 A `std::bitset`: an ordinary collection, or nothing at all
 
 A `std::bitset<N>` member reaches a split branch as a `TStreamerSTL` with
 `fSTLtype` 8 and `fCtype` 0, and its entry is the object-wise collection
 [Collections §11](../02-serialization/Collections.md#11-other-containers)
-describes: a byte count and version word, an `Int_t` count of **N**, then N
+describes: a byte count and version word, an `Int_t` count of N, then N
 single-byte values, **bit 0 first**. The bits are not packed and the count is
 written although the width is already in the type name. From
 `ttree/split-bitset`, whose member is a `bitset<16>` holding `0xA5A5`:
@@ -172,22 +171,22 @@ byte count   ver    count 16     sixteen bools, bit 0 first
 
 Sixteen bits cost twenty-six bytes.
 
-**But before ROOT 6.08/06 the entry is empty.** The collection proxy did not
-work in this path, and ROOT created the branch and wrote no bytes into it at
-all — every entry zero-length, and the basket's `fLast` equal to its `fKeylen`,
-so there is not even a byte of payload to point at. The fix is ROOT-8574, root
-commit `2caaf15c2f0` of 2017-02-24, released in 6.08/06 and backported to
-5.34/38. `uproot-mc10events.root` in `gen/foreign/` was written by 6.08/04 —
-one patch release short of it — and has eleven such branches, in both the
-scalar and the `fType` 31 column form, every one of them empty.
+**Before ROOT 6.08/06 the entry is empty.** The collection proxy did not work in
+this path, so ROOT created the branch and wrote no bytes into it: every entry is
+zero-length, and the basket's `fLast` equals its `fKeylen`, so there is no
+payload at all. The fix is ROOT-8574, root commit `2caaf15c2f0` of 2017-02-24,
+released in 6.08/06 and backported to 5.34/38. `uproot-mc10events.root` in
+`gen/foreign/` was written by 6.08/04, one patch release before the fix, and has
+eleven such branches, in both the scalar and the `fType` 31 column form, all of
+them empty.
 
-A reader has to accept both, and **nothing on the branch says which it is
-looking at**: `fStreamerType`, `fEntryOffsetLen` and the leaf are identical in
-the two files. Only the entry's own length distinguishes them.
+A reader has to accept both, and **nothing on the branch distinguishes them**:
+`fStreamerType`, `fEntryOffsetLen` and the leaf are identical in the two files.
+Only the entry's own length does.
 
 ## 4. Where the count comes from
 
-Three different places, and they are not interchangeable.
+The count comes from one of three different places.
 
 | Branch | Count source | Citation |
 |---|---|---|
@@ -199,50 +198,49 @@ Three different places, and they are not interchangeable.
 In every case but the first, the branch named by `fBranchCount`
 ([TBranchElement §6](TBranchElement.md#6-fbranchcount-is-a-back-reference-and-fbranchcount2-is-never-set))
 must be read for the same entry **before** this one, and a reader has to order
-its work accordingly. That is a real constraint, not an implementation detail: a
-member column cannot be decoded in isolation.
+its work accordingly: a member column cannot be decoded in isolation.
 
 ### 4.1 Resolve the counter by name, not by `fBranchCount`
 
 > **`fBranchCount` can name the wrong branch, and a reader that follows it loses
-> data silently.** Resolve the counter by **name among the branch's own
-> siblings**: take this branch's name up to and including its last `.`, append the
-> count member's name — the same name the element carries as its counter and the
-> leaf carries in its title, `fAllBits[fNbytes]` — and use the sibling that
-> matches.
+> data silently.** Resolve the counter by name among the branch's own siblings:
+> take this branch's name up to and including its last `.`, append the count
+> member's name (the name the element records as its counter and the leaf has in
+> its title, as in `fAllBits[fNbytes]`), and use the sibling that matches.
 
-That is what ROOT's writer *intends*: it builds exactly that name and then calls
-`TTree::GetBranch` on it (`root/tree/tree/src/TBranchElement.cxx:432-438`), which
+ROOT's writer intends the same: it builds that name and calls `TTree::GetBranch`
+on it (`root/tree/tree/src/TBranchElement.cxx:432-438`). `GetBranch`, however,
 searches the **whole tree** and returns the first branch with that name. When a
-tree holds two split objects of one class whose sub-branches carry no parent
+tree holds two split objects of one class whose sub-branches have no parent
 prefix, both objects' members get a pointer to the **first** object's counter, and
-the read path uses it as it stands (`root/tree/tree/src/TBranchElement.cxx:4649`).
+the read path uses it unchanged (`root/tree/tree/src/TBranchElement.cxx:4649`).
 
-> **Witnessed.** `alice_ESDs.root` (ROOT 5.34) splits an `AliESDVertex` twice, as
-> `SPDVertex` and `PrimaryVertex`; both objects' sub-branches are named plainly
+> **Observed.** `alice_ESDs.root` (ROOT 5.34) splits an `AliESDVertex` twice, as
+> `SPDVertex` and `PrimaryVertex`. Both objects' sub-branches are named plainly
 > `fNIndices` and `fIndices`, so both `fIndices` branches record the *same*
-> `fBranchCount`, the one under `SPDVertex`. Its value is 0 for all 20 entries.
+> `fBranchCount`, the one under `SPDVertex`, whose value is 0 for all 20 entries.
 > `PrimaryVertex`'s own `fNIndices` holds 18, 22, 6, 13, … and its `fIndices`
-> entries are 37, 45, 13 and 27 bytes — exactly `1 + n × 2` for those counts. A
-> reader following the recorded pointer reads **no indices at all** and nothing
-> tells it so; ROOT is such a reader. See erratum 6.
+> entries are 37, 45, 13 and 27 bytes, which is `1 + n × 2` for those counts. A
+> reader following the recorded pointer reads no indices at all and gets no
+> warning; ROOT is such a reader. See erratum 6.
 
-The entry's own byte range is the cross-check that catches it: for a fixed-width
-*T* the length is `1 + n × sizeof(T)` exactly, so a count that disagrees with the
-span is a count from the wrong branch.
+The entry's byte range catches this: for a fixed-width *T* the length is
+`1 + n × sizeof(T)`, so a count that disagrees with the span came from the wrong
+branch.
 
 ### 4.2 A container's member needs one count per object
 
-For `fType` 31 and 41 the element may itself be a counted array — `UChar_t *x;
-//[n]` inside the class the container holds. Then *two* counts are in play and
-they come from different places:
+For `fType` 31 and 41 the element may itself be a counted array, such as
+`UChar_t *x; //[n]` inside the class the container holds. Two counts are then
+needed, and they come from different places:
 
-- **how many objects** the entry has: the count branch, as the table above;
-- **how long each object's array is**: the sibling branch carrying the count
-  member, whose column for this entry holds **one value per object**.
+- **how many objects** the entry has: the count branch, as in the table above;
+- **how long each object's array is**: the sibling branch holding the count
+  member, whose column for this entry has one value per object.
 
-The column is then, per object, the ordinary [§3.4](#34-a-counted-array-a-flag-byte-then-n-values)
-shape — one flag byte, then that object's values:
+For each object, the column then has the ordinary
+[§3.4](#34-a-counted-array-a-flag-byte-then-n-values) shape: one flag byte, then
+that object's values:
 
 ```
 Tracks                          entry 0   00 00 00 58          88 objects
@@ -251,17 +249,16 @@ Tracks.fTPCClusterMap.fAllBits  entry 0   1848 bytes = 88 x (1 + 20)
                                           01 ff ff ... 7f  01 ff ff ... 7f  ...
 ```
 
-from `alice_ESDs.root`. Nothing in the file points from `fAllBits` to `fNbytes`:
-`fBranchCount` on an `fType` 31 branch names the **master** branch, the clones
-count, so the per-object counter is reachable only through the name in the
-element and the leaf title — which is why §4.1's rule is the only one that works
-here.
+This is from `alice_ESDs.root`. Nothing in the file points from `fAllBits` to
+`fNbytes`: `fBranchCount` on an `fType` 31 branch names the **master** branch, the
+clones count. The per-object counter can be found only through the name in the
+element and the leaf title, so §4.1's rule is the only one that works here.
 
 ## 5. What one member's bytes look like
 
 For everything but §3.1 and §3.5, the bytes are produced by the streamer
-elements the branch selects, and the encodings are the ones
-[ElementTypes](../02-serialization/ElementTypes.md) already specifies. Three
+elements the branch selects, and the encodings are those
+[ElementTypes](../02-serialization/ElementTypes.md) specifies. Three
 things are specific to trees.
 
 ### 5.1 `fID` selects the elements
@@ -273,8 +270,8 @@ of the class (`root/io/io/src/TStreamerInfoActions.cxx:5486-5495`). The class is
 ([TBranchElement §5](TBranchElement.md#5-fclassname-names-the-class-fid-indexes)).
 
 **The streamer info is chosen from the branch's fields, never from bytes in the
-entry**, which is the reason `fClassVersion` and `fCheckSum` are on the branch at
-all. There is nothing in the entry to identify it with.
+entry.** The entry has nothing to identify it by, which is why `fClassVersion`
+and `fCheckSum` are on the branch.
 
 ### 5.2 The width can depend on a title the branch does not have
 
@@ -297,30 +294,29 @@ For most element types, a column of *n* values is the scalar encoding repeated
 - `kSTL` (300) and `kSTLstring` (365): the version is read once, outside the
   per-element loop (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1251-1256`).
 
-So for those two an entry holding *n* values has **one** header, not *n*. A
-reader that frames each element separately will desynchronise on the second.
+For those two, an entry holding *n* values has **one** header, not *n*. A reader
+that frames each element separately desynchronises on the second.
 
-`kStreamLoop` (501) — an `int n; T *p; //[n]` member, where the count is another
-member of the same class — is framed the same way: one byte count for the whole
-column. Its *contents* are another matter, because in a split tree the counting
-member is a column on a sibling branch and the lengths differ per element, but
-the byte count fixes the column's extent without them. Byte-verified on
+`kStreamLoop` (501), an `int n; T *p; //[n]` member whose count is another member
+of the same class, is framed the same way: one byte count for the whole column.
+Its *contents* are harder, because in a split tree the counting member is a
+column on a sibling branch and the lengths differ per element, but the byte count
+gives the column's extent without them. Byte-verified on
 `uproot-issue433-splitlevel4.root`.
 
 A column of `std::string` (`fSTLtype` 365) is the shared frame followed by *n*
-bare counted strings, with no count of their own — the collection *is* the
+bare counted strings, with no count of their own: the collection *is* the
 string. Byte-verified on `uproot-issue-214.root`, where a 62-byte entry is the
 six-byte header and 56 empty strings.
 
 The version word of an STL member also carries a flag: bit 14,
 `kStreamedMemberWise` (`root/io/io/inc/TBufferFile.h:70`), which selects the
 member-wise body of [Collections](../02-serialization/Collections.md) and adds a
-value-class version word after it. In a **column** that version word is also
-read once, outside the loop
-(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274`), so a column of *n*
-member-wise collections is: the shared frame, one value-class version, then *n*
-times an `Int_t` count and that collection's member-wise body. Three things
-shared across the column, not one.
+value-class version word after it. In a column that version word is also read
+once, outside the loop (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274`).
+A column of *n* member-wise collections is therefore the shared frame, one
+value-class version, then *n* times an `Int_t` count and that collection's
+member-wise body.
 
 ## 6. `fMaximum` is a read-time bound, not a statistic
 
@@ -328,9 +324,9 @@ On a count branch the value just read is compared against `fMaximum`, and a coun
 that is negative or larger is **rejected**
 (`root/tree/tree/src/TBranchElement.cxx:4340-4348`). ROOT then substitutes 0.
 
-There are two sub-cases, and they consume different numbers of bytes:
+The two sub-cases consume different numbers of bytes:
 
-- If the entry is zero-length — the `IsMissingCollection` test — the four bytes
+- If the entry is zero-length (the `IsMissingCollection` test), the four bytes
   are rewound and the entry consumes nothing
   (`root/tree/tree/src/TBranchElement.cxx:4343`).
 - Otherwise an error is printed and the four bytes stay consumed
@@ -359,8 +355,8 @@ Normative, for one entry of one branch.
    - `fType` < 0: the class's own streamer (§3.5).
    - a `std::bitset` member whose byte range is empty: nothing (§3.6).
    - otherwise: the single element `fID` selects.
-6. The bytes consumed must equal the byte range from step 3 exactly. That
-   equality is the check worth implementing; it is
+6. The bytes consumed must equal the byte range from step 3. This equality is
+   the check to implement; it is
    [TLeaf invariant 7](TLeaf.md#10-invariants) generalised to split branches.
 
 ## 8. Invariants
@@ -370,43 +366,40 @@ Normative, for one entry of one branch.
    baskets and no entries.
 3. For a branch with `fType` 31 or 41 whose element has a fixed width *w*, the
    entry's length is *n* × *w*, where *n* is the count branch's value for that
-   entry — and 0 when *n* is 0.
+   entry, and 0 when *n* is 0.
 4. A count read from an `fType` 3 or 4 entry is between 0 and `fMaximum`
    inclusive.
 5. The bytes a branch's entry occupies equal the bytes its decoding consumes.
 6. A `std::bitset` member's entry is either empty or a complete object-wise
    collection; there is no partial form.
 
-All six are checked over every fixture and both corpora, but only four carry a
-label of their own: invariant 2 is checked as
+All six are checked over every fixture and both corpora, but only four have a
+label of their own. Invariant 2 is checked as
 [Splitting invariant 2](Splitting.md#8-invariants), the same fact seen from the
 branch side, and invariant 6 through invariant 5, since a partial bitset entry
 would not consume the bytes its span allows. `gen/invariants.toml` records both,
-and `tools/check_coverage.py` is what keeps such a claim honest — this sentence
-said "all six are checked" while meaning it of two of them only indirectly, and
-nothing could tell.
+and `tools/check_coverage.py` checks that record.
 
-Invariant 5 is the general statement of the others and is the one a third-party
-reader should test itself against. It cannot be checked by a rule — only by
-decoding, which is what `tools/rootfile.py`'s `TreeReader` is for, and it is the
-reason that reader exists. Over the fixtures and both corpora it holds on **46 137
-branch-baskets, 99.8% of them**, with the remaining 104 named individually in
-the checker's `SKIPPED` report with a count and a reason each. Every one of them
-is something **no reader could decode from the file**: a collection whose value
-class has no streamer info in it
+Invariant 5 is the general statement of the others, and a third-party reader
+should test itself against it. It cannot be checked by a rule, only by decoding,
+which is what `tools/rootfile.py`'s `TreeReader` exists for. Over the fixtures and
+both corpora it holds on **46 137
+branch-baskets, 99.8% of them**. The remaining 104 are named individually in the
+checker's `SKIPPED` report, each with a count and a reason, and **no reader could
+decode any of them from the file**. Each is either a collection whose value class
+has no streamer info in the file
 ([Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
 says nobody can read those, ROOT included), or a class whose `Streamer` is
-hand-written — two of them recognised by their bytes alone, as
+hand-written; two of those classes are recognised by their bytes alone, as
 [Streamer-driven reading §7.1](../02-serialization/StreamerDriven.md#71-an-object-with-no-byte-count)
 describes.
 
-> Two of the reasons are worth naming here, because neither is a defect and
-> neither can be resolved from inside the file. A class whose `Streamer` is
-> hand-written has a streamer info that does not describe its bytes, and nothing
-> marks it but, sometimes, a missing byte count
-> ([Streamer-driven §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes));
-> and a collection whose value class has no streamer info in the file cannot be
-> decoded at all. Both show up as skips rather than failures.
+> Neither reason is a defect, and neither can be resolved from inside the file. A
+> class whose `Streamer` is hand-written has a streamer info that does not
+> describe its bytes, and nothing marks it except, sometimes, a missing byte count
+> ([Streamer-driven §7](../02-serialization/StreamerDriven.md#7-when-the-streamer-info-does-not-describe-the-bytes)).
+> A collection whose value class has no streamer info in the file cannot be
+> decoded at all. Both appear as skips rather than failures.
 
 ## 9. Errata
 
@@ -414,10 +407,10 @@ describes.
 |---|---|---|
 | 1 | `root/io/doc/TFile/README.md:247-287` — the whole `TTree` section | It never says what a basket entry contains. It ends at "The custom written TBasket streamer internally handles the packing of data into fixed size TBasket objects" (`root/io/doc/TFile/README.md:286-287`), which is the last word the shipped documentation has on the subject. Nothing in it would let a reader decode one branch value |
 | 2 | `root/io/doc/TFile/tclonesarray.md:28-40` describes the member-wise layout of a `TClonesArray`, and is easily mistaken for the split-branch layout | None of the framing it lists — byte count, class info, version, `TObject`, `fName`, `"TXxx;1"`, `nObjects`, `fLowerBound` (`root/io/doc/TFile/tclonesarray.md:6-27`) — appears in a split branch. The master branch's entry is four bytes, each member lives in its own branch and basket, and `fLowerBound` never appears in an entry at all |
-| 3 | `root/io/doc/TFile/ttree.md:75`: `fMaximum` is "Maximum entries for a TClonesArray or variable array" | True as far as it goes, but it is also a read-time bound that ROOT enforces (§6). A reader that treats it as a hint accepts entries ROOT rejects |
+| 3 | `root/io/doc/TFile/ttree.md:75`: `fMaximum` is "Maximum entries for a TClonesArray or variable array" | Correct, but it is also a read-time bound that ROOT enforces (§6). A reader that treats it as a hint accepts entries ROOT rejects |
 | 4 | — | Nothing anywhere states that the header of §5.3 is shared across a *column*. For `kStreamer`, `kSTL` and `kStreamLoop` an entry of *n* values carries one byte count and one version word between them, and a member-wise column carries one value-class version too. A reader that frames each value desynchronises on the second |
 | 5 | — | Nothing states that a `std::bitset` member can be written as a branch with no bytes in it. Before ROOT 6.08/06 it always was (§3.6), and the branch looks identical to one that holds data |
-| 6 | — | **A suspected ROOT bug, and a data-loss one.** `fBranchCount` is set from a name looked up over the whole tree (`root/tree/tree/src/TBranchElement.cxx:438`), so two split objects of one class whose sub-branches carry no parent prefix both point at the *first* object's counter. In `alice_ESDs.root` ROOT therefore reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13 (§4.1). The bytes are intact and self-describing; only the pointer is wrong. Resolve the counter among siblings instead |
+| 6 | — | **A suspected ROOT bug that loses data.** `fBranchCount` is set from a name looked up over the whole tree (`root/tree/tree/src/TBranchElement.cxx:438`), so two split objects of one class whose sub-branches carry no parent prefix both point at the *first* object's counter. In `alice_ESDs.root` ROOT therefore reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13 (§4.1). The bytes are intact and self-describing; only the pointer is wrong. Resolve the counter among siblings instead |
 
 ## 10. Reference files
 
@@ -433,6 +426,6 @@ describes.
 Not covered by a fixture: §3.5, which needs a class with a hand-written
 `Streamer`; the member-wise STL body of §5.3 inside a split branch, which needs
 a collection of collections; and the pre-6.08/06 empty bitset of §3.6, which
-needs a ROOT older than any this project builds against. The last two are in
-`gen/foreign/` — `uproot-issue433-splitlevel4.root` and `uproot-mc10events.root`
-— and are checked there.
+needs a ROOT older than any this project builds against. The last two occur in
+`gen/foreign/` (`uproot-issue433-splitlevel4.root` and `uproot-mc10events.root`)
+and are checked there.

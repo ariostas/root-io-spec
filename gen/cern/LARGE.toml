@@ -1,17 +1,17 @@
 # ROOT files too large to download, read by HTTP range request instead.
 #
 # root.cern serves `Accept-Ranges: bytes`, so the header and the free-segment
-# record of a multi-gigabyte file cost a few hundred bytes each. That is enough to
-# exercise everything spec/01-container/ says about the large-file layout -- the
-# `+1000000` fVersion flag, `units` 8, the widened key and TFree fields -- which no
-# committed fixture covers and nothing else in reach does either (PLAN.md 9.1).
+# record of a multi-gigabyte file cost a few hundred bytes each. That covers
+# what spec/01-container/ says about the large-file layout: the `+1000000`
+# fVersion flag, `units` 8, and the widened key and TFree fields. No committed
+# fixture and no other available file covers it (PLAN.md 9.1).
 #
 # Each entry records what was measured. `tools/fetch_cern.py --headers` re-reads
-# the four ranges and checks every field below, so a drift in the remote file or a
-# regression in tools/rootfile.py both show up as a failure. Nothing is downloaded.
+# the four ranges and checks every field below, so a change in the remote file or
+# a regression in tools/rootfile.py shows up as a failure. Nothing is downloaded.
 #
 # `path` is relative to https://root.cern/files/. A row outside root.cern has `url`
-# instead, absolute, and exactly one of the two is allowed. CERN Open Data serves
+# instead, absolute; each row has exactly one of the two. CERN Open Data serves
 # the same range requests with no redirect: take the EOS path from the record's
 # root://eospublic.cern.ch//eos/opendata/... URI and prefix https://opendata.cern.ch
 # (the /record/<id>/files/<name> form does not serve ranges). PLAN-corpus.md C14.
@@ -22,7 +22,7 @@
 # directory record at `fbegin` and its key list at `fseekkeys`. `dir_version` is
 # that record's version word, `nkeys` and `keys_large` count the key images in
 # the list and the wide ones among them, and `max_seekkey` is their largest
-# fSeekKey. They witness LargeFiles.md 8.6 on ordinary keys and 8.7.
+# fSeekKey. They check LargeFiles.md 8.6 on ordinary keys, and 8.7.
 
 [[file]]
 path        = "lhcb2.root"
@@ -50,7 +50,7 @@ max_seekkey = 4945934133
 
 [[file]]
 path        = "volume.root"
-why         = "51 free segments, 32 large and 19 small INTERLEAVED in one record -- the case FreeSegments.md 2.1 requires per-entry sizing for"
+why         = "51 free segments, 32 large and 19 small interleaved in one record: the case for which FreeSegments.md 2.1 requires per-entry sizing"
 root        = "5.19/03"
 size        = 5253395573
 fversion    = 1051903
@@ -170,7 +170,7 @@ max_seekkey = 2244422000
 
 [[file]]
 path        = "CMS_7250E9A5-682D-DF11-8701-002618943934.root"
-why         = "1.997 GB and NOT large format -- units 4, no fVersion flag, every TFree entry 10 bytes. Brackets the boundary from below, and its key class name is the TFile subclass TStorageFactoryFile"
+why         = "1.997 GB and not large format: units 4, no fVersion flag, every TFree entry 10 bytes. Brackets the boundary from below, and its key class name is the TFile subclass TStorageFactoryFile"
 root        = "5.22/00"
 size        = 1997354026
 fversion    = 52200
@@ -244,7 +244,7 @@ max_seekkey = 15885617883
 
 [[file]]
 url         = "https://opendata.cern.ch/eos/opendata/cms/Run2024F/EphemeralHLTPhysics1/RAW/v1/000/383/631/00000/071ab81e-897f-4718-b3a8-9c643943ec23.root"
-why         = "the newest large-format writer here, ROOT 6.30/03 against 6.23/01, and a TStorageFactoryFile free record ABOVE the boundary with an interior entry -- the other half of the CMS pair whose 1.997 GB file is below it. CMS Run2024F RAW, record 93956, CC0"
+why         = "the newest large-format writer here, ROOT 6.30/03 against 6.23/01, and a TStorageFactoryFile free record above the boundary with an interior entry: the other half of the CMS pair whose 1.997 GB file is below it. CMS Run2024F RAW, record 93956, CC0"
 root        = "6.30/03"
 size        = 3274820145
 fversion    = 1063003

@@ -3,38 +3,37 @@ file = "data/rntuple/streamed.root"
 
 description = """
 A field serialized by the ROOT streamer instead of split: structural role
-**0x04**, with an `Index64` and a `Byte` column, "identical to a collection of
+0x04, with an `Index64` and a `Byte` column, "identical to a collection of
 `std::byte`" as *ROOT streamed types* says.
 
 `RNEvent` is an ordinary record field; its member `fInner` is an `RNStreamedInner`
-whose dictionary carries `rntuple.streamerMode = "true"`, which `gen.C` sets on the
-`TClass` at runtime the way ROOT's own test does. Two things about reaching this
-path at all, both worth knowing before trying:
+whose dictionary has `rntuple.streamerMode = "true"`, which `gen.C` sets on the
+`TClass` at runtime the way ROOT's own test does. Two constraints on reaching
+this path:
 
-- **A top-level field of a streamer-mode class is refused**: "not supported as
+- A top-level field of a streamer-mode class is refused: "not supported as
   native RNTuple class" (`root/tree/ntuple/src/RFieldMeta.cxx:95`). The streamed
   form exists only underneath a native field, which is why `fInner` is a member.
-- **The mode is a dictionary attribute, not a property of the class.** Nothing in
-  `RNStreamedInner` asks to be streamed, and nothing in the file records that the
-  choice was made that way — only its consequence, role 0x04.
+- The mode is a dictionary attribute, not a property of the class. Nothing in
+  `RNStreamedInner` asks to be streamed, and the file records only the
+  consequence, role 0x04.
 
-The rest of this case is about where the **streamer information** for that field
-goes, and the answer is not where the document introduces it. *Extra type
-information* is a subsection of **Header Envelope**; the header's list is
-**empty** here. The record is in the **footer's schema extension**, whose four
-lists the document says are "identical to the last four fields in Header
-Envelope" — and it can only be there, because the set of streamed classes is not
-known until the dataset is committed
-(`root/tree/ntuple/src/RPageStorage.cxx:1290-1310`). ERRATA 10.
+The rest of this case is about where the streamer information for that field
+goes, which is not where the document introduces it. *Extra type information*
+is a subsection of **Header Envelope**, but the header's list is empty here. The
+record is in the **footer's schema extension**, whose four lists the document
+says are "identical to the last four fields in Header Envelope". It can only be
+there, because the set of streamed classes is not known until the dataset is
+committed (`root/tree/ntuple/src/RPageStorage.cxx:1290-1310`). ERRATA 10.
 
-And the content is **length-prefixed**, which the record's layout does not show:
-a 32-bit little-endian size, then the streamed object. ERRATA 9. What follows the
+The content is **length-prefixed**, which the record's layout does not show: a
+32-bit little-endian size, then the streamed object. ERRATA 9. What follows the
 size is ordinary ROOT serialization, the object layer of
-`spec/02-serialization/` rather than RNTuple's own encoding — a byte count with
+`spec/02-serialization/` rather than RNTuple's own encoding: a byte count with
 the 0x40000000 flag, the 0xffffffff new-class tag, the class name `TList`, and
-inside it a `TStreamerInfo` naming `RNStreamedInner`. All four are asserted, so an
-RNTuple reader that has to decode this list can see exactly which layer it is
-crossing into.
+inside it a `TStreamerInfo` naming `RNStreamedInner`. All four are asserted, so
+an RNTuple reader that has to decode this list can see where it crosses into
+that layer.
 """
 
 # The same standard-library difference as the other RNTuple cases: the
@@ -43,7 +42,7 @@ crossing into.
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

@@ -2,7 +2,7 @@ id   = "rntuple/projected"
 file = "data/rntuple/projected.root"
 
 description = """
-Projected fields, alias columns and `RNTupleCardinality` — the parts of an RNTuple
+Projected fields, alias columns and `RNTupleCardinality`: the parts of an RNTuple
 schema that no C++ member produces.
 
 Two physical fields, `fVec` (a `std::vector<float>`) and `fE` (a `float`), and four
@@ -15,21 +15,21 @@ projections of them:
 | `fN32` | 0x02 | `fVec` | one alias column over physical column **0** |
 | `fN64` | 0x02 | `fVec` | the same physical column again |
 
-Three claims hold, and all three are asserted below:
+These claims hold, and all three are asserted below:
 
-- **A projected field has no entry in the column list at all.** "Alias columns
-  have no prescribed column ID of their own, since alias columns are not
-  referenced" — and they are in their own list, which this project's reader did
-  not parse until this case needed it.
-- **One physical column can back several alias columns.** Column 0, `fVec`'s index
+- A projected field has no entry in the column list. "Alias columns have no
+  prescribed column ID of their own, since alias columns are not referenced";
+  they are in a list of their own, which this project's reader did not parse
+  until this case needed it.
+- One physical column can back several alias columns. Column 0, `fVec`'s index
   column, backs `fAlias`, `fN32` and `fN64`.
-- **`RNTupleCardinality` sources a collection field**, as the projection rules
+- `RNTupleCardinality` sources a collection field, as the projection rules
   require, and presents that collection's index column.
 
 The three entries hold collections of 1, 0 and 2 floats, which makes the index
-column **[1, 1, 3]** — the worked example in the `RNTupleCardinality` section,
-whose stated result is [1, 0, 2]. Those three 64-bit offsets are asserted where
-they sit, in the data page inside the `RBlob` at 1020, so the example is checked
+column [1, 1, 3]: the worked example in the `RNTupleCardinality` section, whose
+stated result is [1, 0, 2]. Those three 64-bit offsets are asserted where they
+sit, in the data page inside the `RBlob` at 1020, so the example is checked
 against bytes rather than restated.
 """
 
@@ -39,7 +39,7 @@ against bytes rather than restated.
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

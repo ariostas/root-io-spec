@@ -3,11 +3,11 @@ file = "data/serialization/pointer-collection.root"
 size = 1375
 
 description = """
-A collection whose content type is a **pointer** to a class, which
-`Collections.md` 3 describes in one table row -- "a full object slot, class
-record and all" -- and which no other file in `data/` writes. The only other
-`vector<T*>` here is `data/ttree/split-ptr-collection.root`, where the collection
-is split into branches and never appears whole.
+A collection whose content type is a **pointer** to a class. `Collections.md` 3
+describes it in one table row ("a full object slot, class record and all"), and
+no other file in `data/` writes one. The only other `vector<T*>` here is
+`data/ttree/split-ptr-collection.root`, where the collection is split into
+branches and never appears whole.
 
 **Two frames stand in a row before the content's own members**, and they belong
 to different things. The first is the object slot's byte count and class record
@@ -22,21 +22,20 @@ bc ver=0x000A count       <- fPtrs, the collection frame
       bc ver=0x000A count <- fV, a second collection frame
 ```
 
-which is the shape an outside review of this specification read as a doubled
-collection frame (issue #1 item 10, seen on `RooVectorDataStore::RealVector`,
-whose class version is also 1). It is not: only the outer and the innermost
-frames are collection frames, and the one between them is the ordinary class
-frame of the pointed-to object.
+An outside review of this specification read this shape as a doubled collection
+frame (issue #1 item 10, seen on `RooVectorDataStore::RealVector`, whose class
+version is also 1). Only the outer and the innermost frames are collection
+frames; the one between them is the ordinary class frame of the pointed-to
+object.
 
 **All three object-slot forms a collection can hold are here.** `fPtrs[0]`
-writes `kNewClassTag` and the class name; `fPtrs[1]` is a null pointer, which is
-four zero bytes and nothing else -- no byte count, no frame; `fPtrs[2]` writes a
-class *back-reference*, `0x80000045`, because `PtrItem` is already in the
-buffer's class map. A reader that assumes every element of a pointer collection
-has the same length is wrong three ways over in one collection.
+writes `kNewClassTag` and the class name. `fPtrs[1]` is a null pointer: four
+zero bytes, with no byte count and no frame. `fPtrs[2]` writes a class
+back-reference, `0x80000045`, because `PtrItem` is already in the buffer's class
+map. The elements of one pointer collection need not have the same length.
 
-`fEnd` pins the end: the collection frame's byte count says the whole of `fPtrs`
-is 90 bytes, and the sentinel proves it.
+`fEnd` is a sentinel: the collection frame's byte count gives 90 bytes for all
+of `fPtrs`, and the sentinel confirms it.
 """
 
 spec = [

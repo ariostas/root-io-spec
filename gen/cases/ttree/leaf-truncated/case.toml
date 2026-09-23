@@ -6,20 +6,19 @@ description = """
 The four ways a truncated floating-point leaf is stored, in one file.
 
 Float16_t (leaflist code `f`) and Double32_t (code `d`) each have a with-factor
-form and a truncated-mantissa form, and which applies is decided by the
-annotation in the leaf *title* -- not by the leaf class, and not by fLenType,
-which stays 4 and 8 whatever ends up on disk.
+form and a truncated-mantissa form, and the annotation in the leaf *title*
+selects which applies. The leaf class does not, and neither does fLenType, which
+stays 4 and 8 whatever ends up on disk.
 
   a/f            no annotation  ->  3 bytes, mantissa truncated to 12 bits
   b/f[0,100,10]  a real range   ->  4 bytes, a scaled UInt_t
   c/d            no annotation  ->  4 bytes, a plain Float_t
   d/d[0,0,8]     nbits only     ->  3 bytes, mantissa truncated to 8 bits
 
-a and c are the same declaration shape and differ by one byte per entry, in
-opposite directions from what the class names suggest. That asymmetry is the
-point of the case.
+a and c are the same declaration shape and differ by one byte per entry, in the
+opposite direction from what the class names suggest.
 
-What this case pins down:
+What this case shows:
 
 - The width is 3, 4, 4, 3 while fLenType is 4, 4, 8, 8. Neither the class nor
   fLenType predicts the on-disk width on its own; only the title does.

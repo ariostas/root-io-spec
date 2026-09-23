@@ -2,10 +2,9 @@
 """The invariants of spec/01-container/LargeFiles.md section 8.
 
 They are checked over the network by `fetch_cern.py --headers`, against eleven
-files this repository cannot commit. These tests do the other half of the
-discipline `AGENTS.md` asks for: each invariant is shown to **catch** a
-violation, using the measured reading of `volume.root` as the good case and one
-mutation per invariant.
+files this repository cannot commit. These tests show, as `AGENTS.md` requires,
+that each invariant **catches** a violation, using the measured reading of
+`volume.root` as the good case and one mutation per invariant.
 """
 
 import tomllib
@@ -104,7 +103,7 @@ IMAGES = [rootfile.Record(offset=0, nbytes=0, key_version=1004, key_len=0,
 
 
 class TopDirectory(unittest.TestCase):
-    """Invariants 6, on every wide key in reach, and 7, by the same method."""
+    """Invariant 6 on every wide key available, and 7, by the same method."""
 
     def problems(self, directory=None, list_key=None, images=None):
         return fetch_cern.top_directory_problems(

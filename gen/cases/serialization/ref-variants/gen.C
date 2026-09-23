@@ -5,8 +5,8 @@
 /// Neither arises from an ordinary TRef(obj). kHasUUID belongs to a TRef that
 /// names its target by UUID through gROOT's TProcessUUID rather than by a
 /// process id, and the TExec index is put there by TRef::SetAction. The
-/// generator drives both directly, which is what a file with them in it looks
-/// like however it was produced.
+/// generator drives both directly; the bytes are the same however such a file
+/// was produced.
 ///
 /// Both are written through WriteObjectAny so each payload sits in a record of
 /// its own: TRef is not a TObject and cannot be stored in a collection.

@@ -11,10 +11,10 @@ Running this requires ROOT on PATH; checking the result afterwards does not.
   tools/generate.py --accept     record digests that changed on purpose
   tools/generate.py <case-dir>   act on one case
 
-A digest that differs from data/MANIFEST.sha256 is an error, because it means
-either the format changed or a fixture stopped being reproducible. When the change
-is intentional -- a case.toml or gen.C was edited -- re-record it with --accept,
-which prints what changed and then writes the manifest.
+A digest that differs from data/MANIFEST.sha256 is an error: either the format
+changed or a fixture stopped being reproducible. When the change is intentional
+(a case.toml or gen.C was edited), re-record it with --accept, which prints what
+changed and then writes the manifest.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def run(case_dir: Path) -> Path:
 
     args = ["root", "-l", "-b", "-q"]
     # A case that needs real ClassDef classes declares them in classes.h, which is
-    # compiled into a dictionary first. It has to be a separate step: the
+    # compiled into a dictionary first. This must be a separate step because the
     # interpreter parses gen.C in full before running any of it, so a macro that
     # compiled its own classes could not then mention them.
     classes = case_dir / "classes.h"
@@ -59,9 +59,9 @@ def run(case_dir: Path) -> Path:
                  "-e", f'aclic("{classes.relative_to(REPO)}", "{BUILD_DIR.relative_to(REPO)}");']
 
     # The output path is passed REPO-relative and ROOT is run from REPO, because
-    # TFile stores the path it was given as the file's name and title. Passing an
-    # absolute path would bake this checkout's location into the fixture and shift
-    # every byte offset after the header.
+    # TFile stores the path it was given as the file's name and title. An absolute
+    # path would bake this checkout's location into the fixture and shift every
+    # byte offset after the header.
     args += ["-e", f".L {macro}", "-e", f'gen("{case["file"]}");']
 
     result = subprocess.run(args, cwd=REPO, capture_output=True, text=True)
@@ -103,10 +103,10 @@ def main(argv: list[str]) -> int:
         case = tomllib.loads((case_dir / "case.toml").read_text())
         rel = case["file"]
         if case.get("digest", True) is False:
-            # A case whose file cannot have a portable digest at all. It must say
-            # why: the reason is printed on every run, so an opt-out is as visible
-            # as a failure would be, and its `[[bytes]]` assertions still check
-            # it. See the header of data/MANIFEST.sha256.
+            # A case whose file cannot have a portable digest. It must give a
+            # reason, which is printed on every run so the opt-out stays visible;
+            # its `[[bytes]]` assertions still check it. See the header of
+            # data/MANIFEST.sha256.
             reason = case.get("digest_reason", "").strip()
             if not reason:
                 raise SystemExit(
@@ -125,8 +125,8 @@ def main(argv: list[str]) -> int:
         label = "ACCEPTED" if accept else "DRIFT"
         print(f"{label} {message}", file=sys.stderr)
     if drift and not accept:
-        # Say which record moved. Without this a cross-platform drift is a bare
-        # pair of hashes, and the cause has to be guessed at.
+        # Print per-record digests so a cross-platform drift shows which record
+        # moved, not just two whole-file hashes.
         for message in drift:
             rel = message.split(":", 1)[0]
             print(f"  per-record digests for {rel}:", file=sys.stderr)
@@ -135,12 +135,11 @@ def main(argv: list[str]) -> int:
                 print(f"    {offset:9} {cls:14} {name[:24]:24} {d}", file=sys.stderr)
 
     if not check_only and (accept or not drift):
-        # Merge rather than replace: running on a subset of the cases must not
-        # drop the digests of the cases it was not asked about. But a case that
-        # has since declared `digest = false` must lose its line, whether or not
-        # this run was asked about it: a digest nobody checks is worse than none,
-        # because the header of the manifest says these are the digests of the
-        # reference files and somebody will eventually check one by hand.
+        # Merge rather than replace, so a run on a subset of the cases keeps the
+        # other cases' digests. A case that has since declared `digest = false`
+        # loses its line whether or not this run covered it: the manifest header
+        # says these are the reference files' digests, and an unchecked stale one
+        # would mislead anyone who checks it by hand.
         opted_out = set()
         for other in sorted((REPO / "gen/cases").glob("*/*/case.toml")):
             spec = tomllib.loads(other.read_text())

@@ -6,20 +6,20 @@ description = """
 Three cycles of one key name, written by `tools/rootwrite.py` from
 [`WritingFiles.md` §8.1](../../../spec/06-writing/WritingFiles.md).
 
-**This file and `data/container/cycles.root` are the same 1361 bytes**, bar each
-key's `fDatime`, the file's own name and the UUID — 132 bytes across 29 runs. The
-two names are both 26 characters and the two titles both 17, because a key
-carries each of them.
+**This file and `data/container/cycles.root` are the same 1361 bytes**, except
+each key's `fDatime`, the file's own name and the UUID: 132 bytes across 29 runs.
+The two names are both 26 characters and the two titles both 17, because a key
+stores each of them.
 
-Writing a name that already exists adds a record; it replaces nothing. The new
-key goes **in front of** the keys already under that name and takes the first
-one's cycle plus one, so the list reads `str;3`, `str;2`, `str;1` while the
-records themselves are in the order they were written, at 282, 375 and 468.
+Writing a name that already exists adds a record and replaces nothing. The new
+key goes in front of the keys already under that name and takes the first one's
+cycle plus one, so the list reads `str;3`, `str;2`, `str;1` while the records
+themselves are in the order they were written, at 282, 375 and 468.
 
-**The descending order is load-bearing.** ROOT never compares cycles to find the
+**The descending order matters.** ROOT never compares cycles to find the
 highest: `Get`, `GetKey` and `FindKeyAny` all return the first match in list
 order. Reversing these three images and changing nothing else makes `Get("str")`
-return `revision 1`, with no diagnostic — the measurement is in §8.1, and
+return `revision 1`, with no diagnostic. The measurement is in §8.1, and
 `Directory 9.14` is the invariant that catches it.
 """
 

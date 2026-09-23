@@ -1,20 +1,20 @@
 """A TH2F, a TH2D and two TProfiles, from spec/06-writing/WritingHistograms.md.
 
-The four objects are the **same four** ROOT wrote in
+The four objects are the same four ROOT wrote in
 `data/classes/th2-profile.root`, down to the values, so that all four data
 records can be compared byte for byte; `tools/test_write.py` asserts it.
 
-The statistics are *derived* here, which is the difference from
-`written/histogram`. One value in two of the four cannot be:
+The statistics are derived here, unlike in `written/histogram`. One value in
+two of the four cannot be:
 
-* `fEntries` counts **fills**, and neither a `TH2`'s cells nor a profile's
+* `fEntries` counts fills, and neither a `TH2`'s cells nor a profile's
   `fBinEntries` remembers how many fills made up a weighted total. `h2d` and
   `p2` are filled with weights, so both supply it and the other seven or six
   sums come out of the arrays exactly.
 * the x moments need bin centres in general (`WritingHistograms.md` 5). Every
   fill in this file happens to sit at one, so `fTsumwx` and `fTsumwx2` are
-  right too -- and for the two profiles **every** sum is, because a profile
-  stores sum(w*y) and sum(w*y*y) per cell rather than throwing them away (7.2).
+  right too. For the two profiles every sum is, because a profile stores
+  sum(w*y) and sum(w*y*y) per cell rather than discarding them (7.2).
 """
 
 from __future__ import annotations

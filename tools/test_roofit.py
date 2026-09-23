@@ -113,8 +113,8 @@ class TheLayoutIsWhatSectionSixSays(unittest.TestCase):
     def test_the_two_wrong_prefixes_are_the_same_length(self):
         # RooFit.md 3.2: the info's prefix is TObject + 4 + 4 = 18 bytes and the
         # real one is 2 + TObject + 4 = 16, so a reader that starts two bytes
-        # early lands on _size at the right offset. That near-miss is why the
-        # layout in issue #1 works while naming three fields that are not there.
+        # early lands on _size at the right offset. This is why the layout in
+        # issue #1 works despite naming three fields that are not there.
         rec, value = self.decoded("l")
         start, _ = rootfile.payload_range(rec)
         size = next(m for m in value.members if m.name == "_size")
@@ -144,8 +144,8 @@ class CorruptionIsCaught(unittest.TestCase):
 
     def test_7_1_a_roorealvar_byte_count_that_does_not_cover_the_tail(self):
         # Shorten the frame so it ends where the streamer-info-described
-        # members do -- which is what issue #1 item 8 describes as the real
-        # layout, and what the bytes do not do.
+        # members do. Issue #1 item 8 gives that as the real layout; the bytes
+        # do not follow it.
         bad = failures(patched(RRV_BYTE_COUNT, 0x40000000 | 380))
         self.assertIn("RooFit 7.1", labels(bad))
 

@@ -21,13 +21,13 @@
 ///
 /// fOne exists only to get Hit's streamer info into the file. Without it ROOT
 /// writes the vector<Hit> bytes but records no info for Hit, and the file cannot
-/// be read back -- not even by ROOT, which reports "object of class vector<Hit>
-/// read too few bytes". That is a real defect and it is silent on the write
-/// side; see Collections.md section 9.
+/// be read back, not even by ROOT, which reports "object of class vector<Hit>
+/// read too few bytes". This is a ROOT defect, and nothing reports it on the
+/// write side; see Collections.md section 9.
 ///
-/// Note what is still NOT in the resulting file even so: a streamer info for
-/// pair<int,int>, whose checksum the fMap frame names. A reader must be able to
-/// synthesise the pair layout from the type name.
+/// The file still has no streamer info for pair<int,int>, whose checksum the fMap
+/// frame names. A reader must be able to synthesise the pair layout from the type
+/// name.
 #include <map>
 #include <set>
 #include <string>

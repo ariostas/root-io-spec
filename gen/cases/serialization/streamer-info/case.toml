@@ -7,11 +7,11 @@ The StreamerInfo record: a TList holding one TStreamerInfo, whose fElements is a
 TObjArray holding one element per member. These are the classes a reader must
 hardcode, because they are what the streamer info is made of.
 
-Assertions cover the whole nesting chain -- TList, TStreamerInfo, TNamed,
-TObjArray, and four TStreamerElement subclasses -- and then the two things a
-reader is most likely to get wrong:
+Assertions cover the full nesting chain (TList, TStreamerInfo, TNamed,
+TObjArray, and four TStreamerElement subclasses), then the two things a reader
+is most likely to get wrong:
 
-- fType for an STL member is **500** on disk, not the 300 that
+- fType for an STL member is 500 on disk, not the 300 that
   TFile::ShowStreamerInfo prints. TStreamerSTL::Streamer writes a scratch copy
   with fType forced to kStreamer and recomputes the real value on read, so a
   reader must ignore the stored 500 and derive kSTL/kSTLp from fTypeName and
@@ -19,9 +19,9 @@ reader is most likely to get wrong:
 - A TStreamerBasicPointer carries fCountName and fCountClass but no length: the
   array length comes from the counter member's value in the object being read.
 
-Every fSize is asserted, because it is the writer's sizeof and therefore the one
-field here that could differ between platforms. There is no std::string member
-for exactly that reason -- sizeof is 24 with libc++ and 32 with libstdc++ -- so
+Every fSize is asserted, because it is the writer's sizeof and so the only field
+here that could differ between platforms. There is no std::string member for
+that reason (sizeof is 24 with libc++ and 32 with libstdc++), so
 TStreamerSTLstring has no reference file. TStreamerBase is covered by
 serialization/object-tags.
 """

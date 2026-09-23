@@ -5,29 +5,29 @@ size = 1855
 description = """
 `TStringLong` against `TString`, in the same object, twice.
 
-`TStringLong` derives from `TString` and throws away its encoding: a signed
+`TStringLong` derives from `TString` and replaces its encoding with a signed
 four-byte count and then the characters, with no length byte, no 255 escape, no
 version word and no byte count (Conventions 5.1.1). It predates the escape being
-added to `TString`, and **nothing in ROOT uses it** -- the only files naming it are
-its own header and source and a `LinkDef` -- so a user-defined class is the only
-way to get one into a file.
+added to `TString`. Nothing in ROOT uses it (the only files naming it are its own
+header and source and a `LinkDef`), so a user-defined class is the only way to
+get one into a file.
 
-Two objects put every branch of both encodings side by side:
+Two objects cover every branch of both encodings:
 
 `small` holds `abcdef`. At 373 the `TStringLong` writes `00 00 00 06`; ten bytes
 later, at 383, the `TString` writes `06`. Below 255 characters `TStringLong` costs
 three bytes more.
 
 `big` holds 300 `x`. At 443 the `TStringLong` writes `00 00 01 2c`; at 747 the
-`TString` writes `ff` and then `00 00 01 2c` -- the escape -- so above 254
+`TString` writes the escape, `ff` and then `00 00 01 2c`, so above 254
 characters it is `TString` that costs one byte more. Above that length the two
 encodings differ in nothing but that byte.
 
 The case needs a compiled dictionary, hence `classes.h`. Both members are of
 standard-library-independent width, so the digest is portable, but note that
 `sizeof(TString)` differs between standard libraries and `tools/normalize.py`
-masks every `fSize` for that reason -- which is why the two `fSize` values in this
-file's streamer info are not asserted.
+masks every `fSize` for that reason, so the two `fSize` values in this file's
+streamer info are not asserted.
 """
 
 spec = [

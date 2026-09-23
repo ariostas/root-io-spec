@@ -1,10 +1,10 @@
-/// The one branch kind with no fixture: `TBranchClones`.
+/// The only branch kind with no fixture: `TBranchClones`.
 ///
 /// Nothing in ROOT's modern API produces one. `TTree::Branch` gives a
 /// `TBranchElement`; only `TTree::BranchOld` does, and only for a
 /// `TClonesArray*` data member at a split level other than 2
-/// (`root/tree/tree/src/TTree.cxx:2216-2227`). So the tree is built with
-/// `BranchOld`, which also makes the parent a `TBranchObject` -- the other branch
+/// (`root/tree/tree/src/TTree.cxx:2216-2227`). The tree is therefore built with
+/// `BranchOld`, which also makes the parent a `TBranchObject`, the other branch
 /// class the corpora do not cover.
 ///
 /// Three entries with one, two and three hits, so the count branch is not

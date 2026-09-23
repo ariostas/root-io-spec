@@ -6,30 +6,31 @@ description = """
 The same class split twice, under a plain branch name and one ending in a dot.
 
 TTree::Branch takes the branch name as a string, and a trailing dot in it changes
-the name of every branch below it -- and the fParentName of the deepest one.
+the name of every branch below it, and the fParentName of the deepest one.
 Nothing else differs: same class, same split level, same data, the same fID,
 fType, fStreamerType and fClassName throughout.
 
-What this case pins down, as eight pairs of assertions that differ and five that
-do not:
+What this case covers, as eight pairs of assertions that differ and five that do
+not:
 
 - The plain half names its sub-branches `NBase`, `fB` and `fI`. The dotted half
   names them `dotted.NBase`, `dotted.NBase.fB` and `dotted.fI`.
-- The base-class node is *elided* from the name in the plain half: `fB` sits
-  under a branch named `NBase` but is itself just `fB`, so the name does not say
-  where in the class it came from. In the dotted half the same branch is
+- The base-class node is left out of the name in the plain half: `fB` sits under
+  a branch named `NBase` but is itself just `fB`, so the name does not say where
+  in the class it came from. In the dotted half the same branch is
   `dotted.NBase.fB`.
-- fParentName follows the same split. On the plain half the member `fB` records
-  `NEv` -- the top class -- and on the dotted half it records `NBase`, the class
-  that actually declares it. Same class, same member, two different answers.
+- fParentName differs the same way. On the plain half the member `fB` records
+  `NEv`, the top class, and on the dotted half it records `NBase`, the class that
+  declares it.
 - Everything a reader needs is identical across the two halves: fClassName is
   `NBase` on both, fID 0 on both, fType 0, fStreamerType 3 and fSplitLevel 0 on
   both.
 
-So branch names and fParentName are not a reliable description of the object
-hierarchy, and a reader must take the structure from the fBranches nesting
-instead. ROOT's source calls the divergence "very annoying" in the comment above
-the code that causes it (root/tree/tree/src/TBranchElement.cxx:476-480).
+Branch names and fParentName are therefore not a reliable description of the
+object hierarchy, and a reader must take the structure from the fBranches
+nesting instead. ROOT's source calls the divergence "very annoying" in the
+comment above the code that causes it
+(root/tree/tree/src/TBranchElement.cxx:476-480).
 
 NBase and NEv come from classes.h and are compiled by gen/common/aclic.C before
 the macro runs.

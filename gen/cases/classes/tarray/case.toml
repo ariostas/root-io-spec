@@ -6,9 +6,9 @@ description = """
 The seven concrete TArray classes, one record each.
 
 TArray's streamer is the shortest hand-written one in ROOT: an Int_t count, then
-that many values, with no byte count and no version word. Writing each array as a
-standalone record makes its whole payload be exactly that, so fObjlen alone pins
-the element width: 4 + fN * width, with nothing else in the record.
+that many values, with no byte count and no version word. Written as a
+standalone record, each array's payload is only that, so fObjlen alone pins the
+element width: 4 + fN * width, with nothing else in the record.
 
 What this case pins down:
 
@@ -19,8 +19,8 @@ What this case pins down:
   count word, so a reader that expects one reads 0x00000002 as a length.
 - That an empty array is four zero bytes and nothing else.
 - That ROOT writes **no streamer info for any TArray**. The StreamerInfo record
-  here is the 21-byte empty list, so a reader has no choice but to hardcode the
-  layout -- which is the whole argument for spec/03-classes/.
+  here is the 21-byte empty list, so a reader has to hardcode the layout, which
+  is the argument for spec/03-classes/.
 """
 
 spec = [

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """No third-party file is ever committed. LICENSE, "Third-party corpora".
 
-The corpora this project measures itself against are read where they are --
-`root/roottest/` inside the pinned submodule -- or fetched into `build/`, and
-only manifests of their digests are committed. Two of the sources are under
-LGPL-2.1, roottest and rntuple-validation, which the BSD-3-Clause licence of
-`data/` could not carry; the others would muddy a provenance that the reference
-files depend on. These tests are what makes the rule more than a sentence:
+The corpora this project measures itself against are read in place
+(`root/roottest/` inside the pinned submodule) or fetched into `build/`, and
+only manifests of their digests are committed. Two of the sources, roottest and
+rntuple-validation, are under LGPL-2.1, which the BSD-3-Clause licence of
+`data/` could not carry; the others would muddy the provenance the reference
+files depend on. These tests enforce the rule:
 
 - every tracked ROOT file is the output of a case in this repository, so a file
   copied in from anywhere has no generator and fails;
 - no tracked file is byte-identical to a file in `root/roottest/`, which catches
   a macro or a reference output copied in as well as a ROOT file.
 
-rntuple-validation's files are not on disk to compare against, and the first
-test is what covers them: none of them has a generator here.
+rntuple-validation's files are not on disk to compare against; the first test
+covers them, since none of them has a generator here.
 """
 
 import hashlib

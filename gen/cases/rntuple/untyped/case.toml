@@ -2,20 +2,20 @@ id   = "rntuple/untyped"
 file = "data/rntuple/untyped.root"
 
 description = """
-Untyped collections and records: fields with a structural role and **no type
-name**.
+Untyped collections and records: fields with a structural role and no type
+name.
 
 No C++ type produces one. `fRecord` is an `RRecordField` built from two member
 fields rather than from a class, and `fColl` comes from
-`RVectorField::CreateUntyped`; both are what the document's *Untyped collections
-and records* section describes, and the claim it makes that a file can show is
-the one asserted below — the type name of each parent is a string of length
-**0**, while its members and its item field are ordinary typed fields.
+`RVectorField::CreateUntyped`. Both are what the document's *Untyped collections
+and records* section describes. The claim from that section that a file can
+show is asserted below: the type name of each parent is a string of length 0,
+while its members and its item field are ordinary typed fields.
 
-The rest follows the typed shapes exactly: the untyped record has no columns, like
-a class; the untyped collection has an index column, like a `std::vector`. So the
-only thing that distinguishes an untyped field on disk is the empty string, which
-is worth knowing before writing a reader that keys off the type name.
+Otherwise they follow the typed shapes: the untyped record has no columns, like
+a class; the untyped collection has an index column, like a `std::vector`. On
+disk, an untyped field differs from a typed one only by the empty type name,
+which matters to a reader that keys off the type name.
 """
 
 # The same standard-library difference as the other RNTuple cases: the
@@ -24,7 +24,7 @@ is worth knowing before writing a reader that keys off the type name.
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

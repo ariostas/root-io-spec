@@ -2,22 +2,22 @@
 """Fetch the third-party ROOT files that `coverage_probe.py` measures against.
 
 These are **not** reference files. `data/` holds files this project wrote and
-asserts byte for byte; these are files written by other people and other ROOT
-releases, and their only job is to answer "is the specification enough for a file
-nobody designed around it?". They are not committed -- `gen/foreign/MANIFEST.sha256`
-records what was used, so a run can be reproduced.
+asserts byte for byte; these were written by other people and other ROOT
+releases, and are used only to test whether the specification is enough for a
+file nobody designed around it. They are not committed;
+`gen/foreign/MANIFEST.sha256` records what was used, so a run can be reproduced.
 
-The source is scikit-hep-testdata, which is uproot's regression corpus. That is a
-deliberate choice: it spans ROOT 4.00 to 6.30 on purpose, including a sweep of
-`uproot-sample-<version>` files in four codecs, which is the closest thing to the
-legacy corpus `gen/legacy/` was meant to provide.
+The source is scikit-hep-testdata, uproot's regression corpus. It spans ROOT
+4.00 to 6.30, including a sweep of `uproot-sample-<version>` files in four
+codecs, which is the closest thing to the legacy corpus `gen/legacy/` was meant
+to provide.
 
   tools/fetch_foreign.py                 fetch everything in the manifest
   tools/fetch_foreign.py --check         verify what is already downloaded
   tools/fetch_foreign.py --dir DIR       somewhere other than the default
 
 **Their provenance is mixed.** uproot's corpus contains files uproot itself wrote,
-so a file failing an invariant is not evidence about ROOT's format until its writer
+so a file failing an invariant says nothing about ROOT's format until its writer
 is established. See `PLAN.md` §9.8.
 
 A manifest name with a `<source>/` prefix comes from another corpus in `SOURCES`,

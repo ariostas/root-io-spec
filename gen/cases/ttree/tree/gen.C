@@ -3,12 +3,12 @@
 /// Two branches of two entries each, so the record is small enough to assert
 /// field by field, and compression is off so it can be read without a codec.
 ///
-/// The point of the case is the tree-level record rather than the branches:
-/// fEntries and the byte counters, the defaults ROOT writes into
+/// The case is about the tree-level record rather than the branches: fEntries
+/// and the byte counters, the defaults ROOT writes into
 /// fDefaultEntryOffsetLen / fMaxEntries / fAutoSave / fAutoFlush / fEstimate,
-/// the two cluster-range counted pointers with their is-present flag *clear*
+/// the two cluster-range counted pointers with their is-present flag clear
 /// because fNClusterRange is 0, the two TArray members written by their own
-/// hand-written streamer, the five null object pointers, and fLeaves -- which
+/// hand-written streamer, the five null object pointers, and fLeaves. fLeaves
 /// holds a back-reference to every leaf rather than the leaves themselves,
 /// because fBranches was written first and put them all in the buffer's map.
 void gen(const char *out)

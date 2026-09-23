@@ -1,4 +1,4 @@
-"""A file this project wrote, closed, and then reopened **into its own hole**.
+"""A file this project wrote, closed, and then reopened into its own hole.
 
 The write side of `spec/06-writing/WritingFiles.md` 13.2, and the counterpart of
 `data/container/reopen-gap.root`, which ROOT produced from the same sequence.
@@ -6,9 +6,8 @@ Both names are 30 characters, for the reason `reopen-add` gives.
 
 The base leaves an interior `TFree` entry of 95 bytes behind: `big` is written
 with a 120-character payload and overwritten with a short one. The update is
-given nothing but the bytes, so the free list is the only thing that tells it
-that hole exists -- and `fits` is 95 bytes, which fills it exactly and removes
-the entry. `tail` is then overwritten in place, and `wide` fits nothing and is
+given nothing but the bytes, so the free list is its only record of the hole.
+`fits` is 95 bytes, which fills it exactly and removes the entry. `tail` is then overwritten in place, and `wide` fits nothing and is
 appended.
 """
 

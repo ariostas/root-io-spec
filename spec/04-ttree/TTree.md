@@ -1,9 +1,8 @@
 # `TTree`
 
-The root of a tree's index. A `TTree` record holds no data either: it holds the
-list of top-level [branches](TBranch.md), a flat list of references to every
-leaf, and the bookkeeping that says how many entries there are and how they are
-grouped into clusters.
+A `TTree` record is the root of a tree's index. Like a branch, it holds no data:
+it holds the list of top-level [branches](TBranch.md), a flat list of references
+to every leaf, and the count of entries and how they are grouped into clusters.
 
 Prerequisites: [Streamer-driven reading](../02-serialization/StreamerDriven.md),
 [TBranch](TBranch.md).
@@ -12,21 +11,21 @@ Prerequisites: [Streamer-driven reading](../02-serialization/StreamerDriven.md),
 
 A tree is a record of its own, named by the tree's name, and its class name is
 **not necessarily `TTree`**. `TNtuple`, `TNtupleD` and `TChain` all derive from
-`TTree`, and a record written for one of them carries that class name in its key,
-with the whole `TTree` layout nested inside as a base class.
+`TTree`, and a record written for one of them has that class name in its key,
+with the complete `TTree` layout nested inside as a base class.
 
-So a reader cannot find the trees by comparing a key's class name against
+A reader therefore cannot find the trees by comparing a key's class name with
 `TTree`. It has to follow the base-class chain in the file's own streamer infos:
-a record is a tree when `TTree` appears among the `TStreamerBase` elements of its
-class, transitively.
+a record is a tree when `TTree` appears, transitively, among the `TStreamerBase`
+elements of its class.
 
 > Demonstrated by `ttree/ntuple`. The key at 477 names the class `TNtuple`; the
 > object data opens with `TNtuple`'s byte count and class version **2**, and
 > `TTree`'s own byte count and version 20 begin four bytes later. A reader that
 > dispatched on the key's name and then applied `TTree`'s streamer info directly
-> would be six bytes out of step.
+> would be six bytes off.
 
-`TNtuple` adds exactly one persistent member, `fNvar`, after the whole `TTree`
+`TNtuple` adds one persistent member, `fNvar`, after the `TTree`
 base (`root/tree/tree/inc/TNtuple.h:31-32`, `root/tree/tree/inc/TNtuple.h:61`);
 `fArgs` is transient and is rebuilt from it
 (`root/tree/tree/src/TNtuple.cxx:262-267`).
@@ -34,13 +33,13 @@ base (`root/tree/tree/inc/TNtuple.h:31-32`, `root/tree/tree/inc/TNtuple.h:61`);
 ### 1.1 The streamer is a version guard
 
 `TTree::Streamer` exists (`root/tree/tree/src/TTree.cxx:9813`) but above class
-version 4 it calls `ReadClassBuffer` and then does bookkeeping that touches only
-transient members (`root/tree/tree/src/TTree.cxx:9827-9862`). **The
-streamer-driven algorithm reads a tree correctly with no special knowledge**, for
-every version a reader is likely to meet — the hand-coded legacy path is for
-version 4 and below (`root/tree/tree/src/TTree.cxx:9864-9896`), which is ROOT
-3.x and older. That threshold is much lower than `TBranch`'s, which needs version
-knowledge up to 9; see [§13](#13-class-versions).
+version 4 it calls `ReadClassBuffer` and then only updates transient members
+(`root/tree/tree/src/TTree.cxx:9827-9862`). The streamer-driven algorithm
+therefore reads a tree correctly with no special knowledge, for every version a
+reader is likely to meet. The hand-coded legacy path is for version 4 and below
+(`root/tree/tree/src/TTree.cxx:9864-9896`), which is ROOT 3.x and older.
+`TBranch`, by contrast, needs version knowledge up to 9; see
+[§13](#13-class-versions).
 
 > **What a reader must reconstruct.** After `ReadClassBuffer`,
 > `TTree::Streamer` sets the owning tree on every branch and sub-branch
@@ -50,8 +49,8 @@ knowledge up to 9; see [§13](#13-class-versions).
 > overwrites two persistent members it has just read: `fEstimate`, forced up to
 > 10⁶ if it is at most 10⁴ (`root/tree/tree/src/TTree.cxx:9845-9847`), and
 > `fMaxClusterRange`, set from `fNClusterRange`
-> (`root/tree/tree/src/TTree.cxx:9849-9853`) — which is the statement that the
-> two cluster arrays on disk are exactly as long as the count, with no slack.
+> (`root/tree/tree/src/TTree.cxx:9849-9853`). The latter implies that the two
+> cluster arrays on disk hold exactly `fNClusterRange` values, with no slack.
 
 ## 2. Layout
 
@@ -96,12 +95,12 @@ Class version 20 (`root/tree/tree/inc/TTree.h:757`). In streamer-info order:
 Codes 56 are `kOffsetP + kLong64`
 ([Element types §4](../02-serialization/ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)):
 a one-byte *is present* flag followed by `fNClusterRange` values. Unlike
-`TBranch`'s three arrays, **these two are routinely absent**, because
-`fNClusterRange` is 0 on most trees and the flag byte is then 0 — see §6.1.
+`TBranch`'s three arrays, these two are usually absent: `fNClusterRange` is 0 on
+most trees, and the flag byte is then 0 (§6.1).
 
 Codes 62 on members 28 and 29 are `kAny`, and `TArray`'s streamer is hand-written:
 each is four bytes of `fN` and then that many values, with no frame and no version
-word at all ([TArray §3.2](../03-classes/TArray.md#32-as-a-member-by-value)).
+word ([TArray §3.2](../03-classes/TArray.md#32-as-a-member-by-value)).
 
 Nothing else in `TTree.h` reaches the file. Some forty members are marked `//!`,
 including `fDirectory`, `fEventList`, `fEntryList`, `fCacheSize`, `fReadEntry`,
@@ -118,30 +117,29 @@ including `fDirectory`, `fEventList`, `fEntryList`, `fCacheSize`, `fReadEntry`,
 the branches.** Filling branches individually with `TBranch::Fill` advances each
 branch's own counters and never touches the tree's.
 
-`SetEntries(-1)` recomputes it as the **maximum** over the top-level branches, and
-warns if they disagree rather than refusing
-(`root/tree/tree/src/TTree.cxx:9274-9295`) — which is ROOT stating outright that
-they may.
+`SetEntries(-1)` recomputes it as the maximum over the top-level branches and,
+if they disagree, warns rather than refusing
+(`root/tree/tree/src/TTree.cxx:9274-9295`), so ROOT itself allows them to differ.
 
-So a reader MUST NOT use the tree's `fEntries` as the entry bound for a branch.
+A reader MUST NOT use the tree's `fEntries` as the entry bound for a branch.
 The bounds are per branch, from `fFirstEntry` and `fEntryNumber`
-([TBranch §10](TBranch.md#10-reading) step 1); `fEntries` is what
+([TBranch §10](TBranch.md#10-reading) step 1). `fEntries` is what
 `TTree::GetEntries` returns and what a user-facing entry loop should use, and the
 two can differ.
 
-> Found on a file this project did not write: `string-example.root` in the
+> Found in a file this project did not write: `string-example.root` in the
 > foreign corpus of `PLAN.md` §9.8, an LHCb DST written by ROOT 6.30/02. Its
-> tree `Refs` has `fEntries` **0**, three branches with no entries, and a fourth,
+> tree `Refs` has `fEntries` 0, three branches with no entries, and a fourth,
 > `Params`, with `fEntries` 2, one basket on disk and 157 bytes of data. A reader
 > that trusted the tree's count would report the file as empty. The tree's
-> `fTotBytes` is 157 all the same, so §4 still holds.
+> `fTotBytes` is still 157, so §4 holds.
 
 ## 4. `fTotBytes` and `fZipBytes` are sums over every branch
 
 Each time a basket is written, the branch adds the basket's sizes to its own
-counters *and* to the tree's (`root/tree/tree/src/TBranch.cxx:606-611`, through
-`root/tree/tree/inc/TTree.h:375-376`). The tree's counters are therefore the sums
-over **every branch at every depth**, not over the top-level branches: a split
+counters and to the tree's (`root/tree/tree/src/TBranch.cxx:606-611`, through
+`root/tree/tree/inc/TTree.h:375-376`). The tree's counters are therefore sums
+over every branch at every depth, not over the top-level branches: a split
 branch's parent contributes nothing of its own, and its children contribute all
 of it.
 
@@ -152,48 +150,48 @@ the two are equal.
 
 > Demonstrated by `ttree/tree`: two branches of 0x49 and 0x51 bytes give
 > `fTotBytes = fZipBytes = 154`. Measured over the fixtures and the foreign
-> corpus of `PLAN.md` §9.8 — 201 tree records, 187 of them readable by this
-> specification: the recursive sum is exact on **every one**, and the top-level
-> sum is wrong on the 59 that have split branches.
+> corpus of `PLAN.md` §9.8 (201 tree records, 187 of them readable by this
+> specification), the recursive sum is exact on every one, and the top-level sum
+> is wrong on the 59 that have split branches.
 
 > **`fBranchRef` counts too, and it is not in `fBranches`.** A tree created with
 > `TTree::BranchRef` has a `TBranchRef` in its `fBranchRef` member (§8). It is an
 > ordinary branch with baskets of its own, and its bytes are in the tree's
-> counters — but a walk over `fBranches` never reaches it, so the sum comes out
+> counters, but a walk over `fBranches` never reaches it, so that sum comes out
 > short. `ttree/tree-branchref` has `fTotBytes` 546 against 365 over `fBranches`,
 > and the missing 181 are the `TBranchRef`'s.
 >
-> That branch is also **compressed in an uncompressed file**: its constructor
-> hard-codes `fCompress = 1` (`root/tree/tree/src/TBranchRef.cxx:62`), so it is
-> the one branch whose `fZipBytes` can be below its `fTotBytes` when nothing else
-> in the file is compressed — 124 against 181 in that fixture.
+> That branch is also compressed in an otherwise uncompressed file: its
+> constructor hard-codes `fCompress = 1` (`root/tree/tree/src/TBranchRef.cxx:62`).
+> It is therefore the only branch whose `fZipBytes` can be below its `fTotBytes`
+> when nothing else in the file is compressed (124 against 181 in that fixture).
 
 ## 5. `fLeaves` holds references, not leaves
 
 Every leaf belongs to a branch, and the tree keeps a flat list of all of them so
 that a name lookup does not have to walk the branch hierarchy. The tree does not
-own them — `TTree`'s destructor says so in as many words
-(`root/tree/tree/src/TTree.cxx:976-977`) — and each leaf is added to both lists
+own them, as a comment in `TTree`'s destructor states
+(`root/tree/tree/src/TTree.cxx:976-977`), and each leaf is added to both lists
 when its branch is built (`root/tree/tree/src/TBranch.cxx:429-430`).
 
-On disk that becomes a `TObjArray` in which **every entry is a four-byte
+On disk this is a `TObjArray` in which **every entry is a four-byte
 back-reference** ([Buffer §6.1](../02-serialization/Buffer.md#61-object-references)).
-The reason is the member order of §2: `fBranches` is member 25 and `fLeaves` is
-member 26, so by the time `fLeaves` is written every leaf is already in the
-buffer's object map. A reader may ignore the array entirely, but it must consume
-its bytes, and it must not expect to find leaf objects in it.
+This follows from the member order of §2: `fBranches` is member 25 and `fLeaves`
+is member 26, so when `fLeaves` is written every leaf is already in the buffer's
+object map. A reader may ignore the array, but it must consume its bytes, and it
+must not expect to find leaf objects in it.
 
 > Demonstrated by `ttree/tree`. `fLeaves` is 29 bytes: a `TObjArray` header,
 > `nobjects` 2, and two words, 0x1bf and 0x3a4. Those are buffer positions 445 and
 > 930, so absolute 867 and 1352 — the two `TLeaf` object slots inside the
 > branches.
 
-> Measured over the same 187 trees: **not one** has an object in `fLeaves`, and
-> in every one the references resolve to exactly the set of leaves the branches
-> hold. The order is the
-> depth-first order of a walk over `fBranches` in all of them, but that follows
-> from branch *creation* order rather than from anything the format enforces, so
-> it is an observation and not [an invariant](#11-invariants).
+> Measured over the same 187 trees: none has an object in `fLeaves`, and in
+> every one the references resolve to exactly the set of leaves the branches
+> hold. In all of them the order is the depth-first order of a walk over
+> `fBranches`, but that follows from branch creation order, not from anything
+> the format enforces, so it is an observation and not
+> [an invariant](#11-invariants).
 
 ## 6. Clusters
 
@@ -206,7 +204,7 @@ Clusters are not stored as a list. They are stored as a **piecewise-constant
 cluster size**: `fClusterRangeEnd[i]` and `fClusterSize[i]` describe the ranges
 of entries over which the size was constant, and the final, open-ended range's
 size is `fAutoFlush` (`root/tree/tree/src/TTree.cxx:8419-8430`). ROOT stores
-range *ends* rather than starts precisely so that the arrays can be empty when
+range *ends* rather than starts so that the arrays can be empty when
 the size never changed (`root/tree/tree/src/TTree.cxx:8447-8449`).
 
 ### 6.1 The two arrays
@@ -227,10 +225,10 @@ An entry is written into the arrays only when the size *changes*, by
 `TTree::MarkEventCluster` (`root/tree/tree/src/TTree.cxx:8465-8499`), which
 `SetAutoFlush` calls when the setting changes after flushing has begun
 (`root/tree/tree/src/TTree.cxx:8451-8458`). On a tree whose auto-flush setting
-was never touched, `fNClusterRange` is 0 and **both counted pointers have a clear
-is-present flag**, so each member is a single zero byte. This is the first place
-an ordinary file exercises that form: `TBranch`'s three arrays always have at
-least ten elements and their flag is always 1.
+was never changed, `fNClusterRange` is 0 and both counted pointers have a clear
+is-present flag, so each member is a single zero byte. This is where an ordinary
+file first uses that form: `TBranch`'s three arrays always have at least ten
+elements and their flag is always 1.
 
 > Demonstrated by both fixtures. In `ttree/tree` the two members are one byte
 > each, at 646 and 647, both zero. In `ttree/clusters` the flag is 1 and the
@@ -241,8 +239,8 @@ least ten elements and their flag is always 1.
 > Nothing in the 154-file foreign corpus has a non-zero `fNClusterRange`, which
 > is why `ttree/clusters` exists. Variable cluster size is produced mainly by
 > fast-merging trees with different settings (`TTree::ImportClusterRanges`,
-> `root/tree/tree/src/TTree.cxx:6484-6516`), so a merged production file is where
-> a reader will meet it.
+> `root/tree/tree/src/TTree.cxx:6484-6516`), so a reader will most likely meet it
+> in a merged production file.
 
 ### 6.2 Enumerating clusters
 
@@ -261,12 +259,12 @@ To find the cluster containing entry *e*
    `r < fNClusterRange`, and at `fEntries` in any case. The cluster is
    `[start, end)`.
 
-Step 4 is not a corner case: it is the **common** one. `fAutoFlush` stays
-negative on any tree that never reached the byte watermark — every tree written
+Step 4 is the common case, not a corner case. `fAutoFlush` stays negative on any
+tree that never reached the byte watermark, which includes every tree written
 with the default of −30000000 and less than 30 MB of compressed data. Of the 187
-trees measured here, **173 have a negative `fAutoFlush`**, two have 0 and six have
-a positive one; the remaining six are below class version 18 and have no
-`fAutoFlush` at all. For all but those six positive ones **the file does not
+trees measured here, 173 have a negative `fAutoFlush`, two have 0 and six have a
+positive one; the remaining six are below class version 18 and have no
+`fAutoFlush` at all. For all but the six positive ones, **the file does not
 record where the cluster boundaries are**, and ROOT falls back to an estimate
 computed from the cache size (`root/tree/tree/src/TTree.cxx:639-672`).
 
@@ -274,13 +272,13 @@ A reader that wants real boundaries can take them from a branch's `fBasketEntry`
 instead; a reader that wants ROOT's answer has to reproduce the estimate, which
 depends on run-time cache settings and is therefore not a property of the file.
 
-> When auto-flush *is* active, every cluster boundary is also a basket boundary
-> in every branch that has data there, because flushing is what creates it. The
+> When auto-flush is active, every cluster boundary is also a basket boundary
+> in every branch that has data there, because a flush creates both. The
 > converse does not hold: a basket that fills up mid-cluster is written early
 > unless the tree was given the `kOnlyFlushAtCluster` bit
 > (`root/tree/tree/inc/TTree.h:300`). `ttree/clusters` is small enough that the
-> two coincide exactly — five clusters and five baskets, with the branch's
-> `fBasketEntry` reading 0, 4, 8, 11, 14, 19.
+> two coincide: five clusters and five baskets, with the branch's `fBasketEntry`
+> holding 0, 4, 8, 11, 14, 19.
 
 ### 6.3 `fAutoFlush` and `fAutoSave` are not what the writer asked for
 
@@ -289,8 +287,8 @@ entries, negative means a number of bytes**, and 0 disables the mechanism
 (`root/tree/tree/src/TTree.cxx:8536-8548`). The constructor sets `fAutoSave` to
 −300000000 and `fAutoFlush` to −30000000 (`root/tree/tree/src/TTree.cxx:785-786`).
 
-The trap is that on the **first** automatic flush ROOT rewrites both in terms of
-entries and keeps the rewritten values (`root/tree/tree/src/TTree.cxx:4738-4790`):
+On the **first** automatic flush, ROOT rewrites both in terms of entries and
+keeps the rewritten values (`root/tree/tree/src/TTree.cxx:4738-4790`):
 
 ```
 fAutoFlush = fEntries;                       // the entry count at the first flush
@@ -301,7 +299,7 @@ else               fAutoSave = fAutoFlush * (fAutoSave / fAutoFlush);
 with `fTotBytes`, and failing that the length of a trial `TTree` buffer, standing
 in for `zipBytes` when it is 0.
 
-So a negative `fAutoFlush` on disk means "the watermark was never reached, and no
+A negative `fAutoFlush` on disk therefore means "the watermark was never reached, and no
 cluster size is recorded"; a positive one is a cluster size in entries, whether or
 not the writer ever expressed one that way. The same applies to `fAutoSave`, whose
 stored value can be an arbitrary-looking number derived from the compression ratio
@@ -309,17 +307,17 @@ at that moment.
 
 `fFlushedBytes` and `fSavedBytes` are `fZipBytes` as of the last flush and the last
 `AutoSave` respectively (`root/tree/tree/src/TTree.cxx:4816`,
-`root/tree/tree/src/TTree.cxx:1542`). `fFlushedBytes == 0` is exactly the
-condition ROOT itself tests for "nothing has been flushed yet"
-(`root/tree/tree/src/TTree.cxx:4739-4742`), and is how a reader tells a rewritten
+`root/tree/tree/src/TTree.cxx:1542`). `fFlushedBytes == 0` is the condition ROOT
+tests for "nothing has been flushed yet"
+(`root/tree/tree/src/TTree.cxx:4739-4742`), and it lets a reader tell a rewritten
 `fAutoFlush` from an original one.
 
 > `ttree/tree` has both defaults intact and `fFlushedBytes` 0. `ttree/clusters`
-> has `fAutoFlush` 5, `fAutoSave` **3703700** and `fFlushedBytes` 401: the
-> generator asked for `SetAutoFlush(4)`, then 3, then 5, and never mentioned
-> `fAutoSave` at all. Of the foreign corpus, `uproot-mc10events.root` shows the
-> same rewriting on a real production file — `fAutoFlush` 6844 and `fAutoSave`
-> 6759, neither of which any caller would have chosen.
+> has `fAutoFlush` 5, `fAutoSave` 3703700 and `fFlushedBytes` 401: the
+> generator asked for `SetAutoFlush(4)`, then 3, then 5, and never set
+> `fAutoSave`. In the foreign corpus, `uproot-mc10events.root` shows the same
+> rewriting on a production file: `fAutoFlush` 6844 and `fAutoSave` 6759, values
+> no caller would have chosen.
 
 ## 7. `fDefaultEntryOffsetLen` applies to split branches only
 
@@ -328,12 +326,12 @@ condition ROOT itself tests for "nothing has been flushed yet"
 construction (`root/tree/tree/src/TTree.cxx:779`) and floored at 10 by its setter
 (`root/tree/tree/src/TTree.cxx:9197-9202`).
 
-It is consulted in exactly one place: `TBranchElement`'s constructor
+It is used in one place only, `TBranchElement`'s constructor
 (`root/tree/tree/src/TBranchElement.cxx:363`). A plain `TBranch` built from a
 leaflist ignores it and hardcodes 1000 instead
-(`root/tree/tree/src/TBranch.cxx:420-427`). So on an unsplit tree the member
-describes nothing that happened, and like `fEntryOffsetLen` it describes branches
-not yet created rather than anything already on disk.
+(`root/tree/tree/src/TBranch.cxx:420-427`). On an unsplit tree the member
+therefore describes nothing that happened. Like `fEntryOffsetLen`, it applies to
+branches not yet created rather than to anything already on disk.
 
 ## 8. The five object pointers, and the index ROOT throws away
 
@@ -351,14 +349,14 @@ null:
 
 None of them affects how the entries of this tree are decoded, and all five are
 null in every one of the 187 trees measured for this document. Their contents
-belong to `Auxiliary.md`; what matters here is that the slots exist, sit between
+are left to `Auxiliary.md`. Here it is enough that the slots exist, sit between
 `fLeaves` and the end of the record, and must be consumed.
 
 ### 8.1 `fIndexValues` and `fIndex`
 
 These two are the pre-`TTreeIndex` sort index: parallel arrays of sort keys and
-entry numbers, held by value as a `TArrayD` and a `TArrayI`. They are the one pair
-of persistent members that ROOT **reads and then destroys**: if `fIndex` is
+entry numbers, held by value as a `TArrayD` and a `TArrayI`. They are the only
+persistent members that ROOT **reads and then destroys**: if `fIndex` is
 non-empty, `TTree::Streamer` prints `Old style index in this tree is deleted.
 Rebuild the index via TTree::BuildIndex` and clears both arrays
 (`root/tree/tree/src/TTree.cxx:9840-9844`).
@@ -384,7 +382,7 @@ restores together with clearing `kCircular`
 (`root/tree/tree/src/TTree.cxx:9149-9153`).
 
 `TObject::fBits` in the `TNamed` base carries `TTree`'s own status bits
-(`root/tree/tree/inc/TTree.h:294-306`). Two are worth reading: `kCircular`,
+(`root/tree/tree/inc/TTree.h:294-306`). Two matter to a reader: `kCircular`,
 bit 12, and `kEntriesReshuffled`, bit 19, which marks a tree whose entries are a
 permutation of another's and which ROOT refuses to befriend
 (`root/tree/tree/src/TTree.cxx:1268-1284`). Neither changes the layout.
@@ -403,14 +401,14 @@ To read a tree:
 4. The tree's entry count is `fEntries`, but the entry range of any individual
    branch is that branch's own (§3). Read an entry with
    [TBranch §10](TBranch.md#10-reading).
-5. If cluster boundaries are wanted, derive them per §6.2 — remembering that a
-   tree with a negative `fAutoFlush` does not record them.
+5. If cluster boundaries are wanted, derive them per §6.2. A tree with a
+   negative `fAutoFlush` does not record them.
 
 ## 11. Invariants
 
 1. `fEntries`, `fTotBytes` and `fZipBytes` are not negative, and `fTotBytes` and
-   `fZipBytes` are the sums of the like-named members over **every** branch of the
-   tree at every depth — `fBranches` recursively, **plus `fBranchRef` when the
+   `fZipBytes` are the sums of the like-named members over every branch of the
+   tree at every depth: `fBranches` recursively, **plus `fBranchRef` when the
    tree has one**, which is not in `fBranches` (§4).
 2. `0 <= fSavedBytes <= fZipBytes` and `0 <= fFlushedBytes <= fZipBytes`.
 3. `fNClusterRange >= 0`; `fClusterRangeEnd` and `fClusterSize` each hold exactly
@@ -425,15 +423,15 @@ To read a tree:
 7. `fEstimate` is positive and `fDefaultEntryOffsetLen`, where the class version
    has it, is at least 10 (§7).
 
-There is deliberately **no** invariant relating `fEntries` to any branch's entry
+There is deliberately no invariant relating `fEntries` to any branch's entry
 count: §3 gives a file written by ROOT 6.30 where they disagree by design.
-Likewise none on `fClusterRangeEnd` being strictly increasing: two `SetAutoFlush`
+There is none on `fClusterRangeEnd` being strictly increasing: two `SetAutoFlush`
 calls with no `Fill` between them close two ranges at the same entry, leaving an
 empty range that no entry falls in
-(`root/tree/tree/src/TTree.cxx:8486-8499`). And none on `fClusterSize` being
-positive, because fast-merging writes **0** for a range whose source `fAutoFlush`
-was negative (`root/tree/tree/src/TTree.cxx:6504-6508`) — a real range whose
-cluster size the file does not record, which §6.2 step 4 covers.
+(`root/tree/tree/src/TTree.cxx:8486-8499`). Nor is there one on `fClusterSize`
+being positive: fast-merging writes 0 for a range whose source `fAutoFlush` was
+negative (`root/tree/tree/src/TTree.cxx:6504-6508`). That is a real range whose
+cluster size the file does not record, and §6.2 step 4 covers it.
 
 Invariant 6 is not corruption-testable in isolation: a `TArray`'s length is
 redundant with the enclosing byte count, so changing one `fN` overruns the record
@@ -485,11 +483,11 @@ below** (`root/tree/tree/src/TTree.cxx:9864-9896`), which this document does not
 give; nothing in the corpus is below 5.
 
 > **A version word of 5 does not prove the writer was ROOT.** Two files in the
-> corpus, `uproot-from-geant4.root` and `uproot-issue-250.root`, carry `TTree`
+> corpus, `uproot-from-geant4.root` and `uproot-issue-250.root`, have `TTree`
 > records at class version 5 with a matching streamer info, and headers claiming
-> ROOT 4.00/00 — but ROOT 4.00/00 wrote version 11, so no ROOT release ever
-> produced that combination. They are third-party output. The layout is still
-> readable, because the file describes it.
+> ROOT 4.00/00. ROOT 4.00/00 wrote version 11, so no ROOT release produced that
+> combination: they are third-party output. The layout is still readable,
+> because the file's streamer info describes it.
 
 ## 14. Reference files
 

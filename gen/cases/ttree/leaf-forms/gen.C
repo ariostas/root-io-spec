@@ -3,11 +3,11 @@
 /// 255-escape of the counted string.
 ///
 /// TLeafObject and TLeafElement were on that list too and turned out to be
-/// covered already -- tree-branchref has a real TLeafObject and the split cases
+/// covered already: tree-branchref has a real TLeafObject and the split cases
 /// have 52 TLeafElements between them.
 ///
-/// Two entries. The second string is 300 characters, which is what forces the
-/// long form: one byte of 255, then an i32 length, then the bytes. The first is
+/// Two entries. The second string is 300 characters, which forces the long
+/// form: one byte of 255, then an i32 length, then the bytes. The first is
 /// short, so both forms sit in one basket.
 void gen(const char *out)
 {

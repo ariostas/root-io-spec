@@ -4,8 +4,8 @@ size = 1703
 
 description = """
 `TMap`, `TExMap` and `TBtree` -- the three ROOT containers whose `Streamer` is
-hand-written at **every** version, so no streamer info in any file describes
-their bytes. `tools/inventory.py` named them as gaps; this pins them.
+hand-written at every version, so no streamer info in any file describes their
+bytes. `tools/inventory.py` listed them as gaps; this case pins them.
 
 Three things here are not obvious from the source alone.
 
@@ -18,31 +18,30 @@ that treats each slot as a fresh object reads a byte count that is not there.
 **A `TExMap` stores the slot index, and the hash it stores is not the hash it was
 given.** `Assoc_t::SetHash` forces bit 0 so that a zero hash can mean "free slot",
 so the 6 and the 10 this case adds are 7 and 11 on disk. The slot follows from the
-stored hash, which puts the four entries in slots 0, 3, 7 and 9 -- and the write
-loop walks the table by slot, so the entry added last is the first on disk.
+stored hash, which puts the four entries in slots 0, 3, 7 and 9. The write loop
+walks the table by slot, so the entry added last is the first on disk.
 `fSize` (11) is the capacity and `fTally` (4) the count; both are present and they
 differ.
 
-**A `TBtree` writes its six shape integers and then exactly one more frame, and
-that frame is `TCollection`'s.** `TBtree::Streamer` calls `TSeqCollection::Streamer`,
-and `TSeqCollection` is a version-0 class with a plain `#pragma link` -- for which
-`rootcling` generates a `Streamer` that calls its **bases and nothing else**: no
-version word, no byte count, no members. So the `00 03` at offset 760 is
-`TCollection`'s version, immediately after `TBtree`'s own integers, with no frame
-in between. That rule also explains the `TTreePerfStats` record of
-`aod_flushed.root` -- see Containers.md 6.
+**A `TBtree` writes its six shape integers and then one more frame, and that
+frame is `TCollection`'s.** `TBtree::Streamer` calls `TSeqCollection::Streamer`,
+and `TSeqCollection` is a version-0 class with a plain `#pragma link`. For such
+a class `rootcling` generates a `Streamer` that calls its bases and nothing else:
+no version word, no byte count, no members. The `00 03` at offset 760 is
+therefore `TCollection`'s version, immediately after `TBtree`'s own integers,
+with no frame in between. The same rule explains the `TTreePerfStats` record of
+`aod_flushed.root`; see Containers.md 6.
 
-`TBtree`'s own version word is **0**, at offset 730, which is the second reason
-this file is worth having: a version-0 class that is not the one the
-`serialization/version-zero` case covers.
+`TBtree`'s own version word is 0, at offset 730, so the file also has a
+version-0 class other than the one the `serialization/version-zero` case covers.
 
-`TMap` and `TBtree` are `TCollection`s, so `Write()` gives each *element* its own
+`TMap` and `TBtree` are `TCollection`s, so `Write()` gives each element its own
 key unless `kSingleKey` is passed. That flag appears in no other case here.
 
-The file carries **one** streamer info, for `TObjString`. None of the three
-containers contributes one, because none of them ever calls `WriteClassBuffer`,
-which is what forces an info into a file -- the clearest statement in the corpus
-that a hand-written `Streamer` and a recorded streamer info are independent.
+The file has one streamer info, for `TObjString`. None of the three containers
+contributes one, because none of them calls `WriteClassBuffer`, which is what
+puts an info into a file. A hand-written `Streamer` and a recorded streamer info
+are independent.
 """
 
 spec = [

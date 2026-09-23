@@ -8,30 +8,31 @@ Two baskets, one of each shape, small enough to assert byte for byte.
 A TBasket is a TKey subclass, and its own fields are written into the key: the
 key of each basket here is 65 bytes where an ordinary key with the same three
 strings would be 46. These are also the first keys in the corpus to use the
-large layout -- fVersion 1004, with 8-byte fSeekKey and fSeekPdir -- which a
-basket uses unconditionally, whatever the file's size. A reader that computes the key length from the strings, as
-Record.md section 8 invariant 3 says it can, is wrong for every basket.
+large layout (fVersion 1004, with 8-byte fSeekKey and fSeekPdir), which a basket
+uses unconditionally, whatever the file's size. A reader that computes the key
+length from the strings, as Record.md section 8 invariant 3 says it can, is
+wrong for every basket.
 
 The two shapes:
 
 - Branch "n" is one Int_t per entry. Every entry is the same length, so
   fLast - fKeyLen equals fObjlen exactly and there is no entry-offset array.
 - Branch "a" is a counted array a[n]/F whose length is the value of n, so its
-  entries grow with the entry number. Its basket carries an entry-offset array
+  entries grow with the entry number. Its basket has an entry-offset array
   after the data, and fObjlen exceeds fLast - fKeyLen by the size of that array.
 
-What this case pins down:
+What this case shows:
 
 - fLast is measured from the start of the *record*, not the payload: for "n" it
-  is 77 and the record is at 268, so the data ends at 345, which is where the
-  next record begins.
+  is 77 and the record is at 268, so the data ends at 345, where the next record
+  begins.
 - The entry offsets are record-relative too. The first is 65, which is fKeyLen.
 - The array is written with a leading count of fNevBuf + 1, and the extra
-  trailing value is 0 -- not an offset. A reader that treats it as one places a
+  trailing value is 0, not an offset. A reader that treats it as one places a
   fourth entry at the start of the file.
 - The last entry's end is fLast, not an entry in the array.
 - The flag byte is 0 in both baskets, including the one that has an offset
-  array, so the flag is not what announces it.
+  array, so the flag does not signal it.
 
 Both branches are leaflist branches deliberately: see gen.C.
 """

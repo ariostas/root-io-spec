@@ -4,9 +4,9 @@
 /// anything written through a streamer info. It is not enough for a class that
 /// needs a real ClassDef: an interpreted class has no Streamer method, so ROOT
 /// treats it as *foreign* and writes a version word of 0 plus a checksum rather
-/// than a version number. Cases that need the versioned form -- TClonesArray,
-/// which stores "<class>;<version>" as text, and a member-wise collection whose
-/// value class is versioned -- must therefore compile a dictionary first.
+/// than a version number. Cases that need the versioned form must compile a
+/// dictionary first: TClonesArray, which stores "<class>;<version>" as text, and
+/// a member-wise collection whose value class is versioned.
 ///
 /// tools/generate.py calls this automatically when a case directory contains a
 /// `classes.h`, and then loads `gen.C` in a second step. The two steps cannot be
@@ -22,8 +22,8 @@ void aclic(const char *header, const char *builddir)
    gSystem->SetBuildDir(builddir, kTRUE);
 
    // "k" keeps the shared library, "f" forces a rebuild. Forcing costs a few
-   // seconds per case and removes a class of staleness bug that would otherwise
-   // surface as an unexplained digest drift.
+   // seconds per case and avoids stale libraries, which would otherwise show up
+   // as an unexplained digest drift.
    if (!gSystem->CompileMacro(header, "kf")) {
       ::Error("aclic", "could not compile %s -- see gen/common/README.md", header);
       gSystem->Exit(1);

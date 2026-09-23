@@ -1,8 +1,8 @@
 /// A split TClonesArray: fType 3 and fType 31, which no other fixture has.
 ///
 /// TClonesArray predates STL streaming and splits through its own pair of
-/// branch types. The arrangement mirrors the STL one of ttree/split-nested
-/// exactly, with 3 where that has 4 and 31 where it has 41:
+/// branch types. The arrangement mirrors the STL one of ttree/split-nested,
+/// with 3 where that has 4 and 31 where it has 41:
 ///
 ///   ke                fType 0, fID -2   the split node
 ///   ke/fHits          fType 3           the count branch

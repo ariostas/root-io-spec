@@ -16,16 +16,16 @@ physics branch in miniature, and one TTree::Branch call produces seven branches:
   nt/fDet/fHits/fE    fType 41
   nt/fRun             fType 0
 
-What this case pins down:
+What this case covers:
 
-- fType 2 is the second interior node type, and like fType 1 it has no leaf --
-  its fLeaves is a TObjArray with nobjects 0 -- and no basket. Its fStreamerType
+- fType 2 is the second interior node type, and like fType 1 it has no leaf
+  (its fLeaves is a TObjArray with nobjects 0) and no basket. Its fStreamerType
   is 62, kAny.
 - The count branch fDet/fHits is fType 4 with fStreamerType 300 (kSTL),
-  fClonesName NHit -- the *value* type, not the collection type -- and fMaximum
-  2, the largest collection in the file. Its fLeaves has nobjects 1 and that one
+  fClonesName NHit (the *value* type, not the collection type) and fMaximum 2,
+  the largest collection in the file. Its fLeaves has nobjects 1 and that one
   entry is a back-reference, never a leaf written in place.
-- **The count relationship is spelled out in the titles.** The count branch's
+- **The count relationship is written out in the titles.** The count branch's
   title ends in an underscore, `fDet.fHits_`, and each member branch's title
   names it in brackets: `fId[fDet.fHits_]`. BuildTitle constructs both
   (root/tree/tree/src/TBranchElement.cxx:1189,
@@ -33,12 +33,12 @@ What this case pins down:
   same relationship is each member's fBranchCount: tag 1189, which against a
   record starting at 791 names position 791 + 1189 - 2 = 1978, the count
   branch's own position.
-- fClassName changes as the walk descends -- NTop, then NDet, then NHit -- and
+- fClassName changes as the walk descends (NTop, then NDet, then NHit), and
   each time it is the class whose element list that branch's fID indexes.
-- **fSplitLevel is not a depth counter.** It reads 99 on the node, 98 on fDet
-  and fRun, 97 on fDet/fHits, and **0** on fDet/fNo and on both fType 41
-  members, which are at three different depths. The writer decrements it in some
-  paths and zeroes it in others (root/tree/tree/src/TBranchElement.cxx:6403-6408,
+- **fSplitLevel is not a depth counter.** It is 99 on the node, 98 on fDet and
+  fRun, 97 on fDet/fHits, and 0 on fDet/fNo and on both fType 41 members,
+  which are at three different depths. The writer decrements it in some paths
+  and zeroes it in others (root/tree/tree/src/TBranchElement.cxx:6403-6408,
   root/tree/tree/src/TBranchElement.cxx:6444-6449), so a reader must take the
   structure from the fBranches nesting and never from this number.
 

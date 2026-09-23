@@ -7,18 +7,18 @@ A TLeafC branch in the three forms one basket can hold, next to a fixed-width
 Int_t branch for the contrast.
 
 The three strings are "ab", "" and 300 x'es, in that order. The short one costs
-three bytes, the **empty one costs nothing at all** -- not even a length byte, so
-its entry offset repeats the previous one -- and the long one needs the 255-escape
+three bytes, the **empty one costs nothing at all** (not even a length byte, so
+its entry offset repeats the previous one), and the long one needs the 255-escape
 of the counted string: one byte of 255, then the real length as an i32, then the
 characters.
 
 A TLeafC forces its branch's fEntryOffsetLen non-zero whatever the caller asked
 for, because the entries are not all one length; branch n in the same file has 0.
-Both fLen and fMaximum on the leaf are the longest string seen plus one, which is
-a high-water mark rather than the size of the C array the writer filled from.
+Both fLen and fMaximum on the leaf are the longest string seen plus one, a
+high-water mark rather than the size of the C array the writer filled from.
 
 Written with compression off and three entries, so both baskets can be asserted
-byte for byte -- and so this file can be compared record for record with
+byte for byte, and so this file can be compared record for record with
 data/written/leafc.root, which tools/rootwrite.py produces for the same content.
 """
 

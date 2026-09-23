@@ -2,7 +2,7 @@
 ///
 /// TTree::Branch with a split level above 0 does not write one branch. It walks
 /// the class's TStreamerInfo and writes a branch per member, arranged as a tree
-/// whose interior nodes carry no data. This case is the smallest arrangement
+/// whose interior nodes hold no data. This case is the smallest arrangement
 /// that produces all three kinds of node at once:
 ///
 ///   ev          fType 0, fID -2   the split node; no data of its own
@@ -12,8 +12,8 @@
 ///   ev.fD       fType 0, fID >= 0
 ///   ev.fS       fType 0, fID >= 0
 ///
-/// Every one of them is a TBranchElement carrying a TLeafElement, which is why
-/// no existing fixture covers any of this: the unsplit path in TBranch.md and
+/// Every one of them is a TBranchElement with a TLeafElement. No existing
+/// fixture covers any of this, because the unsplit path in TBranch.md and
 /// TLeaf.md never produces one.
 ///
 /// Three entries with distinct values per member, and compression off, so the

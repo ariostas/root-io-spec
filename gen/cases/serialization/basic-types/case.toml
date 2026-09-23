@@ -7,8 +7,8 @@ One object of an interpreted class with a member of every fixed-width scalar
 type. The payload is a byte count, a version word, a checksum and then the
 members back to back with no padding and no per-member framing of any kind.
 
-The class is written by the interpreter and so has no ClassDef. That makes it
-*foreign*, which is why the version word is 0 and a 4-byte checksum follows it.
+The class is defined in the interpreter and has no ClassDef, so it is *foreign*:
+the version word is 0 and a 4-byte checksum follows it.
 Compare serialization/version-zero, where the version word is also 0 but no
 checksum follows.
 """

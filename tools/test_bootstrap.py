@@ -3,14 +3,13 @@
 
 Two lists are compared: the classes whose `Streamer` is hand-written
 (`CUSTOM_STREAMER`) and the classes whose generated `Streamer` writes only their
-bases (`FORWARDING_STREAMER`). A reader has to carry both, for opposite reasons,
-and the document has to name both.
+bases (`FORWARDING_STREAMER`). A reader needs both, for opposite reasons, and
+the document must name both.
 
-The appendix lists the classes a reader must hardcode, and rootfile.py is a
-reader that hardcodes them. A list like that rots quietly: the reader learns
-about a divergent class and the document does not, or the document names one the
-reader never special-cased. Neither shows up as a failing fixture, so it is
-checked here instead.
+The appendix lists the classes a reader must hardcode, and rootfile.py hardcodes
+them. The two can drift apart silently: the reader learns about a divergent
+class and the document does not, or the document names one the reader never
+special-cased. Neither shows up as a failing fixture, so it is checked here.
 
 The check is by class name, in both directions, with the groupings the document
 uses stated explicitly rather than pattern-matched.
@@ -28,7 +27,7 @@ import rootfile  # noqa: E402
 DOC = Path(__file__).resolve().parent.parent / "spec" / "99-appendix" / "Bootstrap.md"
 
 #: Rows of the document that stand for more than one class name, and what they
-#: cover. Spelled out so that a new TArray or a new std::string spelling has to
+#: cover. Listed explicitly so that a new TArray or std::string spelling has to
 #: be considered rather than silently absorbed by a wildcard.
 COVERS = {
     "TArray*": set(rootfile.TARRAY_WIDTH),
@@ -88,9 +87,8 @@ class BootstrapList(unittest.TestCase):
 
     def test_the_reader_hardcodes_every_class_the_document_names(self):
         # TBasket, TTreeIndex, TStreamerInfo and the rest are read by named
-        # functions rather than through Decoder.read_object, so they are
-        # allowed here; what must not happen is a row naming a class nothing
-        # anywhere in the reader knows about.
+        # functions rather than through Decoder.read_object, so this only
+        # requires that each class a row names appears somewhere in the reader.
         source = (Path(rootfile.__file__)).read_text()
         for name in sorted(doc_classes()):
             with self.subTest(name):

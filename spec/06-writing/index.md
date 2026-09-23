@@ -1,44 +1,43 @@
 # Writing ROOT files
 
-Every other layer of this specification answers the reader's question: these bytes
-are here, what do they mean. This layer answers the writer's: I have a histogram
-and a tree, which bytes do I emit, in what order, and what will ROOT complain
-about.
+Every other layer of this specification answers the reader's question: what do
+these bytes mean? This layer answers the writer's: given a histogram and a tree,
+which bytes are emitted, in what order, and what will ROOT complain about?
 
-It is a smaller layer than the reading side, deliberately, and §3 says why.
+It is deliberately smaller than the reading side, and §3 says why.
 
 ## 1. Why it is separate
 
-The reading documents already contain almost every fact a writer needs — a field's
-offset is the same fact whichever direction you are going — and each of them ends
-with an `Invariants` section, which is a checklist a writer can run against its own
-output.
+The reading documents already contain almost every fact a writer needs, since a
+field's offset is the same in either direction. Each of them ends with an
+`Invariants` section, a checklist a writer can run against its own output.
 
-That turned out to be necessary and not sufficient, for three reasons:
+That is necessary but not sufficient, for three reasons:
 
 1. **Order is not a property of any byte.** A file's header cannot be written until
    the free list is placed, the free list cannot be placed until every record is,
    and the root directory record has to be written twice — once when the file is
    created and once at the end, because three of its fields are not known until
-   then. No amount of reading a finished file recovers that order;
+   then. That order cannot be recovered from a finished file;
    [Writing a file](WritingFiles.md) states it.
 2. **A reader may be liberal where a writer may not.** A reader is told a byte
    count is a lower bound, that `fUnits` is informational, that the header's
-   padding is unspecified. A writer that treats all three as free produces a file
-   ROOT reads and another reader rejects. Where the two differ, this layer says so.
-3. **The class layouts a writer needs are a short list, and it is not the same
-   list.** A reader has to cope with every class version any file carries, back to
-   ROOT 3. A writer chooses, so it needs exactly one version of each class it
-   emits — the current one — and needs it completely, including the members ROOT's
-   own constructors set to values that look arbitrary.
+   padding is unspecified. A writer that treats all three as free can produce a
+   file ROOT reads and another reader rejects. This layer states where the two
+   differ.
+3. **A writer needs a short, different list of class layouts.** A reader has to
+   cope with every class version any file contains, back to ROOT 3. A writer
+   chooses, so it needs one version of each class it emits, the current one, and
+   needs it completely, including the members ROOT's own constructors set to
+   values that look arbitrary.
 
 ## 2. The conformance test
 
-A writing procedure is only as good as what happens when ROOT opens the result, so
-that is the test, and it is executable. `tools/rootwrite.py` is a pure-Python
-writer built from these documents alone — not from ROOT's writing code, and not
-from `tools/rootfile.py`, which is this project's reader — and
-`tools/check_write.py` puts every file it produces through three gates:
+The test of a writing procedure is whether ROOT reads the result, and the test is
+executable. `tools/rootwrite.py` is a pure-Python writer built from these documents
+alone, not from ROOT's writing code and not from `tools/rootfile.py` (this
+project's reader). `tools/check_write.py` puts every file it produces through
+three gates:
 
 | # | Gate | What it proves | Needs |
 |---|---|---|---|
@@ -49,17 +48,16 @@ from `tools/rootfile.py`, which is this project's reader — and
 The numbers are the ones `tools/check_write.py` prints, so "gates 1 and 2" means
 the two that need no ROOT.
 
-The third gate is the one that finds errors, and the "no warning" half of it is not
-decoration: ROOT checks a byte count against what it consumed, and compares a
-class version and a checksum in the file against the class it has compiled in. A
-writer that gets any of those wrong is told so, by name, on the terminal.
+The third gate is the one that finds errors, and its "no warning" condition
+matters: ROOT checks a byte count against what it consumed, and compares a class
+version and a checksum in the file against the class it has compiled in. A writer
+that gets any of those wrong gets a warning naming it.
 
-**`data/written/` is byte-reproducible**, which the rest of `data/` is not. Every
-fixture ROOT writes carries a wall-clock timestamp in each key and a fresh UUID per
-file, so the reference files are compared by a normalized digest
-(`tools/normalize.py`). A writer has no such excuse: `rootwrite.py` takes the
-timestamp and the UUID as inputs, and the files here are compared byte for byte
-with a plain `sha256`.
+**`data/written/` is byte-reproducible**, unlike the rest of `data/`. Every fixture
+ROOT writes has a wall-clock timestamp in each key and a fresh UUID per file, so
+the reference files are compared by a normalized digest (`tools/normalize.py`).
+`rootwrite.py` instead takes the timestamp and the UUID as inputs, and the files
+here are compared byte for byte with a plain `sha256`.
 
 ## 3. What is specified
 
@@ -77,7 +75,7 @@ correct), **derived** (computed from something else, with the formula), or **fre
 (any value in range; ROOT's own choice is given for reference, because matching it
 makes a diff against a ROOT-written file readable).
 
-A kind may carry a short qualifier, which narrows *who* requires the value rather
+A kind may have a short qualifier, which narrows who requires the value rather
 than adding a fourth kind:
 
 | Qualifier | Means |
@@ -88,27 +86,27 @@ than adding a fourth kind:
 | **derived, advisory** | computed, but no reader needs it — ROOT recomputes from the data instead |
 | **free, with constraints** | a range or a rule rather than a single value, given beside it |
 
-Anything marked plainly **fixed**, **derived** or **free** carries no qualifier and
-means exactly what the paragraph above says.
+A plain **fixed**, **derived** or **free** has no qualifier and means what the
+paragraph above says.
 
 ### 3.1 What "the current version" means
 
-**ROOT writes one version per class and it is not a choice.** Both places a version
-word is emitted take `cl->GetClassVersion()` — the number compiled into the
-*writing* process — and there is no argument, option or API that asks for an older
-layout: objectwise at `root/io/io/src/TBufferFile.cxx:3162`, member-wise at
+**ROOT writes one version per class, and there is no choice.** Both places a
+version word is emitted take `cl->GetClassVersion()`, the number compiled into the
+*writing* process, and no argument, option or API asks for an older layout:
+objectwise at `root/io/io/src/TBufferFile.cxx:3162`, member-wise at
 `root/io/io/src/TBufferFile.cxx:3192`.
 
-So a read-and-write **upgrades**. Measured: a `TH1F` written by ROOT 5.28
+A read-and-write therefore **upgrades**. Measured: a `TH1F` written by ROOT 5.28
 (`uproot-issue64.root`, class versions `TH1F` 1, `TH1` 6, `TAxis` 9) read and
 written straight back out by 6.40.04 comes out as `TH1F` 3, `TH1` 8, `TAxis` 10.
-Nothing preserves the old layout, and nothing can be asked to.
+Nothing preserves the old layout, and there is no way to request it.
 
-That makes "the current version" precise but relative: it is the version of the
-**ROOT that writes**, not a property of the format. A file from 5.28 has `TH1` 6
-and is entirely conforming. These documents mean ROOT 6.40.04's numbers, which is
-the release the repository pins, and `tools/check_versions.py` checks every table
-here against `ClassDef` in it.
+"The current version" is therefore relative: it is the version of the **ROOT that
+writes**, not a property of the format. A file from 5.28 has `TH1` 6 and is fully
+conforming. These documents mean the numbers of ROOT 6.40.04, the release the
+repository pins, and `tools/check_versions.py` checks every table here against
+`ClassDef` in it.
 
 Four cases put something else in the version word, and a writer meets three of
 them:
@@ -123,19 +121,18 @@ them:
 `ROOT::TIOFeatures` is the first case and is unavoidable: every `TTree` and every
 `TBranch` contains one
 ([Writing trees §3.2](WritingTrees.md#32-fiofeatures-is-the-one-foreign-class-a-tree-contains)).
-The last case is why a file written today can carry a class version that is not
-current for anything — the class has no current version, only the one its file
+Because of the last case, a file written today can contain a class version that is
+not current for anything: the class has no current version, only the one its file
 describes. Measured: `Head` in `uproot-issue-214.root` loads as an emulated class
 whose `GetClassVersion()` is **2**, the number that file declares.
 
-**And a copy is not a write.** `hadd` clones a tree by loading each basket's bytes
-and copying them to the output untouched
-(`root/tree/tree/src/TTreeCloner.cxx:753-761`), carrying the source file's streamer
-infos across with them (`root/tree/tree/src/TTreeCloner.cxx:472`) — so records
-produced by an older ROOT survive into a new file unchanged, at their original class
-versions. A reader must therefore not infer a class
-version from the file's `fVersion`, or from anything but the object's own version
-word.
+**A copy is not a write.** `hadd` clones a tree by loading each basket's bytes and
+copying them to the output untouched
+(`root/tree/tree/src/TTreeCloner.cxx:753-761`), and copies the source file's
+streamer infos along with them (`root/tree/tree/src/TTreeCloner.cxx:472`). Records
+produced by an older ROOT therefore survive into a new file unchanged, at their
+original class versions. A reader must not infer a class version from the file's
+`fVersion`, or from anything but the object's own version word.
 
 ## 4. What is not specified
 
@@ -146,29 +143,27 @@ word.
 - **Two writers on one file.** ROOT takes no lock a third party can see, and
   nothing in the format detects two sessions updating one file
   ([Writing a file §13.10](WritingFiles.md#1310-two-writers-one-file)). Updating a
-  file that already exists **is** specified, as of 2026-09-21
+  file that already exists **is** specified
   ([Writing a file §13](WritingFiles.md#13-updating-an-existing-file)); doing it
   concurrently is not.
 - **Resolving a *collision* between a writer's class and a file's.** When an
   update's info for a class disagrees with the file's at the same version, ROOT
   keeps the file's and silently truncates what it writes
   ([Writing an object §8.5](WritingObjects.md#85-when-the-versions-collide-the-file-wins-and-members-are-lost)).
-  This document specifies the two honest responses — bump the version, or refuse —
-  and declines to specify the third. Everything else about **writing for a reader
-  at another version** is specified
+  This document specifies the two responses that avoid silent loss, bumping the
+  version or refusing, and does not specify the third. Everything else about
+  **writing for a reader at another version** is specified
   ([Writing an object §8](WritingObjects.md#8-writing-for-a-reader-that-is-not-you)).
 - **Writing a split `TBranchElement`.** Reading one is specified
   ([Split branches](../04-ttree/TBranchElement.md),
-  [Splitting](../04-ttree/Splitting.md)) and is finished — 99.8% of branch-baskets
+  [Splitting](../04-ttree/Splitting.md)) and is complete: 99.8% of branch-baskets
   across both corpora decode, and neither remaining skip is a splitting gap.
-  Writing one is excluded, and since "we specify reading it and not writing it"
-  looks odd without them, the reasons are worth stating. There are three, and none
-  of them is effort:
+  Writing one is excluded, for three reasons, none of them the effort involved:
 
     1. **Jagged data does not need splitting, and this layer already writes it.**
        What is usually wanted from columnar output is a variable-length array per
-       entry — `Int_t n; Float_t x[n]` — and that is a **flat** `TBranch` with a
-       counter leaf, with no `TBranchElement` anywhere.
+       entry, `Int_t n; Float_t x[n]`, and that is a **flat** `TBranch` with a
+       counter leaf and no `TBranchElement`.
        [Writing trees §4.3](WritingTrees.md#43-the-leaf) specifies it and
        `data/written/tree.root` contains one.
     2. **A split file is only fully usable by a reader that has the class.**
@@ -179,45 +174,45 @@ word.
        info either way, so splitting buys it nothing.
     3. **An unsplit branch is never wrong.** One branch at `fType` 0, `fID` −1
        holding each whole object produces a file ROOT opens and reads correctly.
-       What it costs is read performance on the writer's own files, which is the
-       writer's trade to make — the same kind of choice as basket sizing, below.
+       The cost is read performance on the writer's own files, a trade-off for the
+       writer to make, like basket sizing below.
 
-  Two facts from scoping this are about the format rather than the decision, and
-  a writer that ignores the recommendation still needs them. **The shape is
-  policy; the names are format**: a writer may split less deeply than ROOT would,
-  but it may not invent names, because the names are what the offsets are
-  reconstructed from. And **a trailing dot on every top-level branch name is
-  strictly better than ROOT's default** — see
+  Two facts about the format, rather than the decision, still apply to a writer
+  that splits anyway. **The shape is policy; the names are format**: a writer may
+  split less deeply than ROOT would, but it may not invent names, because the
+  offsets are reconstructed from the names. And **a trailing dot on every
+  top-level branch name is strictly better than ROOT's default**; see
   [Splitting §3.1](../04-ttree/Splitting.md#31-a-trailing-dot-changes-every-name-below).
 - **RNTuple.** ROOT's own specification is tracked here
-  ([RNTuple](../05-rntuple/index.md)) and it is written for both directions.
+  ([RNTuple](../05-rntuple/index.md)), and it covers both directions.
 - **Policy.** Basket sizes, when to flush, how many entries per cluster, which
-  compression setting: ROOT's choices, and a writer's to make differently. Where a
-  choice has a *format* consequence — a basket over 16 MiB is split into blocks,
-  say — the consequence is specified and the choice is not. Flushing is the largest
-  example: [Writing trees §7](WritingTrees.md#7-more-than-one-basket-per-branch)
-  specifies everything a flush *produces*, cluster ranges included, and states
-  ROOT's own rule for when to do it without requiring it. The two values ROOT
-  derives at its first flush, `fBasketSize` and `fAutoSave`, are inputs to this
-  project's writer for the same reason.
+  compression setting: these are ROOT's choices, and a writer may choose
+  differently. Where a choice has a *format* consequence (a basket over 16 MiB is
+  split into blocks, for example), the consequence is specified and the choice is
+  not. Flushing is the largest example:
+  [Writing trees §7](WritingTrees.md#7-more-than-one-basket-per-branch) specifies
+  everything a flush *produces*, cluster ranges included, and states ROOT's own
+  rule for when to flush without requiring it. The two values ROOT derives at its
+  first flush, `fBasketSize` and `fAutoSave`, are inputs to this project's writer
+  for the same reason.
 - **The streamer-info element lists of any other class.**
-  [Element lists](ElementLists.md) publishes the thirty-five a histogram, a profile,
-  a graph, a flat tree or a bare `TObjString` needs, which was the largest omission here until 2026-09-18 and
-  the one thing that made the writing layer unimplementable from the prose. It does
-  not generalise: a `TH3`, a `TGraph2D` or a user-defined class needs infos
-  that are not published, and there is no procedure for *deriving* an element list
-  from a class definition — `TStreamerInfo::Build` is a dictionary walk, and this
-  project specifies its output rather than reimplementing it. Two ways to obtain a
-  list that is not published: `TFile::ShowStreamerInfo` on any ROOT-written file, or
+  [Element lists](ElementLists.md) publishes the thirty-five that a histogram, a
+  profile, a graph, a flat tree or a bare `TObjString` needs; without them the
+  writing layer could not be implemented from the prose. The list does not
+  generalise: a `TH3`, a `TGraph2D` or a user-defined class needs infos that are
+  not published, and there is no procedure for *deriving* an element list from a
+  class definition. `TStreamerInfo::Build` is a dictionary walk, and this project
+  specifies its output rather than reimplementing it. A list that is not published
+  can be obtained with `TFile::ShowStreamerInfo` on any ROOT-written file, or by
   reading that file's `StreamerInfo` record with
-  [Streamer information §12](../02-serialization/StreamerInfo.md#12-reading) — and
-  **copying the record verbatim** into the file being written is legitimate, since
+  [Streamer information §12](../02-serialization/StreamerInfo.md#12-reading).
+  **Copying the record verbatim** into the file being written is legitimate, since
   a `StreamerInfo` record is self-contained.
 
 ## 5. A writer in one page
 
-The order below is the whole of the container procedure, compressed; each step
-links to where it is specified.
+The order below is the container procedure in brief; each step links to where it
+is specified.
 
 1. Reserve the first `fBEGIN` (100) bytes. Do not write the header yet — three of
    its fields are not known until step 8.
@@ -236,16 +231,16 @@ links to where it is specified.
 6. Write **one key list per directory**, the root's first: the count, then a copy
    of the key of each record that directory owns.
 7. Write the **free list**: one entry for the gap that is the rest of the address
-   space, since a file written once has no gaps in it — and a directory record
-   never moves, so subdirectories do not add any.
-8. Rewrite every directory record's payload — now that the key lists' positions
-   and the file's end are known — and write the **header**.
+   space, since a file written once has no gaps in it. A directory record never
+   moves, so subdirectories do not add any.
+8. Now that the key lists' positions and the file's end are known, rewrite every
+   directory record's payload and write the **header**.
 
 [Writing a file](WritingFiles.md) is that list with the bytes in it.
 
 ## 6. Reference files
 
 `data/written/` holds one file per procedure, produced by `tools/rootwrite.py` and
-checked by `tools/check_write.py`. They are usable as test vectors in the same way
-as the rest of `data/`, and they are the only files in the repository this project
-wrote rather than ROOT — which is exactly why each carries a note saying so.
+checked by `tools/check_write.py`. They can be used as test vectors like the rest
+of `data/`. They are the only files in the repository written by this project
+rather than by ROOT, and each has a note saying so.

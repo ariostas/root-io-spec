@@ -2,14 +2,13 @@
 
 STL containers, `std::string`, and `TClonesArray`.
 
-This is the hardest part of the serialization layer, for one reason: **the same
-C++ type is written in two entirely different ways depending on what its elements
-are**, and the only thing that distinguishes them on disk is bit 14 of a version
-word.
+This is the hardest part of the serialization layer because **the same C++ type
+is written in two entirely different ways depending on what its elements are**,
+and on disk only bit 14 of a version word distinguishes them.
 
-There is nothing about collections in the shipped ROOT documentation at all — the
-word "STL" does not appear in `root/io/doc/TFile/README.md`. Everything here comes
-from the source and from bytes.
+The shipped ROOT documentation says nothing about collections; the word "STL" does
+not appear in `root/io/doc/TFile/README.md`. Everything here comes from the source
+and from bytes.
 
 ## 1. Which element carries a collection
 
@@ -29,22 +28,22 @@ unordered_multiset 11   unordered_map 12   unordered_multimap 13
 RVec 14      kSTLany 300     kSTLstring 365
 ```
 
-`root/core/foundation/inc/ESTLType.h:28-50`. A **pointer** to a collection adds
+`root/core/foundation/inc/ESTLType.h:28-50`. A pointer to a collection adds
 `kOffsetP` (40), so `vector<T>*` has `fSTLtype` 41
 (`root/core/meta/src/TStreamerElement.cxx:1806`).
 
 > **`set` is 6 and `multimap` is 5, and a reader MUST NOT trust either value.**
-> `TStreamerSTL` numbered them the other way round — `kSTLset = 5`,
-> `kSTLmultimap = 6` — while every other use of the enum had them as above. The
-> declaration was standardised in **5.34/13** (`d1ffea01e01`, backported to the
-> 5.34 series) and `TStreamerSTL::Streamer` gained the read-side repair only in
-> **6.00/00** (`cf539483218`): when `fSTLtype` is 5 or 6 it takes the container
-> from `fTypeName` instead (`root/core/meta/src/TStreamerElement.cxx:2112-2122`).
-> The table in `root/io/doc/TFile/streamerinfo.md` records the old, wrong order.
+> `TStreamerSTL` numbered them the other way round (`kSTLset = 5`,
+> `kSTLmultimap = 6`), while every other use of the enum had them as above. The
+> declaration was standardised in 5.34/13 (`d1ffea01e01`, backported to the 5.34
+> series), and `TStreamerSTL::Streamer` gained the read-side repair only in
+> 6.00/00 (`cf539483218`): when `fSTLtype` is 5 or 6 it takes the container from
+> `fTypeName` instead (`root/core/meta/src/TStreamerElement.cxx:2112-2122`). The
+> table in `root/io/doc/TFile/streamerinfo.md` records the old, wrong order.
 >
-> **Nothing in the element says which convention wrote it**, which is what makes
-> the repair mandatory rather than a legacy nicety: the element version is 3 on
-> both sides of the change. Measured on one member across four files —
+> **Nothing in the element records which convention wrote it**: the element
+> version is 3 on both sides of the change. The repair is therefore mandatory,
+> not only a concern for legacy files. Measured on one member across four files,
 > `RooAbsArg._boolAttrib`, a `set<string>`, at element version 3 throughout:
 >
 > | File | `fSTLtype` |
@@ -54,14 +53,14 @@ RVec 14      kSTLany 300     kSTLstring 365
 > | `uproot-issue49.root` | 6 |
 > | `uproot-issue-350.root` | 6 |
 >
-> `uproot-issue283.root` (ROOT 5.28/00) carries a third case, a `set<long>` at 5,
+> `uproot-issue283.root` (ROOT 5.28/00) has a third case, a `set<long>` at 5,
 > and it is the one that matters: a reader that takes 5 at face value reads a set
-> as a **multimap** and consumes two values per element. `tools/rootfile.py` did
-> exactly that until 2026-09-21, on a rule this document already stated —
-> invariant 10 now checks it. The pointer forms are **not** repaired: ROOT's test
-> is on 5 and 6 exactly, so a `set<T>*` at 45 keeps whatever it was given.
+> as a multimap and consumes two values per element. `tools/rootfile.py` did so
+> until 2026-09-21, although this document already stated the rule; invariant 10
+> now checks it. The pointer forms are not repaired: ROOT tests for 5 and 6 only,
+> so a `set<T>*` at 45 keeps whatever it was given.
 
-Remember also that **`fType` on disk is always 500**
+**`fType` on disk is always 500**
 ([Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)),
 written deliberately for forward compatibility
 (`root/core/meta/src/TStreamerElement.cxx:2146`) and recomputed on read
@@ -79,21 +78,20 @@ byteCount:u32   version:i16
 ```
 
 The version is **`TStreamerInfo`'s own class version, currently 10**
-(`root/io/io/inc/TStreamerInfo.h:256`) — not the collection's version, not the
-element class's, and not a count. It is a *format capability level*: the reader
-compares it against 7, 8 and 9 to decide what the older layouts looked like
-(§6).
+(`root/io/io/inc/TStreamerInfo.h:256`). It is not the collection's version, not
+the element class's, and not a count. It is a format capability level: the
+reader compares it against 7, 8 and 9 to recognise the older layouts (§6).
 
 **Bit 14 of that word is `kStreamedMemberWise`** (`0x4000`,
 `root/io/io/inc/TBufferFile.h:70`), set by `WriteVersionMemberWise`
-(`root/io/io/src/TBufferFile.cxx:3203`). So:
+(`root/io/io/src/TBufferFile.cxx:3203`):
 
 | Version word | Mode |
 |---|---|
 | `0x000A` | object-wise |
 | `0x400A` | member-wise |
 
-This is the same bit that means "a byte count follows" in the *other* version-word
+This is the same bit that means "a byte count follows" in the other version-word
 context; the two are told apart by position, as
 [Buffer framing §3.1](Buffer.md#31-kbytecountvmask-and-kstreamedmemberwise-are-the-same-number)
 explains.
@@ -102,8 +100,8 @@ explains.
 > `fHits` at 395 reads `40 0a`.
 
 > **The `0A` is not part of the format.** It is `TStreamerInfo`'s class version in
-> the ROOT that wrote the file, and it was 9 from ROOT 5.26 until 6.35 and 8
-> before that — so a frame written by any release before 6.36.00 reads `00 09` or
+> the ROOT that wrote the file: 9 from ROOT 5.26 until 6.35, and 8 before that.
+> A frame written by any release before 6.36.00 therefore reads `00 09` or
 > `40 09`. **Mask `kStreamedMemberWise` and read the rest as a version number;
 > never compare the word to 10.**
 > [Element types §8.1](ElementTypes.md#81-the-version-word-is-not-a-constant)
@@ -121,12 +119,12 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 | Element | On disk | Cited |
 |---|---|---|
 | fundamental or enum | its natural width, back to back | `root/io/io/src/TGenCollectionStreamer.cxx:891` |
-| `Double32_t` or `Float16_t` | **not** its natural width: 4 bytes and 3 bytes respectively — see the note below | `root/io/io/src/TGenCollectionStreamer.cxx:931-933`, `:952-953` |
-| a class | a **full framed object**: byte count, version, and a checksum if foreign | `root/io/io/src/TGenCollectionStreamer.cxx:976` |
+| `Double32_t` or `Float16_t` | **not** its natural width: 4 bytes and 3 bytes respectively (see the note below) | `root/io/io/src/TGenCollectionStreamer.cxx:931-933`, `:952-953` |
+| a class | a full framed object: byte count, version, and a checksum if foreign | `root/io/io/src/TGenCollectionStreamer.cxx:976` |
 | `std::string` | a bare counted string | `root/io/io/src/TGenCollectionStreamer.cxx:979` |
-| pointer to a class | a full object slot, class record and all — §3.1 | `root/io/io/src/TGenCollectionStreamer.cxx:982` |
-| a nested collection | a bare `count` and its elements — **no byte count, no version word** | §5 |
-| a map entry | key then value, **interleaved** | `root/io/io/src/TGenCollectionStreamer.cxx:1024-1110` |
+| pointer to a class | a full object slot, including the class record (§3.1) | `root/io/io/src/TGenCollectionStreamer.cxx:982` |
+| a nested collection | a bare `count` and its elements, with **no byte count and no version word** | §5 |
+| a map entry | key then value, interleaved | `root/io/io/src/TGenCollectionStreamer.cxx:1024-1110` |
 
 > Demonstrated by `serialization/collections`: `fInts` is `count 3` then three
 > bare `i32`; `fWords` is `count 2` then `02 "pq" 02 "rs"`.
@@ -137,24 +135,23 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 > `WriteFastArrayDouble32` / `WriteFastArrayFloat16` with the `TStreamerElement`
 > argument left null (`root/io/io/src/TGenCollectionStreamer.cxx:931-933` and
 > `:952-953`; read at `:275-276` and `:296-297`). With no element the bit count is
-> 0, so a `Double32_t` element degrades to a plain **4-byte float**
+> 0, so a `Double32_t` element is written as a plain 4-byte float
 > (`root/io/io/src/TBufferFile.cxx:703-706`) and a `Float16_t` element takes the
-> default 12 bits and occupies **3 bytes**
+> default 12 bits and occupies 3 bytes
 > (`root/io/io/src/TBufferFile.cxx:631-634`). Neither is the declared type's width,
 > and no annotation on the member can change it: the comment belongs to the
 > collection, not to its elements.
 >
-> **No reference file exercises this**, and nothing in either corpus contains such
-> a collection, so the claim rests on the source alone — recorded as a gap in
-> `PLAN.md` §9.
+> No reference file exercises this and neither corpus contains such a collection,
+> so the claim rests on the source alone. It is recorded as a gap in `PLAN.md` §9.
 
 ### 3.1 Pointer content puts two frames in a row
 
-The pointer row above is the one that does not look like the others, because an
-object slot is not a member: it is byte count, class record, and *then* the
-object — and the object carries the byte count and version word every
-streamer-info-driven class carries. So a collection of pointers to a class whose
-own members include a collection reads as three frames nested inside each other:
+The pointer row above differs from the others because an object slot is not a
+member. It is a byte count, a class record and then the object, and the object has
+the byte count and version word of every streamer-info-driven class. A collection
+of pointers to a class whose own members include a collection therefore reads as
+three frames nested inside each other:
 
 ```
 bc  ver=0x000A  count        the collection frame (§2)
@@ -167,30 +164,31 @@ bc  ver=0x000A  count        the collection frame (§2)
 between them is a class frame, and its version word is the content class's
 `ClassDef` version rather than `TStreamerInfo`'s 10. Telling them apart by the
 version word alone fails as soon as a content class is at class version 10, so
-read the nesting instead: a collection frame is the one a `TStreamerSTL` element
-sent you to, and a class frame is the one an object slot sent you to.
+use the nesting instead: a collection frame is one reached from a `TStreamerSTL`
+element, and a class frame is one reached from an object slot.
 
 > Demonstrated by `serialization/pointer-collection`: `fPtrs` is a
 > `vector<PtrItem*>`, `PtrItem` holds a `vector<double>`, and the four frames
 > above stand at 381, 391, 407 and 413.
 
-**The elements of a pointer collection are not of uniform length**, and the same
-three-element collection shows all three ways one can end:
+**The elements of a pointer collection are not of uniform length.** The same
+three-element collection shows all three forms an element can take:
 
 | Slot | First `u32` | What follows |
 |---|---|---|
 | `fPtrs[0]` | `0x4000002C`, a byte count | `kNewClassTag`, the class name, then the object |
-| `fPtrs[1]` | `0x00000000` | **nothing** — a null pointer is four bytes with no frame at all |
+| `fPtrs[1]` | `0x00000000` | nothing: a null pointer is four bytes with no frame at all |
 | `fPtrs[2]` | `0x4000001C`, a byte count | `0x80000045`, a class back-reference, then the object |
 
-Nothing in the collection frame says which of the three any element is; only the
-first `u32` of the element does, by [Buffer framing §6](Buffer.md#6-object-slots).
+The collection frame does not record which form an element has; only the
+element's first `u32` does, as [Buffer framing §6](Buffer.md#6-object-slots)
+describes.
 
-> This is the shape the first outside review of this specification read as a
-> **doubled collection frame** — a frame whose version word is 1 followed by an
-> ordinary collection frame, seen on `RooVectorDataStore::RealVector::_vec`
+> The first outside review of this specification read this shape as a doubled
+> collection frame: a frame whose version word is 1 followed by an ordinary
+> collection frame, seen on `RooVectorDataStore::RealVector::_vec`
 > ([issue #1](https://github.com/ariostas/root-io-spec/issues/1) item 10). It is
-> not a second collection frame, and 1 is not a collection version: `RealVector`
+> not a second collection frame, and 1 is not a collection version. `RealVector`
 > is `ClassDef(RealVector, 1)`
 > (`root/roofit/roofitcore/inc/RooVectorDataStore.h:336`), reached through the
 > pointer content of `vector<RooVectorDataStore::RealVector*>`.
@@ -205,113 +203,109 @@ byteCount  version(0x400A)   valueVersion   count:i32
     ...
 ```
 
-The **second version word belongs to the collection's value class** — the element
+The **second version word belongs to the collection's value class**: the element
 type for a sequence, and the synthetic `pair<K,V>` for a map. It is read by
-`ReadVersionForMemberWise` (`root/io/io/src/TBufferFile.cxx:3085`), which differs
-from an ordinary version word in one way: **there is no byte count in front of
-it**. Otherwise the rule of
-[Buffer framing §4](Buffer.md#4-a-version-word-of-0-has-two-different-meanings)
-applies unchanged — 0 or less is followed by a `u32` checksum for a foreign class,
+`ReadVersionForMemberWise` (`root/io/io/src/TBufferFile.cxx:3085`), and unlike an
+ordinary version word it has **no byte count in front of it**. Otherwise the rule
+of [Buffer framing §4](Buffer.md#4-a-version-word-of-0-has-two-different-meanings)
+applies unchanged: 0 or less is followed by a `u32` checksum for a foreign class,
 and the checksum selects the info.
 
-Then the count, and then the *transposed* body: `TBufferFile::ApplySequence` runs
-actions on the outside and elements on the inside
+The count follows, then the transposed body. `TBufferFile::ApplySequence` runs
+actions in the outer loop and elements in the inner loop
 (`root/io/io/src/TBufferFile.cxx:3796`), so each member of the value class
 occupies one contiguous column.
 
 > Demonstrated by `serialization/collections`: `fHits` is
-> `40 0a | 00 00 | 040059d1 | 00000002 | 0000000a 00000014 | 3fc00000 40200000`
-> — both `x` values, then both `y` values. Its `Hit` is interpreted, hence the
+> `40 0a | 00 00 | 040059d1 | 00000002 | 0000000a 00000014 | 3fc00000 40200000`,
+> both `x` values, then both `y` values. Its `Hit` is interpreted, hence the
 > `00 00` and the checksum.
 >
-> `serialization/collection-forms` is the other half: its `CHit` has a real
-> `ClassDef`, so `fHits` reads `40 0a | 00 02 | 00000002 | ...` — **a plain
-> version word, with no checksum after it.** Both forms are legal in the same
-> position, and only the file's own streamer infos tell them apart.
+> `serialization/collection-forms` shows the other form: its `CHit` has a real
+> `ClassDef`, so `fHits` reads `40 0a | 00 02 | 00000002 | ...`, a plain version
+> word with no checksum after it. Both forms are legal in the same position, and
+> only the file's own streamer infos tell them apart.
 
 ### 4.1 The columns are not uniformly framed
 
 | Member kind | Framing inside the column |
 |---|---|
 | fundamental | none: the values are concatenated |
-| a base class | none, and **one column per member of the base** — the base's own info is read over the same *n* elements, not the base once per element |
+| a base class | none, and one column per member of the base: the base's own info is read over the same *n* elements, not the base once per element |
 | `TString` (65) | none: *n* counted strings, back to back |
-| an object member (61, 62) | **each element gets its own** byte count and version word |
+| an object member (61, 62) | each element has its own byte count and version word |
 | a pointer member (64, 69) | each element is an [object slot](Buffer.md#6-object-slots) |
-| a collection member (500), `std::string` included | **one** byte count and version word for the *whole column* |
+| a collection member (500), `std::string` included | **one** byte count and version word for the whole column |
 
-The last row is the surprising one and it follows from how the action is built:
-a collection column falls through to `GenericWrite`, which calls the ordinary
-member loop once with an array of `n` objects
-(`root/io/io/src/TStreamerInfoActions.cxx:2214-2228`), and the frame is written
-once inside that single call.
+The last row follows from how the action is built: a collection column falls
+through to `GenericWrite`, which calls the ordinary member loop once with an
+array of `n` objects (`root/io/io/src/TStreamerInfoActions.cxx:2214-2228`), and
+the frame is written once inside that single call.
 
-> The `TString` row and the `std::string` row are the pair to keep straight. The
-> data looks the same and the framing does not, and nothing but the member's
-> element class says which it is. `serialization/pairs` has both, twelve bytes
+> The `TString` and `std::string` rows are easy to confuse. The data looks the
+> same but the framing differs, and only the member's element class says which it
+> is. `serialization/pairs` has both, twelve bytes
 > apart.
 
 ### 4.2 A base class loses its version word
 
 Inside a member-wise column a base class contributes its members with **no byte
 count and no version word**, so the base's version must be taken from
-`TStreamerBase::fBaseVersion` in the element record. ROOT records this as a defect
-in a comment at the point where it happens:
+`TStreamerBase::fBaseVersion` in the element record. A comment in ROOT at that
+point records this as a defect:
 
 > "Rather than relying on the StreamerElement to contain the base class version
 > information we should embed it in the bytestream even in the member-wise case."
 > — `root/io/io/src/TStreamerInfoReadBuffer.cxx:1405-1409`
 
-A `TObject` base is therefore exactly 10 or 12 bytes per element with nothing
-around it ([References §1](References.md#1-the-extra-word-on-a-referenced-tobject)).
+A `TObject` base is therefore 10 or 12 bytes per element with nothing around
+it ([References §1](References.md#1-the-extra-word-on-a-referenced-tobject)).
 
-**Any other base is its members' columns.** The line after that comment reads the
-base's info over the whole array in the same array mode
+**Any other base is written as its members' columns.** The line after that
+comment reads the base's info over the whole array in the same array mode
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1409-1410`), so a base with members
-`a` and `b` is all *n* values of `a`, then all *n* of `b`. That differs from "the
-base, once per element" as soon as the base has two members. Which info is read
-is the one `TStreamerBase` selects: by `fBaseVersion`, or by `fBaseCheckSum`
-when the version is negative and the checksum is not 0
-(`root/core/meta/src/TStreamerElement.cxx:762-765`). That is how a base whose class
-declares no version, `fBaseVersion` −1, is found at all.
+`a` and `b` is all *n* values of `a`, then all *n* of `b`. This differs from "the
+base, once per element" as soon as the base has two members. The info read is
+the one `TStreamerBase` selects: by `fBaseVersion`, or by `fBaseCheckSum` when
+the version is negative and the checksum is not 0
+(`root/core/meta/src/TStreamerElement.cxx:762-765`). This is how the info of a
+base whose class declares no version (`fBaseVersion` −1) can be found at all.
 
 > Witnessed by `uproot-physlite-rntuple_v1-0-0-0.root` of the foreign corpus, an
 > ATLAS file written by ROOT 6.34/04. `vector<ElementLink<…>>` is written
 > member-wise, and `ElementLink`'s one element is the base `ElementLinkBase`
 > (`fBaseVersion` −1) with two `unsigned int` members. Four links read
 > `40 00 00 2c | 40 09 | 00 00 69 77 75 53 | 00 00 00 04 | 00 00 00 00 ×4 | ff ff ff ff ×4`:
-> every `m_persKey`, then every `m_persIndex`. Until 2026-09-22 the table above
-> said "once per element", and a reader following it failed on 1 005 branch-baskets of
-> that file.
+> every `m_persKey`, then every `m_persIndex`. The table above said "once per
+> element" until 2026-09-22, and a reader following it failed on 1 005
+> branch-baskets of that file.
 
 ### 4.3 An empty member-wise collection writes no columns at all
 
-Not empty columns — **no columns**. After the count of 0 the collection ends, and
-the columns' own headers are not written either
-(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199`, where ROOT does nothing
-for `!nobjects`). The whole member is then the byte count, the two version words,
-the checksum where there is one, and four zero bytes.
+After the count of 0 the collection ends. There are **no columns**, not even the
+columns' own headers (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197-1199`,
+where ROOT does nothing for `!nobjects`). The whole member is the byte count, the
+two version words, the checksum if there is one, and four zero bytes.
 
-This is **version dependent**, and ROOT's comment at that line says so: at
+This depends on the version, as ROOT's comment at that line notes: at
 `TStreamerInfo` version 6 and below the columns were written for an empty
-collection. The version in question is the one on the collection's own frame, not
-the value class's.
+collection. The version meant is the one on the collection's own frame, not the
+value class's.
 
 > Demonstrated by `serialization/pairs`, whose `fEmpty` is an empty
 > `map<string,int>` in sixteen bytes: `40 00 00 0c | 40 0a | 00 00 | 3a 5a 65 72
 > | 00 00 00 00`. The byte count of 12 leaves no room for a column header.
 
-**A split branch is the opposite case and it is easy to conflate them.** There an
-`fType` 31 or 41 column of *n* = 0 values still carries its shared frame — six
-bytes, not zero — because the branch writes an entry whether or not the
-collection has anything in it
+**A split branch behaves the opposite way.** There an `fType` 31 or 41 column of
+*n* = 0 values still has its shared frame, six bytes rather than none, because the
+branch writes an entry whether or not the collection has anything in it
 ([Reading entries §3.2](../04-ttree/ReadingEntries.md#32-a-member-of-a-split-container-a-bare-packed-column)).
 A reader that always reads a column header desynchronises on `fEmpty`; one that
 never does desynchronises on the split branch.
 
 ## 5. Which mode is used
 
-Member-wise is chosen only if **all six** of these hold
+Member-wise is chosen only if all six of these hold
 (`root/io/io/src/TStreamerInfoActions.cxx:1183-1188`):
 
 1. the buffer can handle it — true for a file, false for `TMessage` and for the
@@ -325,13 +319,13 @@ Member-wise is chosen only if **all six** of these hold
 5. the element's comment does not begin with exactly `||`;
 6. the value class has no custom streamer member.
 
-`CanSplit` is where most collections fall out
-(`root/core/meta/src/TClass.cxx:2354-2362`): it refuses a collection of pointers,
+Most collections are excluded by `CanSplit`
+(`root/core/meta/src/TClass.cxx:2354-2362`). It refuses a collection of pointers,
 one with no value class, one whose value class is `TString` or `std::string`, one
-whose value class cannot split, and — the one that catches people —
-**one whose value class is itself a collection**.
+whose value class cannot split, and **one whose value class is itself a
+collection**, which is the case most often missed.
 
-The practical table, for a file:
+For a file, this gives:
 
 | Member | Mode | Because |
 |---|---|---|
@@ -367,17 +361,17 @@ backward-compatibility branches:
 ## 7. `fCtype` does not determine the layout
 
 `fCtype` is a type code for the element
-(`root/core/meta/src/TStreamerElement.cxx:1808-1820`), and it is much less
-informative than it looks:
+(`root/core/meta/src/TStreamerElement.cxx:1808-1820`), but it carries much less
+information than it appears to:
 
-- for a collection of class objects it is **61** (`kObject`) **even when the
-  value class does not derive from `TObject`** — 62 never appears here;
+- for a collection of class objects it is 61 (`kObject`) **even when the value
+  class does not derive from `TObject`**; 62 never appears here;
 - for a collection of pointers it is 63, again regardless of `TObject`;
-- for `bitset` it is **0**;
+- for `bitset` it is 0;
 - for `map<K,V>` it is 61, describing the `pair`, not the key or the value.
 
-So `fCtype` 61 covers a nested collection, a `std::string`, a `pair`, and an
-ordinary class — four completely different layouts. **Only `fTypeName`
+`fCtype` 61 therefore covers a nested collection, a `std::string`, a `pair` and an
+ordinary class, which are four different layouts. **Only `fTypeName`
 distinguishes them**, and a reader must parse the type name.
 
 > Demonstrated by `serialization/collections`: `fNested`, `fWords` and `fMap` all
@@ -386,7 +380,7 @@ distinguishes them**, and a reader must parse the type name.
 
 ## 8. `std::map`
 
-Both layouts appear, and the mode decides which:
+A map is written in either layout, depending on the mode:
 
 | Mode | Layout |
 |---|---|
@@ -398,13 +392,13 @@ The member-wise case follows from the value class being the `pair<K,V>` `TClass`
 and `second`; the object-wise case is the explicit two-pass loop in `WriteMap`
 (`root/io/io/src/TGenCollectionStreamer.cxx:1032`).
 
-Note that `HasPointers()` deliberately returns false for a map even when the key
+`HasPointers()` deliberately returns false for a map even when the key
 or value is a pointer (`root/io/io/src/TGenCollectionProxy.cxx:1035`), so a map
 is not blocked from member-wise the way `vector<T*>` is.
 
 > **A file may or may not contain a streamer info for `pair<K,V>`, and which it
-> is cannot be predicted.** A reader MUST be able to synthesise the layout —
-> `first` then `second`, from the two template arguments — and MUST look for a
+> is cannot be predicted.** A reader MUST be able to synthesise the layout
+> (`first` then `second`, from the two template arguments), and MUST look for a
 > recorded info first, because when one is present it is the authority.
 >
 > Demonstrated both ways. In `serialization/collections`, `fMap`'s frame at 477
@@ -412,17 +406,16 @@ is not blocked from member-wise the way `vector<T*>` is.
 > `Hit`: no info for `pair<int,int>` at all. In `serialization/pairs`, four of
 > six pairs have one and two do not.
 
-Across `gen/foreign/` and `gen/cern/` it is 28 map members whose pair info is in
-the file against 23 whose is not, and the split does not follow from the member
-types: `pair<string,int>` appears both ways in different files. Treat presence as
-a property of how the writing program's dictionaries were built, not of the
-format.
+Across `gen/foreign/` and `gen/cern/`, 28 map members have their pair info in the
+file and 23 do not, and the split does not follow from the member types:
+`pair<string,int>` appears both ways in different files. Presence depends on how
+the writing program's dictionaries were built, not on the format.
 
 ### 8.1 What a synthesised pair's members look like
 
-The two elements are `first` and `second` in that order, and each takes its shape
-from its declared type — the same shapes §4.1 lists, because a pair is an ordinary
-value class and its columns are ordinary columns:
+The two elements are `first` and `second`, in that order, and each takes its
+shape from its declared type. These are the shapes §4.1 lists, because a pair is
+an ordinary value class and its columns are ordinary columns:
 
 | Template argument | Element | Column of *n* values |
 |---|---|---|
@@ -438,14 +431,14 @@ value class and its columns are ordinary columns:
 > **The element titles are the standard library's own doc comments**, so two
 > files holding the same pair can differ in the bytes of its info. libstdc++
 > declares `_T1 first;  ///< The first member` in `<bits/stl_pair.h>` and libc++
-> declares no comment, so a `pair<string,int>` with a real dictionary carries
-> `The first member` and `The second member` where one built against libc++
-> carries two empty strings — 35 bytes against 2. An *emulated* pair, built with
-> no dictionary at all, carries `Emulation` on both members instead, whichever
-> library is in use. None of the three affects decoding, and all three are in
-> the fixtures: `serialization/pairs` has the emulated form on three of its
-> pairs and the dictionary form on `pair<string,int>`, which is why that case
-> and `classes/roofit` are the two that cannot have a portable digest
+> declares no comment, so a `pair<string,int>` with a real dictionary has the
+> titles `The first member` and `The second member` where one built against libc++
+> has two empty strings: 35 bytes against 2. An emulated pair, built with no
+> dictionary at all, has `Emulation` on both members instead, whichever library is
+> in use. None of the three affects decoding, and all three are in the fixtures:
+> `serialization/pairs` has the emulated form on three of its pairs and the
+> dictionary form on `pair<string,int>`, which is why that case and
+> `classes/roofit` are the two that cannot have a portable digest
 > (`PLAN.md` §3.3).
 
 ### 8.2 The checksum does not identify the pair
@@ -453,20 +446,19 @@ value class and its columns are ordinary columns:
 > **Two different `pair<K,V>` in the same file can carry the same checksum.**
 
 `serialization/pairs` has three: `pair<int,string>`, `pair<int,vector<short> >`
-and `pair<TString,PHit*>` all carry `0x0b5fb752`, in their recorded streamer
+and `pair<TString,PHit*>` all have `0x0b5fb752`, in their recorded streamer
 infos and in their member-wise headers alike.
 
-**And the same value is in another file, on a fourth layout.**
-`classes/roofit` was generated from RooFit rather than from that case, and its
-`pair<string,vector<int> >` — reached through `RooCategory::_rangesPointerForIO`
-and `RooRealVarSharedProperties::_altBinning` — carries `0x0b5fb752` too. So the
-number is a constant ROOT produces, not a coincidence of one fixture, and a
-reader that keys a table by checksum will collide with it in files that have
-nothing to do with each other.
+The same value appears in another file, on a fourth layout. `classes/roofit` was
+generated from RooFit, not from that case, and its `pair<string,vector<int> >`,
+reached through `RooCategory::_rangesPointerForIO` and
+`RooRealVarSharedProperties::_altBinning`, also has `0x0b5fb752`. The number is
+therefore a constant ROOT produces, not a coincidence of one fixture, and a reader
+that keys a table by checksum will see collisions between unrelated files.
 
 ROOT reads such a file correctly because it never searches for the checksum
 globally. `ReadVersionForMemberWise` is given the value class — already resolved
-from the member's *declared type name* — and calls
+from the member's declared type name — and calls
 `cl->FindStreamerInfo(checksum)` on that class alone
 (`root/io/io/src/TBufferFile.cxx:3085-3100`), so the checksum only chooses among
 one pair's own versions.
@@ -475,30 +467,28 @@ one pair's own versions.
 the checksum only to select a version within it. One that keeps a global
 checksum → info table will decode two of those three maps as the wrong type.
 
-> The mechanism is a caching artefact rather than anything in the format.
+> The cause is a caching artefact, not the format.
 > `TClass::GetCheckSum` computes from the class's data-member list and caches the
 > result in `fCheckSum`, which "once it has transition from a zero Value it never
 > changes" (`root/core/meta/src/TClass.cxx:6655-6666`). A `pair<K,V>` whose
 > `TClass` is still forward-declared has no data members yet, so a checksum taken
-> at that moment is computed from almost nothing and then kept. Which pairs it
-> happens to is a function of the order in which the writing program touched
-> them; `PLAN.md` §7.1 banks it as an upstream report.
+> at that moment is computed from almost nothing and then kept. Which pairs are
+> affected depends on the order in which the writing program accessed them;
+> `PLAN.md` §7.1 records it for an upstream report.
 
-> **The usual case is the sound one**, which is why a reader must not infer the
-> rule from the exception. `uproot-issue38c.root` of the foreign corpus
-> (`PLAN.md` §9.8), written by ROOT 6.22/06, carries `pair<double,double>` at
-> class version 1 with checksum **`0x00D7BED2`** — the value class of
-> `TEfficiency::fBeta_bin_params`, a `vector<pair<double,double> >` — and that
-> value **recomputes exactly** from the element list the same file records. So
-> most pairs in most files are ordinary, and none of that helps: nothing in a
-> file marks which pairs escaped the caching and which did not, so the rule above
-> holds either way.
+> In the usual case the checksum is sound. `uproot-issue38c.root` of the foreign
+> corpus (`PLAN.md` §9.8), written by ROOT 6.22/06, has `pair<double,double>` at
+> class version 1 with checksum `0x00D7BED2` (the value class of
+> `TEfficiency::fBeta_bin_params`, a `vector<pair<double,double> >`), and that
+> value recomputes exactly from the element list the same file records. Most pairs
+> in most files are like this, but nothing in a file marks which pairs escaped the
+> caching, so the rule above holds either way.
 
 ## 9. The value class's streamer info can be missing entirely
 
 > **ROOT can write a `std::vector<T>` that nothing, including ROOT, can read.**
 
-If `T` is a class known only to the interpreter — no dictionary — and the *only*
+If `T` is a class known only to the interpreter (no dictionary), and the only
 reference to `T` in the written class is through a collection, then `T`'s streamer
 info is not recorded. The bytes are written member-wise, naming `T`'s checksum, and
 there is no warning.
@@ -513,13 +503,13 @@ struct C3   { std::vector<Hit3> fHits; };
 //             object of class vector<Hit3> read too few bytes: 6 instead of 20
 ```
 
-Adding any direct member of type `Hit3` to `C3` is enough to get the info written
-and the file becomes readable. This is why `serialization/collections` carries the
-otherwise pointless `fOne`.
+Adding any direct member of type `Hit3` to `C3` gets the info written, and the
+file becomes readable. This is why `serialization/collections` has the otherwise
+unneeded `fOne`.
 
-The `pair<K,V>` omission of §8 is the same phenomenon with a happy ending: ROOT
-survives it only because a pair's layout is recoverable from its name. For a
-user's own class it is not, and the data is lost.
+The `pair<K,V>` omission of §8 is the same problem. ROOT survives it only because
+a pair's layout can be recovered from its name. For a user's own class it cannot,
+and the data is lost.
 
 A reader SHOULD report a member-wise collection whose value class has no streamer
 info, rather than guess.
@@ -534,14 +524,13 @@ byteCount   version(0x000A)   counted string
 ```
 
 The counted string is the encoding of
-[Conventions §5.1](../00-conventions.md#51-counted-string) — one length byte,
-with a `0xFF` escape to a 4-byte length. There is **no element count and no
-element loop**.
+[Conventions §5.1](../00-conventions.md#51-counted-string): one length byte, with
+a `0xFF` escape to a 4-byte length. There is no element count and no element loop.
 
-> The version word is `TStreamerInfo`'s 10, exactly as for any other collection
-> member. It is **not** `std::string`'s own class version, which is 2
+> The version word is `TStreamerInfo`'s 10, as for any other collection member. It
+> is **not** `std::string`'s own class version, which is 2
 > (`root/core/base/src/String.cxx:39`), and not `TStreamerSTLstring`'s, which is
-> 2 as well. Every reader that has guessed otherwise has guessed wrong.
+> also 2.
 
 An empty `std::string` member is therefore **7 bytes**, not 1.
 
@@ -554,19 +543,19 @@ string of §3.
 ### 10.1 A `std::string` object has no frame either
 
 The three-byte-different case that catches readers: when a `std::string` is the
-*whole object* — a record of its own, or a member of a pointer-to-object type, or
-one half of a `pair` — it is again the **bare counted string**, with no byte count
-and no version word.
+whole object (a record of its own, a member of a pointer-to-object type, or one
+half of a `pair`), it is again the **bare counted string**, with no byte count and
+no version word.
 
-`std::string`'s `TClass` carries a hand-written streamer registered outside the
+`std::string`'s `TClass` has a hand-written streamer registered outside the
 class (`root/core/base/src/String.cxx:36`), and that streamer is
 `TBufferFile::WriteStdString` / `ReadStdString`
 (`root/io/io/src/TBufferFile.cxx:261-280`, `root/io/io/src/TBufferFile.cxx:230-255`),
 which writes nothing but the counted string. Its declared class version is 2
 (`root/core/base/src/String.cxx:39`), and that number never reaches a file.
 
-So the same `std::string` is written three different ways depending on where it
-sits:
+The same `std::string` is therefore written in three ways depending on where it
+is:
 
 | Where | Bytes |
 |---|---|
@@ -575,18 +564,18 @@ sits:
 | A whole object: a record, a `pair` half, a pointed-to object | counted string |
 
 A reader MUST hardcode this: no file contains a streamer info for `string`, so the
-streamer-driven algorithm has nothing to go on
+streamer-driven algorithm has nothing to work from
 ([Streamer-driven reading §6](StreamerDriven.md#6-when-there-is-no-usable-streamer-info)).
-The class name in the key or class record is spelled `string` — not
-`std::string`, and not the fully expanded `basic_string<...>`.
+The class name in the key or class record is `string`, not `std::string` and not
+the fully expanded `basic_string<...>`.
 
 > **Unlike `TLeafC`, an empty string does write its length byte.**
 > `WriteStdString` emits the zero (`root/io/io/src/TBufferFile.cxx:275-277`) where
-> `WriteFastArrayString` returns first
-> ([TLeaf §9](../04-ttree/TLeaf.md#9-tleafc)). The two look alike and are not
+> `WriteFastArrayString` returns without writing anything
+> ([TLeaf §9](../04-ttree/TLeaf.md#9-tleafc)). The two look alike but are not
 > interchangeable.
 
-> Found by the foreign-file probe, not by a fixture: 114 records across
+> Found by the foreign-file probe rather than by a fixture: 114 records across
 > `uproot-issue485` and `uproot-issue486` are standalone `string` objects, and
 > `string-example.root` holds one 127-byte record whose payload is
 > `7e` followed by 126 bytes of JSON. `PLAN.md` §9.8 has the run.
@@ -594,8 +583,8 @@ The class name in the key or class record is spelled `string` — not
 ## 11. Other containers
 
 **`std::vector<bool>`** is special-cased in ROOT's code to work around the
-bit-packed representation, but **not on disk**: it is object-wise, and each
-element is **one byte** (`root/io/io/src/TBufferFile.cxx:1985-1997`). `fCtype` is
+bit-packed representation, but not on disk: it is object-wise, and each element
+is one byte (`root/io/io/src/TBufferFile.cxx:1985-1997`). `fCtype` is
 18.
 
 **`std::bitset<N>`** is a real collection with `fSTLtype` 8 and `fCtype` 0. Its
@@ -607,9 +596,9 @@ first (`root/io/io/src/TGenCollectionStreamer.cxx:1400-1402`). `fSize` is
 array: the element is a `TStreamerBasicType`, a `TStreamerObject` or a
 `TStreamerObjectAny` with `kOffsetL` added, and the bytes are those of
 [Element types §3](ElementTypes.md#3-koffsetl-t-20-t-fixed-size-array) and
-[§7.2](ElementTypes.md#72-the-array-forms-are-not-uniform) — no byte count, no
-version word, no count. **Nothing on disk distinguishes a `std::array<Int_t,3>`
-from an `Int_t[3]`.**
+[§7.2](ElementTypes.md#72-the-array-forms-are-not-uniform), with no byte count,
+no version word and no count. Nothing on disk distinguishes a
+`std::array<Int_t,3>` from an `Int_t[3]`.
 
 > Demonstrated by `serialization/collection-forms`: `fArrInt`, a
 > `std::array<Int_t,3>`, is code 23 and twelve bare bytes, and `fArrHit`, a
@@ -626,10 +615,10 @@ byteCount  version   <collection>  ×  fArrayLength
 ```
 
 A member declared `std::vector<T> m[N]` is **one** `bc ver` followed by *N*
-complete collections, each with its own count. Not *N* framed members, and not
-one flattened collection.
+complete collections, each with its own count. It is not *N* framed members, and
+not one flattened collection.
 
-> **`fArrayLength` is the only thing in the file that says so.** The stored
+> **`fArrayLength` is the only field in the file that records this.** The stored
 > `fType` is 500 like any other `TStreamerSTL`, and the `kOffsetL` that would
 > mark it appears only after the read-time recompute of
 > [Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
@@ -643,11 +632,11 @@ one flattened collection.
 
 ### 11.2 A class that is a collection: the `This` element
 
-A class may *be* a collection rather than hold one: it has a collection proxy of
-its own, supplied by its dictionary, while its name is no STL name at all.
+A class may be a collection rather than hold one: it has a collection proxy of
+its own, supplied by its dictionary, although its name is not an STL name.
 ATLAS's `DataVector<T>` is the case in practice, and so is any class named after
 one, such as `xAOD::CutBookkeeperContainer_v1`. Its streamer info then holds
-**one element and nothing else**, built by `TStreamerInfo::Build` whenever the
+**only one element**, built by `TStreamerInfo::Build` whenever the
 class has a proxy (`root/io/io/src/TStreamerInfo.cxx:421-435`):
 
 | Field | Value |
@@ -658,32 +647,32 @@ class has a proxy (`root/io/io/src/TStreamerInfo.cxx:421-435`):
 | `fSTLtype` | what the proxy reports, **not** what the name says (`root/core/meta/src/TStreamerElement.cxx:1803`) |
 | `fCtype` | 61 for a value class without pointers (`root/core/meta/src/TStreamerElement.cxx:1810-1812`) |
 
-**The value class is in the title**, between the leading `<` and its matching
-`>`. `fTypeName` cannot give it, because it names the container class rather
-than spelling a container. This is also what ROOT does with no dictionary: it
-takes the title's bracketed type, prepends `vector`, and gives the class that
-`vector`'s emulated proxy (`root/io/io/src/TStreamerInfo.cxx:1000-1024`). So
-**a reader SHOULD read such a `This` element as a `vector` of the title's
-type**, whatever `fSTLtype` says.
+The value class is in the title, between the leading `<` and its matching `>`.
+`fTypeName` cannot give it, because it names the container class rather than an
+STL container. ROOT uses the title too when it has no dictionary: it takes the
+title's bracketed type, prepends `vector`, and gives the class that `vector`'s
+emulated proxy (`root/io/io/src/TStreamerInfo.cxx:1000-1024`). **A reader SHOULD
+therefore read such a `This` element as a `vector` of the title's type**,
+whatever `fSTLtype` says.
 
-**An STL class's own info has a `This` element too**, and there the name
-decides. A `map<string,double>` stored as a branch of its own has an info named
+**An STL class's own info has a `This` element too**, and there the name takes
+precedence. A `map<string,double>` stored as a branch of its own has an info named
 `map<string,double>` whose one element is `This`, titled
 `<pair<string,double> > …`. ROOT builds a proxy from an STL name, and consults
 the title only for a class that has none (`isstl && !fClass->GetCollectionProxy()`,
-`root/io/io/src/TStreamerInfo.cxx:1002-1003`). A reader that takes the title there
-reads the map as a `vector` of pairs — objects that need a `pair` info the file
-does not carry. So the title applies exactly when `fTypeName` is not a container
-name. The bytes are an ordinary collection member
+`root/io/io/src/TStreamerInfo.cxx:1002-1003`). A reader that uses the title there
+reads the map as a `vector` of pairs, objects that need a `pair` info the file
+does not contain. The title therefore applies when, and only when, `fTypeName` is
+not a container name. The bytes are an ordinary collection member
 (§2 to §4): the frame, then the count and elements object-wise, or the value
 class's version and checksum, the count and the columns member-wise.
 
 The title has recorded the value class since ROOT commit `e69180ee910`
 (2013-07-30), first in 5.34/10 and in the 6 series. Before it, the title is
-the bare `Used to call the proper TStreamerInfo case`. Then ROOT, without the
-class's dictionary, warns that it *"will claim the content is a bool (i.e. no
-data will be read)"* (`root/io/io/src/TStreamerInfo.cxx:1025-1030`), and a reader
-has no better source.
+the bare `Used to call the proper TStreamerInfo case`. For such a title ROOT,
+without the class's dictionary, warns that it "will claim the content is a bool
+(i.e. no data will be read)" (`root/io/io/src/TStreamerInfo.cxx:1025-1030`), and a
+reader has no better source.
 
 **A member-wise frame's checksum is not a substitute.** It is present only when
 the value class is foreign and at class version 1 or less
@@ -698,18 +687,18 @@ up across classes, and §8.2 shows that doing so can find the wrong one.
 > `<xAOD::TruthMetaData_v1> …` and `<xAOD::TriggerMenuJson_v1> …`. The `MetaData`
 > tree stores them in 1 010 unsplit branches (`fType` 0, `fID` -1), every entry
 > member-wise. In 970 of them the entry is
-> `40 00 00 0c | 40 09 | 00 00 f1 3a 09 61 | 00 00 00 04` — `0xf13a0961` is
-> `xAOD::CutBookkeeper_v1`'s checksum, and 4 is the count — with **no columns**,
+> `40 00 00 0c | 40 09 | 00 00 f1 3a 09 61 | 00 00 00 04`, where `0xf13a0961` is
+> `xAOD::CutBookkeeper_v1`'s checksum and 4 is the count. There are no columns,
 > because that class's only member is a base whose own base has no elements. ROOT
 > 6.40.04 without ATLAS's libraries reads the same 4 elements from it.
 > Until 2026-09-23 this project's reader declined the 975 whose type name has no
 > template argument, and read the other 35 by taking `DataVector<X>`'s first
-> argument — right only because ATLAS's value class is that argument.
+> argument, which was right only because ATLAS's value class is that argument.
 
 ## 12. `TClonesArray`
 
 A `TClonesArray` predates all of the above and has its own format. Class version
-**4** (`root/core/cont/inc/TClonesArray.h:88`), hand-written streamer
+4 (`root/core/cont/inc/TClonesArray.h:88`), hand-written streamer
 (`root/core/cont/src/TClonesArray.cxx:744`).
 
 | Offset | Field | Present |
@@ -723,7 +712,7 @@ A `TClonesArray` predates all of the above and has its own format. Class version
 | … | `fLowerBound:i32` | always |
 | … | the objects | see below |
 
-The element class and its version come from that one counted string — for example
+The element class and its version come from that counted string, for example
 `Pt;2`. There is no class record and no per-object version word.
 
 **The mode is a bit in `fBits`.** `kBypassStreamer` is `BIT(12)`
@@ -733,7 +722,7 @@ base deliberately so that the encoding is self-describing
 
 | `fBits & 0x1000` | Body |
 |---|---|
-| set (the default) | **transposed**, one column per member of the element class, exactly as §4 — but with **no second version word and no `kStreamedMemberWise` bit** (`root/io/io/src/TBufferIO.cxx:384-393`) |
+| set (the default) | **transposed**, one column per member of the element class as in §4, but with **no second version word and no `kStreamedMemberWise` bit** (`root/io/io/src/TBufferIO.cxx:384-393`) |
 | clear | per slot: a `Char_t` flag, 1 or 0, and if 1 the object written in full |
 
 > **The bit moved.** In class version 3 it was `BIT(14)`
@@ -741,14 +730,14 @@ base deliberately so that the encoding is self-describing
 > for no other reason. A reader MUST branch on the class version before testing
 > the bit.
 
-> **Empty slots cost a byte each** in the non-bypass form, which ROOT's own
-> header comment says (`root/core/cont/src/TClonesArray.cxx:740-742`) and the
-> shipped documentation omits.
+> **Empty slots cost a byte each** in the non-bypass form. ROOT's own header
+> comment says so (`root/core/cont/src/TClonesArray.cxx:740-742`); the shipped
+> documentation omits it.
 >
 > Demonstrated by `serialization/clones-array`, which writes the same element
 > class both ways. The bypass array's body at 417 is a `TObject` column, an `fX`
-> column and an `fY` column; the other's at 557 is `00 01` — an empty slot's flag
-> and then a present one — followed by one fully framed object.
+> column and an `fY` column; the other's at 557 is `00 01` (an empty slot's flag,
+> then a present one), followed by one fully framed object.
 
 `nobjects` is the last occupied index plus one, not the number of objects present,
 so it counts trailing-free but not interior-empty slots
@@ -763,7 +752,7 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
    end.
 3. **Repeat steps 4 and 5 `max(fArrayLength, 1)` times.** One frame holds
    `fArrayLength` complete collections when the member is declared
-   `std::vector<T> m[N]`, and nothing but `fArrayLength` says so (§11.1). A reader
+   `std::vector<T> m[N]`, and only `fArrayLength` records this (§11.1). A reader
    that does this once stops short of the byte count.
 4. If bit 14 of the version word is clear:
     1. Read `count:i32`.
@@ -777,10 +766,11 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
 6. Seek to the end the byte count implies, whatever was consumed.
 
 The value class is `fTypeName`'s first template argument for a sequence, and
-`pair<K,V>` for an associative container — except for an element named `This`,
-where it is the bracketed type in the title, read as a `vector` (§11.2). If it is a `pair` and the file has no
-info for it, synthesise one from the two arguments (§8). If it is anything else
-and the file has no info for it, the collection is not readable (§9).
+`pair<K,V>` for an associative container. The exception is an element named
+`This`, where it is the bracketed type in the title, read as a `vector` (§11.2).
+If the value class is a `pair` and the file has no info for it, synthesise one
+from the two arguments (§8). If it is anything else and the file has no info for
+it, the collection is not readable (§9).
 
 ## 14. Invariants
 
@@ -812,17 +802,17 @@ and the file has no info for it, the collection is not readable (§9).
    one, and the count — and nothing more (§4.3).
 10. A `TStreamerSTL`'s `fSTLtype`, less `kOffsetP` where present, names the same
     container as the head of its `fTypeName`. It is checked on the value a reader
-    **ends up with**, so it fails on a reader that skips §1's `set`/`multimap`
-    repair — which is how the omission in `tools/rootfile.py` was found. Holds on
-    all 1368 `TStreamerSTL` elements of `data/` and both corpora; three of them
+    ends up with, so it fails on a reader that skips §1's `set`/`multimap` repair;
+    that is how the omission in `tools/rootfile.py` was found. It holds on all
+    1368 `TStreamerSTL` elements of `data/` and both corpora, and three of them
     need the repair to pass. **It does not apply to an element named `This`
-    whose `fTypeName` is no container name**, since its `fSTLtype` comes from the
-    class's proxy (§11.2).
+    whose `fTypeName` is not a container name**, since its `fSTLtype` comes from
+    the class's proxy (§11.2).
 11. An element named `This` is the only element of its streamer info, and its
     `fTypeName` is the name of the class that info describes (§11.2).
 
-Invariant 6 is the one that fails on a file ROOT wrote (§9), which is why it is
-reported rather than assumed.
+Invariant 6 can fail on a file ROOT wrote (§9), which is why a violation is
+reported rather than assumed impossible.
 
 ## 15. Errata
 
@@ -830,7 +820,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 
 | # | Claim | Actually |
 |---|---|---|
-| 1 | — | **Nothing in the shipped documentation describes STL streaming at all.** "STL" does not occur in `README.md`. No byte count, no version word, no `kStreamedMemberWise`, no transposition. This is the single largest gap in ROOT's documentation of its own format |
+| 1 | — | **Nothing in the shipped documentation describes STL streaming.** "STL" does not occur in `README.md`: no byte count, no version word, no `kStreamedMemberWise`, no transposition. This is the largest gap in ROOT's documentation of its own format |
 | 2 | `streamerinfo.md`: "`TStreamerSTL`: For an STL container (not yet used??)" | Used for every STL member of every class since long before 6.x (§1) |
 | 3 | `streamerinfo.md`: the class is named `TStreamerSTLString` | It is `TStreamerSTLstring`, and that spelling is what appears in the class tag (§10) |
 | 4 | `streamerinfo.md`: "`fSTLtype` … 5:set, 6:multimap, 7:multiset" | 5 is multimap and 6 is set. The order was standardised at element version 4 and ROOT still repairs old files (§1) |
@@ -855,11 +845,11 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | `serialization/collection-forms` | `std::array` of a scalar and of a class (§11), a fixed array of collections (§11.1), and a member-wise collection whose value class has a `ClassDef` (§4) |
 | `serialization/pointer-collection` | Pointer content (§3.1): the three frames in a row, and all three object-slot forms — a class name, a null pointer, and a class back-reference — in one collection |
 
-Two more are covered from the `TTree` side: `ttree/split-bitset` has a
-`std::bitset` as a member of a split branch, which is an ordinary object-wise
-collection and confirms §11's byte-per-bit layout and its bit order against real
-bytes, and `ttree/split-ptr-collection` has a `std::vector<PHit*>` — a collection
-of pointers, which `serialization/pairs` also reaches through a map value.
+Two more cases cover collections from the `TTree` side. `ttree/split-bitset` has
+a `std::bitset` as a member of a split branch; it is an ordinary object-wise
+collection, and confirms §11's byte-per-bit layout and its bit order against real
+bytes. `ttree/split-ptr-collection` has a `std::vector<PHit*>`, a collection of
+pointers, which `serialization/pairs` also reaches through a map value.
 
 No fixture covers `TClonesArray` at class version 3 or the pre-version-8 layouts;
 both need a legacy ROOT (`PLAN.md` §9.1).

@@ -15,13 +15,13 @@ tools/generate.py gen/cases/container/file-minimal   # one case
 
 ## Writing a case
 
-Keep each case minimal and about **one** thing. A case that exercises five
-features at once is hard to read a byte table against, which defeats the purpose.
+Keep each case minimal and about **one** thing. A byte table is hard to check
+against a case that exercises five features at once.
 
 Requirements:
 
 - Deterministic. Fixed literal data; no `gRandom` without an explicit `SetSeed`.
-- Small — single-digit kilobytes. Large cases are release artifacts, not commits.
+- Small: single-digit kilobytes. Large cases are release artifacts, not commits.
 - The macro MUST write to the path it is given and nothing else. `tools/generate.py`
   passes a repo-relative path, because `TFile` stores the path it was handed as the
   file's name and title; an absolute path would bake the checkout location into the
@@ -29,9 +29,9 @@ Requirements:
 
 ## `case.toml`
 
-`[[bytes]]` entries are the point of the whole exercise: they are written from the
-same reading of the format as the tables in `spec/`, so a mistake in either shows up
-as a failing assertion. Types are `i8`/`u8`/`i16`/`u16`/`i32`/`u32`/`i64`/`u64`/
+`[[bytes]]` entries are the most important part. They are written from the same
+reading of the format as the tables in `spec/`, so a mistake in either shows up as
+a failing assertion. Types are `i8`/`u8`/`i16`/`u16`/`i32`/`u32`/`i64`/`u64`/
 `f32`/`f64` (all big-endian), `bytes` (a literal), and `string` (a counted string as
 defined in `spec/00-conventions.md` §5.1).
 

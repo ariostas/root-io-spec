@@ -5,34 +5,34 @@ description = """
 One field per stdlib type the tracked specification maps, and the fields and
 columns each one produces.
 
-Where `rntuple/fundamental-types` checks a *table*, this checks *prose*: one
+Where `rntuple/fundamental-types` checks a table, this checks prose: one
 paragraph per type in **Stdlib Types and Collections**, each saying how many
 fields the type becomes, what the parent's columns are, and what the children are
-called. All of it holds, and three things are worth writing down:
+called. All of it holds. Three points are worth recording:
 
 | Claim | What the file shows |
 |---|---|
-| "a **repetitive** field ... with no attached columns" for `std::array` | There is no repetitive *structure* on disk. `fArray` is a **plain** field with no columns and a repetition of 3; `fBitset` is a plain field with a `Bit` column and a repetition of 8. "Repetitive" describes the non-zero repetition parameter, not a fourth structural role |
-| "an **empty** parent field" for `std::pair` and `std::tuple` | Structural role **record**, and no columns at all. `std::atomic` and a user enum use the same shape but role **plain** |
-| Type name normalization | Applies **inside template arguments**: `std::array<std::int32_t,3>`, `std::variant<std::int32_t,float>`, `std::set<std::int32_t>`. And `ROOT::RVec<float>` is written fully qualified as `ROOT::VecOps::RVec<float>`, exactly as the document says implementations must also accept the short alias |
+| "a **repetitive** field ... with no attached columns" for `std::array` | There is no repetitive structure on disk. `fArray` is a plain field with no columns and a repetition of 3; `fBitset` is a plain field with a `Bit` column and a repetition of 8. "Repetitive" describes the non-zero repetition parameter, not a fourth structural role |
+| "an **empty** parent field" for `std::pair` and `std::tuple` | Structural role record, and no columns at all. `std::atomic` and a user enum use the same shape but role plain |
+| Type name normalization | Applies inside template arguments: `std::array<std::int32_t,3>`, `std::variant<std::int32_t,float>`, `std::set<std::int32_t>`. `ROOT::RVec<float>` is written fully qualified as `ROOT::VecOps::RVec<float>`, and the document says implementations must also accept the short alias |
 
-`fDouble32` is the interesting one and it is why this case exists at all beyond
-confirmation. **Low-precision Floating Points** says a `Double32_t` is a `double`
-field with a `SplitReal32` column, and *Fundamental Types* says that in an
-uncompressed ntuple a default split column becomes unsplit. This ntuple is
-uncompressed, every other column here is unsplit -- and `fDouble32` is
-`SplitReal32` all the same. It is the one exception, and it exists because the
-`Double32_t` override runs **after** the uncompressed adjustment and ignores it
-(`root/tree/ntuple/src/RFieldBase.cxx:892-915`). See ERRATA 7.
+`fDouble32` is the reason this case exists beyond confirmation.
+**Low-precision Floating Points** says a `Double32_t` is a `double` field with a
+`SplitReal32` column, and *Fundamental Types* says that in an uncompressed
+ntuple a default split column becomes unsplit. This ntuple is uncompressed and
+every other column here is unsplit, but `fDouble32` is `SplitReal32`. It is the
+only exception, because the `Double32_t` override runs after the uncompressed
+adjustment and ignores it (`root/tree/ntuple/src/RFieldBase.cxx:892-915`). See
+ERRATA 7.
 
-`std::map` is absent here and has a case of its own, `rntuple/map`. ROOT 6.40.04
-**aborts** writing a map from the interpreter unless the instantiation has a
+`std::map` is absent here and has its own case, `rntuple/map`. ROOT 6.40.04
+aborts writing a map from the interpreter unless the instantiation has a
 compiled dictionary, with `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`
 (`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`). NOTES.md 5 says which maps
 can be written.
 
 Every column below is asserted by its type code and its bit width, in schema
-order. The fields carry no byte assertions of their own -- their names and
+order. The fields have no byte assertions of their own: their names and
 structures are checked through the decoded schema in `tools/test_rntuple.py`,
 which compares them with the claims parsed out of the tracked copy.
 """
@@ -44,7 +44,7 @@ which compares them with the claims parsed out of the tracked copy.
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

@@ -1,12 +1,12 @@
 /// Gate 3 for `written/th2-profile`: ROOT reads a TH2F, a TH2D and two
 /// TProfiles this project wrote.
 ///
-/// Every assertion is a value ROOT *derives* from a member the writer had to
-/// get right, and they are chosen so that each of the added members is behind
-/// at least one of them:
+/// Every assertion is a value ROOT derives from a member the writer had to get
+/// right, chosen so that each of the added members is behind at least one of
+/// them:
 ///
-///  * GetMean(2) is fTsumwy / fTsumw, and GetCovariance reads fTsumwxy -- the
-///    only getter that does;
+///  * GetMean(2) is fTsumwy / fTsumw, and GetCovariance reads fTsumwxy (the
+///    only getter that does);
 ///  * GetBinContent(binx, biny) exercises the cell index, so a transposed
 ///    array fails even though fNcells is right;
 ///  * a TProfile's GetBinContent is fArray / fBinEntries and its GetBinError
@@ -137,10 +137,10 @@ void verify(const char *path)
          printf("FAIL p2 error %.17g\n", p2->GetBinError(1));
    }
 
-   // And the streamer infos: eighteen plus the listOfRules ROOT appends, every
-   // checksum agreeing with ROOT's own or BuildCheck warns -- which fails the
-   // case. The nineteenth entry is the rule list, and its name is the check
-   // that this writer put a TList there and not a nineteenth info.
+   // The streamer infos: eighteen plus the listOfRules ROOT appends. Every
+   // checksum must agree with ROOT's own or BuildCheck warns, which fails the
+   // case. The nineteenth entry is the rule list, and its name shows that this
+   // writer put a TList there and not a nineteenth info.
    TList *infos = f->GetStreamerInfoList();
    if (!infos || infos->GetSize() != 19) {
       printf("FAIL streamer info list has %d entries\n",

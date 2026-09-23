@@ -1,19 +1,19 @@
-/// Baskets written with kGenerateOffsetMap, the one optional IO feature.
+/// Baskets written with kGenerateOffsetMap, the only optional IO feature.
 ///
 /// TTree::SetIOFeatures puts the feature in the tree's fIOFeatures, from which
-/// each branch copies it, and each basket then records it. Two things follow,
-/// and TBasket.md section 12 had no fixture for either:
+/// each branch copies it, and each basket then records it. TBasket.md section 12
+/// had no fixture for either consequence:
 ///
-///   - fNevBufSize is written NEGATED and a fIOBits byte follows it, so the
+///   - fNevBufSize is written negated and a fIOBits byte follows it, so the
 ///     basket header is 20 bytes rather than 19 and fKeylen is 66 rather than
 ///     65 (TBasket.md section 2.2);
-///   - the branch whose entries vary in length writes NO entry-offset array at
-///     all, with flag 80, so its basket looks exactly like a fixed-length one
-///     and is not. A reader must generate the offsets from the branch's leaf
+///   - the branch whose entries vary in length writes no entry-offset array at
+///     all, with flag 80, so its basket looks like a fixed-length one and is
+///     not. A reader must generate the offsets from the branch's leaf
 ///     (TBasket.md section 5.2.1).
 ///
-/// The same two branches as ttree/basket, so the three files -- record,
-/// embedded, generated -- differ in one thing each and can be compared.
+/// The same two branches as ttree/basket, so the three files (record, embedded,
+/// generated) differ in one thing each and can be compared.
 ///
 /// This is a leaflist tree on purpose: kGenerateOffsetMap never reaches a
 /// TBranchElement, because its constructors do not copy the tree's features.

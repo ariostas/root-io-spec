@@ -3,9 +3,9 @@ file = "data/classes/matrix.root"
 size = 4592
 
 description = """
-`TMatrixTSym` -- the class whose `Streamer` calls `ReadClassBuffer` and then keeps
-reading. `tools/inventory.py` calls that kind `extending`, and this file is why
-the kind exists: three things about it are invisible to a reader that trusts the
+`TMatrixTSym`, the class whose `Streamer` calls `ReadClassBuffer` and then keeps
+reading. `tools/inventory.py` calls that kind `extending`, and this class is why
+the kind exists. Three things about it are invisible to a reader that trusts the
 streamer info.
 
 **The version word is the base class's.** `TMatrixTSym<Element>::Streamer` hands
@@ -14,21 +14,21 @@ streamer info.
 `TMatrixTBase<double>`'s class version 5. `TMatrixTSym`'s own class version is 2
 and never reaches a file.
 
-**The file carries no streamer info for `TMatrixTSym<double>` at all** -- only for
+**The file has no streamer info for `TMatrixTSym<double>`**, only one for
 `TMatrixTBase<double>`, because that is the class `WriteClassBuffer` was given. A
-reader that looks the class up by the name in the key finds nothing, which is the
-same position `TBasket` puts it in.
+reader that looks the class up by the name in the key finds nothing, as with
+`TBasket`.
 
 **The elements are outside the byte count.** The byte count at 329 is 44, which
 covers the version word, the `TObject` base and the six integers and `fTol` of
-`TMatrixTBase` -- and stops. The six doubles from 377 to 425 are the upper-right
+`TMatrixTBase`, and stops there. The six doubles from 377 to 425 are the upper-right
 triangle, read row by row, `fNcols - i` at a time, with the lower triangle
 reconstructed rather than stored. Nine elements, six values, and
 `CheckByteCount` succeeds for a reader that stops at 377.
 
 Four contrasts in the same file:
 
-- `symf` is a `TMatrixFSym`, the same layout with **4-byte** elements and a
+- `symf` is a `TMatrixFSym`, the same layout with 4-byte elements and a
   4-byte `fTol`. The width comes from the template argument, not from anything
   in the record.
 - `gen` is a `TMatrixD` and ordinary: a nested `TMatrixTBase` frame, then
@@ -37,11 +37,10 @@ Four contrasts in the same file:
 - `vec` is a `TVectorD`, also ordinary, and the member of this family whose
   hand-written `Streamer` is a plain version guard.
 - `holder` is a `TObjArray` holding a 2x2 `TMatrixDSym`, so the same object sits
-  **inside another object's frame**. The pointer-streamed slot's byte count at
-  882 is 96 and **includes** the triangle; the `TMatrixTBase` byte count at 910
-  is 44 and does not. The extra bytes are unaccounted for only by the class's own
-  frame -- every enclosing frame counts them, which is why a corrupt-looking
-  record never appears.
+  inside another object's frame. The pointer-streamed slot's byte count at 882
+  is 96 and includes the triangle; the `TMatrixTBase` byte count at 910 is 44
+  and does not. Only the class's own frame leaves the extra bytes out. Every
+  enclosing frame counts them, so no record ever looks corrupt.
 """
 
 spec = [

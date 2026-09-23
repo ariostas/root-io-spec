@@ -1,10 +1,10 @@
 /// Gate 3 for `written/tree`: ROOT reads a TTree this project wrote.
 ///
 /// This is the strongest read-back in the repository, because it drives ROOT's
-/// own basket, leaf and branch code over bytes tools/rootwrite.py produced --
+/// own basket, leaf and branch code over bytes tools/rootwrite.py produced.
 /// GetEntry resolves fBasketSeek, reads the basket key, positions the buffer
 /// from the offset array, and hands each leaf its slice; Draw goes through
-/// TTreeFormula, which is the only thing that reads a leaf's fTitle.
+/// TTreeFormula, the only thing that reads a leaf's fTitle.
 void verify(const char *path)
 {
    TFile *f = TFile::Open(path);
@@ -68,7 +68,7 @@ void verify(const char *path)
             printf("FAIL entry %lld a[%d]=%g\n", i, j, a[j]);
    }
 
-   // And through TTreeFormula, which reads the leaf titles.
+   // Through TTreeFormula too, which reads the leaf titles.
    t->Draw("a", "", "goff");
    if (t->GetSelectedRows() != 6)
       printf("FAIL Draw selected %lld values, expected 6\n",

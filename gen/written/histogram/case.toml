@@ -9,20 +9,19 @@ fifteen `TStreamerInfo` records the chain needs.
 
 **Every object-bearing record in this file is byte-identical to the one ROOT
 wrote in `data/classes/histogram.root`**: the `TH1F`'s 596 bytes, the `TH1D`'s
-651, and the `StreamerInfo` record's 9628 -- fifteen infos, every element, every
-checksum and every class tag. `tools/test_write.py` asserts all three. The files
-differ only in what they are *about*: the directory record's name, the key
-timestamps, and the offsets that follow from them.
+651, and the `StreamerInfo` record's 9628, which covers fifteen infos with every
+element, checksum and class tag. `tools/test_write.py` asserts all three. The
+files differ only in the directory record's name, the key timestamps, and the
+offsets that follow from them.
 
-That is the strongest check in this repository, and it is what the histogram
-document rests on. Two caveats it also documents:
+The histogram document rests on this comparison. It also documents two caveats:
 
-* the statistics are **supplied** for `h2`, not derived. `fEntries` counts fills
-  and the x moments remember where inside a bin each fill landed, so from binned
-  data they cannot be recovered -- for `h1`, where the weights are 1 and the
-  fills sit at bin centres, `stats_from_cells` happens to produce ROOT's values
-  exactly;
-* the Y axis's `fTitleOffset` is 0 while the X and Z axes carry 1. That is
+* the statistics are supplied for `h2`, not derived. `fEntries` counts fills
+  and the x moments depend on where inside a bin each fill landed, so they
+  cannot be recovered from binned data. For `h1`, where the weights are 1 and
+  the fills sit at bin centres, `stats_from_cells` happens to produce ROOT's
+  values exactly;
+* the Y axis's `fTitleOffset` is 0 while the X and Z axes have 1. That is
   `gStyle`'s default, not a rule, and it is why the three `TAttAxis` blocks in a
   ROOT-written histogram are not identical.
 """

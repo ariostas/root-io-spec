@@ -1,10 +1,10 @@
-/// The histogram chain, which nothing else in the corpus carries at byte level:
+/// The histogram chain, which no other fixture has at byte level:
 /// TH1F and TH1D with the whole TH1 -> TAxis -> TAttAxis hierarchy, plus the
 /// fourteen streamer infos ROOT records for it.
 ///
-/// Two histograms, because they differ in exactly two places -- the TArray base
-/// and the class version word -- and because the second uses **variable bin
-/// edges**, which is the only way to get a non-empty TAxis::fXbins into a file.
+/// Two histograms, because they differ in two places (the TArray base and the
+/// class version word) and because the second uses variable bin edges, which is
+/// the only way to get a non-empty TAxis::fXbins into a file.
 ///
 /// Sumw2 is called on the first so fSumw2 is a populated TArrayD rather than an
 /// empty one; the second leaves it empty. Two fills land outside the range, so

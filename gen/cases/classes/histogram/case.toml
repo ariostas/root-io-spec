@@ -5,26 +5,26 @@ size = 11587
 description = """
 The histogram chain at byte level -- `TH1F` and `TH1D` with the whole
 `TH1` -> `TAxis` -> `TAttAxis` hierarchy -- and the fourteen `TStreamerInfo`
-records ROOT writes for it. Nothing else in the corpus carries it: the only other
+records ROOT writes for it. No other fixture has this chain: the only other
 histogram fixture, `classes/tarray-histogram`, is about `TArray`'s missing flag
 byte and holds a `TH2F` inside a `TTree` branch.
 
 It is the reference for [Writing histograms](../../../spec/06-writing/WritingHistograms.md),
-and the two histograms differ deliberately:
+and the two histograms differ on purpose:
 
 * `h1` is a `TH1F` with fixed-width bins and an explicit `Sumw2()`. Five fills,
   two of them out of range, so `fEntries` is 5 while `fTsumw` is 3 -- the pair a
   reader needs to distinguish "how many fills" from "how much weight in range".
-* `h2` is a `TH1D` with **variable bin edges**, which is the only way a non-empty
-  `TAxis::fXbins` reaches a file, and it is filled with **weights**. A weighted
+* `h2` is a `TH1D` with variable bin edges, which is the only way a non-empty
+  `TAxis::fXbins` reaches a file, and it is filled with weights. A weighted
   `Fill` populates `fSumw2` on its own, with no `Sumw2()` call.
 
-The two class version words are both 3, and the records differ in exactly one
-place beyond their contents: the `TArray` base, `TArrayF` against `TArrayD`.
+The two class version words are both 3, and apart from their contents the
+records differ in one place: the `TArray` base, `TArrayF` against `TArrayD`.
 
-`fMaximum` and `fMinimum` are **-1111**, which is the sentinel for "not set"
-rather than a value; a writer that leaves them 0 produces a histogram ROOT draws
-with a hard ceiling at zero.
+`fMaximum` and `fMinimum` are -1111, the sentinel for "not set" rather than a
+value; a writer that leaves them 0 produces a histogram that ROOT draws with a
+hard ceiling at zero.
 """
 
 spec = [

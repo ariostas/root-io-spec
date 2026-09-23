@@ -8,28 +8,27 @@ does not reach: the `kHasUUID` form, and a `TExec` index in `fBits`.
 
 **`kHasUUID` changes the member's length.** `ruuid`'s `fBits` is `0x00000020`
 (`BIT(5)`), and where an ordinary `TRef` has a trailing `u16 pidf` this one has a
-**counted string** holding a UUID -- here 36 characters, so the payload is **47
-bytes, not 12** (`root/core/base/src/TRef.cxx:517-522`). A reader that takes
-`TRef` to be a fixed twelve bytes runs 35 bytes into whatever follows. The
-invariant of References 8.7 already carried the exception in its wording;
+counted string holding a UUID, here 36 characters, so the payload is 47 bytes,
+not 12 (`root/core/base/src/TRef.cxx:517-522`). A reader that takes `TRef` to be
+a fixed twelve bytes runs 35 bytes into whatever follows. The wording of the
+invariant of References 8.7 already included the exception;
 `check_invariants.py` did not implement it until this case existed.
 
-`ruuid`'s `fUniqueID` is 1 and so is `rexec1`'s, and **they do not mean the same
-thing**: for a `kHasUUID` reference it indexes `gROOT`'s `TProcessUUID` table and
-for an ordinary one it is the target's id within a `TProcessID`. Nothing in the
-twelve bytes says which; only the bit does.
+`ruuid`'s `fUniqueID` is 1 and so is `rexec1`'s, but they mean different things:
+for a `kHasUUID` reference it indexes `gROOT`'s `TProcessUUID` table and for an
+ordinary one it is the target's id within a `TProcessID`. Only the bit tells
+the two apart.
 
 **The `TExec` index is a number in bits 16-23**, not a flag. `rexec1` has
 `fBits = 0x00010000` and `rexec2` `0x00020000`, because `TRef::SetAction` stores
-**1 + the index** into the list of execs
+1 + the index into the list of execs
 (`root/core/base/src/TRef.cxx:428-437`), so 0 means no action and the numbering
 is one-based. Both are still 12 bytes and still carry a `pidf`: the index does
 not change the layout, and a reader that ignores it reads the reference
 correctly.
 
 Neither variant arises from a plain `TRef(obj)`, so the generator drives both
-directly. The bytes are what a file containing them looks like however it was
-produced.
+directly. The bytes are the same however a file containing them was produced.
 
 `kIsReferenced` is clear in every `TRef`'s own `fBits` here, which is what
 References 3 relies on: the `TRef` is not itself a referenced object.
@@ -61,7 +60,7 @@ role   = "the target, with kIsReferenced set"
 offset = 533
 nbytes = 85
 class  = "TRef"
-role   = "the kHasUUID form -- 47 bytes of payload"
+role   = "the kHasUUID form, 47 bytes of payload"
 [[records]]
 offset = 618
 nbytes = 51

@@ -1,17 +1,17 @@
-/// One branch carrying a leaf of every scalar type, plus a fixed-size array
+/// One branch with a leaf of every scalar type, plus a fixed-size array
 /// and a string.
 ///
 /// The members are declared in non-increasing size order on purpose. A
 /// leaflist branch reads each leaf from `address + fOffset`, where fOffset is
 /// the cumulative *unpadded* size of the leaves before it, so ROOT assumes the
 /// struct is packed exactly as the leaflist describes. Declaring the members
-/// largest first is what makes the natural C++ layout agree with that
-/// assumption; any other order silently reads the wrong bytes.
+/// largest first makes the natural C++ layout agree with that assumption; any
+/// other order silently reads the wrong bytes.
 ///
 /// The second entry's string is empty, because an empty string occupies zero
-/// bytes in the basket -- TBufferFile::WriteFastArrayString returns before
-/// writing even the length byte -- and that is the one case a reader cannot
-/// get right without the entry-offset array.
+/// bytes in the basket (TBufferFile::WriteFastArrayString returns before
+/// writing even the length byte), and that is the case a reader cannot get
+/// right without the entry-offset array.
 struct All {
    Long64_t l;
    ULong64_t L;

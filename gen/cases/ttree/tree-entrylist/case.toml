@@ -14,24 +14,24 @@ chosen by fType:
             order runs opposite to the byte order
   fType 1   a sorted array: fN == fNPassed, holding local entry numbers
 
-`sparse` holds entries 0, 3, 5 and 64001 -- two blocks -- and was optimised into
+`sparse` holds entries 0, 3, 5 and 64001 (two blocks) and was optimised into
 the array form. `dense` holds every third entry from 0 to 99 and was left in
 bits, so its single block is 8 KB of mostly zeros and begins 92 49 49 24: 0x9249
 is bits 0, 3, 6, 9, 12 and 15. The writer converts to the array form only below
 4000 or above 60000 passing entries
 (root/tree/tree/src/TEntryListBlock.cxx:546-556), so a reader must handle both.
 
-**The four-argument constructor is essential and the case would otherwise not be
-reproducible.** TEntryList(name, title, tree) takes the filename from the tree's
-open file and prepends the process's working directory
+**The four-argument constructor is required for the case to be reproducible.**
+TEntryList(name, title, tree) takes the filename from the tree's open file and
+prepends the process's working directory
 (root/tree/tree/src/TEntryList.cxx:1311-1322), baking this checkout's absolute
 path into the fixture. The (name, title, treename, filename) form stores the
 string verbatim.
 
-TEventList is the older, flat form: a sorted Long64_t array with no blocks. Note
-that its fList **does** carry the one-byte is-present flag of an ordinary [fN]
-member -- the contrast with TTreeIndex in ttree/tree-index, whose arrays are
-written by a hand-written streamer and carry none.
+TEventList is the older, flat form: a sorted Long64_t array with no blocks. Its
+fList **does** have the one-byte is-present flag of an ordinary [fN] member,
+unlike TTreeIndex in ttree/tree-index, whose arrays are written by a hand-written
+streamer and have none.
 """
 
 spec = [

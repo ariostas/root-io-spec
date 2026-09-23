@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Assert that zensical.toml cites the commit the root/ submodule is pinned to.
 
-The citation links in the built site are only trustworthy if the commit they point
-at is the commit the specification was written against. That commit is recorded in
-two places -- the git gitlink for `root/`, and the `tools.rootcite` setting in
-zensical.toml -- and this check keeps them equal, so bumping the submodule without
-updating the site configuration cannot silently produce links to the wrong code.
+The citation links in the built site must point at the commit the specification
+was written against. That commit is recorded in two places, the gitlink for
+`root/` and the `tools.rootcite` setting in zensical.toml. This check keeps them
+equal, so bumping the submodule without updating the site configuration cannot
+silently produce links to the wrong code.
 
 Reads the gitlink from the index, so the submodule need not be checked out.
 """

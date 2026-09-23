@@ -6,11 +6,12 @@ description = """
 Object references: a TProcessID record, a referenced TObject, a TRef and a
 TRefArray.
 
-The four things this case pins down:
+What this case pins down:
 
 - Referencing an object sets TObject::kIsReferenced (0x10) in its fBits, which
   appends a UShort_t pidf to its TObject base. That base is 12 bytes here, not
-  the usual 10, and the streamer info gives no warning: only the bit does.
+  the usual 10, and nothing in the streamer info indicates it; only the bit
+  does.
 - The pidf is an index into the file's own key namespace. 0 means the record
   keyed "ProcessID0", whose payload is a bare TNamed whose title is the process
   UUID.
@@ -23,8 +24,8 @@ The four things this case pins down:
 The TProcessID record precedes the object that needs it, because it is written
 as a side effect of writing the first reference.
 
-The 36-byte UUID string is masked by tools/normalize.py, which is why this file
-has a stable digest despite carrying a fresh UUID on every run.
+The 36-byte UUID string is masked by tools/normalize.py, so this file has a
+stable digest despite carrying a fresh UUID on every run.
 """
 
 spec = [

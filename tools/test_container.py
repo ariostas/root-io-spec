@@ -56,8 +56,8 @@ class CompressedTest(unittest.TestCase):
 def free_record(entries: list[tuple[int, int]]) -> tuple[bytes, int, int]:
     """A synthetic free-segment record payload: (chunk, key_len, payload_nbytes).
 
-    Each entry takes the large form when fLast exceeds 2000000000, exactly as
-    TFree::FillBuffer decides (FreeSegments.md 2.1).
+    Each entry takes the large form when fLast exceeds 2000000000, as
+    TFree::FillBuffer does (FreeSegments.md 2.1).
     """
     key_len = 8
     body = b""
@@ -225,13 +225,12 @@ class HeaderFitsBeforeTheFirstRecord(unittest.TestCase):
     """FileHeader 10.11, which is the invariant form of a hazard in ROOT.
 
     `TFile::WriteHeader` allocates `fBEGIN` bytes and writes however many the
-    layout produced -- 63 small, 75 large (`root/io/io/src/TFile.cxx:2674`,
-    `:2709`). Files with `fBEGIN` of 64 exist: four in the corpora, the oldest
+    layout produced: 63 small, 75 large (`root/io/io/src/TFile.cxx:2674`,
+    `:2709`). Files with `fBEGIN` of 64 exist, four in the corpora, the oldest
     from ROOT 2.24/00. Pushing one of those past 2 GB would write over its own
-    first record, so the floor is worth stating even though no conforming file
-    can exhibit the violation -- which is why it is provoked here rather than by
-    corrupting a fixture, where moving `fBEGIN` destroys the record walk before
-    the check is reached.
+    first record. No conforming file can exhibit the violation, so it is
+    provoked here rather than by corrupting a fixture, where moving `fBEGIN`
+    breaks the record walk before the check is reached.
     """
 
     PATH = Path(__file__).resolve().parents[1] / "data/container/reopened.root"
@@ -304,7 +303,7 @@ class DirectoryVersionAndOffsetWidthAreIndependent(unittest.TestCase):
     `version > 1000` and the UUID's presence from `version > 1`, so for 1001 both
     tests passed and it invented a UUID out of the bytes after the record. No
     fixture can cover this and no invariant compared a directory's UUID with
-    anything, which is why it survived; the corpus cases below are the pin.
+    anything, so it went unnoticed; the corpus cases below pin it.
     """
 
     def parse(self, version, uuid=b""):
@@ -393,13 +392,13 @@ class PayloadLengthFollowsBothAxes(unittest.TestCase):
 
 
 class ConfusingTheAxesIsCaught(unittest.TestCase):
-    """The two axes fail two different invariants, which is worth knowing.
+    """The two axes fail two different invariants.
 
-    A record that lies about its **class version** is off by the UUID's 16 or 18
-    bytes and nothing else notices, so that needs invariant 15. A record that lies
-    about its **width** is caught earlier and harder: the offsets read at the wrong
-    width leave `fSeekDir` pointing somewhere other than the record, so it is not
-    recognised as a directory at all.
+    A record with the wrong **class version** is off by the UUID's 16 or 18
+    bytes and nothing else notices, so that needs invariant 15. A record with the
+    wrong **width** is caught earlier: the offsets read at the wrong width leave
+    `fSeekDir` pointing somewhere other than the record, so it is not recognised
+    as a directory at all.
     """
 
     PATH = Path(__file__).resolve().parents[1] / "data/container/directories.root"
@@ -440,10 +439,10 @@ CORPUS = Path(__file__).resolve().parents[1] / "build"
 class LegacyDirectoryRecordsInTheCorpora(unittest.TestCase):
     """The measured witnesses for Directory.md 7's payload table.
 
-    Not committed files -- `tools/fetch_cern.py` and `tools/fetch_foreign.py`
-    fetch them -- so these skip when the corpus is absent. They are the reason R1
-    is a fix and not a guess: the two version-1001 records are real, and the
-    reader read a UUID from two bytes past the end of each.
+    These files are not committed (`tools/fetch_cern.py` and
+    `tools/fetch_foreign.py` fetch them), so the tests skip when the corpus is
+    absent. They show R1 is a real fix: the two version-1001 records exist, and
+    the reader read a UUID from two bytes past the end of each.
     """
 
     def directories(self, name):

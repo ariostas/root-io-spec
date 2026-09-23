@@ -13,22 +13,22 @@ The claims are in **User-defined classes → Regular class / struct** and
 | "stored as a record parent field with no attached columns" | `fHit` is role **record** with no columns |
 | "The field name of member subfields is identical to the C++ field name" | `fEnergy`, `fFlavour`, `fCharge`, `fSamples`, `fLabel` |
 | "base class subfields are numbered and preceded by a colon, i.e. `:_0`" | `fHit.:_0`, type `RNBase`, itself a record |
-| "Transient members must be marked, e.g. by a `//!` comment" | `fScratch` has **no field at all**, and nothing shifts |
+| "Transient members must be marked, e.g. by a `//!` comment" | `fScratch` has no field at all, and nothing shifts |
 | an enum is "a plain field with a single subfield named `_0`" whose type is the underlying integer | `fFlavour._0` is `std::uint32_t` for the unscoped enum, `fCharge._0` is `std::int16_t` for `enum class : std::int16_t` |
-| "The type checksum and the type version ... stored as field information" (said of SoA classes) | true of an ordinary class too: both class fields carry flag 0x04 and a checksum |
+| "The type checksum and the type version ... stored as field information" (said of SoA classes) | true of an ordinary class too: both class fields have flag 0x04 and a checksum |
 
-A `std::vector<RNHit>` repeats the whole record under a child named `_0`, so the
-record shape is asserted twice in one file — once at top level and once inside a
-collection — and the two checksums are identical.
+A `std::vector<RNHit>` repeats the record under a child named `_0`, so the
+record shape is asserted twice in one file, once at top level and once inside a
+collection, and the two checksums are identical.
 
-**The type version is the interesting byte.** `RNHit` has no `ClassDef`, so its
-`TClass` version is −1, and RNTuple stores the version as an unsigned 32-bit word:
-what reaches the file is **0xFFFFFFFF**. A reader comparing type versions
-numerically reads that as newer than everything ever written. See ERRATA 8.
+`RNHit` has no `ClassDef`, so its `TClass` version is −1, and RNTuple stores the
+type version as an unsigned 32-bit word: the file holds **0xFFFFFFFF**. A reader
+comparing type versions numerically treats that as newer than any version ever
+written. See ERRATA 8.
 
-One trap for anyone extending this case: ROOT's own `PDG_t` already puts `kUp`,
-`kDown` and `kStrange` in the global namespace, so an unscoped enum that repeats
-those enumerator names does not compile. `classes.h` prefixes them.
+ROOT's own `PDG_t` already puts `kUp`, `kDown` and `kStrange` in the global
+namespace, so an unscoped enum that repeats those enumerator names does not
+compile. `classes.h` prefixes them.
 
 The assertions below are the header envelope preamble, the two class fields' type
 version and checksum, and every column's type code and bit width in schema order.
@@ -42,7 +42,7 @@ The field names and the tree structure are checked through the decoded schema in
 digest        = false
 digest_reason = """
 ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
-with libc++ and fType 14 `unsigned long` with libstdc++ -- a 28-byte LENGTH
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
 difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
 """
 

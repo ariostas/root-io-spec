@@ -3,17 +3,17 @@ file = "data/ttree/leaf.root"
 size = 19848
 
 description = """
-One branch carrying thirteen leaves: every scalar leaflist code, a fixed-size
-array, and a string.
+One branch with thirteen leaves: every scalar leaflist code, a fixed-size array,
+and a string.
 
 The struct members are declared in non-increasing size order. A leaflist branch
 reads each leaf from `address + fOffset`, where fOffset is the cumulative
 *unpadded* size of the leaves before it, so ROOT assumes the struct is packed
-exactly as the leaflist describes. Declaring the members largest first is what
-makes the natural C++ layout agree with that assumption; any other order silently
-writes the wrong bytes, and the file still passes every structural check.
+exactly as the leaflist describes. Declaring the members largest first makes the
+natural C++ layout agree with that assumption; any other order silently writes
+the wrong bytes, and the file still passes every structural check.
 
-What this case pins down:
+What this case shows:
 
 - Leaves are concatenated per entry, in fLeaves order, with no byte count, no
   version word and no separator between them. Entry 0 is 70 bytes: 8 + 8 + 8 +
@@ -21,8 +21,8 @@ What this case pins down:
 - fOffset is the position of the leaf within an entry, running 0, 8, 16, 24, 48,
   52, 56, 60, 62, 64, 65, 66, 67. It is not TBranch::fOffset, which is an offset
   inside a C++ object.
-- The signed and unsigned codes share a leaf class -- `l/L` and `L/l` are both
-  TLeafL -- and are told apart only by fIsUnsigned. The bytes are identical.
+- The signed and unsigned codes share a leaf class (`l/L` and `L/l` are both
+  TLeafL) and are told apart only by fIsUnsigned. The bytes are identical.
 - fLen is 3 for the fixed array `v[3]/D` and 1 for every scalar, and fLenType is
   the element width.
 - An empty string occupies **zero bytes**. Entry 1 is 67 bytes, not 68: the
@@ -31,8 +31,8 @@ What this case pins down:
   entry's string.
 - A TLeafC's fLen is a high-water mark, not a declared size: it is 3 here, from
   strlen("ab") + 1, though the C array is eight bytes wide.
-- fEntryOffsetLen is 10, the floor, not the 1000 the branch was built with --
-  it was retuned when the single basket was closed, so it says nothing about the
+- fEntryOffsetLen is 10, the floor, not the 1000 the branch was built with. It
+  was retuned when the single basket was closed, so it says nothing about the
   basket already on disk.
 - The second leaf of each repeated class uses a four-byte class back-reference
   where the first wrote the class name in full.

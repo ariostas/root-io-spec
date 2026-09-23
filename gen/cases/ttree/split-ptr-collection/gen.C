@@ -4,17 +4,17 @@
 /// A std::vector<T*> is not splittable by default: TClass::CanSplit returns
 /// false for any collection with pointers
 /// (root/core/meta/src/TClass.cxx:2354). The exception is an explicit request,
-/// made by adding TTree::kSplitCollectionOfPointers -- 100 -- to the split
-/// level (root/tree/tree/src/TBranchElement.cxx:969-970).
+/// made by adding TTree::kSplitCollectionOfPointers (100) to the split level
+/// (root/tree/tree/src/TBranchElement.cxx:969-970).
 ///
-/// That hundreds component is then carried down to every sub-branch rather than
+/// That hundreds component is then passed down to every sub-branch rather than
 /// decremented (root/tree/tree/src/TBranchElement.cxx:6279-6280), so the
-/// members of the collection's content end up with fSplitLevel above 100. That
-/// is what SetReadLeavesPtr tests to choose
+/// members of the collection's content end up with fSplitLevel above 100.
+/// SetReadLeavesPtr tests that to choose
 /// ReadLeavesCollectionSplitVectorPtrMember over ReadLeavesCollectionMember
 /// (root/tree/tree/src/TBranchElement.cxx:5779-5787).
 ///
-/// **No file in either corpus reaches this.** 178 files written by ROOT
+/// No file in either corpus reaches this. 178 files written by ROOT
 /// releases from 4.00 to 6.36 have a maximum fSplitLevel of 99, so the two
 /// pointer-collection rows of the dispatch table are unreachable without this
 /// fixture.

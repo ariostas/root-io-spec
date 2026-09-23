@@ -5,19 +5,20 @@ size = 17140
 description = """
 Two friend trees in the parent tree's own file.
 
-TTree::AddFriend records three strings and the mapping onto them is not obvious:
-fName is the alias or, failing that, the tree name; fTitle is the *filename*, or
-empty when the friend is in the same file; fTreeName is the real tree name.
+TTree::AddFriend records three strings, and the mapping onto them is not
+obvious: fName is the alias or, failing that, the tree name; fTitle is the
+*filename*, or empty when the friend is in the same file; fTreeName is the real
+tree name.
 
 Both friends here are in the same file, so fTitle is empty and fOwnFile is false
 (root/tree/tree/src/TFriendElement.cxx:199-203). The second was added as
 "alias=t2", which splits at the '='
-(root/tree/tree/src/TFriendElement.cxx:59-69) -- the only way to make fName and
-fTreeName differ, and therefore the only way to see that they are separate
-fields at all.
+(root/tree/tree/src/TFriendElement.cxx:59-69). That is the only way to make
+fName and fTreeName differ, and therefore the only way to see that they are
+separate fields at all.
 
-The second element also shows the class-tag economy of Buffer.md section 6: it
-does not repeat the string "TFriendElement" but carries the back-reference
+The second element also shows the class-tag reuse of Buffer.md section 6: it
+does not repeat the string "TFriendElement" but has the back-reference
 0x80000353 instead.
 """
 

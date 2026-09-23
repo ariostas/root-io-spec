@@ -1,16 +1,16 @@
 /// A std::bitset member of a split branch: not packed, and not always written.
 ///
 /// A bitset reaches the file as a TStreamerSTL with fSTLtype 8 (kSTLbitset),
-/// and its branch is an ordinary object-wise collection of bool -- one byte per
+/// and its branch is an ordinary object-wise collection of bool: one byte per
 /// bit, least significant bit first, with no packing at all. Sixteen bits cost
 /// twenty-six bytes.
 ///
-/// The reason this case exists is the other half: before the ROOT-8574 fix,
-/// which landed in 6.08/06, the collection proxy did not work in this path and
-/// ROOT wrote the branch with *no bytes in it whatsoever*. That form is in the
-/// foreign corpus (uproot-mc10events.root, ROOT 6.08/04), so a reader has to
-/// handle both. This fixture pins the modern shape; ReadingEntries.md 3.6 gives
-/// the boundary.
+/// The case exists mainly for the other form: before the ROOT-8574 fix, which
+/// landed in 6.08/06, the collection proxy did not work in this path and ROOT
+/// wrote the branch with no bytes in it at all. That form is in the foreign
+/// corpus (uproot-mc10events.root, ROOT 6.08/04), so a reader has to handle
+/// both. This fixture has the modern shape; ReadingEntries.md 3.6 gives the
+/// boundary.
 void gen(const char *out)
 {
    TFile f(out, "RECREATE", "a bitset in a split branch", 0);

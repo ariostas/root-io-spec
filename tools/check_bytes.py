@@ -2,10 +2,9 @@
 """Verify the byte-level assertions in a fixture's `case.toml`.
 
 Each `[[bytes]]` entry names an absolute file offset, a type, and the expected
-value. This is the mechanism that keeps `spec/` honest: the byte tables in the
-specification and the assertions here are written from the same understanding,
-so a mistake in either shows up as a failure. It needs no ROOT installation,
-which is also what lets a third party use the fixtures directly.
+value. The byte tables in `spec/` and these assertions are written from the same
+reading, so a mistake in either shows up as a failure. It needs no ROOT
+installation, so a third party can use the fixtures directly.
 """
 
 from __future__ import annotations
@@ -18,10 +17,9 @@ from pathlib import Path
 # Big-endian by default: the TFile container and the TBuffer object layers are
 # big-endian regardless of host byte order (spec/00-conventions.md 3).
 #
-# The `le` suffix is for the one part of a ROOT file that is not. An RNTuple's
-# envelopes and pages are little-endian, and only its anchor -- a TKey payload
-# like any other -- is big-endian, so a single fixture needs both and has to say
-# which at every offset. See spec/05-rntuple/NOTES.md 3.
+# The `le` suffix is for RNTuple, whose envelopes and pages are little-endian.
+# Only its anchor, a TKey payload like any other, is big-endian, so one fixture
+# needs both and must say which at every offset. See spec/05-rntuple/NOTES.md 3.
 FORMATS = {
     "i8": ">b", "u8": ">B", "i16": ">h", "u16": ">H",
     "i32": ">i", "u32": ">I", "i64": ">q", "u64": ">Q",
@@ -65,9 +63,9 @@ def main(case_dirs: list[str]) -> int:
             failures.append(f"{case['id']}: {case['file']} missing; run tools/generate.py")
             continue
         buf = path.read_bytes()
-        # `size` is optional: a case whose file is not the same length on every
-        # platform cannot assert one. Only serialization/pairs is such a case so
-        # far, and its case.toml says why.
+        # `size` is optional: a case whose file length differs between platforms
+        # cannot assert one. So far only serialization/pairs omits it; its
+        # case.toml gives the reason.
         if "size" in case and len(buf) != case["size"]:
             failures.append(f"{case['id']}: size {len(buf)}, expected {case['size']}")
         assertions = case.get("bytes", [])

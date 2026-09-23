@@ -2,9 +2,9 @@
 """Tests for the streamer-driven read of spec/02-serialization/StreamerDriven.md.
 
 The byte-level checks live in check_invariants.py and run against the reference
-files. These cover the two things a fixture cannot: the width of a quantised
-member, whose encoding table is easier to state than to generate, and element
-lists that no file ROOT wrote would contain.
+files. These cover what a fixture cannot: the width of a quantised member,
+whose encoding table is easier to state than to generate, and element lists
+that no file ROOT wrote would contain.
 """
 
 import struct
@@ -131,7 +131,7 @@ class InfoListInvariants(unittest.TestCase):
         # ROOT does not deduplicate the list, and writes such a pair for
         # ROOT::TIOFeatures: SchemaEvolution.md 8.1. There is deliberately no
         # uniqueness invariant, so neither this nor a checksum disagreement at
-        # one version is a failure.
+        # one version fails.
         self.assertEqual(self.failures([info(name="A"), info(name="A")]), [])
 
     def test_same_class_different_checksum_is_allowed(self):
@@ -152,26 +152,26 @@ class InfoListInvariants(unittest.TestCase):
         self.assertEqual(self.failures([a]), ["SchemaEvolution 9.1"])
 
     def test_one_layout_twice_must_be_the_same_layout(self):
-        # Invariant 6, which is what makes 8.1's "take either entry" safe. Same
-        # class, same version, same checksum, different elements: ROOT writes no
-        # such pair, and a reader that took the wrong one would decode silently
-        # wrong. No fixture can hold it.
+        # Invariant 6, on which 8.1's "take either entry" relies. Same class,
+        # same version, same checksum, different elements: ROOT writes no such
+        # pair, and a reader that took the wrong one would silently misdecode.
+        # No fixture can hold it.
         a = info(element("fA"), name="A")
         b = info(element("fB"), name="A")
         self.assertEqual(self.failures([a, b]), ["SchemaEvolution 9.6"])
 
     def test_the_same_layout_twice_passes(self):
         # The ROOT::TIOFeatures pair: identical elements, and in three corpus
-        # files only fBits differs -- kIsCompiled in one, kBuildOldUsed in the
-        # other two. fBits is not part of the comparison, so this passes.
+        # files only fBits differs (kIsCompiled in one, kBuildOldUsed in the
+        # other two). fBits is not part of the comparison, so this passes.
         a, b = info(element("fA"), name="A"), info(element("fA"), name="A")
         b.bits = 0x3010000
         self.assertEqual(self.failures([a, b]), [])
 
     def test_two_versions_of_one_class_are_not_compared(self):
         # data/written/two-versions.root: Grown at versions 1 and 2 with
-        # different checksums and different elements. Legitimate, and the
-        # object's version word chooses between them.
+        # different checksums and different elements. This is legitimate: the
+        # object's version word selects between them.
         a = info(element("fA"), name="Grown")
         b = info(element("fA"), element("fB"), name="Grown")
         b.class_version, b.checksum = 2, 0xEE119598
@@ -179,9 +179,9 @@ class InfoListInvariants(unittest.TestCase):
 
 
 class CountedString(unittest.TestCase):
-    """Conventions 5.1. The 255 escape is why this has its own test: no fixture
-    had a string longer than 254 bytes until the compression cases were
-    decompressed, and the reader had silently been getting it wrong."""
+    """Conventions 5.1. The 255 escape gets its own test: no fixture had a
+    string longer than 254 bytes until the compression cases were decompressed,
+    and the reader had been getting it wrong without any error."""
 
     def test_short(self):
         self.assertEqual(rootfile._counted_string(b"\x03abc", 0), ("abc", 4))
@@ -337,7 +337,7 @@ class UnframedObject(unittest.TestCase):
 
     def test_an_extent_decides_when_the_tobject_version_cannot(self):
         # Class version 1 makes both readings admissible on their own: the
-        # no-version one ends 2 bytes short, and the extent sends it back.
+        # no-version one ends 2 bytes short, and the extent rejects it.
         buf = b"\x00\x01" + self.TOBJECT + b"\x00\x00\x00\x07"
         decoder = rootfile.Decoder(buf, 0, self.infos())
         value = decoder.within_extent(lambda: decoder.read_object("Hold", 0),
@@ -380,7 +380,7 @@ class ThisElement(unittest.TestCase):
     def test_an_stl_class_is_read_by_its_name_not_its_title(self):
         # uproot-issue243.root's map<string,double> branch: ROOT builds the
         # proxy from the name, and the title's pair would need an info the
-        # file does not carry.
+        # file does not have.
         el = self.this("<pair<string,double> > Used to call the proper case")
         el.type_name = "map<string,double>"
         el.tail = {"fSTLtype": rootfile.STL_MAP, "fCtype": 61}
@@ -458,9 +458,9 @@ class SkimHoldMuo(unittest.TestCase):
 class SynthesisedPair(unittest.TestCase):
     """Collections.md 8.1. A pair's members from the type name alone.
 
-    The layouts are byte-verified in `serialization/pairs`; what is checked here
-    is the mapping from a template argument to the element that produces them,
-    which is a rule rather than a byte pattern.
+    The layouts are byte-verified in `serialization/pairs`; this checks the
+    mapping from a template argument to the element that produces them, which is
+    a rule rather than a byte pattern.
     """
 
     @staticmethod
@@ -475,14 +475,14 @@ class SynthesisedPair(unittest.TestCase):
              ("second", "TStreamerBasicType", 8, {})])
 
     def test_a_std_string_is_an_stl_string_element(self):
-        # Which is what gives its column the shared frame of section 4.1.
+        # This gives its column the shared frame of section 4.1.
         first = self.members("pair<string,int>")[0]
         self.assertEqual(first[1:3], ("TStreamerSTLstring", 500))
         self.assertEqual(first[3], {"fSTLtype": rootfile.STL_STRING,
                                     "fCtype": rootfile.STL_STRING})
 
     def test_a_TString_is_not(self):
-        # The pair to keep straight: a TString column has no frame at all.
+        # Unlike a std::string, a TString column has no frame at all.
         self.assertEqual(self.members("pair<TString,int>")[0][1:3],
                          ("TStreamerString", 65))
 
@@ -568,7 +568,7 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
     or by any object-valued member has an info in the same file, exempting only
     `TObject`, `TNamed` and `TString`. It was false in both directions and had
     never been wired into the checker: `data/classes/histogram.root`, which ROOT
-    wrote, names `TArrayF` as a base of `TH1F` and carries no `TArrayF` info, and
+    wrote, names `TArrayF` as a base of `TH1F` and has no `TArrayF` info, and
     over the corpora 92 base elements and 489 inline members do the same. See
     §6.1; PLAN.md 8.13.
     """
@@ -586,8 +586,8 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
         self.assertEqual(self.failures(si), ["StreamerDriven 10.5"])
 
     def test_a_hand_written_base_is_exempt(self):
-        # The four the review's counterexamples were: every histogram file ROOT
-        # writes names them and describes none of them.
+        # The four classes in the review's counterexamples: every histogram file
+        # ROOT writes names them and describes none of them.
         for name in ("TObject", "TArrayF", "TArrayD", "TArrayL64"):
             si = info(element(name, cls="TStreamerBase", ftype=0))
             self.assertEqual(self.failures(si), [], name)
@@ -613,7 +613,7 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
                              f"fType {ftype}")
 
     def test_an_undescribed_arrow_pointer_is_caught(self):
-        # kObjectp and kAnyp cannot be null and carry no class record, so the
+        # kObjectp and kAnyp cannot be null and have no class record, so the
         # declared type is what was written. ElementTypes.md 7.
         for ftype in (63, 68):
             si = info(element("fThing", cls="TStreamerObjectPointer",
@@ -622,9 +622,9 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
                              f"fType {ftype}")
 
     def test_an_undescribed_nullable_pointer_is_allowed(self):
-        # TTree::fTreeIndex is a TVirtualIndex* and 145 corpus files carry no
+        # TTree::fTreeIndex is a TVirtualIndex* and 145 corpus files have no
         # TVirtualIndex info: the class is abstract, and a null pointer writes
-        # four zero bytes naming nothing.
+        # four zero bytes naming no class.
         for ftype in (64, 69):
             si = info(element("fTreeIndex", cls="TStreamerObjectPointer",
                               ftype=ftype, type_name="TVirtualIndex*"))
@@ -653,11 +653,11 @@ class OneIdentityTwoLayoutsIsCaught(unittest.TestCase):
     """SchemaEvolution 9.6 against a real file, by forging a duplicate.
 
     `data/written/two-versions.root` holds `Grown` at versions 1 and 2 with
-    different checksums and different element lists, which is legitimate. Making
-    the second entry claim the first's version and checksum is the state ROOT
-    never writes: one identity, two layouts, and a reader that takes the wrong
-    entry decodes silently wrong. The record is uncompressed, so it is a byte
-    patch.
+    different checksums and different element lists, which is legitimate.
+    Giving the second entry the first's version and checksum produces a state
+    ROOT never writes: one identity, two layouts, and a reader that takes the
+    wrong entry silently misdecodes. The record is uncompressed, so this is a
+    byte patch.
     """
 
     PATH = Path(__file__).resolve().parents[1] / "data/written/two-versions.root"
@@ -683,8 +683,9 @@ class OneIdentityTwoLayoutsIsCaught(unittest.TestCase):
         buf[at:at + 8] = self.FIRST
         bad = self.failures(bytes(buf))
         self.assertEqual(len(bad), 2)
-        # 9.6 states it, and 10.1 is what it costs: the version-1 object is now
-        # decoded through a two-element layout and over-runs its byte count.
+        # 9.6 states the rule and 10.1 shows the consequence: the version-1
+        # object is now decoded through a two-element layout and over-runs its
+        # byte count.
         self.assertIn("SchemaEvolution 9.6", bad[1])
         self.assertIn("(1 and 2 elements)", bad[1])
         self.assertIn("StreamerDriven 10.1", bad[0])
@@ -695,12 +696,12 @@ class SetAndMultimapWereSwapped(unittest.TestCase):
 
     `TStreamerSTL` numbered kSTLset 5 and kSTLmultimap 6 until 5.34/13, the
     reverse of every other use of the enum, and the read-side repair arrived only
-    in 6.00/00. The element version is 3 on both sides, so `fTypeName` is the only
-    thing that can decide -- and a reader that takes 5 at face value reads a set
-    as a multimap and consumes two values per element.
+    in 6.00/00. The element version is 3 on both sides, so only `fTypeName` can
+    tell them apart. A reader that takes 5 at face value reads a set as a
+    multimap and consumes two values per element.
 
-    The corpus tests below drive the real parser, which is where the repair lives;
-    they are the ones that fail without it.
+    The corpus tests below drive the real parser, where the repair lives; they
+    are the ones that fail without it.
     """
 
     BUILD = Path(__file__).resolve().parents[1] / "build"
@@ -720,7 +721,7 @@ class SetAndMultimapWereSwapped(unittest.TestCase):
         return {(i.name, e.name): e for i in infos for e in i.elements}
 
     def test_a_pre_5_34_13_set_is_repaired(self):
-        """uproot-issue283.root carries fSTLtype 5 on a set<long>."""
+        """uproot-issue283.root has fSTLtype 5 on a set<long>."""
         el = self.elements("uproot-issue283.root")[("I3Eval_t", "BadChannelIDSet")]
         self.assertEqual(el.type_name, "set<long>")
         self.assertEqual(el.tail["fSTLtype"], rootfile.STL_SET)
@@ -773,9 +774,9 @@ class PublishedExemptionLists(unittest.TestCase):
 
     They are parsed out of the generated blocks of spec/99-appendix/ rather than
     extracted from the submodule, so that the checker runs without it. These
-    tests are what stops the parse from silently widening or emptying -- an empty
-    exemption set would make invariant 5 fire everywhere, and a set that
-    swallowed the `guarded` and `delegating` tables would make it fire nowhere.
+    tests stop the parse from silently widening or emptying: an empty exemption
+    set would make invariant 5 fire everywhere, and a set that took in the
+    `guarded` and `delegating` tables would make it fire nowhere.
     """
 
     def test_the_custom_classes_are_exempt(self):
@@ -801,7 +802,7 @@ class PublishedExemptionLists(unittest.TestCase):
     def test_the_lists_are_the_published_sizes(self):
         # 63 custom + 534 forwarding, as the summary tables in those two
         # documents state. A submodule bump changes these, and the documents and
-        # this number then move together.
+        # this number must then be updated together.
         self.assertEqual(len(check_invariants.NO_INFO_OF_ITS_OWN), 597)
 
 
@@ -809,10 +810,9 @@ class RemovingAnInfoIsCaught(unittest.TestCase):
     """Invariant 5 against a real file, by taking an info out of one.
 
     `data/serialization/version-zero.root` has an uncompressed `StreamerInfo`
-    record, so renaming a class inside it is a byte patch. Both halves of the
-    same break are provoked: the info entry disappearing under a base element
-    that still names it, and the base element naming a class that was never
-    there.
+    record, so renaming a class inside it is a byte patch. Both sides of the
+    break are tested: an info entry removed while a base element still names it,
+    and a base element naming a class that was never there.
     """
 
     PATH = Path(__file__).resolve().parents[1] / "data/serialization/version-zero.root"
@@ -854,10 +854,10 @@ class RemovingAnInfoIsCaught(unittest.TestCase):
 class PointerContentIsNotADoubledFrame(unittest.TestCase):
     """Collections.md 3.1, against `data/serialization/pointer-collection.root`.
 
-    The first outside review of this specification read the two frames that
-    stand in a row before a pointer content's members as a *doubled collection
-    frame* (issue #1 item 10). They are a collection frame and a class frame,
-    and this pins both, plus the three object-slot forms one collection holds.
+    The first outside review of this specification read the two consecutive
+    frames before a pointer content's members as a *doubled collection frame*
+    (issue #1 item 10). They are a collection frame and a class frame; this pins
+    both, plus the three object-slot forms one collection holds.
     """
 
     PATH = (Path(__file__).resolve().parents[1]
@@ -882,16 +882,16 @@ class PointerContentIsNotADoubledFrame(unittest.TestCase):
 
     def test_the_three_frames_nest(self):
         # 381 the collection frame, 391 the object slot, 407 the class frame,
-        # 413 a second collection frame -- inside the content class, not beside
-        # the first one.
+        # 413 a second collection frame, inside the content class rather than
+        # beside the first one.
         outer = rootfile.read_frame(self.buf, 381)
         self.assertEqual((outer.version, outer.end), (10, 475))
         inner = rootfile.read_frame(self.buf, 407)
         self.assertEqual((inner.version, inner.end), (1, 439))
         innermost = rootfile.read_frame(self.buf, 413)
         self.assertEqual((innermost.version, innermost.end), (10, 439))
-        # The class frame's version word is PtrItem's ClassDef version. Telling
-        # the two kinds apart by the version word alone is what fails here.
+        # The class frame's version word is PtrItem's ClassDef version. The two
+        # kinds cannot be told apart by the version word alone.
         self.assertNotEqual(inner.version, innermost.version)
 
     def test_the_collection_consumes_exactly_its_byte_count(self):
@@ -914,10 +914,10 @@ class PointerContentIsNotADoubledFrame(unittest.TestCase):
                          0x40000000 | 28)
 
     def test_taking_the_class_frame_for_a_collection_frame_is_caught(self):
-        # What the misreading does: treat the frame at 407 as the collection's
-        # own and read a count where PtrItem's members begin. `read_collection`
-        # is pointed at 407 rather than 381, and the byte count no longer
-        # delimits what it consumes.
+        # The misreading: treat the frame at 407 as the collection's own and
+        # read a count where PtrItem's members begin. `read_collection` is
+        # pointed at 407 rather than 381, and the byte count no longer delimits
+        # what it consumes.
         el = self.element("fPtrs")
         with self.assertRaises((rootfile.FormatError, struct.error)):
             self.decoder().read_collection(el, 407)
@@ -960,8 +960,8 @@ class StreamLoop(unittest.TestCase):
         self.assertEqual(self.decode(buf, el, 0).end, 6)
 
     def test_an_older_version_word_is_accepted(self):
-        # A file written before ROOT 6.36 carries 9 here, not 10. Nothing may
-        # compare the word to 10. ElementTypes.md 8.1.
+        # A file written before ROOT 6.36 has 9 here, not 10, so the word must
+        # not be compared to 10. ElementTypes.md 8.1.
         el = elem("fLoop", 501, cls="TStreamerLoop", type_name="P*",
                   count_name="fN")
         buf = b"\x40\x00\x00\x02\x00\x09"
@@ -1032,8 +1032,8 @@ class FixedArrayOfCollections(unittest.TestCase):
         self.assertEqual(decoder.read_collection(el, 0), len(self.BUF))
 
     def test_reading_only_the_first_is_caught(self):
-        # What a reader that switches on the stored fType alone would do: the
-        # code is 500 either way, and only fArrayLength says there are two.
+        # A reader that switches on the stored fType alone does this: the code
+        # is 500 either way, and only fArrayLength says there are two.
         el = self.stl(0)
         decoder = rootfile.Decoder(self.BUF, 0, [info(el, name="C")])
         with self.assertRaises(rootfile.FormatError):

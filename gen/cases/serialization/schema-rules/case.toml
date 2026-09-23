@@ -6,12 +6,12 @@ description = """
 A schema evolution rule, as it appears in the file.
 
 The StreamerInfo record's TList is documented everywhere as a list of
-TStreamerInfo. It is not only that: when any class being written carries schema
-rules, TFile::WriteStreamerInfo appends one further entry, a nested TList named
+TStreamerInfo, but when any class being written has schema rules,
+TFile::WriteStreamerInfo appends one further entry, a nested TList named
 "listOfRules" whose members are TObjStrings. Each TObjString holds one rule
 rendered as flat text.
 
-The three things this case pins down:
+What this case pins down:
 
 - The extra entry is an ordinary object slot in the same TObjArray-style list, so
   a reader that assumes every entry is a TStreamerInfo will misread it. The entry
@@ -19,12 +19,11 @@ The three things this case pins down:
 - The nested list carries TCollection::kIsOwner (BIT(14)) in its fBits, because
   WriteStreamerInfo sets it. That is the only non-zero fBits in the record.
 - The rule text is a counted string inside an ordinary TObjString, with a
-  trailing space, and carries no pointer to compiled code. It is text and
-  nothing else.
+  trailing space, and has no pointer to compiled code.
 
 The rule changes nothing about the streamer info itself: fOld and fNew are both
 real members and both appear as ordinary TStreamerBasicType elements with type
-code 3. No kConv, kSkip or kArtificial element is written -- those exist only in
+code 3. No kConv, kSkip or kArtificial element is written; those exist only in
 memory, after BuildOld has run.
 
 ROOT itself does not read this entry back: the code that would apply the rules

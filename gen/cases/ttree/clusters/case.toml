@@ -4,7 +4,7 @@ size = 15917
 
 description = """
 A tree whose cluster size changes twice, so that fNClusterRange and its two
-counted pointers carry real values.
+counted pointers hold real values.
 
 SetAutoFlush(4), then 3, then 5, with nineteen entries filled across the three
 settings. Each change closes out a cluster range, so the record ends with two
@@ -12,10 +12,10 @@ ranges on disk and a third described by fAutoFlush alone. Nothing in the 154-fil
 foreign corpus of PLAN.md section 9.8 has a non-zero fNClusterRange, which is why
 this case exists.
 
-What this case pins down:
+What this case shows:
 
 - fNClusterRange is 2, and the is-present flag byte of both fClusterRangeEnd and
-  fClusterSize is 1, with exactly fNClusterRange values behind it -- not
+  fClusterSize is 1, with exactly fNClusterRange values behind it, not
   fMaxClusterRange, which is transient. Contrast ttree/tree, where the count is 0
   and the flag byte is 0.
 - fClusterRangeEnd holds the *last* entry of each range, inclusive: 7 and 13. The
@@ -29,11 +29,11 @@ What this case pins down:
   fAutoSave into a multiple of fAutoFlush estimated from the bytes written so far.
   Neither member's stored value is the writer's request.
 - fFlushedBytes is 401, equal to fZipBytes, because the last flush was the last
-  thing that happened. In ttree/tree it is 0, which is how a reader tells that no
+  thing that happened. In ttree/tree it is 0, which tells a reader that no
   automatic flush was ever reached.
 - With auto-flush active, one cluster is one basket: the five clusters
-  [0,4) [4,8) [8,11) [11,14) [14,19) are exactly the five baskets, and the
-  branch's fBasketEntry is 0, 4, 8, 11, 14, 19.
+  [0,4) [4,8) [8,11) [11,14) [14,19) are the five baskets, and the branch's
+  fBasketEntry is 0, 4, 8, 11, 14, 19.
 """
 
 spec = [

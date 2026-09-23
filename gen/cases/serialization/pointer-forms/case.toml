@@ -9,12 +9,11 @@ fArrow and fPlainP are both In2*. fArrow carries the `->` annotation, promising
 the pointer is never null, so ROOT writes the pointee bare: byte count, version,
 and the object, with no class record. fPlainP gets the full object-reference
 protocol including a kNewClassTag record. The element types differ accordingly,
-68 (kAnyp) and 69 (kAnyP), and the only thing that selected them is the comment.
+68 (kAnyp) and 69 (kAnyP), and only the comment selects between them.
 
 fS1 and fS2 are both TString. The scalar has neither byte count nor version word
-and is a bare counted string. The two-element array gets both -- and the version
-word is 10, which is TStreamerInfo's own class version and has nothing to do with
-TString. A reader that treats 65 and 85 as "the same but repeated" desynchronises
+and is a bare counted string. The two-element array gets both, and its version
+word is 10, TStreamerInfo's own class version, unrelated to TString. A reader that treats 65 and 85 as "the same but repeated" desynchronises
 by six bytes.
 
 The trailing Int_t sentinel pins the end of fS2.
@@ -77,7 +76,7 @@ offset = 361
 type = "u32"
 value = 681733017
 
-# --- fArrow, kAnyp (68): byte count and version, but NO class record -------
+# --- fArrow, kAnyp (68): byte count and version, but no class record -------
 [[bytes]]
 name = "fArrow byte count, kByteCountMask | 10"
 offset = 365

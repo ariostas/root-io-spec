@@ -6,8 +6,8 @@ description = """
 A split TClonesArray: fType 3 and fType 31, which no other fixture has.
 
 TClonesArray predates STL streaming and splits through its own pair of branch
-types. The arrangement mirrors the STL one of ttree/split-nested exactly, with 3
-where that has 4 and 31 where it has 41 -- and one addition:
+types. The arrangement mirrors the STL one of ttree/split-nested, with 3 where
+that has 4 and 31 where it has 41, plus one addition:
 
   ke                   fType 0, fID -2   the split node
   ke/fHits             fType 3           the count branch
@@ -16,23 +16,23 @@ where that has 4 and 31 where it has 41 -- and one addition:
   ke/fHits/fId         fType 31
   ke/fHits/fE          fType 31
 
-What this case pins down:
+What this case covers:
 
 - **A TObject base is flattened into columns, not into an fType 1 node.** A
   TClonesArray element must derive from TObject, and the split gives its two
   members their own fType 31 branches. Their fClassName is TObject and their
-  fCheckSum is TObject's, while fId and fE carry KHit's -- the fClassName rule
-  of TBranchElement.md section 5 applied within one array.
+  fCheckSum is TObject's, while fId and fE have KHit's: the fClassName rule of
+  TBranchElement.md section 5 applied within one array.
 - fBits has fStreamerType 15, kBits, which ElementTypes.md section 2.3 says
   occurs only in TObject's own streamer info. It occurs on a branch here.
 - The count branch is fType 3 with fStreamerType 64 (kObjectP, because the
   member is a TClonesArray*), fClonesName KHit and fMaximum 3. Its fClassName is
-  KEv, the class that declares the member -- unlike a *top-level* TClonesArray
-  branch, where fClassName is TClonesArray itself and fStreamerType is -1 (16
-  such branches in the corpora; none here).
+  KEv, the class that declares the member. A *top-level* TClonesArray branch
+  instead has fClassName TClonesArray and fStreamerType -1 (16 such branches in
+  the corpora; none here).
 - Every fType 31 member records the same fBranchCount tag, 463, which against a
   record starting at 832 names position 832 + 463 - 2 = 1293, the count branch.
-- The title convention is identical to the STL one: fHits_ on the count branch,
+- The title convention is the same as the STL one: fHits_ on the count branch,
   fId[fHits_] on the members.
 
 Three entries with arrays of 2, 0 and 3 elements. ROOT reads the file back and

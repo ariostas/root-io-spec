@@ -1,13 +1,13 @@
-/// Double32_t and Float16_t: the two types whose on-disk width is decided by the
+/// Double32_t and Float16_t: the two types whose on-disk width is set by the
 /// member's comment rather than by its type.
 ///
 /// Every member here holds 1.5 except fRange, which holds 0.5, so the encodings
 /// can be compared directly. The widths that result are 4, 4, 3, 3, 4 and 3
-/// bytes respectively -- note that fBits15 is *wider* than fBits14.
+/// bytes respectively; fBits15 is wider than fBits14.
 ///
-/// fBits15 is the cliff: GetRange only records the bit count when it is below
-/// 15, so [0,0,15] and above silently produce a plain 4-byte float and the
-/// element does not even carry the kHasRange bit. A reader that computed a width
+/// GetRange records the bit count only when it is below 15, so [0,0,15] and
+/// above silently produce a plain 4-byte float, and the element does not carry
+/// the kHasRange bit. A reader that computed a width
 /// from the annotation alone would get this wrong.
 struct Quantised {
    Double32_t fPlain;         ///< no annotation

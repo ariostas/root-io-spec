@@ -1,15 +1,15 @@
 """A flat TTree written by this project, from spec/06-writing/WritingTrees.md.
 
-It reproduces `data/ttree/basket.root` -- one `Int_t` branch and one counted
-`Float_t` array, three entries, one basket each -- and it reproduces it
-*exactly*: both basket records and the `TTree` record are byte-identical to
-ROOT's, keys included, once the wall-clock timestamp is masked.
+It reproduces `data/ttree/basket.root`: one `Int_t` branch and one counted
+`Float_t` array, three entries, one basket each. Both basket records and the
+`TTree` record are byte-identical to ROOT's, keys included, once the wall-clock
+timestamp is masked.
 
-The file's name and title are the ones that make the comparison possible. Both
-paths are 22 characters, so the root directory record is the same length in both
-files and every offset after it lines up -- which matters because a branch stores
-its baskets' **offsets**, so a shift of one byte would change the `TTree` record.
-That is the point of the case, and `tools/test_write.py` asserts it.
+The file's name and title are chosen to make the comparison possible. Both paths
+are 22 characters, so the root directory record is the same length in both files
+and every offset after it lines up. A branch stores its baskets' offsets, so a
+shift of one byte would change the `TTree` record. `tools/test_write.py` asserts
+the comparison.
 
 Only the `StreamerInfo` record differs, by one entry: ROOT appends a
 `listOfRules` holding two I/O customization rules for `TTree` versions <= 16 and

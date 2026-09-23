@@ -16,8 +16,8 @@ public:
    ClassDefOverride(CHitC, 1)
 };
 
-/// A `TClonesArray*` member is what makes `TTree::BranchOld` produce a
-/// `TBranchClones` -- the only thing in ROOT that constructs one
+/// A `TClonesArray*` member makes `TTree::BranchOld` produce a
+/// `TBranchClones`; `BranchOld` is the only thing in ROOT that constructs one
 /// (`root/tree/tree/src/TTree.cxx:2223`).
 class CEvtC : public TObject {
 public:

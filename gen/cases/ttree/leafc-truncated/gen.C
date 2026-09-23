@@ -6,12 +6,12 @@
 /// TLeafC::IncludeRange. The target keeps the fLen it inherited from the first
 /// source tree.
 ///
-/// That matters because fLen is what sizes the read buffer:
-/// TLeafC::ReadBasket calls ReadFastArrayString(fValue, fLen), which clamps to
-/// fLen - 1 characters. So ROOT reads the long strings in tree "merged" back as
-/// two characters each, silently, while the bytes in the basket hold all ten.
-/// A reader that takes the length from the counted string in the entry -- which
-/// is the only correct thing to do -- reads the file right where ROOT does not.
+/// fLen sizes the read buffer: TLeafC::ReadBasket calls
+/// ReadFastArrayString(fValue, fLen), which clamps to fLen - 1 characters. ROOT
+/// therefore reads the long strings in tree "merged" back as two characters
+/// each, silently, while the bytes in the basket hold all ten. A reader that
+/// takes the length from the counted string in the entry, the only correct
+/// source, reads the file correctly where ROOT does not.
 ///
 /// This is reachable from `hadd`, which fast-merges by default, so files of this
 /// shape exist in the wild.

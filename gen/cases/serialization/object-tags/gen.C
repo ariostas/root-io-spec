@@ -2,9 +2,9 @@
 ///
 /// Exercises: the byte-count word, version words, a new-class record
 /// (kNewClassTag followed by a null-terminated class name), a class
-/// back-reference (kClassMask), and an object back-reference -- the same
-/// pointer appears twice in the list, so the second occurrence is written as a
-/// bare buffer position rather than as a second copy of the object.
+/// back-reference (kClassMask), and an object back-reference. The same pointer
+/// appears twice in the list, so the second occurrence is written as a bare
+/// buffer position rather than as a second copy of the object.
 ///
 /// The list is written with WriteTObject so that it becomes a single record;
 /// TCollection::Write would otherwise write each member as its own key.

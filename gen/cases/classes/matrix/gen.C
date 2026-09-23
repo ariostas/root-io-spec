@@ -1,10 +1,10 @@
-/// `TMatrixTSym`, the class whose `Streamer` reads *past* what its streamer info
-/// describes -- and the three neighbours in the same family that do not.
+/// `TMatrixTSym`, the class whose `Streamer` reads past what its streamer info
+/// describes, and the three neighbours in the same family that do not.
 ///
-/// `TMatrixTSym<Element>::Streamer` hands `ReadClassBuffer` the **base** class's
+/// `TMatrixTSym<Element>::Streamer` hands `ReadClassBuffer` the base class's
 /// `TClass` (`root/math/matrix/src/TMatrixTSym.cxx:2030`), so the version word on
-/// disk is `TMatrixTBase`'s and the file carries an info for `TMatrixTBase<T>`
-/// and **none** for the symmetric class. It then reads the upper-right triangle,
+/// disk is `TMatrixTBase`'s and the file has an info for `TMatrixTBase<T>` and
+/// none for the symmetric class. It then reads the upper-right triangle,
 /// row by row, `fNcols - i` elements at a time, outside the byte count.
 ///
 /// Five objects, each uncompressed and under its own key except the last:
@@ -12,15 +12,15 @@
 ///  - `sym`, a 3x3 `TMatrixDSym` with a distinct value per stored element, so a
 ///    reader that transposes or that walks the full square is wrong in a visible
 ///    way. Six doubles reach the file for nine elements.
-///  - `symf`, a 2x2 `TMatrixFSym`: the same layout with **4-byte** elements, which
-///    is the only thing that says the width comes from the template argument and
+///  - `symf`, a 2x2 `TMatrixFSym`: the same layout with 4-byte elements, which
+///    is the only evidence that the width comes from the template argument and
 ///    not from the class name.
 ///  - `gen`, a 2x3 `TMatrixD`, which is ordinary streamer-info driven data: its
 ///    `fElements` is a counted pointer and all six values are on disk.
 ///  - `vec`, a `TVectorD`, likewise ordinary, and the class in this family whose
 ///    `Streamer` is a plain version guard.
 ///  - `holder`, a `TObjArray` holding one 2x2 `TMatrixDSym`, so the same object
-///    appears **inside another object's frame**: the outer byte count has to
+///    appears inside another object's frame: the outer byte count has to
 ///    include the triangle, where the inner one does not.
 void gen(const char *out)
 {

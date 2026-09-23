@@ -4,8 +4,8 @@
 ///
 /// Nothing here has a ClassDef: a dictionary is all RNTuple asks for, and ACLiC
 /// generates one for every class in this header. A member marked `//!` must not
-/// reach the file, which is the one claim in that section a reader can be misled
-/// by -- it would shift every field that follows.
+/// reach the file; a reader that expected it would shift every field that
+/// follows.
 #ifndef RNTUPLE_USER_CLASS_H
 #define RNTUPLE_USER_CLASS_H
 

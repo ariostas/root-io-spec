@@ -1,10 +1,10 @@
 /// Gate 3 for `written/cluster`: ROOT reads a five-basket tree this project wrote.
 ///
-/// The interesting part is not the values -- `written/tree` already drives
-/// GetEntry -- but the two structures only a multi-basket tree has. Reading
-/// entry by entry makes ROOT's binary search over fBasketEntry pick each of the
-/// five baskets in turn and check that the record it finds reports the same
-/// fSeekKey, which is the one consistency check it makes on a tree; and
+/// The values are secondary, since `written/tree` already drives GetEntry.
+/// What this case adds is the two structures only a multi-basket tree has.
+/// Reading entry by entry makes ROOT's binary search over fBasketEntry pick each
+/// of the five baskets in turn and check that the record it finds reports the
+/// same fSeekKey, the only consistency check it makes on a tree. And
 /// GetClusterIterator walks the cluster ranges, so a wrong fClusterRangeEnd or
 /// fClusterSize shows up as a boundary in the wrong place.
 void verify(const char *path)
