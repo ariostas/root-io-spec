@@ -11,6 +11,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -402,7 +403,7 @@ class ThisElement(unittest.TestCase):
         buf = struct.pack(">I", 0x40000000 | len(body)) + body
         decoder = rootfile.Decoder(buf, 0, [value, container])
         self.assertEqual(decoder.read_collection(self.this(), 0), len(buf))
-        self.assertEqual(decoder.member_wise, [("This", "V", 0)])
+        self.assertEqual(decoder.member_wise, [("This", "V", 0, 1)])
 
     def test_invariant_11(self):
         alone = info(self.this(), name="Container_v1")
@@ -1076,6 +1077,102 @@ class FixedArrayOfCollections(unittest.TestCase):
         decoder = rootfile.Decoder(self.BUF, 0, [info(el, name="C")])
         with self.assertRaises(rootfile.FormatError):
             decoder.read_collection(el, 0)
+
+
+class PointerToCollection(unittest.TestCase):
+    """Collections.md 11.1 and 11.3, against `ttree/split-stl-pointer`.
+
+    A `vector<PItem>*` member (fSTLtype 41) is written as the collection it
+    points to: no pointer tag, no null marker. An array of collections, of
+    pointers or not, shares one frame and one value-class version. The bytes
+    are the fixture's.
+    """
+
+    ITEM = info(element("fA", ftype=3), element("fB", ftype=5), name="PItem")
+
+    @staticmethod
+    def stl(type_name, stl, array_length=0):
+        return replace(element("m", cls="TStreamerSTL", ftype=500,
+                               type_name=type_name),
+                       array_length=array_length,
+                       tail={"fSTLtype": stl, "fCtype": 61})
+
+    @staticmethod
+    def framed(version, body):
+        return (struct.pack(">IH", 0x40000000 | (2 + len(body)), version)
+                + body)
+
+    def read(self, el, buf):
+        decoder = rootfile.Decoder(buf, 0, [self.ITEM, info(el, name="H")])
+        return decoder.read_collection(el, 0), decoder
+
+    def test_a_pointer_has_no_tag(self):
+        # fPtr, entry 2: PItem v1, two elements, the fA column, the fB column.
+        buf = self.framed(0x400a, bytes.fromhex(
+            "0001 00000002 00000014 00000015 00000000 3f000000"))
+        end, decoder = self.read(self.stl("vector<PItem>*", 41), buf)
+        self.assertEqual(end, len(buf))
+        self.assertEqual(decoder.member_wise, [("m", "PItem", 0, 1)])
+
+    def test_an_array_of_pointers_shares_the_value_version(self):
+        # fPtrArr[2], entry 1: one PItem version, then count 0 and count 1.
+        buf = self.framed(0x400a, bytes.fromhex(
+            "0001 00000000 00000001 00000014 3fc00000"))
+        end, _ = self.read(self.stl("vector<PItem>*", 41, 2), buf)
+        self.assertEqual(end, len(buf))
+
+    def test_an_array_of_collections_shares_the_value_version(self):
+        # fArr[2], entry 1. Reading a version per array element took the
+        # second count's high half for a version of 0 and a checksum.
+        buf = self.framed(0x400a, bytes.fromhex(
+            "0001 00000001 0000001e 40200000 00000000"))
+        end, _ = self.read(self.stl("vector<PItem>", 1, 2), buf)
+        self.assertEqual(end, len(buf))
+
+    def test_before_version_9_a_pointer_has_no_value_version(self):
+        # TStreamerInfo 8 wrote the value version for a collection but not yet
+        # for a pointer to one (root commit 40d8dd3552d).
+        body = bytes.fromhex("00000001 00000007 3f800000")
+        self.assertEqual(
+            self.read(self.stl("vector<PItem>*", 41),
+                      self.framed(0x4008, body))[0], 6 + len(body))
+        self.assertEqual(
+            self.read(self.stl("vector<PItem>", 1),
+                      self.framed(0x4008, b"\x00\x01" + body))[0],
+            8 + len(body))
+
+    def test_an_object_wise_pointer_is_the_collection(self):
+        # A `//||` member: count, then each PItem with its own frame.
+        item = struct.pack(">IHif", 0x4000000a, 1, 80, 3.5)
+        buf = self.framed(10, struct.pack(">i", 2) + item + item)
+        self.assertEqual(self.read(self.stl("vector<PItem>*", 41), buf)[0],
+                         len(buf))
+
+    def test_empty_collections_need_no_value_info(self):
+        # uproot-issue468.root: an empty member-wise collection of a class the
+        # file has no info for. Nothing follows the counts, so nothing is
+        # looked up.
+        el = self.stl("vector<Missing>", 1, 2)
+        buf = self.framed(0x400a, bytes.fromhex("0001 00000000 00000000"))
+        decoder = rootfile.Decoder(buf, 0, [info(el, name="H")])
+        self.assertEqual(decoder.read_collection(el, 0), len(buf))
+
+    def test_a_pointer_to_a_set_is_read_by_its_name(self):
+        # The set/multimap repair skips the pointer forms, so 45 can mean a
+        # set; ROOT's proxy comes from the type name. Collections.md 1.
+        self.assertEqual(rootfile.collection_value(self.stl("set<int>*", 45)),
+                         ("int", rootfile.STL_SET))
+        self.assertEqual(
+            rootfile.collection_value(self.stl("vector<PItem>*", 41)),
+            ("PItem", rootfile.STL_VECTOR))
+
+    def test_an_array_of_strings_shares_one_frame(self):
+        # std::string fStrArr[2]: two counted strings under one frame, as in
+        # stringarray.old.root (roottest issue-8083).
+        el = replace(self.stl("string", rootfile.STL_STRING, 2),
+                     cls="TStreamerSTLstring")
+        buf = self.framed(10, b"\x01x\x02yy")
+        self.assertEqual(self.read(el, buf)[0], len(buf))
 
 
 class RefVariants(unittest.TestCase):

@@ -11,6 +11,26 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Smaller corrections.**
+  - [`Collections.md`](spec/02-serialization/Collections.md) §11.3: a pointer to
+    a collection (`vector<T>*`, `fSTLtype` 41) has no pointer tag and no null
+    marker. It is written as the collection it points to, and a null pointer as
+    an empty one. §11.1: a fixed array of collections carries the value class's
+    version once, not once per element. The §6 note that ROOT's two readers
+    disagree on `kSTLp` was wrong: `kSTLp` never reaches the action-based
+    reader.
+  - [`Compression.md`](spec/01-container/Compression.md) §9.1: a multi-page
+    `RBlob` may open with a raw page, so its payload need not start with a block
+    magic. Invariant 7 does not apply to an `RBlob`: a single page that
+    compression shrank by 8 bytes or less stays compressed, and its checksum
+    makes §1's test call it raw.
+  - [`ElementLists.md`](spec/06-writing/ElementLists.md) invariant 3: a counter
+    is 6 `kCounter` if it is an `Int_t`, and 13 if it is a `UInt_t`, which is
+    never promoted.
+  - [`Record.md`](spec/01-container/Record.md) §1: `uproot-issue261.root` breaks
+    its chain with a key-list record whose `fNbytes` is too small, not with a
+    hole between records.
+
 - **Legacy layouts in ROOT's own old files, and four reader corrections.** Every
   failure the checks gave on ROOT-written files in `root/roottest/` older than
   ROOT 5, plus one in the foreign corpus, turned out to be a format fact the

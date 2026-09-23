@@ -26,13 +26,13 @@ Measured, 2026-09-23, by the checks in `tools/`:
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 86 / 2203, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1698, 0 failures |
+| Source citations checked | 1706, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 100 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48295 of 48399 branch-baskets, 99.8% |
-| Unit tests | 537 |
+| Unit tests | 548 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register: every gap the written documents record, so that each can be picked up
@@ -2185,11 +2185,10 @@ of 113). And `Checker.check_branch` returns early for a leafless branch, so
 `TBranch` 11.5 to 11.7 are never checked on one, `TBranchSTL` included; that one
 is still open.
 
-**Open leads.** A sweep of all 272 roottest files (one process each; `sm.root`
-peaks at 1.3 GB) now gives 591 failures in 28 files. Only one of those files is cited, for a
-fact the failure does not touch (`stringarray.old.root`, `TBranchElement.md`
-§5.2). They are undiagnosed, and roottest holds some files that are broken on
-purpose, so each is a lead:
+**Open leads.** A sweep of all 272 roottest files, one process each, now gives
+590 failures in 27 files, none of them a file the documents cite. They are
+undiagnosed, and roottest holds some files that are broken on purpose, so each is
+a lead:
 
 - `ReadingEntries` 8.5, "names counter ... not yet seen", on an `Int_t` counter
   (`fNsp` in `tree/selector/Event1-3.root` and `io/evolution/Event_2.root`,
@@ -2198,9 +2197,6 @@ purpose, so each is a lead:
 - `ReadingEntries` 8.5 on collection columns: `small_aod.pool.root` (350, "no
   byte count") and the two `S_1_*KGrec.root` files (54 each, the column ends
   104 bytes short of its byte count).
-- `ReadingEntries` 8.5 on a split `std::string[2]` (`stringarray.old.root`); the
-  same framing gap makes the reader skip `fArr[2]` in `ttree/split-stl-pointer`,
-  with a misleading reason.
 - `TBranch` 11.9 in `tree/friend/dat_00{1,2,3}.root` (4.04/02, plain `TBranch`):
   slot 11 holds an embedded basket while `fBasketSeek[11]` points at a real
   `TBasket` record.
@@ -2212,7 +2208,47 @@ purpose, so each is a lead:
   embedded, such as `mksm.root`, because `Checker.entries_of` skips embedded
   baskets.
 - A basket whose codec is missing, or whose check fails, leaves the `ENTRIES`
-  denominator rather than counting against it.
+  denominator rather than counting against it. So do a branch's later baskets
+  after its first skip: `check_entry_decode` counts one branch-basket and returns,
+  so `RefTest.root`'s "SKIPPED 4" meant four branches, and its denominator grew
+  from 52 to 60 once they decoded.
+- Seven count branches of `skim.root` (4.03/05) have `fWriteBasket` 0 and one
+  slot, not the two of `TBranch.md` §5. `TBranch::Reset`, which `CloneTree`
+  calls, would explain it, but how the file was made is not known.
+- Whether a pre-6.02/00 empty-base branch (`TBranch.md` §9.2) was ever flushed.
+  The 16 known ones keep their only basket embedded, so `TBranchElement`
+  invariant 6 (`fWriteBasket` and `fTotBytes` 0 on `fType` 1 and 2) holds on them
+  by accident; a flushed one would break it.
+
+**Side findings followed up.**
+
+- *Pointers to collections.* The reader refused every `vector<T>*` member
+  (`fSTLtype` 41) as a pointer it could not follow. ROOT writes no pointer tag:
+  the bytes are the collection's, and a null pointer is an empty one
+  (`Collections.md` §11.3). A fixed array of collections carries the value
+  class's version once, not once per element (§11.1); reading it per element
+  was the `std::string[2]` failure in `stringarray.old.root` and the misleading
+  checksum skip on `fArr[2]`. Fixtures now reach 119 of 123 branch-baskets, up
+  from 116, and three roottest files gained decoded baskets; the corpora have no
+  such member and are unchanged.
+- *Compression markers.* 34 `RBlob`s in `gen/foreign/` hold a chain that stops at
+  something other than a block magic. All are multi-page blobs
+  (`Compression.md` §9.1): the bytes after the first chain are a page checksum or
+  a raw page, and 4 open with a raw page, which is what a first-block scan saw.
+  Every one splits into sealed pages whose XXH3 checksums match. No other record
+  in any corpus has an unknown magic. The checker reported them only as one
+  `NOT CHECKED` line with no count; it now counts them as `SKIPPED` RBlobs, and it
+  no longer applies `Compression` 9.7 to an `RBlob`, where a single page that
+  shrank by 8 bytes or less would have been a false failure.
+- *`uproot-issue261.root` was misdiagnosed.* There is no 70-byte hole: its
+  key-list record has `fNbytes` 58 against `fNbytesKeys` 106, and a walk that
+  trusts it lands inside the key list (`Record.md` §1).
+- *Codecs in CI.* Without `lz4` and `zstandard`, CI's Python 3.12 never
+  decompressed the LZ4 and zstd fixtures. Both jobs now install
+  `requirements-codecs.txt`.
+- *`ElementLists` 13.3* said a counter is 6. That holds for an `Int_t`, as every
+  counter in the published lists is; a `UInt_t` counter keeps 13.
+  `WriterInvariants.md` cited it, and two neighbours, by stale numbers.
 
 ## 9. Known gaps
 
@@ -2412,8 +2448,9 @@ Plus two format facts (a split parent counts `fEntries` but never
 `fEntryNumber`; a slot may wrap an object *reference* in a byte count, which ROOT
 never writes and its reader accepts) and six reader gaps. Two files are ignored
 with per-invariant reasons in `gen/foreign/IGNORE.toml`: one writes basket keys
-without ROOT's unconditional `+1000`, the other has a 70-byte hole where a record
-header should be.
+without ROOT's unconditional `+1000`, the other has a key-list record whose
+`fNbytes` is 48 bytes short, which sends a chain walk into the middle of a record
+(`Record.md` §1).
 
 ### 9.9 Standing result over `gen/cern/`
 

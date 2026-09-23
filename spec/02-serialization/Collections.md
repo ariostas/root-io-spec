@@ -30,7 +30,8 @@ RVec 14      kSTLany 300     kSTLstring 365
 
 `root/core/foundation/inc/ESTLType.h:28-50`. A pointer to a collection adds
 `kOffsetP` (40), so `vector<T>*` has `fSTLtype` 41
-(`root/core/meta/src/TStreamerElement.cxx:1806`).
+(`root/core/meta/src/TStreamerElement.cxx:1806`). Its bytes are the
+collection's, with no pointer tag (§11.3).
 
 > **`set` is 6 and `multimap` is 5, and a reader MUST NOT trust either value.**
 > `TStreamerSTL` numbered them the other way round (`kSTLset = 5`,
@@ -353,12 +354,16 @@ backward-compatibility branches:
 | `version < 7` | the body was written even when `count` was 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197`) |
 | `version < 9` (`kSTLp`), `< 8` (`kSTL`) | **schema evolution of the value class is refused**: ROOT reports that the old `TStreamerInfo` "did not record enough information to convert" and skips the member entirely (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1160-1164` and `:1264-1268`). A reader with the file's own info does not need the conversion and can read the member as written |
 
-> **ROOT's two readers disagree here.** The action-based reader uses `>= 8` for
-> both `kSTL` and `kSTLp` (`root/io/io/src/TStreamerInfoActions.cxx:845`), while
-> the legacy loop uses `>= 9` for `kSTLp`
-> (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1167`). For a `kSTLp` member
-> written at level 8 the two differ by one 2-byte word. This is recorded as an
-> apparent inconsistency; no such file has been constructed here.
+> **The two thresholds are one reader's, not two readers' disagreement.** The
+> action-based reader has no `kSTLp` case: a `kSTLp` element, alone or in a
+> column, falls to the default and is read by `TStreamerInfo::ReadBuffer`
+> (`root/io/io/src/TStreamerInfoActions.cxx:4692-4693` and `:3797-3798`), which
+> uses `>= 9` (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1167`). The `>= 8` at
+> `root/io/io/src/TStreamerInfoActions.cxx:845` belongs to a fixed array of
+> `kSTL`, registered only for that code (`:4569-4571`). Version 9 is when the
+> writer started to put the value class's version after a `kSTLp` frame (root
+> commit `40d8dd3552d`, 2010, first in 5.27/02). No file written at level 8 with
+> a member-wise `kSTLp` member has been found or constructed here.
 
 ## 7. `fCtype` does not determine the layout
 
@@ -620,6 +625,17 @@ A member declared `std::vector<T> m[N]` is **one** `bc ver` followed by *N*
 complete collections, each with its own count. It is not *N* framed members, and
 not one flattened collection.
 
+Member-wise, the value class's version is part of the shared header too: it is
+written once, before the first count, and not once per collection
+(written at `root/io/io/src/TStreamerInfoActions.cxx:1111-1123`, read at
+`:855-863`):
+
+```
+byteCount  version(0x400A)  valueVersion  ( count  <columns> ) × fArrayLength
+```
+
+A `std::string m[N]` is the same shared frame followed by *N* counted strings.
+
 > **`fArrayLength` is the only field in the file that records this.** The stored
 > `fType` is 500 like any other `TStreamerSTL`, and the `kOffsetL` that would
 > mark it appears only after the read-time recompute of
@@ -630,7 +646,10 @@ not one flattened collection.
 >
 > Demonstrated by `serialization/collection-forms`: `fVecArr` is
 > `std::vector<Int_t> fVecArr[2]`, one frame of 22 bytes holding `{11, 12}` and
-> then `{13}`.
+> then `{13}`. `ttree/split-stl-pointer` has the member-wise form: entry 1 of
+> `fArr[2]`, a `vector<PItem>[2]`, is
+> `40 00 00 14 | 40 0a | 00 01 | 00000001 0000001e 40200000 | 00000000`, one
+> `PItem` version and then two counts.
 
 ### 11.2 A class that is a collection: the `This` element
 
@@ -697,6 +716,40 @@ up across classes, and §8.2 shows that doing so can find the wrong one.
 > taking `DataVector<X>`'s first argument gives the right class only because
 > ATLAS's value class is that argument.
 
+### 11.3 A pointer to a collection is written as the collection
+
+A member declared `std::vector<T> *m` has `fSTLtype` 41 (§1) and a type name
+ending in `*`, which is what makes ROOT treat it as `kSTLp` (71) rather than
+`kSTL` (`root/core/meta/src/TStreamerElement.cxx:1940-1945` and `:2124`). **Its
+bytes carry no pointer tag and no null marker.** The writer puts the same frame
+in front of it as for `kSTL`, and then the collection the pointer points to
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:503-562`):
+
+- member-wise, the value class's version once, then a count and its columns;
+  a null pointer is written as a count of 0 (`:526`);
+- object-wise, the collection's own streamer, which writes a count and the
+  elements as §3 (`:556`).
+
+The container is the one the type name names: ROOT reads through the class
+it looks up from `fTypeName` (`root/core/meta/src/TStreamerElement.cxx:1963-1971`),
+and §1's `set`/`multimap` repair does not reach the pointer forms. An array
+`std::vector<T> *m[N]` shares one frame and one value-class version across its
+*N* collections, as §11.1 describes. The only difference from `kSTL`
+on disk is the version at which the value class's version appears: 9, not 8
+(§6).
+
+> Demonstrated by `ttree/split-stl-pointer`: entry 2 of `fPtr`, a
+> `vector<PItem>*`, is
+> `40 00 00 18 | 40 0a | 00 01 | 00000002 | 00000014 00000015 | 00000000 3f000000`,
+> the same bytes a `vector<PItem>` member holds.
+>
+> No fixture yet has such a member outside a split branch. A file written by
+> ROOT 6.40.04 for this measurement, and not committed, has the same class
+> written with a `TKey` and as an unsplit branch: the member's bytes are the
+> same there, a null pointer reads `40 00 00 08 | 40 0a | 00 01 | 00000000`,
+> which ROOT reads back as a new, empty collection, and a `//||` member is
+> object-wise, `40 00 00 22 | 00 0a | 00000002` and then two framed `PItem`s.
+
 ## 12. `TClonesArray`
 
 A `TClonesArray` predates all of the above and has its own format. Class version
@@ -752,12 +805,14 @@ array has `nobjects` 2 with slot 0 empty.
 At a `TStreamerSTL` or `TStreamerSTLstring` element:
 
 1. Read a byte count and a `u16` version word.
-2. If `fSTLtype` is 365, read a counted string. Done; seek to the byte count's
-   end.
-3. **Repeat steps 4 and 5 `max(fArrayLength, 1)` times.** One frame holds
-   `fArrayLength` complete collections when the member is declared
-   `std::vector<T> m[N]`, and only `fArrayLength` records this (§11.1). A reader
-   that does this once stops short of the byte count.
+2. If `fSTLtype` is 365, read `max(fArrayLength, 1)` counted strings. Done; seek
+   to the byte count's end.
+3. **Repeat step 4, or steps 5.2 and 5.3, `max(fArrayLength, 1)` times; step
+   5.1 is read once, before the first.** One frame holds `fArrayLength` complete
+   collections when the member is declared `std::vector<T> m[N]`, and only
+   `fArrayLength` records this (§11.1). A reader that does this once stops short
+   of the byte count. A pointer to a collection, `fSTLtype` above 40, is read the
+   same way, as the collection it points to (§11.3).
 4. If bit 14 of the version word is clear:
     1. Read `count:i32`.
     2. Read `count` elements as §3, dispatching on `fTypeName`, not on `fCtype`.
@@ -803,7 +858,8 @@ it, the collection is not readable (§9).
    desynchronises and the byte count catches it.
 9. A member-wise collection whose count is 0, on a frame above version 6,
    occupies exactly the bytes of its two version words, its checksum if it has
-   one, and the count — and nothing more (§4.3).
+   one, and the count — and nothing more (§4.3). For a fixed array (§11.1), a
+   frame whose counts are all 0 holds those counts and nothing more.
 10. A `TStreamerSTL`'s `fSTLtype`, less `kOffsetP` where present, names the same
     container as the head of its `fTypeName`. It is checked on the value a reader
     ends up with, so it fails on a reader that skips §1's `set`/`multimap` repair;
@@ -854,6 +910,8 @@ a `std::bitset` as a member of a split branch; it is an ordinary object-wise
 collection, and confirms §11's byte-per-bit layout and its bit order against real
 bytes. `ttree/split-ptr-collection` has a `std::vector<PHit*>`, a collection of
 pointers, which `serialization/pairs` also reaches through a map value.
+`ttree/split-stl-pointer` has the converse, pointers to collections (§11.3), and
+fixed arrays of both kinds, member-wise (§11.1).
 
 No fixture covers `TClonesArray` at class version 3 or the pre-version-8 layouts;
 both need a legacy ROOT (`PLAN.md` §9.1).

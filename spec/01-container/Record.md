@@ -37,10 +37,14 @@ To walk the chain, read a 4-byte signed integer at the current offset:
 >
 > A reader that enumerates everything, such as a checker or a repair tool, should
 > treat a broken chain as a finding about the file, not a reason to reject it.
-> `uproot-issue261.root` in the foreign corpus (`PLAN.md` §9.8) has a 70-byte hole
-> with a zero where a record header should be, between the last data record and
-> the free-list record. ROOT opens it and reads its `TTree` without any
-> diagnostic.
+>
+> `uproot-issue261.root` in the foreign corpus (`PLAN.md` §9.8) breaks its chain
+> in the key-list record at 10048, whose `fNbytes` is 58, a header and a count,
+> though the directory's `fNbytesKeys` is 106. A walk that trusts it lands at
+> 10106, inside the key list, on a copy of the `TTree` key. That key's `fNbytes`
+> of 321 carries the walk to 10427, inside the `TTree` record, where the first
+> word is 0. ROOT opens the file and reads its `TTree` without any diagnostic,
+> because it reaches the key list through `fSeekKeys` and never walks the chain.
 
 ### 1.1 Recovering a file whose key list was never written
 

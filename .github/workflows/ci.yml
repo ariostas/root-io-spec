@@ -16,6 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Without these, check_invariants.py skips the LZ4 and zstd fixtures'
+      # records as NOT CHECKED: Python 3.12 has neither codec.
+      - name: Install the optional decompressors
+        run: pip install -r requirements-codecs.txt
       - name: Verify byte assertions against the committed fixtures
         run: tools/generate.py --check
       - name: Verify the spec's Invariants sections hold for every fixture

@@ -1417,10 +1417,11 @@ class Decoder:
         for info in infos:
             self.infos.setdefault(info.name, {})[info.class_version] = info
         self.classes: dict[int, str] = {}
-        # (member name, value class, frame offset) for each member-wise
-        # collection reached, recorded before it is decoded so that it survives
-        # a failure to decode it.
-        self.member_wise: list[tuple[str, str, int]] = []
+        # (member name, value class, frame offset, collections in the frame)
+        # for each member-wise member or column reached, recorded before it is
+        # decoded so that it survives a failure to decode it. A column and a
+        # fixed array share one frame, so the last field can exceed 1.
+        self.member_wise: list[tuple[str, str, int, int]] = []
         # (class, offset, reading) for each object read with no byte count;
         # StreamerDriven.md 7.1.
         self.unframed: list[tuple[str, int, str]] = []
@@ -2544,51 +2545,11 @@ class Decoder:
         """One TStreamerSTL or TStreamerSTLstring member. Returns the end.
 
         The frame is `byteCount version`, where version is TStreamerInfo's own
-        class version and bit 14 is kStreamedMemberWise (Collections.md 2).
+        class version and bit 14 is kStreamedMemberWise (Collections.md 2). One
+        member is a column of one object, and ROOT reads both with the same
+        code, so this is read_collection_column with a count of 1.
         """
-        stl = el.tail.get("fSTLtype", 0)
-        frame = read_frame(self.buf, offset)
-        if frame.end is None:
-            raise FormatError(f"collection {el.name} has no byte count")
-        if stl == STL_BITSET:
-            # An ordinary object-wise collection of bool: a count, then one
-            # byte per bit, bit 0 first. The bits are not packed and the count
-            # is written although the width is in the type name.
-            # ReadingEntries.md 3.6.
-            pos = self.read_object_wise("bool", STL_VECTOR, frame.body)
-            if pos != frame.end:
-                raise FormatError(
-                    f"bitset {el.name} consumed to {pos}, byte count says "
-                    f"{frame.end}")
-            return frame.end
-        if stl == STL_STRING:
-            _, end = _counted_string(self.buf, frame.body)
-            if end != frame.end:
-                raise FormatError(
-                    f"std::string {el.name} ends at {end}, byte count says "
-                    f"{frame.end}")
-            return frame.end
-        if stl >= OFFSET_P:
-            raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
-
-        value, stl = collection_value(el)
-        # A fixed array of collections shares ONE frame and then repeats the
-        # collection fArrayLength times. The stored fType is still 500, and
-        # kOffsetL only appears after the read-time recompute of
-        # StreamerInfo.md 10, so only fArrayLength indicates it.
-        # Collections.md 11.1.
-        pos = frame.body
-        for _ in range(max(el.array_length, 1)):
-            if frame.member_wise:
-                self.member_wise.append((el.name, value, offset))
-                pos = self.read_member_wise(value, pos, el, frame.version)
-            else:
-                pos = self.read_object_wise(value, stl, pos)
-        if pos != frame.end:
-            raise FormatError(
-                f"collection {el.name} consumed to {pos}, byte count says "
-                f"{frame.end}")
-        return frame.end
+        return self.read_collection_column(el, 1, offset)
 
     def read_object_wise(self, value: str, stl: int, offset: int) -> int:
         """`count`, then each element in full (Collections.md 3)."""
@@ -2627,22 +2588,40 @@ class Decoder:
     EMPTY_WRITES_NO_COLUMNS_ABOVE = 6
 
     def read_member_wise(self, value: str, offset: int, el,
-                         collection_version: int = 99) -> int:
-        """A second version word, a count, then one column per member.
+                         collection_version: int = 99, collections: int = 1,
+                         pointer: bool = False) -> int:
+        """The body of a member-wise frame: the value class's version once,
+        then for each of `collections` collections a count and one column per
+        member.
 
         `collection_version` is the version on the collection's own frame, not
-        the value class's; the empty case below depends on it.
+        the value class's; both the empty case and whether the value class's
+        version is there at all depend on it. That version is written from
+        TStreamerInfo version 8 for a collection
+        (root/io/io/src/TStreamerInfoActions.cxx:779-789) and from version 9 for
+        a pointer to one (root/io/io/src/TStreamerInfoReadBuffer.cxx:1166-1168);
+        below that ROOT uses the class's current version.
         """
-        version, pos = self.resolve_bare_version(value, offset)
-        count = _i32(self.buf, pos)
-        pos += 4
-        if count == 0 and collection_version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE:
-            # Nothing follows, not even the empty columns. Byte-verified on an
-            # empty map<string,string> in uproot-issue465-flat.root, whose byte
-            # count leaves no room for them. Collections.md 4.3.
-            return pos
-        for element in self.value_info(value, version).elements:
-            pos = self.read_column(element, count, pos)
+        version, pos = 0, offset
+        if collection_version >= (9 if pointer else 8):
+            version, pos = self.resolve_bare_version(value, offset)
+        info = None
+        for _ in range(collections):
+            count = _i32(self.buf, pos)
+            pos += 4
+            if (count == 0
+                    and collection_version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE):
+                # Nothing follows, not even the empty columns. Byte-verified on
+                # an empty map<string,string> in uproot-issue465-flat.root, whose
+                # byte count leaves no room for them. Collections.md 4.3.
+                continue
+            # Looked up only when columns follow: an empty collection of a
+            # class with no streamer info in the file is still readable
+            # (uproot-issue468.root, BDSOutputROOTEventCollimatorInfo).
+            if info is None:
+                info = self.value_info(value, version)
+            for element in info.elements:
+                pos = self.read_column(element, max(count, 0), pos)
         return pos
 
     def resolve_bare_version(self, cls: str, offset: int) -> tuple[int, int]:
@@ -2738,7 +2717,7 @@ class Decoder:
         return pos
 
     def read_collection_column(self, el, count: int, offset: int) -> int:
-        """`count` collections of one member, under one shared header.
+        """`count` objects' worth of one collection member, under one header.
 
         ReadingEntries.md 5.3. The version word and byte count are read once for
         the whole column rather than once per collection
@@ -2746,54 +2725,54 @@ class Decoder:
         column reads the value class's version once as well, outside the loop
         (root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274). A reader that
         frames each collection separately desynchronises on the second.
+
+        Each object holds fArrayLength collections, or one, and a fixed array
+        shares that same header: the frame and the value class's version come
+        once, then a count and its columns per array element
+        (root/io/io/src/TStreamerInfoActions.cxx:855-863). Collections.md 11.1.
+
+        A pointer to a collection (fSTLtype plus kOffsetP, 40) is written as the
+        collection it points to, with no pointer tag and no null marker
+        (root/io/io/src/TStreamerInfoWriteBuffer.cxx:503-562); a null pointer is
+        written member-wise as an empty collection (:526). The one difference is
+        that its value class's version appears from TStreamerInfo version 9, not
+        8 (root/io/io/src/TStreamerInfoReadBuffer.cxx:1166-1168). Collections.md
+        11.3.
         """
         stl = el.tail.get("fSTLtype", 0)
         frame = read_frame(self.buf, offset)
         if frame.end is None:
-            raise FormatError(f"collection column {el.name} has no byte count")
-        if stl == STL_BITSET:
-            pos = frame.body
-            for _ in range(count):
-                pos = self.read_object_wise("bool", STL_VECTOR, pos)
-            if pos != frame.end:
-                raise FormatError(
-                    f"bitset column {el.name} consumed to {pos}, byte count "
-                    f"says {frame.end}")
-            return frame.end
-        if stl >= OFFSET_P and stl != STL_STRING:
-            raise UnsupportedClass(f"pointer to a collection, fSTLtype {stl}")
+            raise FormatError(f"collection {el.name} has no byte count")
+        n = count * max(el.array_length, 1)
         pos = frame.body
         if stl == STL_STRING:
-            # A column of std::string: bare counted strings back to back, with
-            # no count of their own, since the collection is the string.
-            for _ in range(count):
+            # std::string: bare counted strings back to back, with no count of
+            # their own, since the collection is the string.
+            for _ in range(n):
                 _, pos = _counted_string(self.buf, pos)
-            if pos != frame.end:
-                raise FormatError(
-                    f"string column {el.name} consumed to {pos}, byte count "
-                    f"says {frame.end}")
-            return frame.end
-        value, stl = collection_value(el)
-        if frame.member_wise:
-            self.member_wise.append((el.name, value, offset))
-            version = 0
-            if frame.version >= 8:
-                version, pos = self.resolve_bare_version(value, pos)
-            info = self.value_info(value, version)
-            for _ in range(count):
-                n = _i32(self.buf, pos)
-                pos += 4
-                if n == 0 and frame.version > self.EMPTY_WRITES_NO_COLUMNS_ABOVE:
-                    continue          # as above: an empty one writes no columns
-                for member in info.elements:
-                    pos = self.read_column(member, max(n, 0), pos)
+        elif stl == STL_BITSET:
+            # An ordinary object-wise collection of bool: a count, then one
+            # byte per bit, bit 0 first. The bits are not packed and the count
+            # is written although the width is in the type name.
+            # ReadingEntries.md 3.6.
+            for _ in range(n):
+                pos = self.read_object_wise("bool", STL_VECTOR, pos)
         else:
-            for _ in range(count):
-                pos = self.read_object_wise(value, stl, pos)
+            value, stl = collection_value(el)
+            if frame.member_wise:
+                self.member_wise.append((el.name, value, offset, n))
+                # kSTLp is chosen by a trailing '*' on the type name
+                # (root/core/meta/src/TStreamerElement.cxx:1940-1945, :2124).
+                pos = self.read_member_wise(
+                    value, pos, el, frame.version, collections=n,
+                    pointer=el.type_name.rstrip().endswith("*"))
+            else:
+                for _ in range(n):
+                    pos = self.read_object_wise(value, stl, pos)
         if pos != frame.end:
             raise FormatError(
-                f"collection column {el.name} consumed to {pos}, byte count "
-                f"says {frame.end}")
+                f"collection {el.name} ({n} collection(s)) consumed to {pos}, "
+                f"byte count says {frame.end}")
         return frame.end
 
 
@@ -3058,7 +3037,15 @@ def collection_value(el: Element) -> tuple[str, int]:
         # stored as a branch of its own), and ROOT builds its proxy from the
         # name, consulting the title only when there is none
         # (root/io/io/src/TStreamerInfo.cxx:1002-1003), so the name is used here.
-        return value_type_name(el.type_name), el.tail.get("fSTLtype", 0)
+        # A pointer member adds kOffsetP to fSTLtype
+        # (root/core/meta/src/TStreamerElement.cxx:1806), and is read as the
+        # collection it points to (Collections.md 11.3). The container is taken
+        # from the name, as ROOT's proxy is: the set/multimap repair of
+        # Collections.md 1 skips the pointer forms, so a `set<T>*` can store 45.
+        stl = el.tail.get("fSTLtype", 0)
+        if OFFSET_P < stl <= OFFSET_P + STL_RVEC:
+            stl = stl_kind(el.type_name.strip().rstrip("*"))
+        return value_type_name(el.type_name), stl
     if el.title.startswith("<"):
         level = 0
         for i, c in enumerate(el.title):

@@ -799,7 +799,10 @@ foreign class, and 1 is what its info records
 2. A `TStreamerBase` element's `fMaxIndex[1]` equals the `fCheckSum` of the info
    for the class it names, at the version its `fBaseVersion` gives.
 3. A `TStreamerBasicPointer`'s counter names a member that exists in the class
-   `fCountClass` names, and that member's `fType` is 6 `kCounter`.
+   `fCountClass` names. That member's `fType` is 6 `kCounter` if it is an `Int_t`,
+   as every counter in these lists is, and 13 `kUInt` if it is a `UInt_t`: only a
+   code below 6 is promoted
+   ([ElementTypes §2.1](../02-serialization/ElementTypes.md#21-kcounter-6)).
 4. Each info's checksum is what
    [StreamerInfo §11](../02-serialization/StreamerInfo.md#11-checksums) produces
    from its own element list, except for a class of version 0.

@@ -1076,5 +1076,35 @@ class DecoderCacheIsBounded(unittest.TestCase):
         self.assertIs(reader.decoder_for(rec, bytes(8)), first)
 
 
+
+class PointerAndArrayCollectionColumns(unittest.TestCase):
+    """ReadingEntries.md invariant 5 on `ttree/split-stl-pointer`: a pointer to
+    a collection and an array of collections are read like the collection,
+    under one frame (Collections.md 11.1 and 11.3)."""
+
+    PATH = (Path(__file__).resolve().parents[1]
+            / "data/ttree/split-stl-pointer.root")
+
+    def test_every_entry_consumes_its_bytes(self):
+        checker = check_invariants.Checker(self.PATH)
+        _, _, infos = checker.streamer_infos()
+        seen = {}
+        for data, _, tree in checker.trees():
+            reader = rootfile.TreeReader(checker.buf, tree, infos,
+                                         checker.fetch_basket,
+                                         tree_payload=data)
+            for br in rootfile.walk_branches(tree.branches):
+                if not reader.holds_data(br):
+                    continue
+                spans = [reader.entry_end(br, e) for e in range(3)]
+                self.assertTrue(all(c == end for _, end, c in spans), br.name)
+                seen[br.name] = [end - start for start, end, _ in spans]
+        # Entry 0 of fPtr is a frame, PItem's version and a count of 0; of
+        # fPtrArr[2] and fArr[2], the same with two counts.
+        self.assertEqual(seen["fPtr"][0], 12)
+        self.assertEqual(seen["fPtrArr[2]"][0], 16)
+        self.assertEqual(seen["fArr[2]"][0], 16)
+        self.assertEqual(set(seen), {"fPtr", "fPtrArr[2]", "fArr[2]", "fFlag"})
+
 if __name__ == "__main__":
     unittest.main()

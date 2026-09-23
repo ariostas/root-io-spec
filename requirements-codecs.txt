@@ -1,0 +1,5 @@
+# Optional decompressors for tools/rootfile.py. zlib and lzma are in the standard
+# library; without these, LZ4 records and (before Python 3.14) zstd records are
+# reported as NOT CHECKED rather than read.
+lz4==4.4.5
+zstandard==0.25.0

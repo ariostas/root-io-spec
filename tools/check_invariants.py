@@ -50,9 +50,8 @@ RBLOB_MARKER_FIXED = (6, 36, 0)
 RN_PAGE_CHECKSUM = 8
 
 RBLOB_MULTIPAGE = (
-    "an RBlob holding more than one sealed page: its page boundaries are in the "
-    "page list envelope, which rootfile.py does not read, so Compression 9.2 and "
-    "9.3 cannot be evaluated on it. Compression.md 9"
+    "it holds more than one sealed page, and the page boundaries are in the "
+    "page list envelope, which rootfile.py does not read. Compression.md 9"
 )
 
 #: TBasket.md 1: the release from which a basket key is always the large form.
@@ -348,6 +347,7 @@ class Checker:
         #: The payload of the TTree record whose branches are being checked,
         #: where an embedded basket lives. TBranch.md 5.
         self._tree_payload = None
+        self._rblobs_unchecked: set[int] = set()
         self.failures: list[str] = []
         self.no_codec: set[str] = set()
         self._infos: tuple | None = None
@@ -391,7 +391,7 @@ class Checker:
             # so decompress() walking it as a single chain is expected to fail.
             # Compression.md 9; the same carve-out as check_compression.
             if rec.class_name == RBLOB_CLASS:
-                self.no_codec.add(RBLOB_MULTIPAGE)
+                self.rblob_unchecked(rec)
             else:
                 self.bad("Compression 9", str(exc))
             out = None
@@ -1383,7 +1383,7 @@ class Checker:
             except (rootfile.UnsupportedClass, rootfile.FormatError,
                     struct.error, IndexError, ValueError):
                 continue
-            for name, value, offset in decoder.member_wise:
+            for name, value, offset, collections in decoder.member_wise:
                 frame = rootfile.read_frame(data, offset)
                 if frame.version > 10:
                     self.bad("Collections 14.3",
@@ -1403,7 +1403,10 @@ class Checker:
                 # 9. An empty member-wise collection writes no columns at all.
                 # Read from the bytes rather than through the decoder, so the
                 # rule is checked independently of the reader that implements
-                # it.
+                # it. A fixed array shares one frame (Collections.md 11.1), so
+                # the frame holds that many counts; the check applies when
+                # every one of them is 0, since a non-empty collection's
+                # columns cannot be measured without decoding them.
                 if frame.end is None:
                     continue
                 pos = frame.body
@@ -1411,13 +1414,16 @@ class Checker:
                     pos += 2                      # a plain value-class version
                 else:
                     pos += 6                      # version 0 and a checksum
-                if pos + 4 > frame.end:
+                if frame.version <= rootfile.Decoder.EMPTY_WRITES_NO_COLUMNS_ABOVE:
                     continue
-                if (rootfile._i32(data, pos) == 0
-                        and frame.version > rootfile.Decoder.EMPTY_WRITES_NO_COLUMNS_ABOVE
-                        and pos + 4 != frame.end):
+                empty = 0
+                while (empty < collections and pos + 4 <= frame.end
+                       and rootfile._i32(data, pos) == 0):
+                    empty += 1
+                    pos += 4
+                if empty == collections and pos != frame.end:
                     self.bad("Collections 14.9",
-                             f"{name} holds 0 elements but runs {frame.end - pos - 4} "
+                             f"{name} holds 0 elements but runs {frame.end - pos} "
                              f"bytes past its count")
 
     def check_tarray(self) -> None:
@@ -2287,6 +2293,13 @@ class Checker:
         # file, where it returned early). It passed vacuously on every record;
         # corrupting a raw payload to open with a valid `ZL` header did not
         # trip it (PLAN-corpus.md C7).
+        # An RBlob holds pages, not one object (Compression.md 9.1). A single
+        # page that compression shrank by 8 bytes or less is kept compressed
+        # (root/tree/ntuple/inc/ROOT/RNTupleZip.hxx:70), and its checksum then
+        # makes the payload at least fObjLen, so 9.1 calls it raw although it
+        # is one block.
+        if rec.class_name == RBLOB_CLASS:
+            return
         start, end = rootfile.payload_range(rec)
         head = data[start:start + 9]
         if len(head) < 9 or head[:2] not in BLOCK_MAGICS:
@@ -2299,6 +2312,12 @@ class Checker:
                      f"the raw payload at {rec.offset} begins with {head[:2]!r} "
                      f"and sizes {stored}/{raw}, which a reader taking the magic "
                      f"as authoritative would decompress")
+
+    def rblob_unchecked(self, rec) -> None:
+        """Count an RBlob that Compression 9.2 and 9.3 cannot be applied to."""
+        if rec.offset not in self._rblobs_unchecked:
+            self._rblobs_unchecked.add(rec.offset)
+            self.skip("Compression 9.2 and 9.3", RBLOB_MULTIPAGE, unit="RBlob")
 
     def check_compression(self) -> None:
         for rec in self.records:
@@ -2317,11 +2336,12 @@ class Checker:
                     break
                 magic = self.buf[o:o+2]
                 if magic not in BLOCK_MAGICS:
-                    # Inside an RBlob this is where the previous sealed page
-                    # ended and the next one begins: a raw page, or a checksum
-                    # the walk reached. Placing the boundary needs the page list.
+                    # Inside an RBlob this is a page boundary the walk cannot
+                    # place: a raw page, which may also be the first one, or a
+                    # page checksum the walk reached. Placing it needs the page
+                    # list. Compression.md 9.1.
                     if rec.class_name == RBLOB_CLASS:
-                        self.no_codec.add(RBLOB_MULTIPAGE)
+                        self.rblob_unchecked(rec)
                         unreadable = True
                         break
                     self.bad("Compression 9.4", f"unknown block magic {magic!r} at {o}")
@@ -2365,7 +2385,7 @@ class Checker:
             # boundaries, which live in the page list envelope that rootfile.py
             # does not read; that case is reported, not passed.
             sealed = rec.class_name == RBLOB_CLASS
-            if unreadable:       # already recorded as RBLOB_MULTIPAGE
+            if unreadable:       # already recorded by rblob_unchecked
                 continue
 
             if produced != rec.obj_len:
@@ -2373,7 +2393,7 @@ class Checker:
                 # page boundary it could not place. Report that, not a
                 # malformed chain.
                 if sealed:
-                    self.no_codec.add(RBLOB_MULTIPAGE)
+                    self.rblob_unchecked(rec)
                     continue
                 self.bad("Compression 9.3",
                          f"blocks decode to {produced} bytes, fObjlen is {rec.obj_len}")

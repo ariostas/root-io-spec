@@ -90,9 +90,9 @@ From [Buffer framing](../02-serialization/Buffer.md),
 | A `TStreamerBase` element's `fBaseCheckSum` is the base info's `fCheckSum`, or 0 | StreamerInfo 13.7 | checked |
 | `fBaseVersion` is the base version the derived class was built against, not necessarily the version of the base info beside it | StreamerInfo 9.2 | nothing, and it is not an invariant: five corpus files disagree with their own base infos and all five are correct |
 | A writer whose info for a class disagrees with an existing file's at the same version bumps the version or refuses; it does not write anyway | WritingObjects 8.5 | ROOT warns at open and then silently truncates the object it writes |
-| A `TStreamerBase` element's `fMaxIndex[1]` is the base class's own checksum, at the version its `fBaseVersion` gives | ElementLists 10.2 | nothing; it is folded into the derived class's checksum, which ROOT checks instead |
-| A `TStreamerBasicPointer`'s counter exists in the class `fCountClass` names, and that member's `fType` is 6 `kCounter` | ElementLists 10.3 | nothing |
-| Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 11.1 | ROOT: `CompareContent` compares type names when a checksum mismatches |
+| A `TStreamerBase` element's `fMaxIndex[1]` is the base class's own checksum, at the version its `fBaseVersion` gives | ElementLists 13.2 | nothing; it is folded into the derived class's checksum, which ROOT checks instead |
+| A `TStreamerBasicPointer`'s counter exists in the class `fCountClass` names, and that member's `fType` is 6 `kCounter`, or 13 `kUInt` for an unsigned counter, which is never promoted | ElementLists 13.3 | nothing |
+| Each element's `fTypeName` is the resolved spelling of its type, and exactly `BASE` for a base class | ElementLists 13.1 | ROOT: `CompareContent` compares type names when a checksum mismatches |
 
 ## 4. A histogram or a profile
 

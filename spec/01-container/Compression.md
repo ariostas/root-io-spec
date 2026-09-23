@@ -329,7 +329,10 @@ one; §9.1 gives what holds for it instead.
    equals the checksum at offsets 9-16, and `compressed size >= 8`.
 7. A raw payload never begins with a valid block magic followed by sizes
    consistent with the record. This is not guaranteed by construction, which is
-   why §1 is arithmetic rather than a magic probe.
+   why §1 is arithmetic rather than a magic probe. It does not apply to an
+   `RBlob`: a single page kept compressed because it shrank by 8 bytes or less
+   has a payload, checksum included, of at least `fObjLen`, so §1 calls it raw
+   although it is one block (§9.1).
 
 Because of invariant 7, a reader MUST NOT detect compression by sniffing for a
 magic: object data can begin with any bytes.
@@ -370,7 +373,12 @@ The page boundaries are recorded in the page list envelope, and a reader that ha
 only the key must take offsets and sizes from there, the rule
 `spec/05-rntuple/NOTES.md` §1 already gives for every other field of an `RBlob`.
 Such a blob mixes raw and compressed pages freely, so `fObjLen` may exceed the
-payload and make §1's test report "compressed" for bytes that are not.
+payload and make §1's test report "compressed" for bytes that are not. Its
+`fObjLen` is the sum of the pages' sizes before compression and its payload the
+sum of the sealed pages (`root/tree/ntuple/src/RPageStorageFile.cxx:169-180`).
+The first page may be raw, so the payload need not open with a block magic at
+all: four blobs in `gen/foreign/` open with a raw page, among them the one at 580
+in `test_nested_structs_rntuple_v1-0-0-0.root`.
 
 > This does not excuse a reader from checking. The chain of a blob that does
 > account for `fObjLen` must still end at one of the two places above. Anything

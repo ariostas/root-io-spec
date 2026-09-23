@@ -61,7 +61,10 @@ skip = ["TBasket 9.2"]
 
 ["uproot-issue261.root"]
 reason = """
-The record chain has a 70-byte hole: at 10427, where a record header should be,
+The key-list record at 10048 has fNbytes 58 (a header and a count), though the
+directory's fNbytesKeys is 106, and fSeekKey 0 rather than its own offset. A
+chain walk lands at 10106, on a copy of the TTree key inside the key list, and
+that key's fNbytes of 321 carries it to 10427, inside the TTree record, where
 the first word is 0. ROOT's own walker treats that as an error: TFile::Map prints
 "=====E R R O R=======" and abandons the rest of the file
 (root/io/io/src/TFile.cxx:1676-1680). This is a defect, not a form the

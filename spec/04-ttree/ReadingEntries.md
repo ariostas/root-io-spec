@@ -314,6 +314,10 @@ For most element types, a column of *n* values is the scalar encoding repeated
   (`root/io/io/src/TStreamerInfoActions.cxx:2671-2675`).
 - `kSTL` (300) and `kSTLstring` (365): the version is read once, outside the
   per-element loop (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1251-1256`).
+  So is `kSTLp` (71), a pointer to a collection, whose bytes are the
+  collection's with no pointer tag
+  (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1147-1152`,
+  [Collections §11.3](../02-serialization/Collections.md#113-a-pointer-to-a-collection-is-written-as-the-collection)).
 
 For those two, an entry holding *n* values has **one** header, not *n*. A reader
 that frames each element separately desynchronises on the second.
@@ -338,6 +342,14 @@ once, outside the loop (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274`).
 A column of *n* member-wise collections is therefore the shared frame, one
 value-class version, then *n* times an `Int_t` count and that collection's
 member-wise body.
+
+A fixed array, `kOffsetL` added to any of these codes, multiplies the collections
+under the same header: each value holds `fArrayLength` of them, the objects in
+the outer loop and the array in the inner one
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1183-1187`). This applies to a
+single member too, where *n* is 1: the branch `fArr[2]` of a `vector<T> fArr[2]`
+member has one frame, one value-class version and two counts per entry
+([Collections §11.1](../02-serialization/Collections.md#111-a-fixed-array-of-collections-shares-one-frame)).
 
 ## 6. `fMaximum` is a read-time bound, not a statistic
 
@@ -449,6 +461,7 @@ describes.
 | `ttree/split-clones` | The `TClonesArray` form of §3.1 and §3.2 |
 | `ttree/split-tbits` | §3.4 and §4: a counted array whose counter branch has `fStreamerType` 13 rather than 6, and §3.3 on an unsplit `TBits` |
 | `ttree/split-bitset` | §3.6: a `bitset<16>` as twenty-six bytes, and the bit order, which only its third entry fixes |
+| `ttree/split-stl-pointer` | §5.3 on single members: a pointer to a collection, an array of them and an array of collections, each entry one member-wise frame |
 
 Not covered by a fixture: §3.5, which needs a class with a hand-written
 `Streamer`; the member-wise STL body of §5.3 inside a split branch, which needs

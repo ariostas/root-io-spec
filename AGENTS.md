@@ -93,15 +93,16 @@ The invariant checks run over the same corpus. That is where format errors have
 actually been found: fourteen so far, plus the legacy `CS` codec.
 
 ```sh
-uv run --no-project --with lz4 python3 tools/check_invariants.py \
-  --ignore gen/foreign/IGNORE.toml build/foreign/*.root
+uv run --no-project --with-requirements requirements-codecs.txt \
+  python3 tools/check_invariants.py --ignore gen/foreign/IGNORE.toml build/foreign/*.root
 ```
 
-Install `lz4` for corpus runs. Without it, eight LZ4-compressed files lose 2158
-branch-baskets from both sides of the `ENTRIES` ratio, so the ratio hides them.
+Install the codecs for corpus runs, as above; CI installs them too. Without
+`lz4`, eight LZ4-compressed files lose 2158 branch-baskets from both sides of the
+`ENTRIES` ratio, so the ratio hides them.
 That is how the `uproot-issue213.root` failure of `PLAN.md` §8.16 went unseen.
 
-Run one checker process at a time. A single one peaks at 1.7 GB, on
+Run one checker process at a time. A single one peaks at about 1.8 GB, on
 `io/evolution/Event_2.root` in roottest, and several at once have exhausted a
 32 GB machine. Until 2026-09-23 `TreeReader` kept a decoder per basket, each
 holding a copy of the file up to its basket, so memory grew with baskets times
@@ -363,8 +364,9 @@ needed and why it has to be a separate step.
 header, record chain, directory records, key lists, decompression, the buffer
 framing layer, the StreamerInfo record, the streamer-driven read, collections,
 references and `TClonesArray`. zlib and lzma come from the standard library; zstd
-needs Python 3.14 and LZ4 needs a package, and a record whose codec is missing is
-reported as "NOT CHECKED" rather than passing silently. `rootfile.py` is
+needs Python 3.14 or `zstandard`, and LZ4 needs `lz4` (`requirements-codecs.txt`).
+A record whose codec is missing is reported as "NOT CHECKED" rather than passing
+silently. `rootfile.py` is
 deliberately an independent implementation, written from the specification rather
 than from ROOT's code, so that a disagreement between the two is detectable. It
 reproduces `TFile::Map()` exactly.
