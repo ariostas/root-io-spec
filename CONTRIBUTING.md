@@ -200,7 +200,7 @@ file does, and the reason goes in the README beside it.
 route the work took and `§9` lists every known gap. If you are looking for
 something to do, those gaps are ranked by how much of the corpora they block.
 There is no open sub-plan. A sub-plan is deleted when it is discharged, as
-`PLAN-ttree.md`, `PLAN-writing.md` and `PLAN-review.md` were; what is worth
-keeping moves into `PLAN.md` or into `spec/` first, and the git log keeps the
-rest. The last of those answered the first outside review, and what it left
-behind is `PLAN.md` §8.13.
+`PLAN-ttree.md`, `PLAN-writing.md`, `PLAN-review.md` and `PLAN-corpus.md` were;
+what is worth keeping moves into `PLAN.md` or into `spec/` first, and the git log
+keeps the rest. The last two answered the first outside review and a survey of
+six external corpora, and what they left behind is `PLAN.md` §8.13 and §8.14.

@@ -15,14 +15,14 @@ evolution, all landed 2026-09-21 — and carries the six findings that came out 
 it. Its §8.13 is the first outside review, GitHub issue #1, answered in full over
 2026-09-21/22 and worth reading before adding a claim: eight published claims of
 ours turned out false or incomplete, six of them in the population nothing was
-checking. **`PLAN-corpus.md` is the open sub-plan**, written 2026-09-22 from a
-survey of six external resources: four published claims of ours that a ROOT-written
-file contradicts, three reader bugs behind them, four §9 rows with a first witness,
-and a list of confirmed dead ends so they are not re-investigated. Read its §1
-before working any item — it separates what was reproduced here from what one
-survey merely reported, and that column is not to be collapsed.
-A sub-plan is deleted once discharged, with anything durable moved into `PLAN.md`
-or `spec/` first.
+checking. Its §8.14 is the corpus survey of 2026-09-22/23: ten more wrong or
+under-scoped claims, **how each was found**, and a list of confirmed dead ends so
+they are not re-investigated. The sub-plan that ordered it, `PLAN-corpus.md`, is
+deleted, and code and text still cite its item numbers (C1–C19). Its lasting
+rule: keep a claim **reproduced here** apart from one a survey merely
+**reported**, because five of the survey's did not survive re-measurement.
+There is no open sub-plan. A sub-plan is deleted once discharged, with anything
+durable moved into `PLAN.md` or `spec/` first.
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read those before writing spec text; this file covers how to *work* here, not
 what to write.

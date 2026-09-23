@@ -8,26 +8,16 @@ submodule and checked against bytes; RNTuple tracks ROOT's own specification plu
 ten errata. §2.9 and §8.4 are the write support, which extends the project past
 the reading side it was scoped to.
 
-**Open sub-plan, `PLAN-corpus.md` (2026-09-22).** A survey of six external
-resources found **four published claims that a ROOT-written file contradicts** —
-`Compression.md` §9 for an RNTuple page, `TBasket.md` §1's "always", `Buffer.md`
-§2.3's unframed list, `Record.md` §8.6 — so §8.1 release criterion 1, *no
-published claim is known to be wrong*, was **not met** until C1–C4 were
-discharged, which they were the same day.
-It also found a witness for four open §9.1 rows, three of them in
-`root/roottest/`, which the pinned submodule has shipped since ROOT merged
-roottest in April 2025. Working those rows (C8–C11) found **three more** wrong
-release boundaries — `Directory.md` §7, `FileHeader.md` §8 and `TLeaf.md` §7/§12 —
-all fixed the same day, and one reader gap, C18. C13's RNTuple
-tier then found two more — `FreeSegments.md` §4.2's "never missing" and
-`Collections.md` §4.1's member-wise base — in an ATLAS file written by 6.34/04,
-both fixed the same day, and left C19. **C15–C19 were worked on 2026-09-23**, and
-found one more wrong published claim: `Buffer.md` §2.3 attributed to ROOT 4 a
-framing that only g4tools writes. C18 became `StreamerDriven.md` §7.1 and a new
-`Buffer.md` invariant; C19 became `Collections.md` §11.2, whose value class the
-survey said the file did not record; C16 became `LargeFiles.md` invariant 7;
-C17 narrowed §7.1 item 10; and C15's three files added nothing and were not
-taken.
+**The corpus survey, 2026-09-22/23 — discharged; §8.14.** Six external
+resources were surveyed, and the sub-plan that ordered the work, `PLAN-corpus.md`,
+was deleted once its nineteen items were done. **Ten published claims turned out
+wrong or under-scoped** and all ten are fixed, so §8.1 release criterion 1, *no
+published claim is known to be wrong*, holds again. The work also brought in
+`root/roottest/` — shipped inside the pinned submodule since ROOT merged it in April
+2025 — as a listed third source of ROOT-written files, 23 RNTuple files and three
+large Open Data files. Two gaps closed with new specification:
+`StreamerDriven.md` §7.1, for an object with no byte count, and
+`Collections.md` §11.2, for a class that is itself a collection.
 
 Measured, 2026-09-21, by the checks in `tools/`:
 
@@ -1968,6 +1958,127 @@ covering items 7–10, the two classes the review did not raise, and the three
 findings above. The second exists because the first predates the RooFit work and
 told them item 10 would come first; in the event none of the bytes it asked for
 were needed.
+
+### 8.14 The corpus survey (2026-09-22/23)
+
+Six external resources were surveyed on 2026-09-22, one subagent each, each made
+to probe with this project's own tools rather than describe what it found:
+
+| Resource | Licence | What it is |
+|---|---|---|
+| [root-project/roottest](https://github.com/root-project/roottest) | LGPL-2.1 | ROOT's own regression suite — **already inside the pinned submodule** |
+| [root-project/rntuple-validation](https://github.com/root-project/rntuple-validation) | LGPL-2.1 | ROOT's RNTuple conformance suite; 50 files in a release asset |
+| [go-hep/hep `groot/testdata`](https://codeberg.org/go-hep/hep/src/branch/main/groot/testdata) | BSD-3 | groot's corpus; generating ROOT macros committed alongside |
+| [KM3NeT/km3net-testdata](https://github.com/KM3NeT/km3net-testdata) | MIT | a neutrino telescope's production output, 38 files |
+| [UnROOT.jl `test/samples`](https://github.com/JuliaHEP/UnROOT.jl/tree/main/test/samples) | MIT | UnROOT's corpus, 94 files |
+| [opendata.cern.ch](http://opendata.cern.ch/) | CC0 | real LHC production files, multi-GB, range-readable |
+
+The work was ordered by a sub-plan, `PLAN-corpus.md`, whose nineteen items
+C1–C19 were all worked by 2026-09-23 and which was then deleted; this section is
+what it left behind. The item numbers are still cited across the repository, and
+the file itself is in git history, last at commit `d0d1bad`. Its §1 kept one distinction that earned its place: a claim
+**confirmed here**, with this project's tools, against one a survey agent merely
+**reported**. Five reported claims did not survive re-measurement as stated —
+C7 was not a bug, C8's count was 223 rather than 426, C10's witness was narrower,
+C15's files added nothing, and C19's premise was false.
+
+**Ten published claims were wrong or under-scoped, and how each was found is the
+useful part:**
+
+| Claim | Found by |
+|---|---|
+| `Compression.md` §9 had no `RBlob` carve-out (C1) | the survey: a ROOT-written file failing an invariant |
+| `TBasket.md` §1's "always the large key layout" is true only from 4.02 (C2) | the survey, then a census of 12 385 roottest basket keys |
+| `Buffer.md` §2.3 omitted `TDatime`, and two more classes (C3) | the survey, then reading every persisted hand-written `Streamer` |
+| `Record.md` §8.6 needed a 6.34/6.35 RNTuple exception (C4) | the survey |
+| `Directory.md` §7 and `FileHeader.md` §8 release boundaries (C11) | re-measuring a witness before quoting it |
+| `TLeaf.md` §7/§12's `TLeafF16`/`TLeafD32` v2 was 6.38, not 6.40 (C9) | reading the class at the release tags |
+| `FreeSegments.md` §4.2's "never missing" marker (C13) | a checker crash on a newly added file |
+| `Collections.md` §4.1's member-wise base (C13) | the same file |
+| `Buffer.md` §2.3's "ROOT 4 records open with bare version words" (C18) | checking a new reader rule against the g4tools files it rested on |
+
+Four of the ten came from the survey as reported. The other six came from doing
+the work carefully once a lead existed: re-measuring, reading tags, and adding a
+file that then failed. **And two passes were wrong for the same reason a failure
+is useful**: `uproot-issue475.root`'s `SmartRef` passed because a wrong reading
+happened to land on the right length (`StreamerDriven.md` §7.1), and a first
+version of C19's fix passed every check while quietly removing 113
+branch-baskets from the entry denominator — found by comparing per-file
+`ENTRIES` lines with the previous commit, not by any failure.
+
+The reader and checker bugs, for the record: a compressed RNTuple anchor read as
+raw (C6); a base-class lookup by name that should have been by checksum (C5); a
+`Compression` 9.7 check that read the wrong bytes and had never checked anything;
+three reader gaps behind C13; and C18 and C19's two decoders, which are now
+`StreamerDriven.md` §7.1 and `Collections.md` §11.2.
+
+#### Confirmed negatives — do not re-investigate
+
+Each was measured across a named population, not assumed. Recording them is the
+point: the next person to go looking should not repeat these trips.
+
+| Question | Answer | Where measured |
+|---|---|---|
+| A file with more free segments than `volume.root`'s 1539 | **No, and there will not be one.** Production writers open, fill and close once; `nfree` is 1, 2, 9–19 or 74 across six writers | Open Data, six file families |
+| A non-zero `pidf` / `fPidOffset` / a surviving `fUniqueID` top byte | **None anywhere** — 0 of 273 in roottest, 0 in km3net, 0 in go-hep, 0 in every Open Data key list decoded. §9.4 stays open | all six |
+| A branch with a non-empty `fFileName` | zero across 5425 km3net branches and every go-hep tree; **unchecked in roottest** (the agent's proxy scan was unsound) | km3net, go-hep |
+| `TClonesArray` class version 3 | only version 4 occurs | roottest, go-hep, km3net |
+| `ROOT::v5::TFormula` 1–3 / `TF1Data` 1–4 | nowhere, roottest included. v4/v5/v7 **do** occur in roottest and would advance the row without closing it | all |
+| Two streamer infos for one class at the **same** version, different checksums | none | roottest, km3net, go-hep |
+| A `type=readraw` rule | none; the only `ReadRaw` hit in 5602 tracked files is an unrelated ALICE method | roottest |
+| A new compression codec | none — zlib, LZMA, LZ4, ZSTD and the legacy codec are all that occur | all six |
+| go-hep's `issue-1063.root`, `embedded-tbox.root`, `tefficiency.root` (C15) | **nothing new**: ROOT-written and clean, but every class, version and checksum is already in a listed file | `gen/foreign/`, `gen/cern/` |
+| `TRef` in a production experiment corpus | **no.** aanet uses index members, not references — the hypothesis that drove part of the km3net brief was wrong | km3net |
+
+Two near-misses worth naming so they are not re-chased: go-hep's `pid.root` looks
+like the `fPidOffset` witness and is **groot-written** (its `TProcessID` key is
+named `type-TProcessID` with `fName` `my-pid`, where ROOT writes `ProcessID<n>` for
+both — `root/io/io/src/TFile.cxx:2017`); and roottest's `foreignVec.root` carries
+the large-file flag on a 7 KB file with `fUnits` 4, which is exactly the shape
+`FileHeader.md` §10.9 predicted and said nothing witnessed — **but the write path
+is not identified**, and `TFile::WriteHeader` sets `fUnits = 8` whenever it adds
+the flag. It is a lead until that is traced, and it is the only candidate for the
+large layout at committable size that the survey found.
+
+#### External verification banked, no action needed
+
+Worth citing, not acting on. Three independent reimplementations agreeing with
+this specification on points it derived from ROOT's source alone:
+
+- **groot's `rvers/versions_gen.go`**, an independently generated table of 119
+  class versions pinned to ROOT 6.40/00, cross-checked mechanically against every
+  `ClassDef*` in the pinned headers: **118/118 agree, 0 disagreements.**
+- **UnROOT's `test/issues.jl:92`** comment describes `TBranch` v8's layout member
+  for member as `TBranch.md` §13.1 does — `fEntryNumber` as Int32, `fBasketEntry`
+  as Int32, `fEntries`/`fTotBytes`/`fZipBytes` as Float64 — arrived at
+  independently, from bytes.
+- **groot walks into `Collections.md` §12's trap**: it defines
+  `BypassStreamer = 1<<12` with no class-version branch, and then cannot read the
+  bypass file at all (its test is commented out, *"FIXME: needs member-wise
+  streaming"*). §12 says a reader MUST branch on the class version before testing
+  the bit; here is a working implementation that did not.
+- **ERRATA 6** (`0x17 SplitReal16` does not exist) gains the ROOT team's own
+  words: `types/fundamental/real/write.C` carries `// NB there is no kSplitReal16`,
+  and a suite whose stated goal is covering every part of the format produces every
+  column code **except** `0x17`.
+- **ERRATA 8** (Type Version is a signed version in an unsigned field) is
+  strengthened: rntuple-validation stamps `0xFFFFFFFF` for classes with a compiled
+  `rootcling` dictionary, where this project's witness was interpreted classes only.
+  That rules out an interpreter artifact.
+
+Upstream issues open at rntuple-validation that this project is **ahead** on:
+#21 (streamed types), #22 (anchor tests), #23 (checksum tests) — the last two are
+exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
+
+#### Still open from the survey
+
+1. **The licence question.** roottest and rntuple-validation are both
+   LGPL-2.1, and `LICENSES/` holds only BSD-3-Clause and CC-BY-4.0. Nothing needs
+   committing — roottest is in the submodule and rntuple-validation can be
+   fetched — but if any file of theirs is ever committed as a fixture, this has
+   to be answered first.
+2. **When to cut the first CalVer release.** The survey's corrections landed
+   under `## Unreleased`; cutting now makes them part of the first release.
 
 ## 9. Known gaps
 
