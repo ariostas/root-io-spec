@@ -40,6 +40,31 @@ copying it. Where a short excerpt appears, it is quoted as evidence for a claim
 about the format, is attributed to the file and line it came from, and remains
 under ROOT's licence.
 
+## Third-party corpora are never committed
+
+The specification is measured against files other people wrote: ROOT's own
+regression suite `root/roottest/`, uproot's regression corpus
+(scikit-hep-testdata), go-hep's `groot/testdata`, files published at
+root.cern and CERN Open Data, and, in a survey, rntuple-validation, KM3NeT's
+test data and UnROOT's samples. **None of their files is committed here, and
+none ever will be.** `root/roottest/` is read in place, inside the submodule; the
+others are fetched into the untracked `build/` on demand. What is committed is a
+manifest of their digests (`gen/foreign/MANIFEST.sha256`, `gen/cern/`) and the
+reasons each file is listed.
+
+Two of those sources, roottest and rntuple-validation, are under
+**LGPL-2.1**, which the BSD-3-Clause licence of `data/` could not carry. The
+rule is also what keeps every reference file's provenance simple: each one is
+the output of a generator in `gen/`, run against the pinned ROOT or written by
+`tools/rootwrite.py`. `tools/test_provenance.py` holds both halves on every
+push. It fails on a tracked ROOT file that no case generates, and on any tracked
+file byte-identical to a file in `root/roottest/`.
+
+A fact a third-party file taught this project is carried the other way: by a
+new fixture that reproduces it, as `data/rntuple/map.root` does for the
+`std::map` finding and `data/serialization/unframed-records.root` for the
+unframed `TDatime` record first seen in go-hep's corpus.
+
 ## Citing this
 
 [CITATION.cff](CITATION.cff) has the machine-readable form. Attribution under

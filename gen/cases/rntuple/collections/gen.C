@@ -11,11 +11,11 @@
 /// Field order is the document's subsection order, so the decoded schema reads
 /// straight against it.
 ///
-/// `std::map` is missing on purpose and it is the one type here that cannot be
-/// written at all: ROOT 6.40.04 aborts on Fill() with
-/// `R__ASSERT(0)` in TGenCollectionProxy__VectorNext
-/// (root/io/io/src/TGenCollectionProxy.cxx:1528-1530), with the map empty and
-/// untouched, on the interpreted path this generator uses. See
+/// `std::map` is not here: it has a case of its own, rntuple/map. The map this
+/// case once tried, std::map<int, float>, has no compiled dictionary, and ROOT
+/// 6.40.04 aborts writing such a map from the interpreter, with `R__ASSERT(0)`
+/// in TGenCollectionProxy__VectorNext
+/// (root/io/io/src/TGenCollectionProxy.cxx:1528-1530). See
 /// spec/05-rntuple/NOTES.md 5.
 #include <array>
 #include <atomic>

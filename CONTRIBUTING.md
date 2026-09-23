@@ -182,7 +182,13 @@ settled. Only a file genuinely at fault goes in `gen/foreign/IGNORE.toml`, per
 file and per invariant, with a reason.
 
 Adding a file to either corpus: it must cover something no fixture and no listed
-file does, and the reason goes in the README beside it.
+file does, and the reason goes in the README beside it. It goes in as a manifest
+line. **No third-party file is ever committed** — not from either corpus, not
+from `root/roottest/`, which is read in place, and not from rntuple-validation.
+Both of those are LGPL-2.1 (`LICENSE` has the reasoning), and
+`tools/test_provenance.py` enforces it: every tracked `.root` must be the output
+of a case, and no tracked file may be identical to a roottest file. If a corpus
+file shows something a fixture should pin, write a generator that reproduces it.
 
 ## Pull requests
 

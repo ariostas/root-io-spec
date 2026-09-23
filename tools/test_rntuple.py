@@ -303,15 +303,10 @@ def _child_name_claims(text: str) -> dict[str, str]:
     return claims
 
 
-class StdlibTypeMapping(unittest.TestCase):
-    """*Stdlib Types and Collections* against a file, type by type.
+class SchemaReading:
+    """A fixture's decoded RNTuple schema, and the three views the tests use."""
 
-    The claims there are prose, not a table: how many fields a type becomes, what
-    the parent's columns are, what the children are called. `rntuple/collections`
-    is one field per type and this reads the decoded schema against them.
-    """
-
-    FIXTURE = REPO / "data/rntuple/collections.root"
+    FIXTURE: Path
 
     @classmethod
     def setUpClass(cls):
@@ -340,6 +335,17 @@ class StdlibTypeMapping(unittest.TestCase):
         field = self.top[name]
         return (field.role, self.cols(field),
                 [(c.name, c.type_name, self.cols(c)) for c in self.children(field)])
+
+
+class StdlibTypeMapping(SchemaReading, unittest.TestCase):
+    """*Stdlib Types and Collections* against a file, type by type.
+
+    The claims there are prose, not a table: how many fields a type becomes, what
+    the parent's columns are, what the children are called. `rntuple/collections`
+    is one field per type and this reads the decoded schema against them.
+    """
+
+    FIXTURE = REPO / "data/rntuple/collections.root"
 
     # -- one test per subsection of the document -------------------------
 
@@ -443,6 +449,50 @@ class StdlibTypeMapping(unittest.TestCase):
         self.assertEqual(self.top["fSet"].type_name, "std::set<std::int32_t>")
         self.assertEqual(self.top["fVariant"].type_name,
                          "std::variant<std::int32_t,float>")
+
+
+class AssociativeMapping(SchemaReading, unittest.TestCase):
+    """The `std::map` subsection, against `rntuple/map`: all four types it names.
+
+    "An (unordered) (multi)map is stored using a collection parent field, whose
+    principal column is of type `(Split)Index[64|32]` and a child field of type
+    `std::pair<K, V>` named `_0`."
+    """
+
+    FIXTURE = REPO / "data/rntuple/map.root"
+    PAIRS = {
+        "fMap": ("std::map<std::string,std::int32_t>",
+                 "std::pair<std::string,std::int32_t>"),
+        "fUnordered": ("std::unordered_map<std::int32_t,std::int32_t>",
+                       "std::pair<std::int32_t,std::int32_t>"),
+        "fMulti": ("std::multimap<std::string,std::int32_t>",
+                   "std::pair<std::string,std::int32_t>"),
+        "fUnMulti": ("std::unordered_multimap<std::string,std::int32_t>",
+                     "std::pair<std::string,std::int32_t>"),
+    }
+
+    def test_every_map_is_a_collection_parent_over_a_pair_named_0(self):
+        for name, (map_type, pair_type) in self.PAIRS.items():
+            with self.subTest(field=name):
+                field = self.top[name]
+                self.assertEqual((field.role, field.type_name, self.cols(field)),
+                                 ("collection", map_type, ["Index64"]))
+                child, = self.children(field)
+                self.assertEqual((child.name, child.type_name), ("_0", pair_type))
+
+    def test_the_pair_is_a_record_with_no_columns_and_two_children(self):
+        for name in self.PAIRS:
+            with self.subTest(field=name):
+                pair, = self.children(self.top[name])
+                self.assertEqual((pair.role, self.cols(pair)), ("record", []))
+                self.assertEqual([c.name for c in self.children(pair)],
+                                 ["_0", "_1"])
+
+    def test_the_document_still_names_all_four(self):
+        text = TRACKED.read_text()
+        self.assertIn("#### std::map\\<K, V\\>, std::unordered_map\\<K, V\\>, "
+                      "std::multimap\\<K, V\\>, std::unordered_multimap\\<K, V\\>",
+                      text)
 
 
 class UserClassMapping(unittest.TestCase):

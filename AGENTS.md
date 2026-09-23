@@ -136,7 +136,13 @@ submodule's history reaches ROOT 1:
 were wrong until that was done (`PLAN-corpus.md` C9, C11).
 
 Adding a file to either corpus: it must earn its place by covering something no
-fixture and no listed file does, and the reason goes in the README. Re-running
+fixture and no listed file does, and the reason goes in the README. **It is
+added as a manifest line, never as a committed file**: no third-party file is
+committed, roottest and rntuple-validation above all, which are LGPL-2.1
+(`LICENSE`, "Third-party corpora are never committed").
+`tools/test_provenance.py` fails on a tracked `.root` that no case generates and
+on any tracked file identical to one in `root/roottest/`. When a corpus file
+teaches something worth a fixture, write a generator that reproduces it. Re-running
 `--headers` after a `rootfile.py` change is a cheap regression check on the
 container layer.
 

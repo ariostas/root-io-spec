@@ -40,8 +40,9 @@ reference file. An invariant may not be published unless something checks it —
 `tools/check_coverage.py` fails the build otherwise — and the invariants run
 over 252 files this project did not write, where disagreeing with reality is an
 ordinary outcome rather than a hypothetical one. Nineteen errors in this
-specification were found that way (`PLAN.md` §9.9) and eight more by its first
-outside review (§8.13); each one is written down rather than quietly fixed.
+specification were found that way (`PLAN.md` §9.8 and §9.9), eight more by its
+first outside review (§8.13), and ten more by a survey of six external corpora
+(§8.14); each one is written down rather than quietly fixed.
 
 Read it as you would any reverse-engineered specification: **where it and ROOT
 disagree, ROOT is right.** A correction is more welcome than an addition, and
@@ -87,15 +88,17 @@ name and the UUIDs.
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
 | RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
 
-**83 reference files, 2102 byte-level assertions, and 1653 source citations
-checked against the pinned submodule across 48 documents**, plus 14 files this
+**84 reference files, 2151 byte-level assertions, and 1655 source citations
+checked against the pinned submodule across 49 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also
 run over 252 files this project did not write — 180 from uproot's regression
 corpus and 72 published by the ROOT team, spanning ROOT 2.24/00 to 6.38/00 —
 with **0 failures**, and 95% of the records in them decode. Those files are where
 nineteen errors in this specification were found and fixed — plus one compression
 codec it had written off as unreadable, and one coverage figure it had been
-overstating (`PLAN.md` §9.8 and §9.9).
+overstating (`PLAN.md` §9.8 and §9.9). A survey that widened them to ROOT's own
+test suite, 23 RNTuple files and three multi-gigabyte CERN Open Data files found
+ten more (§8.14).
 
 **Start at [spec/99-appendix/ReaderChecklist.md](spec/99-appendix/ReaderChecklist.md)**
 if you are here to implement something: it is the whole specification as a work

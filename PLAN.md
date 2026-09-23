@@ -480,6 +480,7 @@ phase.
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims **reading** for files written by ROOT 4.00 and later, and M4 measured that it works back to **3.04/02**. The floor is not a release number but a property of the file: object decoding needs streamer infos, and a file old enough carries none. Exactly one corpus file is in that state — `pippa.root`, ROOT 2.24/00 — and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
 | 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope; **revised 2026-09-21: RooFit is in**) | Four groups: the frameworks inside ROOT that define their own persistent classes — the SQL backend, PROOF, both event displays, SOFIE, each with its reason in `streamers.toml`. **RooFit was on that list and is not any more**, on the demand argument of §8.13: rootfilespec asked for it rather than reverse-engineer it, which is the strongest signal about what to write next this project has had; what `TGeo*` fields *mean*, its classes being streamer-info driven anyway; the compression algorithms themselves, as against ROOT's framing of them; and, on the write side, what decision 3 leaves out after its 2026-09-18 revision and its 2026-09-21 extension — earlier class versions, two writers on one file at once, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all — they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
 | 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and no changelog.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document whose whole job is to describe somebody else's format: the number that carries meaning is ROOT's, and it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. So releases are `YYYY.MM.DD`, tagged when the specification reaches a milestone — they exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` was **deleted the same day and restored a few hours later**, and the round trip is the part worth writing down. The argument for deleting it was that the git log records what changed **and** how each fact was established, so a changelog keeps only the weaker half. That is true of a per-commit changelog and false of this one: a commit body says what was *found*, a changelog entry says what a reader should now do differently, and the 69 entries standing in `## Unreleased` were the second kind. A dated tag also needs release notes, and generating them from 500 commit bodies at tag time is not the same as writing them when the change is fresh. So it stays, scoped to releases and to reader-facing changes only (`AGENTS.md` says which). One release exists under the old scheme, `v0.1.0`, and it stays where it is. |
+| 10 | **Third-party files** (✅ decided 2026-09-23) | **Never committed.** roottest and rntuple-validation are LGPL-2.1, which `data/`'s BSD-3-Clause cannot carry, and every other corpus is kept out for the same provenance reason: the corpora are read in place or fetched, and only manifests of digests are committed. A fact one of them teaches becomes a fixture by writing a generator that reproduces it. `LICENSE` states it and `tools/test_provenance.py` enforces it — a tracked `.root` with no case, or any tracked file identical to a roottest file, fails |
 
 ## 7. Open items
 
@@ -586,7 +587,9 @@ reported** (§8 item M10).
     names `map<Long64_t,float>` and has none. So what is reportable is narrower
     and clearer than before: RNTuple accepts a collection field whose proxy is
     emulated and then aborts in `Fill()` instead of refusing it when the model is
-    built. Reproducer in `spec/05-rntuple/NOTES.md` §5.
+    built. Reproducer in `spec/05-rntuple/NOTES.md` §5, and `rntuple/map` is the
+    fixture the finding made possible: all four map types, each an instantiation
+    with a shipped dictionary.
 
 11. **Writing an object of an emulated class does not complete.** `WriteObjectAny`
     with a `TClass` in the `kEmulated` state — `Head` read from
@@ -1064,6 +1067,7 @@ them.*
 | `rntuple/untyped` | untyped collections and records — a role with an empty type name |
 | `rntuple/streamed` | structural role 0x04, its `Index64` + `Byte` columns, and the extra type information record |
 | `rntuple/soa` | flag 0x08, the last flag bit no fixture reached |
+| `rntuple/map` | added 2026-09-23: `map`, `unordered_map`, `multimap`, `unordered_multimap` — and two page locators aliasing one page |
 
 Each claim is checked by a test that **parses it out of the tracked copy** rather
 than transcribing it, so neither the document on a submodule bump nor ROOT on a
@@ -2072,11 +2076,8 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 #### Still open from the survey
 
-1. **The licence question.** roottest and rntuple-validation are both
-   LGPL-2.1, and `LICENSES/` holds only BSD-3-Clause and CC-BY-4.0. Nothing needs
-   committing — roottest is in the submodule and rntuple-validation can be
-   fetched — but if any file of theirs is ever committed as a fixture, this has
-   to be answered first.
+1. ~~**The licence question.**~~ Decided 2026-09-23: **no file of theirs is
+   ever committed**, and no third-party corpus file at all — decision 10.
 2. **When to cut the first CalVer release.** The survey's corrections landed
    under `## Unreleased`; cutting now makes them part of the first release.
 

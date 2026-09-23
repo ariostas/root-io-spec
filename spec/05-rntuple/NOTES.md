@@ -152,7 +152,7 @@ including its field and column records.
 | `std::atomic`, and the parent-with-one-child shape it shares with an enum | audited against bytes, clean |
 | Low-precision Floating Points | audited against bytes — **ERRATA 7** |
 | Type Name Normalization inside template arguments | audited against bytes, clean |
-| `std::map` and the unordered/multi variants | audited against the source only — no fixture yet, though one is possible: §5 says which maps ROOT can write |
+| `std::map` and the unordered/multi variants | audited against bytes, clean — `rntuple/map`, all four types; §5 says why only some maps can be written |
 | User-defined enums, scoped and unscoped | audited against bytes, clean — `rntuple/user-class` |
 | User-defined classes → Regular class / struct, base classes, transient members | audited against bytes, clean |
 | Field Description: the type version and checksum of a class field | audited against bytes — **ERRATA 8** |
@@ -164,7 +164,7 @@ including its field and column records.
 | Classes representing a SoA layout: flag 0x08 | audited against bytes, clean — `rntuple/soa` |
 | Limits | audited against the encodings this project has already checked |
 | Naming specification | audited against the validator and by probing the writer, clean |
-| Defaults | audited against `RNTupleWriteOptions`, clean |
+| Defaults | audited against `RNTupleWriteOptions`; the table omits same-page merging, which changes what is on disk — §7 |
 | Notes on Backward and Forward Compatibility | audited: ROOT's reader implements the one MUST, §6 |
 
 **What is left**: *Linked Attribute Sets* beyond its footer record frame, and
@@ -257,8 +257,9 @@ this project holds itself to.
 
 ## 5. A `std::map` without a compiled dictionary cannot be written in 6.40.04
 
-The one type in *Stdlib Types and Collections* that this project has no fixture
-for. With the field empty and never touched:
+The one type in *Stdlib Types and Collections* that this project had no fixture
+for until 2026-09-23, when `rntuple/map` became possible. With the field empty
+and never touched:
 
 ```cpp
 auto model = ROOT::RNTupleModel::Create();
@@ -300,8 +301,9 @@ shipped dictionary and still aborts, because RNTuple normalises the type to
 Two things this is **not**. It is not a format question: the document's `std::map`
 paragraph is a collection parent over a `std::pair<K, V>` child named `_0`, which
 is `std::vector<std::pair<K,V>>`'s shape and is consistent with everything else
-audited. And it is not a fixture problem any more: a `map<std::string,int>` or
-`map<int,int>` field can be written from a plain macro. What it is, is a defect
+audited. And it is not a fixture problem any more: `rntuple/map` writes one
+field of each of the four types from a plain macro, each an instantiation with a
+shipped dictionary. What it is, is a defect
 narrower than first recorded — RNTuple accepts a field whose collection proxy is
 emulated, then aborts in `Fill()` rather than refusing it when the model is
 built — and `PLAN.md` §7.1 item 10 holds the report.
@@ -351,3 +353,27 @@ exactly `.`, `/`, space, `\` and control characters
 field name ("name cannot be empty string") and an empty ntuple name ("empty RNTuple
 name"), which the document says cannot be persistified and which the validator
 itself does not check — a different piece of ROOT does.
+
+## 7. Two page locators can name the same bytes
+
+The document describes a page list as one locator per page and says nothing about
+two locators being equal. They can be, and in a file ROOT writes by default: an
+identical page is written once and every column that produced it points at that
+one copy. The option is `EnableSamePageMerging`, **on by default**; it matches
+pages by checksum and then compares their bytes (`root/tree/ntuple/inc/ROOT/RNTupleWriteOptions.hxx:169-174`,
+`root/tree/ntuple/src/RPageStorage.cxx:1117-1142`). *Defaults* lists three
+`RNTupleWriteOptions` settings and not this one, though it is the one that
+changes the bytes.
+
+> Demonstrated by `rntuple/map`. `fMap` and `fMulti` each hold two pairs in the
+> first entry and none in the second, so both index columns' pages are the same
+> sixteen bytes, 2 then 2. There is one copy, at 1798, and the page list names it
+> twice: column 0's locator at 2146 and column 7's at 2426 both say 16 bytes at
+> 1798. `fUnordered` and `fUnMulti` share the page at 1873 in the same way.
+
+For a reader this changes nothing as long as it reads pages through their
+locators. It matters to anything that treats the page list as a partition of the
+file: a reader that sums page sizes to check an `RBlob`'s length, a tool that
+rewrites pages in place, or a checker that expects every locator to be distinct.
+None of those may assume that pages are disjoint.
+

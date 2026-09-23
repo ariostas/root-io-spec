@@ -54,7 +54,17 @@ was established, which is the other half of the story.
   dictionary.** [`spec/05-rntuple/NOTES.md` §5](spec/05-rntuple/NOTES.md) said
   ROOT 6.40.04 cannot write one from the interpreter. It can, for exactly the
   instantiations that have a compiled dictionary, such as `map<string,int>` and
-  `map<int,int>`. The others abort in `Fill()`.
+  `map<int,int>`. The others abort in `Fill()`. The `std::map` subsection's
+  claim is now checked against bytes for all four types it names, `map`,
+  `unordered_map`, `multimap` and `unordered_multimap`, in the new
+  `rntuple/map` fixture.
+
+- **New: two RNTuple page locators can name the same bytes.**
+  [`spec/05-rntuple/NOTES.md` §7](spec/05-rntuple/NOTES.md): ROOT writes an
+  identical page once and points every column that produced it at that copy.
+  This is `EnableSamePageMerging`, on by default, and the tracked document never
+  mentions it. A reader that goes through locators is unaffected, but nothing may
+  assume that pages are disjoint.
 
 - **Correction: a free span's marker can be missing in a file ROOT wrote.**
   [`FreeSegments.md` §4.2](spec/01-container/FreeSegments.md) said the marker is

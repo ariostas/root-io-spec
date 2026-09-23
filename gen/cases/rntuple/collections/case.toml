@@ -25,11 +25,11 @@ uncompressed, every other column here is unsplit -- and `fDouble32` is
 `Double32_t` override runs **after** the uncompressed adjustment and ignores it
 (`root/tree/ntuple/src/RFieldBase.cxx:892-915`). See ERRATA 7.
 
-`std::map` is absent, and not by choice: ROOT 6.40.04 **aborts** writing one from
-the interpreter, with `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`
-(`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`), even with the map empty and
-untouched. NOTES.md 5 has the reproducer; the document's `std::map` claim is
-therefore audited against the source only.
+`std::map` is absent here and has a case of its own, `rntuple/map`. ROOT 6.40.04
+**aborts** writing a map from the interpreter unless the instantiation has a
+compiled dictionary, with `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`
+(`root/io/io/src/TGenCollectionProxy.cxx:1528-1530`). NOTES.md 5 says which maps
+can be written.
 
 Every column below is asserted by its type code and its bit width, in schema
 order. The fields carry no byte assertions of their own -- their names and
