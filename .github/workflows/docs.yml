@@ -20,8 +20,8 @@ jobs:
       # No submodule needed: rendering citations requires only the commit hash
       # recorded in zensical.toml. That the hash is correct, and that every cited
       # file and line exists, is checked by the `spec` job in ci.yml.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # The unit tests run in ci.yml's `tests` job, which has the submodule.
@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: PYTHONPATH=. zensical build --clean --strict
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -50,5 +50,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment

@@ -12,8 +12,8 @@ jobs:
     name: fixture assertions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # Without these, check_invariants.py skips the LZ4 and zstd fixtures'
@@ -46,11 +46,11 @@ jobs:
     name: spec vs. pinned submodule
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 1
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: RNTuple specification has not drifted from upstream
@@ -79,11 +79,11 @@ jobs:
     name: unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 1
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # requirements-docs.txt for markdown, which test_rootcite.py imports;
@@ -110,8 +110,8 @@ jobs:
       run:
         shell: bash -l {0}
     steps:
-      - uses: actions/checkout@v4
-      - uses: conda-incubator/setup-miniconda@v3
+      - uses: actions/checkout@v7
+      - uses: conda-incubator/setup-miniconda@v4
         with:
           miniforge-version: latest
       - name: Install ROOT
