@@ -51,7 +51,7 @@ RN_PAGE_CHECKSUM = 8
 
 RBLOB_MULTIPAGE = (
     "it holds more than one sealed page, and the page boundaries are in the "
-    "page list envelope, which rootfile.py does not read. Compression.md 9"
+    "page list envelope, which this check does not consult. Compression.md 9"
 )
 
 #: TBasket.md 1: the release from which a basket key is always the large form.
@@ -2425,8 +2425,9 @@ class Checker:
             # data/rntuple/compressed.root, where the three envelope blobs close
             # exactly and only the page blob is 8 bytes short. A blob holding
             # several pages cannot be checked at all without the page
-            # boundaries, which live in the page list envelope that rootfile.py
-            # does not read; that case is reported, not passed.
+            # boundaries, which live in the page list envelope; this check does
+            # not consult it (rootfile.read_rn_page_list can read one since
+            # 2026-09-24), so that case is reported, not passed.
             sealed = rec.class_name == RBLOB_CLASS
             if unreadable:       # already recorded by rblob_unchecked
                 continue
@@ -2459,6 +2460,119 @@ class Checker:
                 if blocks != expected:
                     self.bad("Compression 9.5",
                              f"{blocks} blocks for fObjlen {rec.obj_len}, expected {expected}")
+
+    # -- spec/05-rntuple/: the footer and its linked attribute sets ---------
+    #
+    # The tracked copy is upstream's, so these have no numbered Invariants
+    # entries; each label names the part of it that it checks. "Linked Attribute
+    # Sets", "Linked Attribute Set Record Frame", and ERRATA 11 and 12.
+    def check_rntuple(self) -> None:
+        anchors = {}          # payload offset -> record, for every RNTuple anchor
+        for rec in self.records:
+            if not rec.free and rec.class_name == "ROOT::RNTuple":
+                anchors[rootfile.payload_range(rec)[0]] = rec
+        for rec in anchors.values():
+            if self.data(rec) is None:
+                continue
+            try:
+                anchor = rootfile.read_rntuple_anchor(self.buf, rec)
+                schema = rootfile.read_rntuple_header(self.buf, anchor)
+                footer = rootfile.read_rntuple_footer(self.buf, anchor, schema)
+            except rootfile.MissingCodec as exc:
+                self.no_codec.add(f"some records were not decompressed: {exc}")
+                self.skip("RNTuple footer", f"its codec is missing: {exc}",
+                          unit="RNTuple")
+                continue
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError, UnicodeDecodeError) as exc:
+                self.bad("RNTuple footer", f"{rec.name!r} at {rec.offset}: {exc}")
+                continue
+            where = f"RNTuple {rec.name!r} at {rec.offset}"
+            # ERRATA 11: the list exists from format 1.0.1.0 on and is absent
+            # before it. ROOT's reader tolerates the absence, and so must any
+            # reader of an older file (RNTupleSerialize.cxx:2015-2017).
+            version = (anchor.epoch, anchor.major, anchor.minor, anchor.patch)
+            if footer.attribute_sets is None and version >= (1, 0, 1, 0):
+                self.bad("RNTuple footer, attribute set list",
+                         f"{where}: format {anchor.version} has no attribute "
+                         f"set list after the cluster groups")
+            self.check_attribute_sets(where, footer.attribute_sets or [], anchors)
+
+    def check_attribute_sets(self, where, links, anchors) -> None:
+        names = [link.name for link in links]
+        for link in links:
+            here = f"{where}, attribute set {link.name!r}"
+            # "All linked attribute sets must have a non-empty, distinct name."
+            if not link.name:
+                self.bad("RNTuple attribute set, name", f"{here}: the name is empty")
+            if names.count(link.name) > 1 and names.index(link.name) == links.index(link):
+                self.bad("RNTuple attribute set, name",
+                         f"{here}: {names.count(link.name)} sets have this name")
+            # The locator points at the anchor OBJECT, the payload of an
+            # RNTuple anchor key, and its size is that payload's on-disk size;
+            # the record's length is the object's uncompressed length, the
+            # key's fObjLen (root/tree/ntuple/src/RMiniFile.cxx:1359-1369). That
+            # is the whole object, byte count and class version included
+            # (ERRATA 12), which read_rntuple_anchor_at enforces in turn: it
+            # refuses a length other than the byte count plus 12.
+            loc = link.locator
+            target = anchors.get(loc.offset) if loc.kind in ("file", "large") else None
+            if target is None:
+                self.bad("RNTuple attribute set, locator",
+                         f"{here}: a {loc.kind} locator to {loc.offset}, which is "
+                         f"not the payload of an RNTuple anchor in this file")
+                continue
+            if loc.nbytes != target.payload_nbytes or link.anchor_length != target.obj_len:
+                self.bad("RNTuple attribute set, locator",
+                         f"{here}: the locator says {loc.nbytes} bytes and the "
+                         f"record {link.anchor_length} uncompressed; the anchor at "
+                         f"{target.offset} has {target.payload_nbytes} and "
+                         f"{target.obj_len}")
+            try:
+                aset = rootfile.read_attribute_set(self.buf, link)
+            except rootfile.MissingCodec as exc:
+                self.no_codec.add(f"some records were not decompressed: {exc}")
+                self.skip("RNTuple attribute set", f"its codec is missing: {exc}",
+                          unit="attribute set")
+                continue
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError, UnicodeDecodeError) as exc:
+                self.bad("RNTuple attribute set, locator",
+                         f"{here}: the linked RNTuple does not read: {exc}")
+                continue
+            fields = aset.schema.fields + aset.footer.extension_fields
+            # Restriction 1: no linked attribute RNTuples of its own.
+            if aset.footer.attribute_sets:
+                self.bad("RNTuple attribute set, restriction 1",
+                         f"{here}: it links {len(aset.footer.attribute_sets)} "
+                         f"attribute set(s) of its own")
+            # Restriction 2: the alias column lists of header and footer are empty.
+            aliases = (len(aset.schema.alias_columns)
+                       + len(aset.footer.extension_alias_columns))
+            if aliases:
+                self.bad("RNTuple attribute set, restriction 2",
+                         f"{here}: {aliases} alias column(s)")
+            # Restriction 3: no field of structural role 0x04.
+            streamed = [f.name for f in fields if f.structure == 0x04]
+            if streamed:
+                self.bad("RNTuple attribute set, restriction 3",
+                         f"{here}: streamer field(s) {streamed}")
+            # "readers should refuse reading an attribute set whose Major Schema
+            # Version is unknown", so a check of the fields cannot run either.
+            if link.major != 1:
+                self.skip("RNTuple attribute set, schema version",
+                          f"major schema version {link.major} is not 1, the only "
+                          f"one specified", unit="attribute set")
+                continue
+            top = [f for f in fields if f.parent_id == f.field_id]
+            got = [(f.name, f.type_name, f.structure) for f in top]
+            want = list(rootfile.RN_ATTRIBUTE_SCHEMA_1)
+            # Schema 1.0 is exactly the three fields; a later minor version may
+            # add optional fields, which can only come after them.
+            if got[:3] != want or (link.minor == 0 and len(got) != 3):
+                self.bad("RNTuple attribute set, schema version",
+                         f"{here}: schema {link.major}.{link.minor} with top-level "
+                         f"fields {got}, expected {want}")
 
     # -- Directory.md 9 -----------------------------------------------------
     def check_directories(self) -> None:
@@ -4146,6 +4260,7 @@ class Checker:
         self.check_basket()
         self.check_branches()
         self.check_entry_lists()
+        self.check_rntuple()
         return self.failures
 
 

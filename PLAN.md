@@ -4,7 +4,7 @@
 and later. The writing side covers the container with subdirectories, an object,
 histograms and profiles, graphs, and a flat `TTree` with many baskets and with a
 `TLeafC`. Everything is cited against the pinned submodule and checked against
-bytes; RNTuple tracks ROOT's own specification plus ten errata. §2.9 and §8.4 are
+bytes; RNTuple tracks ROOT's own specification plus thirteen errata. §2.9 and §8.4 are
 the write support, which extends the project past the reading side it was scoped
 to.
 
@@ -19,20 +19,21 @@ files and three large Open Data files. Two gaps closed with new specification:
 `StreamerDriven.md` §7.1, for an object with no byte count, and
 `Collections.md` §11.2, for a class that is itself a collection.
 
-Measured, 2026-09-23, by the checks in `tools/`:
+Measured, 2026-09-23, by the checks in `tools/`; the fixture, citation, invariant
+and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 86 / 2203, 0 failures |
+| Reference files / byte assertions | 87 / 2290, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1764, 0 failures |
+| Source citations checked | 1798, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 100 files, 0 failures |
+| Invariants over the fixtures and the written files | 101 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 610 |
+| Unit tests | 635 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -232,18 +233,21 @@ RNTuple already has a real specification and we do not fork it.
   `root/tree/ntuple/doc/BinaryFormatSpecification.md` at the pinned commit.
   `tools/sync_rntuple.py --check` fails on drift, in CI, on every push, and also
   asserts that the commit `UPSTREAM.md` records is the pin. **Never edit it.**
-- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (ten entries);
+- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (thirteen entries);
   ✅ `NOTES.md` implementation notes, including the audit state table.
 - ✅ The envelope audit, through every envelope, and a fixture of our own
   (`rntuple/anchor`, `rntuple/fundamental-types`), plus an independent reader in
   `tools/rootfile.py`.
 - ✅ The type mapping (which columns a given C++ type produces), audited one
   fixture at a time across eight of them, with four errata (§8 item M9).
-- ⏸ Two forms are left unaudited on purpose (2026-09-24): a class with an
+- ✅ *Linked Attribute Sets*, audited end to end on 2026-09-24 against
+  `rntuple/attributes`, the first fixture with a non-empty attribute set list,
+  with three errata (11 to 13) and a reader that follows each footer locator to
+  the set's anchor, header, footer and page list (§8.3 item M9).
+- ⏸ One form is left unaudited on purpose (2026-09-24): a class with an
   associated collection proxy, which needs a compiled `TCollectionProxyInfo` that
   is not ready for this use, and whose associative half ROOT does not implement
-  at all; and *Linked Attribute Sets* beyond their footer record frame.
-  `NOTES.md` §4 records both.
+  at all. `NOTES.md` §4 records it.
 
 ### 2.7 `spec/99-appendix/` ✅
 
@@ -459,7 +463,7 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Serialization | ✅ all seven documents |
 | Standard classes | ✅ the divergent set; twelve narrow classes ⏸ set aside (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
-| RNTuple | ✅ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; the collection-proxy form and linked attribute sets ⏸ set aside (§2.6) |
+| RNTuple | ✅ upstream tracked, envelopes, linked attribute sets and the type mapping audited over eleven fixtures, thirteen errata; the collection-proxy form ⏸ set aside (§2.6) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
 | Legacy reading (pre-ROOT 6) | ✅ `TBranch` 6–9 specified and read (M6), and every ROOT-written file in `root/roottest/` diagnosed (§8.16); the layouts no available file has ⏸ set aside (§9.1) |
 | Release plumbing (licence, citation, changelog, releases) | ✅ §8 item M7; CalVer at milestones since 2026-09-22, decision 9 |
@@ -489,7 +493,7 @@ phase.
 ## 7. Open items
 
 1. **When to approach the ROOT I/O team.** The condition (a concrete artifact
-   rather than an intention) has been met for some time. The ten RNTuple errata
+   rather than an intention) has been met for some time. The thirteen RNTuple errata
    are against a document the ROOT team owns and maintains, which makes them a
    friendlier first contact than §7.1's bug candidates, and they can bring those
    along. Deliberately deferred until the MVP is out (§8 item M10).
@@ -626,6 +630,28 @@ reported** (§8 item M10).
     entry instead, and `tools/rootfile.py` does, so this project reads the file
     correctly where ROOT does not. Related to items 4 and 5, the other two ways a
     `TLeafC` loses data.
+13. **`RNTupleWriter::CloseAttributeSet` rejects every valid handle.** It locks
+    the handle's `weak_ptr` and throws "Tried to close an invalid
+    AttributeSetWriter" when the lock *succeeds*
+    (`root/tree/ntuple/src/RNTupleWriter.cxx:213-216`); for an expired handle it
+    would go on to dereference null. Reproduced on 6.40.04. Nothing is lost,
+    because the writer's destructor commits the set anyway, but a set cannot be
+    closed early, which is the function's only purpose. `spec/05-rntuple/NOTES.md`
+    §8.
+14. **A refused duplicate attribute set name leaves an orphan header in the
+    file.** `CreateAttributeSet` checks for a duplicate only after cloning the
+    sink and building the set's fill context, which writes the header envelope
+    (`root/tree/ntuple/src/RNTupleWriter.cxx:189-199`,
+    `root/tree/ntuple/src/RNTupleFillContext.cxx:33`). The exception is thrown,
+    and a 431-byte `RBlob` nothing references stays in the file. Harmless to
+    readers, but it is dead space ROOT never frees. The other two name checks run
+    first and leave nothing.
+15. **An attribute set with an untyped user field is written and cannot be
+    read.** The writer accepts an untyped record in the user model; the reader
+    rebuilds each user field with `RFieldBase::Create(name, typeName)`
+    (`root/tree/ntuple/src/RNTupleAttrReading.cxx:51`), which refuses the empty
+    type name: "no type name specified for field". Reproduced on 6.40.04. The
+    writer should refuse it, or the reader rebuild it from the descriptor.
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
@@ -1121,8 +1147,43 @@ which is a compiled template instantiation rather than the runtime attribute tha
 made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the only
 unaudited form.
 
-**M10 — report upstream.** Ten RNTuple errata against a document the ROOT team
-owns, plus §7.1's twelve bug candidates. Lead with §7.1 items 9 and 12:
+**Added 2026-09-24: linked attribute sets.** Until then *Linked Attribute Sets*
+was set aside beside the collection-proxy form, audited only as far as the
+footer's record frame and only by reading `SerializeAttributeSet`.
+`rntuple/attributes` is the fixture: a main RNTuple linking two sets, `runs` and
+`flags`, with different user schemas, overlapping ranges and a range of length 0,
+87 byte assertions. `rootfile.py` now reads a footer, a locator, a page list and
+the values of a fixed-width column, and follows each attribute set record to its
+anchor; `check_invariants.py` applies the three restrictions, the name rules and
+schema 1.0's fields to every set it finds, and `test_rntuple.py` corrupts copies
+of the fixture to show that each check fires. Three errata:
+
+- **11** — the footer's attribute set list exists only from format 1.0.1.0;
+  every older footer ends after the cluster groups, which ROOT's reader knows
+  (`RNTupleSerialize.cxx:2015-2017`) and the document does not say. Found by
+  reading footers across the corpus: all 26 anchors of 1.0.0.x in `gen/foreign/`,
+  and `RNTuple.root`, have no list.
+- **12** — "Attribute Anchor Uncompressed Size" is 78, the whole anchor object:
+  the six bytes of erratum 2 as well as the checksum the document mentions
+  (`RMiniFile.cxx:1359`). A reader of the document expects 72. Next to it, not an
+  erratum but a trap: the locator names the anchor key's payload, and that key is
+  in no directory's key list (`NOTES.md` §8).
+- **13** — ROOT's reader refuses any fourth field, whatever the minor version,
+  where the document says a newer minor version's fields are to be ignored
+  (`RNTupleAttrReading.cxx:34-38`). Shown by probing with a footer patched to
+  point at a four-field RNTuple ROOT wrote.
+
+ROOT enforces restrictions 2 and 3 and the name rules on write and none of the
+three restrictions on read. Building the fixture found three writer defects, §7.1
+items 13 to 15, and one layout effect worth knowing: committing a set calls
+`TFile::Write`, so the StreamerInfo record lands mid-file, and its length depends
+on the standard library. `gen.C` holds it back to the end, which is what lets the
+assertions after it hold on Linux; checked by regenerating in the arm64 container
+of `AGENTS.md`, where the file is 28 bytes longer and all 87 assertions pass.
+None of the 24 RNTuple files of `gen/foreign/` has an attribute set.
+
+**M10 — report upstream.** Thirteen RNTuple errata against a document the ROOT team
+owns, plus §7.1's fifteen bug candidates. Lead with §7.1 items 9 and 12:
 `fBranchCount` naming another object's counter branch, byte-witnessed in a file
 the ROOT team published, and data loss. Also lead with erratum 6, a column type
 the document specifies, ROOT does not implement and JSROOT does, so two readers in

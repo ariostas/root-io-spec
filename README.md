@@ -86,9 +86,9 @@ name and the UUIDs.
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file, writing for a reader at another class version | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — ROOT's own specification tracked verbatim and audited, plus ten errata | audited |
+| RNTuple — ROOT's own specification tracked verbatim and audited, plus thirteen errata | audited |
 
-**86 reference files, 2203 byte-level assertions, and 1764 source citations
+**87 reference files, 2290 byte-level assertions, and 1798 source citations
 checked against the pinned submodule across 49 documents**, plus 14 files this
 project wrote with 493 assertions of their own. The invariants also run over 252
 files this project did not write: 180 from uproot's regression corpus and 72

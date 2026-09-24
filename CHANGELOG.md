@@ -11,6 +11,27 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **RNTuple linked attribute sets, audited.** The last section of the tracked
+  RNTuple specification apart from the collection-proxy form, checked against a
+  new fixture, `rntuple/attributes`, whose footer links two attribute sets.
+  - [ERRATA 11](spec/05-rntuple/ERRATA.md): the footer's attribute set list
+    exists only from format 1.0.1.0. An older footer ends after the cluster
+    group list; read the list only when bytes remain before the checksum.
+  - [ERRATA 12](spec/05-rntuple/ERRATA.md): a record's *Attribute Anchor
+    Uncompressed Size* is 78, the whole anchor object: the byte count and class
+    version of erratum 2 as well as the checksum. Do not compute 72 from the
+    anchor schema.
+  - [ERRATA 13](spec/05-rntuple/ERRATA.md): ROOT 6.40.04 refuses an attribute
+    set with any field beyond `_rangeStart`, `_rangeLen` and `_userData`,
+    whatever its minor version, although the document says such fields are to be
+    ignored.
+  - [NOTES 8](spec/05-rntuple/NOTES.md#8-linked-attribute-sets): the record's
+    locator names the anchor key's payload, and that key is in no directory's key
+    list, so the footer is the only way to a set. Entries are in commit order and
+    may overlap; a zero-length range is stored. ROOT checks the three
+    restrictions when writing and none of them when reading, so a reader that
+    wants them checked must do it itself.
+
 - **Layouts from ROOT's own test files, and a stricter entry figure.** Every
   failure the checks gave on `root/roottest/` was diagnosed; 32 remain, in 4
   files, three of them at fault.

@@ -4905,6 +4905,29 @@ def read_rntuple_anchor(buf: bytes, rec: Record) -> RNTupleAnchor:
     """
     buf = object_data(buf, rec)
     start, end = payload_range(rec)
+    return _parse_rntuple_anchor(buf, start, end)
+
+
+def read_rntuple_anchor_at(buf: bytes, offset: int, nbytes: int,
+                           length: int) -> RNTupleAnchor:
+    """An anchor reached through a locator rather than through its key.
+
+    This is how a linked attribute set's anchor is found: the main footer gives
+    a locator, whose offset is the first byte of the anchor OBJECT (the key's
+    payload, not the key) and whose size is the bytes on storage, and a separate
+    uncompressed length (root/tree/ntuple/src/RMiniFile.cxx:1359-1369). The
+    anchor key itself is in no directory's key list (NOTES.md 8). As for an
+    envelope, equal sizes mean the bytes are stored as they are (NOTES.md 2).
+    """
+    if nbytes == length:
+        return _parse_rntuple_anchor(buf, offset, offset + length)
+    data = decompress_blocks(buf, offset, offset + nbytes, length,
+                             f"RNTuple anchor at {offset}")
+    return _parse_rntuple_anchor(data, 0, length)
+
+
+def _parse_rntuple_anchor(buf: bytes, start: int, end: int) -> RNTupleAnchor:
+    """The anchor object occupying buf[start:end], checksum included."""
     word = _u32(buf, start)
     if not word & BYTE_COUNT_MASK:
         raise FormatError(f"RNTuple anchor at {start} has no byte count")
@@ -5161,28 +5184,23 @@ def read_rn_feature_flags(buf: bytes, offset: int) -> tuple[list[int], int]:
             return flags, offset
 
 
-def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
-    """The schema description of a header envelope.
+def _read_rn_schema_lists(buf: bytes, o: int, first_field: int = 0,
+                          first_column: int = 0):
+    """The four lists that end a header and make up a schema extension.
 
-    Only an uncompressed envelope is read: this is an audit tool for fixtures
-    written with compression off, not a general RNTuple reader, and failing
-    loudly is better than half-decoding a zstd block.
+    Fields, columns, alias columns and extra type information, in that order.
+    IDs are the serialization order, and in a schema extension they continue
+    from the header's ("Schema Extension Record Frame"), which is what
+    `first_field` and `first_column` are for. Returns the lists and the offset
+    after the last one.
     """
-    if envelope.type_id != RN_ENVELOPE_HEADER:
-        raise FormatError(f"envelope type {envelope.type_id}, expected a header")
-    o = envelope.body
-    feature_flags, o = read_rn_feature_flags(buf, o)
-    name, o = read_rn_string(buf, o)
-    description, o = read_rn_string(buf, o)
-    writer, o = read_rn_string(buf, o)
-
     fields: list[RNField] = []
     frame = read_rn_frame(buf, o)
     if not frame.is_list:
         raise FormatError(f"field list at {o} is a record frame")
     pos = frame.body
     for i in range(frame.items):
-        fields.append(_read_rn_field(buf, pos, i))
+        fields.append(_read_rn_field(buf, pos, first_field + i))
         pos = read_rn_frame(buf, pos).end
     o = frame.end
 
@@ -5192,7 +5210,7 @@ def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
         raise FormatError(f"column list at {o} is a record frame")
     pos = frame.body
     for i in range(frame.items):
-        columns.append(_read_rn_column(buf, pos, i))
+        columns.append(_read_rn_column(buf, pos, first_column + i))
         pos = read_rn_frame(buf, pos).end
     o = frame.end
 
@@ -5226,28 +5244,398 @@ def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
                                     type_name=type_name, content=after,
                                     end=inner.end))
         pos = inner.end
+    return fields, columns, aliases, type_info, frame.end
 
+
+def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
+    """The schema description of a header envelope."""
+    if envelope.type_id != RN_ENVELOPE_HEADER:
+        raise FormatError(f"envelope type {envelope.type_id}, expected a header")
+    o = envelope.body
+    feature_flags, o = read_rn_feature_flags(buf, o)
+    name, o = read_rn_string(buf, o)
+    description, o = read_rn_string(buf, o)
+    writer, o = read_rn_string(buf, o)
+    fields, columns, aliases, type_info, _ = _read_rn_schema_lists(buf, o)
     return RNSchema(name=name, description=description, writer=writer,
                     feature_flags=feature_flags, fields=fields, columns=columns,
                     alias_columns=aliases, type_info=type_info)
 
 
+def _rn_envelope_bytes(buf: bytes, seek: int, nbytes: int, length: int,
+                       what: str) -> tuple[bytes, int]:
+    """(buffer, offset) at which the envelope `seek`/`nbytes`/`length` sits.
+
+    RNTuple tests for compression by equality (`nbytes == len` means stored
+    unmodified), where the container layer uses `>` and tolerates a raw payload
+    longer than its length (spec/05-rntuple/NOTES.md 2).
+    """
+    if nbytes == length:
+        return buf, seek
+    return decompress_blocks(buf, seek, seek + nbytes, length,
+                             f"RNTuple {what} envelope at {seek}"), 0
+
+
 def read_rntuple(buf: bytes, rec: Record) -> tuple[RNTupleAnchor, RNSchema]:
     """The anchor and header schema of the RNTuple anchored at `rec`.
 
-    A compressed header envelope is decompressed first. RNTuple tests for that
-    by equality (`nbytes == len` means stored unmodified), where the container
-    layer uses `>` and tolerates a raw payload longer than its length
-    (spec/05-rntuple/NOTES.md 2).
+    A compressed header envelope is decompressed first (NOTES.md 2).
     """
     anchor = read_rntuple_anchor(buf, rec)
-    start, nbytes, length = (anchor.seek_header, anchor.nbytes_header,
-                             anchor.len_header)
-    if nbytes == length:
-        body = buf
-        offset = start
-    else:
-        body = decompress_blocks(buf, start, start + nbytes, length,
-                                 f"RNTuple header envelope at {start}")
-        offset = 0
-    return anchor, read_rn_header(body, read_rn_envelope(body, offset))
+    return anchor, read_rntuple_header(buf, anchor)
+
+
+def read_rntuple_header(buf: bytes, anchor: RNTupleAnchor) -> RNSchema:
+    body, offset = _rn_envelope_bytes(buf, anchor.seek_header,
+                                      anchor.nbytes_header, anchor.len_header,
+                                      "header")
+    return read_rn_header(body, read_rn_envelope(body, offset))
+
+
+# -- The footer, and linked attribute sets ------------------------------------
+#
+# "Footer Envelope", "Locators and Envelope Links", "Linked Attribute Set Record
+# Frame" and "Linked Attribute Sets" in the tracked copy. What the document does
+# not say, and this reader has to know:
+#
+#   * the attribute set list is absent from every footer written before format
+#     1.0.1.0: the footer then ends after the cluster groups (ERRATA 11). ROOT's
+#     reader tests for bytes left before the checksum
+#     (root/tree/ntuple/src/RNTupleSerialize.cxx:2015-2017), and so does this one;
+#   * the record's "Attribute Anchor Uncompressed Size" is the length of the
+#     whole anchor object, so it counts the six bytes of ERRATA 2 as well as the
+#     checksum (ERRATA 12);
+#   * the locator's offset is the anchor object, i.e. the anchor key's payload,
+#     and that key is in no directory's key list (NOTES.md 8).
+
+
+@dataclass
+class RNLocator:
+    """A locator. `kind` is "file" (the simple form), "large", or unknown."""
+
+    start: int
+    kind: str
+    nbytes: int | None
+    offset: int | None
+    end: int
+
+
+def read_rn_locator(buf: bytes, offset: int) -> RNLocator:
+    """"Locators and Envelope Links".
+
+    The sign of the first 32-bit word selects the form. A non-negative word is
+    the simple on-disk locator: that many bytes at the 64-bit offset that
+    follows. A negative one is negated; its low 16 bits are the size of the
+    whole locator and bits 24 and up the type, as ROOT reads it
+    (root/tree/ntuple/src/RNTupleSerialize.cxx:1124-1143). Type 0x01 is the
+    large locator, a 64-bit size then a 64-bit offset; any other type is kept
+    as unknown and skipped by its size (ERRATA 4).
+    """
+    head = struct.unpack_from("<i", buf, offset)[0]
+    if head >= 0:
+        return RNLocator(start=offset, kind="file", nbytes=head,
+                         offset=_u64le(buf, offset + 4), end=offset + 12)
+    head = -head
+    size = head & 0xFFFF
+    kind = head >> 24
+    if size < 4:
+        raise FormatError(f"locator at {offset} declares {size} bytes")
+    if kind == 0x01:
+        return RNLocator(start=offset, kind="large",
+                         nbytes=_u64le(buf, offset + 4),
+                         offset=_u64le(buf, offset + 12), end=offset + size)
+    return RNLocator(start=offset, kind=f"unknown({kind:#x})", nbytes=None,
+                     offset=None, end=offset + size)
+
+
+@dataclass
+class RNClusterGroup:
+    start: int
+    min_entry: int
+    entry_span: int
+    n_clusters: int
+    page_list_length: int
+    page_list: RNLocator
+
+
+@dataclass
+class RNAttributeSetLink:
+    """One linked attribute set record frame of a footer.
+
+    Two 16-bit schema version words, the 32-bit anchor length, a locator to the
+    anchor, and the set's name, in that order
+    (root/tree/ntuple/src/RNTupleSerialize.cxx:1851-1860).
+    """
+
+    start: int          # of its record frame
+    major: int
+    minor: int
+    anchor_length: int
+    locator: RNLocator
+    name: str
+    end: int
+
+
+@dataclass
+class RNFooter:
+    feature_flags: list[int]
+    header_checksum: int
+    extension_fields: list[RNField]
+    extension_columns: list[RNColumn]
+    extension_alias_columns: list[RNAliasColumn]
+    extension_type_info: list[RNTypeInfo]
+    cluster_groups: list[RNClusterGroup]
+    #: None when the footer has no attribute set list at all, which is every
+    #: footer before format 1.0.1.0 (ERRATA 11); [] when the list is empty.
+    attribute_sets: list[RNAttributeSetLink] | None
+    attribute_list_start: int | None = None
+
+
+def read_rn_footer(buf: bytes, envelope: RNEnvelope, first_field: int = 0,
+                   first_column: int = 0) -> RNFooter:
+    """A footer envelope. `first_field` and `first_column` are the header's
+    field and physical column counts, where the extension's IDs continue."""
+    if envelope.type_id != RN_ENVELOPE_FOOTER:
+        raise FormatError(f"envelope type {envelope.type_id}, expected a footer")
+    o = envelope.body
+    feature_flags, o = read_rn_feature_flags(buf, o)
+    header_checksum = _u64le(buf, o)
+    o += 8
+
+    # The schema extension is a record frame, and "might be empty": ROOT reads
+    # the four lists only when the frame has bytes after its size
+    # (root/tree/ntuple/src/RNTupleSerialize.cxx:1978-1983).
+    ext = read_rn_frame(buf, o)
+    if ext.is_list:
+        raise FormatError(f"schema extension at {o} is a list frame")
+    ext_lists = ([], [], [], [])
+    if ext.body < ext.end:
+        *ext_lists, _ = _read_rn_schema_lists(buf, ext.body, first_field,
+                                              first_column)
+    o = ext.end
+
+    groups: list[RNClusterGroup] = []
+    frame = read_rn_frame(buf, o)
+    if not frame.is_list:
+        raise FormatError(f"cluster group list at {o} is a record frame")
+    pos = frame.body
+    for _ in range(frame.items):
+        inner = read_rn_frame(buf, pos)
+        b = inner.body
+        groups.append(RNClusterGroup(
+            start=pos, min_entry=_u64le(buf, b), entry_span=_u64le(buf, b + 8),
+            n_clusters=_u32le(buf, b + 16),
+            page_list_length=_u64le(buf, b + 20),
+            page_list=read_rn_locator(buf, b + 28)))
+        pos = inner.end
+    o = frame.end
+
+    attribute_sets = None
+    list_start = None
+    if o < envelope.body_end:
+        frame = read_rn_frame(buf, o)
+        if not frame.is_list:
+            raise FormatError(f"attribute set list at {o} is a record frame")
+        list_start = o
+        attribute_sets = []
+        pos = frame.body
+        for _ in range(frame.items):
+            inner = read_rn_frame(buf, pos)
+            if inner.is_list:
+                raise FormatError(f"attribute set record at {pos} is a list frame")
+            b = inner.body
+            locator = read_rn_locator(buf, b + 8)
+            name, after = read_rn_string(buf, locator.end)
+            if after > inner.end:
+                raise FormatError(f"attribute set record at {pos} overran its frame")
+            attribute_sets.append(RNAttributeSetLink(
+                start=pos, major=_u16le(buf, b), minor=_u16le(buf, b + 2),
+                anchor_length=_u32le(buf, b + 4), locator=locator, name=name,
+                end=inner.end))
+            pos = inner.end
+    return RNFooter(feature_flags=feature_flags, header_checksum=header_checksum,
+                    extension_fields=ext_lists[0], extension_columns=ext_lists[1],
+                    extension_alias_columns=ext_lists[2],
+                    extension_type_info=ext_lists[3], cluster_groups=groups,
+                    attribute_sets=attribute_sets, attribute_list_start=list_start)
+
+
+def read_rntuple_footer(buf: bytes, anchor: RNTupleAnchor,
+                        schema: RNSchema | None = None) -> RNFooter:
+    body, offset = _rn_envelope_bytes(buf, anchor.seek_footer,
+                                      anchor.nbytes_footer, anchor.len_footer,
+                                      "footer")
+    nfields = len(schema.fields) if schema else 0
+    ncolumns = len(schema.columns) if schema else 0
+    return read_rn_footer(body, read_rn_envelope(body, offset), nfields, ncolumns)
+
+
+@dataclass
+class RNAttributeSet:
+    """A linked attribute set: the footer's record and the RNTuple it points at."""
+
+    link: RNAttributeSetLink
+    anchor: RNTupleAnchor
+    schema: RNSchema
+    footer: RNFooter
+
+
+def read_attribute_set(buf: bytes, link: RNAttributeSetLink) -> RNAttributeSet:
+    """Follow `link` to the attribute set's anchor, header and footer.
+
+    "Each attribute set is stored on disk as an RNTuple", so everything below
+    the anchor is read exactly as for the main RNTuple.
+    """
+    loc = link.locator
+    if loc.kind not in ("file", "large"):
+        raise FormatError(f"attribute set {link.name!r}: a {loc.kind} locator "
+                          f"is not a byte range in this file")
+    anchor = read_rntuple_anchor_at(buf, loc.offset, loc.nbytes,
+                                    link.anchor_length)
+    schema = read_rntuple_header(buf, anchor)
+    return RNAttributeSet(link=link, anchor=anchor, schema=schema,
+                          footer=read_rntuple_footer(buf, anchor, schema))
+
+
+def read_attribute_sets(buf: bytes, anchor: RNTupleAnchor) -> list[RNAttributeSet]:
+    """Every attribute set linked from the footer of the RNTuple at `anchor`."""
+    footer = read_rntuple_footer(buf, anchor)
+    return [read_attribute_set(buf, link) for link in footer.attribute_sets or []]
+
+
+#: "Attribute Schema Version": the internal fields of schema 1.0, in order, as
+#: (name, type name, structural role). `_userData` is an untyped record, whose
+#: type name is empty. root/tree/ntuple/inc/ROOT/RNTupleAttrUtils.hxx:39-49 and
+#: root/tree/ntuple/src/RNTupleAttrWriting.cxx:74-84.
+RN_ATTRIBUTE_SCHEMA_1 = (("_rangeStart", "std::uint64_t", 0x00),
+                         ("_rangeLen", "std::uint64_t", 0x00),
+                         ("_userData", "", 0x02))
+
+
+# -- The page list, and the values of an uncompressed fixed-width column -------
+
+
+@dataclass
+class RNPage:
+    n_elements: int
+    has_checksum: bool
+    locator: RNLocator
+
+
+@dataclass
+class RNColumnRange:
+    """One column's pages in one cluster ("Page Locations")."""
+
+    pages: list[RNPage]
+    element_offset: int
+    compression: int | None     # None for a suppressed column
+
+    @property
+    def suppressed(self) -> bool:
+        return self.element_offset < 0
+
+
+@dataclass
+class RNPageList:
+    header_checksum: int
+    #: (first entry, number of entries) per cluster, in cluster ID order
+    clusters: list[tuple[int, int]]
+    #: per cluster, per physical column
+    columns: list[list[RNColumnRange]]
+
+
+def read_rn_page_list(buf: bytes, envelope: RNEnvelope) -> RNPageList:
+    """A page list envelope: cluster summaries, then the nested page locations.
+
+    Each page is its element count, whose sign bit says a checksum follows the
+    page, and a locator; each column's inner list frame then ends with the
+    64-bit element offset and, unless the offset is negative (suppressed), the
+    32-bit compression settings, all inside the frame's size.
+    """
+    if envelope.type_id != RN_ENVELOPE_PAGELIST:
+        raise FormatError(f"envelope type {envelope.type_id}, expected a page list")
+    o = envelope.body
+    checksum = _u64le(buf, o)
+    o += 8
+    frame = read_rn_frame(buf, o)
+    clusters = []
+    pos = frame.body
+    for _ in range(frame.items):
+        inner = read_rn_frame(buf, pos)
+        packed = _u64le(buf, inner.body + 8)
+        clusters.append((_u64le(buf, inner.body), packed & ((1 << 56) - 1)))
+        pos = inner.end
+    o = frame.end
+
+    top = read_rn_frame(buf, o)
+    columns: list[list[RNColumnRange]] = []
+    pos = top.body
+    for _ in range(top.items):
+        outer = read_rn_frame(buf, pos)
+        per_column = []
+        cpos = outer.body
+        for _ in range(outer.items):
+            inner = read_rn_frame(buf, cpos)
+            pages = []
+            ppos = inner.body
+            for _ in range(inner.items):
+                n = struct.unpack_from("<i", buf, ppos)[0]
+                locator = read_rn_locator(buf, ppos + 4)
+                pages.append(RNPage(n_elements=abs(n), has_checksum=n < 0,
+                                    locator=locator))
+                ppos = locator.end
+            element_offset = _i64le(buf, ppos)
+            compression = None if element_offset < 0 else _u32le(buf, ppos + 8)
+            per_column.append(RNColumnRange(pages=pages,
+                                            element_offset=element_offset,
+                                            compression=compression))
+            cpos = inner.end
+        columns.append(per_column)
+        pos = outer.end
+    return RNPageList(header_checksum=checksum, clusters=clusters,
+                      columns=columns)
+
+
+def read_rntuple_page_lists(buf: bytes, footer: RNFooter) -> list[RNPageList]:
+    """The page list of every cluster group, in cluster group order."""
+    out = []
+    for group in footer.cluster_groups:
+        loc = group.page_list
+        body, offset = _rn_envelope_bytes(buf, loc.offset, loc.nbytes,
+                                          group.page_list_length, "page list")
+        out.append(read_rn_page_list(body, read_rn_envelope(body, offset)))
+    return out
+
+
+#: The unsplit fixed-width column types, as struct formats.
+RN_COLUMN_FORMAT = {0x03: "b", 0x04: "B", 0x05: "h", 0x06: "H", 0x07: "i",
+                    0x08: "I", 0x09: "q", 0x0A: "Q", 0x0C: "f", 0x0D: "d",
+                    0x0E: "I", 0x0F: "Q"}
+
+
+def read_column_values(buf: bytes, page_lists: list[RNPageList],
+                       column: RNColumn) -> list:
+    """Every value of an unsplit fixed-width `column`, in element order.
+
+    Enough to read an attribute set's ranges back without ROOT; a split,
+    bit-packed or variable-width column raises. A page is stored as it is when
+    its size is its element count times the element width, and otherwise holds
+    compression blocks (NOTES.md 2).
+    """
+    fmt = RN_COLUMN_FORMAT.get(column.type_code)
+    if fmt is None:
+        raise FormatError(f"column type {column.type_name} is not read here")
+    width = struct.calcsize(fmt)
+    values: list = []
+    for page_list in page_lists:
+        for per_column in page_list.columns:
+            for page in per_column[column.column_id].pages:
+                loc, size = page.locator, page.n_elements * width
+                if loc.nbytes == size:
+                    data, at = buf, loc.offset
+                else:
+                    data = decompress_blocks(buf, loc.offset, loc.offset + loc.nbytes,
+                                             size, f"page at {loc.offset}")
+                    at = 0
+                values += struct.unpack_from(f"<{page.n_elements}{fmt}", data, at)
+    return values

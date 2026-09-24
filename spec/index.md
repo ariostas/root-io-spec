@@ -41,9 +41,9 @@ every known gap.
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file, schema evolution | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — upstream specification tracked, every envelope and the type mapping audited | [audited](05-rntuple/index.md) |
+| RNTuple — upstream specification tracked, every envelope, linked attribute sets and the type mapping audited | [audited](05-rntuple/index.md) |
 
-The checks: **86 reference files with 2203 byte-level assertions, 1764 source
+The checks: **87 reference files with 2290 byte-level assertions, 1798 source
 citations checked against the pinned ROOT tree across 49 documents**, and the
 invariants of every layer run over 252 files this project did not write (ROOT
 2.24/00 to 6.38/00) with **0 failures**.
@@ -106,7 +106,7 @@ Then read the layers in order, since each builds on the previous ones:
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes from its audit so far. Read the copy for the format and
    [ERRATA](05-rntuple/ERRATA.md) for where it and ROOT's code disagree. There
-   are ten entries so far; one of them has already made two readers in ROOT's own
+   are thirteen entries so far; one of them has already made two readers in ROOT's own
    repository diverge.
 
 [Bootstrap classes](99-appendix/Bootstrap.md) cuts across all the layers and

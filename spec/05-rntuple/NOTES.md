@@ -137,7 +137,7 @@ and the header envelope including its field and column records.
 | Locators and Envelope Links | audited — ERRATA 4 |
 | Envelopes, the envelope header and checksum | audited — ERRATA 5 |
 | Header Envelope: field, column, alias column, extra type info | audited — ERRATA 6 |
-| Footer Envelope: schema extension, cluster groups, attribute sets | audited, clean |
+| Footer Envelope: schema extension, cluster groups, attribute sets | audited — **ERRATA 11**: the attribute set list is new in 1.0.1.0 |
 | Page List Envelope: cluster summaries, page locations, suppressed columns | audited, clean |
 | Fundamental Types: the default column per C++ type | audited against bytes, clean |
 | Type Name Normalization: the standard-integer-typedef rule | audited against bytes, clean |
@@ -160,17 +160,24 @@ and the header envelope including its field and column records.
 | Naming specification | audited against the validator and by probing the writer, clean |
 | Defaults | audited against `RNTupleWriteOptions`; the table omits same-page merging, which changes what is on disk — §7 |
 | Notes on Backward and Forward Compatibility | audited: ROOT's reader implements the one MUST, §6 |
+| Linked Attribute Set Record Frame: the versions, the anchor size, the locator, the name | audited against bytes — **ERRATA 12** — `rntuple/attributes` |
+| Linked Attribute Sets: a set stored as an RNTuple, the three restrictions, distinct non-empty names, reserved `__` names | audited against bytes and by probing ROOT's writer and reader, clean — §8 |
+| Attribute Schema Version: 1.0's three fields, their types and order, `_rangeLen` 0, the major and minor rules | audited against bytes — **ERRATA 13** |
 
-**Not audited, on purpose:** *Linked Attribute Sets* beyond its footer record
-frame, and classes with an associated collection proxy, the only type-mapping
-form with no fixture. Both are set aside (2026-09-24): the audit is otherwise
-complete, and the second needs `TCollectionProxyInfo`, which is not ready for this
-use. The document says the associative half of it "are supported in the
-RNTuple binary format, but currently are not implemented in ROOT's RNTuple reader
-and writer". The sequential half needs `TClass::SetCollectionProxy` with a
-`TCollectionProxyInfo`, which is a compiled template instantiation rather than a
-runtime attribute. It is the only row above that a `classes.h` and an interpreted
-macro cannot reach.
+**Not audited, on purpose:** classes with an associated collection proxy, the
+only type-mapping form with no fixture and the only section of the document left.
+It is set aside (2026-09-24): the audit is otherwise complete, and the form needs
+`TCollectionProxyInfo`, which is not ready for this use. The document says the
+associative half of it "are supported in the RNTuple binary format, but currently
+are not implemented in ROOT's RNTuple reader and writer". The sequential half
+needs `TClass::SetCollectionProxy` with a `TCollectionProxyInfo`, which is a
+compiled template instantiation rather than a runtime attribute. It is the only
+row above that a `classes.h` and an interpreted macro cannot reach.
+
+*Linked Attribute Sets* was set aside with it until the same day, audited only as
+far as the footer's record frame by reading `SerializeAttributeSet`. It is now
+audited end to end against `rntuple/attributes`, the first fixture with a
+non-empty attribute set list; §8 has what the audit found beyond ERRATA 11 to 13.
 
 The dictionary attributes are **not** a barrier: they are settable at runtime with
 `cl->CreateAttributeMap(); cl->GetAttributeMap()->AddProperty(...)`, which is how
@@ -244,8 +251,14 @@ the claim that "the page size stored in the locator does _not_ include the
 checksum": it adds the eight bytes back itself
 (`root/tree/ntuple/src/RPageStorage.cxx:297`).
 
-None of this says that the unaudited sections are correct. They are not yet
-checked, which is the same standard the rest of this project applies.
+Reading the serializer missed one thing that only the deserializer and an older
+file show: the footer's last list, the attribute sets, is absent from every footer
+before format 1.0.1.0. ERRATA 11; it was found when the attribute set audit made
+`tools/rootfile.py` read footers across the corpus, not only the fixtures.
+
+The one section still unaudited, the collection-proxy form above, is not thereby
+correct. It is not yet checked, which is the same standard the rest of this
+project applies.
 
 ## 5. A `std::map` without a compiled dictionary cannot be written in 6.40.04
 
@@ -367,3 +380,92 @@ treats the page list as a partition of the file is: a reader that sums page size
 to check an `RBlob`'s length, a tool that rewrites pages in place, or a checker
 that expects every locator to be distinct. None of those may assume that pages
 are disjoint.
+
+## 8. Linked attribute sets
+
+The document describes an attribute set from the inside: an RNTuple, linked from
+the main footer, with three restrictions and a fixed internal schema. All of that
+holds in `rntuple/attributes`, apart from ERRATA 11 to 13. What follows is what a
+reader coming from the ROOT file side needs as well, and what ROOT 6.40.04 checks.
+
+**The anchor is a key that no directory lists.** A set's anchor is written like
+any RNTuple anchor, a `ROOT::RNTuple` key named after the set, and its key is then
+removed from the directory's key list
+(`root/tree/ntuple/src/RMiniFile.cxx:1374-1378`). The footer's locator is the only
+way to it, and it names the key's payload, the anchor object itself, not the key:
+78 bytes at 2508 for `runs`, whose key starts at 2462. A reader that walks the
+record chain meets the set's anchor as an unlisted `ROOT::RNTuple` record, which
+it can read like any other; only the main footer says what it is. Nothing stops a
+set having the name of a listed key (a set named after its own main RNTuple is
+accepted), so a file can hold two `ROOT::RNTuple` records of one name, one listed
+and one not.
+
+**The set is an RNTuple named after itself.** Its header's name is the set's name,
+and the footer record's name is read from that header when the set is committed
+(`root/tree/ntuple/src/RNTupleWriter.cxx:205-209`); its description is the user
+model's (`root/tree/ntuple/src/RNTupleAttrWriting.cxx:73`). Its write options,
+compression included, are the main writer's unless others are passed
+(`root/tree/ntuple/src/RNTupleWriter.cxx:188`).
+
+**An entry is a committed range, in commit order.** `_rangeStart` is the main
+RNTuple's entry count when the range began and `_rangeLen` the count since
+(`root/tree/ntuple/src/RNTupleAttrWriting.cxx:108-136`), so ranges can overlap and
+nest, and a range committed straight after it began has length 0. In the fixture
+`flags` holds (3, 0) before (1, 4). ROOT sorts the entries by start when it opens
+a set (`root/tree/ntuple/src/RNTupleAttrReading.cxx:66-67`), keeps a zero-length
+one, and matches it to no main entry, returning it only when all entries are asked
+for (`root/tree/ntuple/src/RNTupleAttrReading.cxx:189-192`).
+
+**What ROOT enforces, and where.** The writer was probed directly; the reader with
+footers patched to point at RNTuples ROOT wrote, their checksums recomputed. On
+read, the set's reader tests the major version and the count and names of the
+top-level fields, and nothing in it looks at projections, streamer fields or
+linked sets (`root/tree/ntuple/src/RNTupleAttrReading.cxx:20-54`):
+
+| Rule | On write | On read |
+|---|---|---|
+| 1. no attribute sets of its own | by construction: the set's writer wraps an `RNTupleFillContext` (`root/tree/ntuple/inc/ROOT/RNTupleAttrWriting.hxx:157`), and only an `RNTupleWriter` can create a set | not checked: a set linking one of its own opens (probed) |
+| 2. no projected fields | refused (`root/tree/ntuple/src/RNTupleAttrWriting.cxx:19-21`) | not checked (source only) |
+| 3. no field of role 0x04 | refused, at any depth: a streamed member of a class is caught (`root/tree/ntuple/src/RNTupleAttrWriting.cxx:23-27`) | not checked (source only) |
+| non-empty name | refused (`root/tree/ntuple/src/RNTupleWriter.cxx:185-186`) | refused (`root/tree/ntuple/src/RNTupleDescriptor.cxx:1158-1159`) |
+| distinct names | refused (`root/tree/ntuple/src/RNTupleWriter.cxx:195-199`) | refused (`root/tree/ntuple/src/RNTupleDescriptor.cxx:1441-1445`) |
+| reserved `__` prefix | refused (`root/tree/ntuple/src/RNTupleWriter.cxx:34-37`, `:180-183`) | allowed, as the document permits |
+| unknown major version | not writable | refused when the set is opened; the main RNTuple reads (`root/tree/ntuple/src/RNTupleAttrReading.cxx:25-26`) |
+| the three fields, by name and order | always written | checked, and a fourth refused (ERRATA 13) |
+
+A reader that wants the document's restrictions checked has to check them itself;
+`tools/check_invariants.py` does, on every attribute set it finds, and
+`tools/test_rntuple.py` corrupts copies of the fixture to show that each check
+fires.
+
+**How to write one.** Only through `ROOT::Experimental`, and only from a writer
+made by `RNTupleWriter::Append` into a `TFile`: the set's anchor is written
+through the `TFile`, and any other writer refuses with "cannot clone a
+non-TFile-based RNTupleFileWriter"
+(`root/tree/ntuple/src/RMiniFile.cxx:1322-1328`). Committing a set also calls
+`TFile::Write` (`root/tree/ntuple/src/RMiniFile.cxx:1372`), so the file's key list,
+StreamerInfo record and free segments are written in the middle of the file, before
+the main footer. `gen/cases/rntuple/attributes/gen.C` holds the StreamerInfo record
+back to the end, because its length depends on the standard library and every
+later offset would move with it.
+
+**Three writer defects**, found while building the fixture and recorded in
+`PLAN.md` §7.1 items 13 to 15:
+
+- `RNTupleWriter::CloseAttributeSet` tests its handle the wrong way round and
+  throws "Tried to close an invalid AttributeSetWriter" for every valid one
+  (`root/tree/ntuple/src/RNTupleWriter.cxx:213-216`). The set is still committed
+  when the writer is destroyed.
+- A duplicate name is refused only after the set's sink has been cloned and its
+  fill context has written the header envelope
+  (`root/tree/ntuple/src/RNTupleWriter.cxx:189-199`,
+  `root/tree/ntuple/src/RNTupleFillContext.cxx:33`), so the refusal leaves an
+  unreferenced header `RBlob` in the file: 431 bytes in the probe that found it.
+- A set whose user schema has an untyped record is written, but cannot be
+  opened: the reader rebuilds each user field from its type name, which is empty
+  (`root/tree/ntuple/src/RNTupleAttrReading.cxx:51`), and fails with "no type name
+  specified for field". An untyped collection should fail the same way; only the
+  record was probed.
+
+The record frame's sentence also lacks a word: "followed a locator" is "followed
+by a locator". The order it gives is right.

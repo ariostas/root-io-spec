@@ -21,14 +21,22 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 8 | Header Envelope → Field Description | open | — |
 | 9 | Header Envelope → Extra type information | open | — |
 | 10 | Header Envelope → Extra type information | open | — |
+| 11 | Footer Envelope | open | — |
+| 12 | Footer Envelope → Linked Attribute Set Record Frame | open | — |
+| 13 | Linked Attribute Sets → Attribute Schema Version | open | — |
 
-Bytes come from two files.
+Bytes come from three files.
 
 **`rntuple/anchor`** is this project's own fixture, written by the pinned ROOT
 6.40.04 with compression off so the envelopes are readable in place. Its anchor
 record is at 998 and its payload runs 1052 to 1130; its header envelope is at 268
 and its footer at 838. Every erratum that can be shown in bytes is asserted
 there.
+
+**`rntuple/attributes`** is the fixture for errata 11 to 13: a main RNTuple
+whose footer links two attribute sets, written the same way. Its footer is at
+3684, the attribute set list at 3824, and the two sets' anchors at 2508 and
+3451.
 
 **`RNTuple.root`**, 2 514 bytes, written by ROOT 6.35/01 and published at
 <https://root.cern/files/>; `gen/cern/README.md` lists it and
@@ -491,3 +499,135 @@ The streamer info is what a reader needs to decode a streamed field at all, and
 the document places it in the wrong envelope. The fix is a sentence in *Extra type
 information* saying that a writer emits `kStreamerInfo` in the footer's schema
 extension, because its content is only complete at commit time.
+
+---
+
+## 11. The footer's attribute set list does not exist before format 1.0.1.0
+
+> **The document**, under *Footer Envelope*, gives the footer's structure as
+> five items, the last of them "List frame of linked attribute set record
+> frames", with no version attached. Under *Notes on Backward and Forward
+> Compatibility* it asks that "readers supporting a certain version of the
+> specification should support reading files that were written according to
+> previous versions of the same epoch."
+
+**A footer written before format 1.0.1.0 ends after the cluster groups.** The
+list arrived with that version: root commit `feccdda5a99` (2025-09-16) added its
+serialization and raised the anchor's minor version from 0 to 1. ROOT's reader
+says so and reads the list only when there is something left to read:
+
+```cpp
+// NOTE: Attributes were introduced in v1.0.1.0, so this section may be missing.
+// Testing for > 8 because bufSize includes the checksum.
+if (fnBufSizeLeft() > 8) {
+```
+
+`root/tree/ntuple/src/RNTupleSerialize.cxx:2015-2017`.
+
+The document gives a reader no way to know this. It does version one other late
+addition, in the *Introduced in* column of the feature flag table, but the footer
+structure has no such note, and a reader that implements it as written and then
+reads an older file, as the compatibility notes require, takes the envelope's
+checksum for the size of a list frame.
+
+> **Bytes.** `RNTuple.root` (format 1.0.0.0, ROOT 6.35/01): the footer at 1687 is
+> 148 bytes, its cluster group list ends at 1827, and the checksum starts there.
+> `rntuple/anchor` (1.0.2.0), which links no attribute set, has a footer of 160
+> bytes: the same shape plus the empty list, `-12` and a count of 0, at 978, and
+> the checksum at 990. Over the RNTuple files of `gen/foreign/`, all 26 anchors of
+> format 1.0.0.x have no list and both of 1.0.1.0 have an empty one.
+> `tools/test_rntuple.py` asserts the two sides, and `check_invariants.py` fails a
+> footer of 1.0.1.0 or later without the list.
+
+The fix upstream is a clause: the list is present from 1.0.1.0 on, and a footer of
+an earlier version ends after the cluster group list.
+
+---
+
+## 12. "Attribute Anchor Uncompressed Size" counts six bytes the anchor schema does not show
+
+> **The document**, under *Linked Attribute Set Record Frame*: "Note that the
+> Attribute Anchor Uncompressed Size includes the 8 bytes of the checksum."
+
+**It also includes the byte count and the class version** that begin the anchor
+object and that the document's anchor schema omits (erratum 2). The writer
+records the size of the whole on-disk struct plus the checksum:
+
+```cpp
+// NOTE: checksum length is included in the uncompressed len
+anchorInfo.fLength = RTFNTuple{}.GetSize() + sizeof(std::uint64_t);
+```
+
+`root/tree/ntuple/src/RMiniFile.cxx:1358-1359`, where `GetSize()` is
+`sizeof(RTFNTuple)` (`root/tree/ntuple/src/RMiniFile.cxx:579`) and `RTFNTuple`
+opens with `fByteCount` and `fVersionClass`
+(`root/tree/ntuple/src/RMiniFile.cxx:547-549`): 70 + 8 = **78**. The reader takes
+the value as the uncompressed length of that same object and finds the checksum
+in its last eight bytes (`root/tree/ntuple/src/RMiniFile.cxx:846-850`).
+
+A reader that follows the document adds the checksum to the schema it was given,
+4 × 16 + 7 × 64 bits, and expects **72**. It then decompresses to the wrong
+length or looks for the checksum six bytes early.
+
+> **Bytes.** In `rntuple/attributes` both records give 78, at 3848 and 3884. The
+> anchors they locate begin with a byte count of 66 at 2508 and 3451, which is
+> 66 + 4 + 8 = 78 with the count's own word and the checksum, and each anchor
+> key's `fObjLen` is 78 (at 2468 and 3410).
+
+The locator next to it points at the same object: its offset is the anchor key's
+payload, `GetSeekKey() + GetKeylen()`, and its size the payload's size on storage
+(`root/tree/ntuple/src/RMiniFile.cxx:1368-1369`). That agrees with the document,
+which calls the `ROOT::RNTuple` object the anchor, but a reader coming from the
+TFile side will look for a key there; [NOTES 8](NOTES.md#8-linked-attribute-sets)
+says what else it needs.
+
+The fix upstream is a sentence: the size is the uncompressed length of the whole
+anchor object, byte count, class version and checksum included, which is the
+anchor key's `fObjLen`.
+
+---
+
+## 13. ROOT refuses an attribute set with a field the document says to ignore
+
+> **The document**, under *Attribute Schema Version*: "A change in Minor version
+> number indicates the presence of optional additional fields in the schema:
+> readers should still be able to read the attribute set as before, ignoring any
+> new field."
+
+**ROOT's reader never sees the minor version, and requires exactly three
+fields.** `OpenAttributeSet` passes on only the major version
+(`root/tree/ntuple/src/RNTupleReader.cxx:384`), which the reader checks, and it
+then counts the attribute RNTuple's top-level fields:
+
+```cpp
+if (metaFieldIds.size() != kMetaFieldIndex_Count) {
+   throw ROOT::RException(R__FAIL("invalid number of attribute meta-fields: expected " +
+```
+
+`root/tree/ntuple/src/RNTupleAttrReading.cxx:34-38`, with `kMetaFieldIndex_Count`
+3 (`root/tree/ntuple/inc/ROOT/RNTupleAttrUtils.hxx:42-48`). A version 1.1 that
+adds an optional field is therefore unreadable by 6.40.04, which is the case the
+minor version exists for.
+
+> **Bytes**, by probing ROOT 6.40.04 on 2026-09-24. A file holding an RNTuple of
+> four top-level fields, `_rangeStart`, `_rangeLen`, `_userData` and `_extra`,
+> written by ROOT, with a main footer's attribute set record pointed at its anchor
+> and its checksum recomputed with `RNTupleSerializer::SerializeXxHash3`:
+> `OpenAttributeSet` fails with "invalid number of attribute meta-fields: expected
+> 3, got 4" whether the record says minor 0 or minor 1. The same record pointed at
+> a three-field set and marked minor 1 opens and returns its ranges, and a copy of
+> `rntuple/attributes` whose `runs` record says major 2 fails with "unsupported
+> attribute schema version: 2" while the main RNTuple still reads, as the
+> document asks. None of these files is committed; `tools/test_rntuple.py` pins
+> the three source lines instead, and `check_invariants.py` accepts extra fields
+> after the three when the minor version is above 0, as the document does.
+
+The document does not say where a new field goes. It can only be at the top
+level: "the order and name of the meta Model's fields is defined by the schema
+version" (`root/tree/ntuple/inc/ROOT/RNTupleAttrUtils.hxx:36`), and everything
+below `_userData` is the user's. I am unsure whether the ROOT authors mean to
+relax the reader or to tighten the sentence; attribute sets are marked
+experimental, and both serializer and deserializer warn that they "are not
+guaranteed to be readable back in the future"
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:1816-1817`). Either way, one of the two
+has to change.

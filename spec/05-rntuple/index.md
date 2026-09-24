@@ -21,17 +21,19 @@ project's contribution is an audit of it: a field-by-field check against
 `tools/sync_rntuple.py --check` runs in CI and fails if the copy drifts from the
 submodule, so the copy cannot quietly become a fork.
 
-The audit rests on ten fixtures. `gen/cases/rntuple/anchor` is an RNTuple
+The audit rests on eleven fixtures. `gen/cases/rntuple/anchor` is an RNTuple
 written by the pinned ROOT with compression off, and the errata are asserted
 against its bytes; before it existed, every byte in them came from one file in the
 CERN corpus written by an older release. `fundamental-types` has one field per
 fundamental C++ type and pins the column each lands in, and `collections`, `map`,
 `user-class`, `projected`, `untyped`, `streamed` and `soa` each pin one area of
-the type mapping. `compressed` is the only one written with compression on, so
-the only one whose pages go through a codec.
+the type mapping. `attributes` is a main RNTuple whose footer links two
+attribute sets, each an RNTuple of its own. `compressed` is the only one written
+with compression on, so the only one whose pages go through a codec.
 
-`tools/rootfile.py` reads an RNTuple anchor and header envelope independently of
-ROOT. It is written from the tracked copy, so a disagreement between the two is
+`tools/rootfile.py` reads an RNTuple's anchor, header, footer and page lists
+independently of ROOT, and follows the footer's locators to each linked attribute
+set. It is written from the tracked copy, so a disagreement between the two is
 detectable, as it is for the rest of this specification.
 
 ## Where RNTuple meets the rest of this specification
@@ -52,8 +54,8 @@ and everything below it from the tracked copy, and the three errata in between.
 
 ## Status
 
-There are ten errata, each verified against the pinned submodule and, where there
-are bytes to check, against a fixture:
+There are thirteen errata, each verified against the pinned submodule and, where
+there are bytes to check, against a fixture:
 
 - three in the anchor and the ROOT file embedding;
 - one in the locator type table;
@@ -62,16 +64,21 @@ are bytes to check, against a fixture:
   SplitReal16`, that ROOT's C++ implementation does not have but **ROOT's own
   JavaScript reader does**;
 - four in the type mapping, the last of which puts the *Extra type information*
-  record in a different envelope from the one the document introduces it under.
+  record in a different envelope from the one the document introduces it under;
+- three in the footer and its linked attribute sets: the attribute set list does
+  not exist before format 1.0.1.0, the anchor size in its records counts six bytes
+  the document does not show, and ROOT's reader refuses a field that the document
+  says a newer minor version may add.
 
 The audit covers every envelope and, with one exception, all of the type mapping:
 the header's field, column, alias column and extra-type-info records, the footer's
-schema extension, cluster groups and attribute sets, the page list's cluster
-summaries and page locations, the stdlib types, user-defined classes and enums,
-projected fields and alias columns, `RNTupleCardinality`, untyped collections and
-records, ROOT streamed types, the SoA layout, and the limits, naming and
-compatibility notes. Two forms are left out on purpose: *Linked Attribute Sets*
-beyond its footer record frame, and classes with an associated collection proxy,
-which needs a compiled `TCollectionProxyInfo` that is not ready for this use.
+schema extension, cluster groups and attribute set records, the linked attribute
+sets themselves with their restrictions, names and schema version, the page
+list's cluster summaries and page locations, the stdlib types, user-defined
+classes and enums, projected fields and alias columns, `RNTupleCardinality`,
+untyped collections and records, ROOT streamed types, the SoA layout, and the
+limits, naming and compatibility notes. One form is left out on purpose: classes with an associated
+collection proxy, which needs a compiled `TCollectionProxyInfo` that is not ready
+for this use.
 [NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) has the per-section table,
 including which claims rest on the source alone rather than on bytes.

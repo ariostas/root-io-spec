@@ -790,3 +790,420 @@ class WriterDefaults(unittest.TestCase):
         for code in ("\\u002E", "\\u002F", "\\u0020", "\\u005C"):
             self.assertIn(code, source)
         self.assertIn("iscntrl", source)
+
+
+def _section(text: str, heading: str) -> str:
+    """The body of the tracked copy's section `heading`, up to the next heading
+    of the same or a higher level."""
+    import re
+    lines = text.splitlines()
+    start = lines.index(heading)
+    level = len(heading) - len(heading.lstrip("#"))
+    end = next((i for i in range(start + 1, len(lines))
+                if re.match(rf"^#{{1,{level}}} ", lines[i])), len(lines))
+    return "\n".join(lines[start + 1:end])
+
+
+def _diagram_fields(section: str) -> list[tuple[str, int]]:
+    """(name, bits) of each field of the first bit diagram in `section`.
+
+    Rows are 32 bits wide and fields are separated by `+-+-` lines. A group of
+    one row with n cells is n fields of 32/n bits. A wider field is drawn as
+    several `|` rows with a `+ name +` line between them, which marks a word
+    boundary inside the field rather than a row of its own, so it is 32 bits
+    per `|` row.
+    """
+    body = section.split("```", 2)[1]
+    rows = [line for line in body.splitlines() if line and line[0] in "|+"]
+    groups: list[list[str]] = [[]]
+    for row in rows:
+        if row.startswith("+-"):
+            groups.append([])
+        else:
+            groups[-1].append(row)
+    fields: list[tuple[str, int]] = []
+    for group in groups:
+        if len(group) == 1:
+            cells = [c.strip() for c in group[0].strip("|").split("|")]
+            fields += [(c, 32 // len(cells)) for c in cells]
+        elif group:
+            name = " ".join(r.strip("|+").strip() for r in group).strip()
+            fields.append((name, 32 * sum(r.startswith("|") for r in group)))
+    return fields
+
+
+class LinkedAttributeSets(unittest.TestCase):
+    """*Linked Attribute Sets* and its record frame, against `rntuple/attributes`.
+
+    Each claim is parsed out of the tracked copy, as for the type mapping, so a
+    change on either side fails here: the document's on a submodule bump, or
+    ROOT's writer. The fixture holds two sets, `runs` and `flags`; NOTES.md 8
+    and ERRATA 11-13 are what the audit found.
+    """
+
+    FIXTURE = REPO / "data/rntuple/attributes.root"
+    TEXT = TRACKED.read_text()
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import rootfile
+        cls.rootfile = rootfile
+        cls.buf, cls.header, cls.recs = rootfile.load(cls.FIXTURE)
+        main = next(r for r in cls.recs if r.name == "ntpl"
+                    and r.class_name == "ROOT::RNTuple")
+        cls.anchor, cls.schema = rootfile.read_rntuple(cls.buf, main)
+        cls.footer = rootfile.read_rntuple_footer(cls.buf, cls.anchor, cls.schema)
+        cls.sets = {link.name: rootfile.read_attribute_set(cls.buf, link)
+                    for link in cls.footer.attribute_sets}
+
+    # -- the claims, parsed ----------------------------------------------
+
+    def schema_claims(self):
+        """(major, minor) and [(field, type or None for untyped record)]."""
+        import re
+        section = _section(self.TEXT, "### Attribute Schema Version")
+        version = re.search(r"The current Attribute Schema Version is \*\*(\d+)\.(\d+)\*\*",
+                            section)
+        fields = re.findall(r"^\s*\d+\. `(\w+)` \((?:type `([^`]+)`|(untyped record))\)",
+                            section, re.M)
+        return ((int(version.group(1)), int(version.group(2))),
+                [(name, typ or None) for name, typ, _ in fields])
+
+    def restrictions(self):
+        import re
+        section = _section(self.TEXT, "## Linked Attribute Sets")
+        return re.findall(r"^(\d+)\. (.+)$", section.split("###", 1)[0], re.M)
+
+    # -- the record frame --------------------------------------------------
+
+    def test_the_diagram_gives_two_u16_versions_then_a_u32_size(self):
+        section = _section(self.TEXT, "#### Linked Attribute Set Record Frame")
+        self.assertEqual(_diagram_fields(section),
+                         [("Schema Version Major", 16), ("Schema Version Minor", 16),
+                          ("Attribute Anchor Uncompressed Size", 32)])
+        # "followed a locator ... and a string": the locator comes first.
+        text = " ".join(section.split())
+        self.assertRegex(text, r"followed a locator to the linked RNTuple anchor "
+                               r"and a string with the attribute set name")
+
+    def test_every_record_is_the_diagram_then_a_locator_then_a_string(self):
+        # Sizes add up only in this order: 8 for the frame, 2 + 2 + 4 for the
+        # diagram, a 12-byte simple locator, and a u32-counted name.
+        for name, aset in self.sets.items():
+            link = aset.link
+            with self.subTest(set=name):
+                self.assertEqual(link.end - link.start,
+                                 8 + 2 + 2 + 4 + 12 + 4 + len(name.encode()))
+                self.assertEqual(link.locator.kind, "file")
+                self.assertEqual(link.locator.start, link.start + 16)
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_serializes_the_fields_in_the_documented_order(self):
+        import re
+        source = (REPO / "root/tree/ntuple/src/RNTupleSerialize.cxx").read_text()
+        start = source.index("RNTupleSerializer::SerializeAttributeSet(")
+        body = source[start:source.index("\n}\n", start)]
+        calls = re.findall(r"Serialize(UInt16|UInt32|Locator|String)\(", body)
+        self.assertEqual(calls, ["UInt16", "UInt16", "UInt32", "Locator", "String"])
+
+    def test_the_version_in_each_record_is_the_documented_one(self):
+        version, _ = self.schema_claims()
+        for name, aset in self.sets.items():
+            with self.subTest(set=name):
+                self.assertEqual((aset.link.major, aset.link.minor), version)
+
+    def test_the_anchor_size_is_the_whole_object(self):
+        # ERRATA 12. The document's anchor schema is 4 x 16 + 7 x 64 bits; the
+        # size "includes the 8 bytes of the checksum" -- and also the six bytes
+        # of byte count and class version the schema does not draw (ERRATA 2).
+        section = _section(self.TEXT, "### Anchor schema")
+        schema_bytes = sum(bits for _, bits in _diagram_fields(section)) // 8
+        self.assertEqual(schema_bytes, 64)
+        self.assertIn("Note that the Attribute Anchor Uncompressed Size includes "
+                      "the 8 bytes of the checksum.", self.TEXT)
+        for name, aset in self.sets.items():
+            with self.subTest(set=name):
+                self.assertNotEqual(aset.link.anchor_length, schema_bytes + 8)
+                self.assertEqual(aset.link.anchor_length, 6 + schema_bytes + 8)
+                self.assertEqual(aset.link.anchor_length,
+                                 aset.anchor.byte_count + 4 + 8)
+
+    def test_the_locator_names_the_anchor_object_whose_key_is_unlisted(self):
+        # NOTES 8: the offset is the anchor key's payload, the size its on-disk
+        # size, the length its fObjLen; and no directory lists that key.
+        rootfile = self.rootfile
+        by_payload = {rootfile.payload_range(r)[0]: r for r in self.recs
+                      if not r.free and r.class_name == "ROOT::RNTuple"}
+        for name, aset in self.sets.items():
+            with self.subTest(set=name):
+                key = by_payload[aset.link.locator.offset]
+                self.assertEqual(key.name, name)
+                self.assertEqual(aset.link.locator.nbytes, key.payload_nbytes)
+                self.assertEqual(aset.link.anchor_length, key.obj_len)
+        top = rootfile.read_directory(self.buf, next(r for r in self.recs
+                                                     if r.offset == self.header.begin))
+        self.assertEqual([k.name for k in rootfile.read_key_list(self.buf, top)],
+                         ["ntpl"])
+
+    # -- the linked RNTuple ------------------------------------------------
+
+    def test_the_schema_is_the_documented_fields_in_order(self):
+        _, claimed = self.schema_claims()
+        self.assertEqual(claimed, [("_rangeStart", "std::uint64_t"),
+                                   ("_rangeLen", "std::uint64_t"),
+                                   ("_userData", None)])
+        for name, aset in self.sets.items():
+            top = [f for f in aset.schema.fields if f.parent_id == f.field_id]
+            with self.subTest(set=name):
+                self.assertEqual([f.name for f in top], [n for n, _ in claimed])
+                for field, (_, typ) in zip(top, claimed):
+                    if typ is None:       # "untyped record": role and no type
+                        self.assertEqual((field.role, field.type_name), ("record", ""))
+                    else:
+                        self.assertEqual((field.role, field.type_name), ("plain", typ))
+
+    def test_the_users_fields_hang_under_user_data_unchanged(self):
+        expect = {"runs": [("run", "std::int32_t"), ("weight", "float")],
+                  "flags": [("flag", "std::uint16_t")]}
+        for name, aset in self.sets.items():
+            user = next(f for f in aset.schema.fields if f.name == "_userData")
+            kids = [(f.name, f.type_name) for f in aset.schema.fields
+                    if f.parent_id == user.field_id and f is not user]
+            with self.subTest(set=name):
+                self.assertEqual(kids, expect[name])
+
+    def test_the_three_restrictions_hold(self):
+        restrictions = self.restrictions()
+        self.assertEqual([n for n, _ in restrictions], ["1", "2", "3"])
+        self.assertIn("linked attribute RNTuples", restrictions[0][1])
+        self.assertIn("alias columns", restrictions[1][1])
+        self.assertIn("0x04", restrictions[2][1])
+        for name, aset in self.sets.items():
+            with self.subTest(set=name):
+                self.assertEqual(aset.footer.attribute_sets, [])
+                self.assertEqual(aset.schema.alias_columns, [])
+                self.assertEqual(aset.footer.extension_alias_columns, [])
+                self.assertFalse([f for f in aset.schema.fields if f.structure == 0x04])
+
+    def test_names_are_non_empty_distinct_and_not_reserved(self):
+        self.assertIn("All linked attribute sets must have a non-empty, distinct name.",
+                      self.TEXT)
+        names = [link.name for link in self.footer.attribute_sets]
+        self.assertEqual(names, ["runs", "flags"])
+        self.assertIn("starting with `__` (two underscores) are reserved", self.TEXT)
+        self.assertFalse([n for n in names if n.startswith("__")])
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_uses_the_documented_names_version_and_reserved_prefix(self):
+        import re
+        utils = (REPO / "root/tree/ntuple/inc/ROOT/RNTupleAttrUtils.hxx").read_text()
+        version, claimed = self.schema_claims()
+        self.assertEqual(
+            (int(re.search(r"kSchemaVersionMajor = (\d+);", utils).group(1)),
+             int(re.search(r"kSchemaVersionMinor = (\d+);", utils).group(1))), version)
+        names = re.search(r"kMetaFieldNames\[\] = \{([^}]*)\}", utils).group(1)
+        self.assertEqual(re.findall(r'"(\w+)"', names), [n for n, _ in claimed])
+        writer = (REPO / "root/tree/ntuple/src/RNTupleWriter.cxx").read_text()
+        self.assertIn('return ROOT::StartsWith(name, "__");', writer)
+
+    def test_the_ranges_read_back_through_the_page_lists(self):
+        # "`_rangeLen == 0` is valid and refers to an empty range"; flags' first
+        # entry is one, and the entries are in commit order, not start order.
+        self.assertIn("`_rangeLen == 0` is valid and refers to an empty range", self.TEXT)
+        rootfile = self.rootfile
+        values = {}
+        for name, aset in self.sets.items():
+            pages = rootfile.read_rntuple_page_lists(self.buf, aset.footer)
+            values[name] = {aset.schema.fields[c.field_id].name:
+                            rootfile.read_column_values(self.buf, pages, c)
+                            for c in aset.schema.columns}
+        self.assertEqual(values["runs"], {"_rangeStart": [0, 3], "_rangeLen": [3, 3],
+                                          "run": [1, 2], "weight": [0.25, 0.75]})
+        self.assertEqual(values["flags"], {"_rangeStart": [3, 1], "_rangeLen": [0, 4],
+                                           "flag": [7, 9]})
+        # And every range lies inside the main RNTuple's six entries.
+        for name, cols in values.items():
+            for start, length in zip(cols["_rangeStart"], cols["_rangeLen"]):
+                self.assertLessEqual(start + length, 6, name)
+
+    # -- the errata ----------------------------------------------------------
+
+    def test_the_footer_list_is_absent_before_format_1_0_1_0(self):
+        # ERRATA 11. The document lists it unconditionally; ROOT's reader knows
+        # better (RNTupleSerialize.cxx:2015-2017).
+        section = _section(self.TEXT, "### Footer Envelope")
+        self.assertIn("- List frame of cluster group record frames\n"
+                      "- List frame of linked attribute set record frames\n", section)
+        # No version qualifier anywhere in the footer's description.
+        self.assertNotIn("1.0.1", section)
+        # Present, and empty, in a 1.0.2.0 footer with no attribute sets.
+        rootfile = self.rootfile
+        buf, _, recs = rootfile.load(REPO / "data/rntuple/anchor.root")
+        anchor, schema = rootfile.read_rntuple(
+            buf, next(r for r in recs if r.class_name == "ROOT::RNTuple"))
+        self.assertEqual(anchor.version, "1.0.2.0")
+        self.assertEqual(rootfile.read_rntuple_footer(buf, anchor, schema)
+                         .attribute_sets, [])
+        cern = REPO / "build/cern/RNTuple.root"
+        if cern.exists():         # 1.0.0.0, by ROOT 6.35/01: no list at all
+            buf, _, recs = rootfile.load(cern)
+            anchor = rootfile.read_rntuple_anchor(
+                buf, next(r for r in recs if r.class_name == "ROOT::RNTuple"))
+            self.assertEqual(anchor.version, "1.0.0.0")
+            self.assertIsNone(rootfile.read_rntuple_footer(buf, anchor).attribute_sets)
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_refuses_any_field_beyond_the_three_whatever_the_minor(self):
+        # ERRATA 13: the document says a new minor version only adds optional
+        # fields that readers ignore; ROOT's reader counts them.
+        self.assertIn("readers should\nstill be able to read the attribute set as "
+                      "before, ignoring any new field.", self.TEXT)
+        source = (REPO / "root/tree/ntuple/src/RNTupleAttrReading.cxx").read_text()
+        self.assertIn("if (metaFieldIds.size() != kMetaFieldIndex_Count) {", source)
+        self.assertIn("if (vSchemaMajor != kSchemaVersionMajor)", source)
+        self.assertNotIn("Minor", source)
+
+
+class AttributeSetChecks(unittest.TestCase):
+    """The attribute set checks of check_invariants.py fire on corrupted copies.
+
+    AGENTS.md: an invariant is confirmed by corrupting a copy of a fixture. The
+    envelopes' checksums are not verified by this project's reader, so a byte
+    can be changed in place; one corruption rebuilds a header instead.
+    """
+
+    FIXTURE = REPO / "data/rntuple/attributes.root"
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import check_invariants
+        import rootfile
+        cls.check_invariants = check_invariants
+        cls.rootfile = rootfile
+        cls.src = cls.FIXTURE.read_bytes()
+        _, _, recs = rootfile.load(cls.FIXTURE)
+        cls.main = next(r for r in recs if r.name == "ntpl"
+                        and r.class_name == "ROOT::RNTuple")
+        anchor, schema = rootfile.read_rntuple(cls.src, cls.main)
+        cls.anchor = anchor
+        cls.footer = rootfile.read_rntuple_footer(cls.src, anchor, schema)
+        cls.runs, cls.flags = cls.footer.attribute_sets
+
+    def failures(self, buf: bytes) -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(buf)
+            checker = self.check_invariants.Checker(path)
+            with contextlib.redirect_stderr(io.StringIO()):
+                return [f.split(": ", 2)[1] for f in checker.run()]
+
+    def edit(self, *edits) -> bytes:
+        import struct
+        b = bytearray(self.src)
+        for offset, fmt, value in edits:
+            if fmt == "raw":
+                b[offset:offset + len(value)] = value
+            else:
+                struct.pack_into(fmt, b, offset, value)
+        return bytes(b)
+
+    def test_the_fixture_passes(self):
+        self.assertEqual(self.failures(self.src), [])
+
+    def test_an_empty_name(self):
+        name_at = self.flags.locator.end
+        self.assertIn("RNTuple attribute set, name",
+                      self.failures(self.edit((name_at, "<I", 0))))
+
+    def test_a_duplicate_name(self):
+        name_at = self.flags.locator.end
+        got = self.failures(self.edit((name_at, "<I", 4), (name_at + 4, "raw", b"runs")))
+        self.assertEqual(got.count("RNTuple attribute set, name"), 1)
+
+    def test_a_locator_that_misses_the_anchor(self):
+        at = self.runs.locator.start + 4
+        self.assertIn("RNTuple attribute set, locator",
+                      self.failures(self.edit((at, "<Q", self.runs.locator.offset + 1))))
+
+    def test_an_anchor_length_of_the_schema_plus_checksum(self):
+        # ERRATA 12: 72 is what a reader of the document would write.
+        self.assertIn("RNTuple attribute set, locator",
+                      self.failures(self.edit((self.runs.start + 12, "<I", 72))))
+
+    def test_a_nested_attribute_set(self):
+        # Point `runs` at the main RNTuple's own anchor, which links two sets.
+        main_payload = self.rootfile.payload_range(self.main)[0]
+        got = self.failures(self.edit((self.runs.locator.start + 4, "<Q", main_payload)))
+        self.assertIn("RNTuple attribute set, restriction 1", got)
+
+    def test_an_alias_column(self):
+        self.assertIn("RNTuple attribute set, restriction 2",
+                      self.failures(self.with_alias_column()))
+
+    def test_a_streamer_field(self):
+        rootfile = self.rootfile
+        aset = rootfile.read_attribute_set(self.src, self.runs)
+        run = next(f for f in aset.schema.fields if f.name == "run")
+        structure_at = run.start + 8 + 12
+        self.assertIn("RNTuple attribute set, restriction 3",
+                      self.failures(self.edit((structure_at, "<H", 0x04))))
+
+    def test_a_misnamed_internal_field(self):
+        aset = self.rootfile.read_attribute_set(self.src, self.runs)
+        field = next(f for f in aset.schema.fields if f.name == "_rangeLen")
+        name_at = field.start + 8 + 16 + 4
+        self.assertIn("RNTuple attribute set, schema version",
+                      self.failures(self.edit((name_at, "raw", b"_rangeEnd"))))
+
+    def test_an_unknown_major_version_is_skipped_not_passed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "major.root"
+            path.write_bytes(self.edit((self.runs.start + 8, "<H", 2)))
+            checker = self.check_invariants.Checker(path)
+            self.assertEqual(checker.run(), [])
+            self.assertTrue([k for k in checker.skipped
+                             if k[0] == "RNTuple attribute set, schema version"])
+
+    def test_a_1_0_2_0_footer_without_the_list(self):
+        # Shorten the main footer to end after its cluster groups, and the
+        # anchor's two footer sizes with it.
+        start = self.anchor.seek_footer
+        length = self.footer.attribute_list_start + 8 - start
+        anchor_at = self.rootfile.payload_range(self.main)[0]
+        got = self.failures(self.edit((start, "<Q", (length << 16) | 2),
+                                      (anchor_at + 14 + 32, ">Q", length),
+                                      (anchor_at + 14 + 40, ">Q", length)))
+        self.assertIn("RNTuple footer, attribute set list", got)
+
+    def with_alias_column(self) -> bytes:
+        """`flags` rebuilt with one alias column in its header, same length.
+
+        The header is re-serialized with the name shortened to make room for
+        the alias record frame, and the writer string sized to fill the rest,
+        so no other byte of the file moves.
+        """
+        import struct
+        rootfile = self.rootfile
+        aset = rootfile.read_attribute_set(self.src, self.flags)
+        env = rootfile.read_rn_envelope(self.src, aset.anchor.seek_header)
+        o = env.body
+        _, o = rootfile.read_rn_feature_flags(self.src, o)
+        flags_bytes = self.src[env.body:o]
+        for _ in range(3):                           # name, description, writer
+            o = rootfile.read_rn_string(self.src, o)[1]
+        fields = rootfile.read_rn_frame(self.src, o)
+        columns = rootfile.read_rn_frame(self.src, fields.end)
+        lists = self.src[fields.start:columns.end]
+        alias = (struct.pack("<qI", -(12 + 16), 1) + struct.pack("<qII", 16, 0, 0))
+        empty = struct.pack("<qI", -12, 0)
+
+        def s(text: bytes) -> bytes:
+            return struct.pack("<I", len(text)) + text
+        fixed = flags_bytes + s(b"f") + s(b"") + lists + alias + empty
+        room = (env.body_end - env.body) - len(fixed) - 4
+        self.assertGreaterEqual(room, 0)
+        body = flags_bytes + s(b"f") + s(b"") + s(b"R" * room) + lists + alias + empty
+        self.assertEqual(len(body), env.body_end - env.body)
+        return self.src[:env.body] + body + self.src[env.body_end:]
