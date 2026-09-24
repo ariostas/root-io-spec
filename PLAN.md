@@ -2231,7 +2231,9 @@ Roottest now gives 32 failures in 4 files. Three are the files' fault:
 nothing resolves, and `output_Coulomb_LER_study_10.root` records a class name no
 class has. ROOT 6.40.04, without a dictionary, fails on all three.
 
-**Open leads.**
+**Parked, not pursued.** What is left looks like writer bugs or corners too
+obscure to matter to a reader. Each is recorded so that it is not rediscovered,
+and none is being worked on; pick one up only if a real file or reader needs it.
 
 - `tlorentzvec.root` (5.27/01): count branches titled `_` whose members say
   `[muon4mom_]`. No ROOT constructor produces it and the writer is unknown, so
@@ -2240,8 +2242,6 @@ class has. ROOT 6.40.04, without a dictionary, fails on all three.
   has no info (`StreamerDriven` 10.5). Nothing in the file uses `TGlobal`, and
   6.40.04 does not reproduce the omission.
 - How `foreignVec.root`'s flagged header with `fUnits` 4 was written.
-- `TBranchObject` entries are not decoded: 5 baskets in the corpora, 1 in the
-  fixtures, 8 in `v5formula_clones.root`.
 - A possible ROOT bug: for a file of version 51508 or below, the write action for
   `kStreamLoop` calls a read function
   (`root/io/io/src/TStreamerInfoActions.cxx:1699-1708`). Untested.
@@ -2617,6 +2617,10 @@ rather than about reaching them:
    undecoded.
 5. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
    path is unexercised and unwritten.
+6. `TBranchObject` entries. Its `TLeafObject` has no fixed width, so the
+   leaf-driven check cannot walk it, and since 2026-09-24 its baskets are counted
+   as skipped rather than left out: 5 in the corpora, 1 in the fixtures, 8 in
+   roottest's `v5formula_clones.root`.
 
 **Questions it left open.** Each is small, and each needs the submodule rather
 than a file:
