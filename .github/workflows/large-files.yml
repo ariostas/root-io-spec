@@ -1,0 +1,34 @@
+name: large files
+
+# The only check of the large-file layout. No fixture is past 2 GB, so
+# gen/cern/LARGE.toml records the header, free-segment record, top directory
+# and key list of eleven files from 1.3 GB to 15.9 GB, and
+# `fetch_cern.py --headers` re-reads them by HTTP range request (about 25 KB in
+# all) and checks LargeFiles.md's invariants on them. It depends on two outside
+# servers, root.cern and opendata.cern.ch, so it runs weekly and on demand
+# rather than on every push: a red run may be a server, and says so in its
+# FAIL line. Until 2026-09-24 it ran nowhere (PLAN-review.md V37).
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - gen/cern/LARGE.toml
+      - tools/fetch_cern.py
+
+permissions:
+  contents: read
+
+jobs:
+  headers:
+    name: large-file layout by range request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Re-measure gen/cern/LARGE.toml
+        run: tools/fetch_cern.py --headers

@@ -11,11 +11,17 @@ with a reason.
 
     tools/check_coverage.py            the report
     tools/check_coverage.py --check    what CI runs: fail on an unaccounted entry
+    tools/check_coverage.py --untested the checked labels no unit test names
 
 An entry is **checked** when some tool contains its label as a literal string,
 as in `self.bad("Directory 9.15", ...)` or a returned tuple. The test is
 deliberately shallow: it proves a check exists, not that it is right. The
 corrupted-fixture rule covers correctness, and this tool cannot see it.
+
+`--untested` approximates that rule's worklist: a checked label that no
+`tools/test_*.py` contains has, at least, no test that asserts it fires. A
+label that is named may still be tested only for passing. It is a list to work
+from, not a gate (PLAN-review.md V34).
 """
 
 from __future__ import annotations
@@ -91,7 +97,23 @@ def accounted() -> dict[str, dict]:
     return tomllib.loads(SIDECAR.read_text()).get("invariant", {})
 
 
+def untested() -> list[str]:
+    """Checked labels that no unit test contains."""
+    checked = checked_labels()
+    tests = "\n".join(p.read_text()
+                      for p in sorted((REPO / "tools").glob("test_*.py")))
+    return [label for label, _, _ in published()
+            if label in checked and not re.search(
+                re.escape(label) + r"(?!\d)", tests)]
+
+
 def main(argv: list[str]) -> int:
+    if "--untested" in argv:
+        labels = untested()
+        for label in labels:
+            print(label)
+        print(f"{len(labels)} checked label(s) that no unit test names")
+        return 0
     check_only = "--check" in argv
     entries = published()
     labels = checked_labels()

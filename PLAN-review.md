@@ -671,7 +671,7 @@ real file. `decode_record` parses the same embedded baskets first and would fail
 on most corruptions before the second parse, which is why the test injects the
 failure into the second parse alone.
 
-### V34. Corruption tests for the invariants that have none ☐
+### V34. Corruption tests for the invariants that have none ✅
 
 About 150 of the 199 checked labels have no test that corrupts a fixture and
 asserts the label fires; `Compression 9.7`, which `PLAN-corpus.md` C7 found
@@ -680,6 +680,16 @@ about itself. A full sweep is not the ask; the ask is a test per label that has
 been wrong before (the §8.13, §8.14 and §8.16 lists, and V5, V15) and a
 one-line note in `gen/invariants.toml` on which labels still have none, so the
 worklist is visible rather than implied.
+
+**Done.** `tools/test_corruption.py` has a test for each of the nine labels in
+that set that no test named: `Directory 9.4`, `FreeSegments 8.2`,
+`Compression 9.1` and `9.7`, `References 8.5`, `ElementTypes 11.3` and `11.4`,
+`StreamerInfo 13.11` (twice, once on an STL element now the exemption is gone)
+and `TLeaf 10.6`. The other fifteen already had one. Every fixture's streamer-info
+record is compressed, so the element tests alter the parsed elements rather than
+the bytes. Rather than a list that would go stale, `check_coverage.py
+--untested` prints the checked labels no test names, 142 of 200, and
+`gen/invariants.toml` and `AGENTS.md` point at it.
 
 ### V35. `check_versions.py` should validate the cited line, and cover `TKey` ✅
 
@@ -760,7 +770,7 @@ tables and the `le` types. `read_members` refuses a `TBranch` below version 6.
 `check_figures.py` now pins the unit-test count, the `ClassDef` count and the
 fixture-file count, which `PLAN.md` had at 651, 63 and 101.
 
-### V37. `fetch_cern.py --headers` runs nowhere in CI ☐
+### V37. `fetch_cern.py --headers` runs nowhere in CI ✅
 
 It is the only thing that exercises the large-file layout at all
 (`AGENTS.md`), and `LargeFiles 8.6` is `not-checkable` in `gen/invariants.toml`
@@ -768,7 +778,11 @@ for that reason. A scheduled or manual workflow that runs it (≈25 KB of
 traffic) would make the reason "checked weekly" rather than "checked by
 nobody". Decide; the cost is one workflow file.
 
-### V38. A test that compares each writing procedure's order with the writer's ☐
+**Done.** `.github/workflows/large-files.yml` runs it weekly, on demand, and on a
+pull request that touches `LARGE.toml` or `fetch_cern.py`; run here first, 11 of
+11 pass. Not on every push, because it depends on two outside servers.
+
+### V38. A test that compares each writing procedure's order with the writer's ✅
 
 V3 would have been caught by a test that, for each `spec/06-writing/` table
 headed "in streamed order", reads the member names in table order and compares
@@ -776,6 +790,13 @@ them with the element order `rootwrite.py` emits for that class (which
 `element_lists.py` already has from the fixtures). The tables are regular
 enough to parse. This is the check for pattern 1 in the writing layer; the
 reading layer's equivalent is V39.
+
+**Done.** `test_write.StreamedOrder` compares eight member tables (`TH1`, `TAxis`,
+`TH2`, `TProfile`, `TTree`, `TBranch`, `TLeaf` + `TLeafI`, `TGraph`) with
+`element_lists.writer_infos()`, which `element_lists.py` already compares with
+ROOT's fixtures. All eight agree now; a second test re-creates V3's swapped row
+and shows it caught. The tables of `WritingFiles.md` describe records rather than
+streamer infos and have no writer order to compare against.
 
 ### V39. Reconcile every Reading procedure step against the field it names ☐
 

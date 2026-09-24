@@ -1759,5 +1759,88 @@ class Cycles(unittest.TestCase):
                          [("a", 3), ("a", 2), ("a", 1), ("b", 1)])
 
 
+class StreamedOrder(unittest.TestCase):
+    """Each member table of spec/06-writing/ against the element order the
+    writer emits for its class (PLAN-review.md V38).
+
+    A procedure is read top to bottom, so a table out of order is a wrong
+    instruction even when every row is right. That is how V3 happened: a
+    TTree table whose rows were each correct and whose order was not. The
+    writer's order is checked against ROOT's by element_lists.py, so this
+    closes the loop from the prose to ROOT.
+    """
+
+    SPEC = REPO / "spec" / "06-writing"
+
+    #: (document, heading above the table, class, what the table covers):
+    #: "all" is every element; "after base" omits the first, the base the
+    #: section says is streamed first; "then" names a subclass whose members
+    #: the table continues with.
+    TABLES = [
+        ("WritingHistograms.md", "## 3. `TH1` at version 8", "TH1", "all"),
+        ("WritingHistograms.md", "## 4. `TAxis` at version 10", "TAxis", "all"),
+        ("WritingHistograms.md", "### 7.2 The four members `TH2` adds",
+         "TH2", "after base"),
+        ("WritingHistograms.md", "### 8.1 The seven members, and the "
+         "transient one in the middle", "TProfile", "after base"),
+        ("WritingTrees.md", "## 3. The tree record", "TTree", "all"),
+        ("WritingTrees.md", "## 4. A branch", "TBranch", "all"),
+        ("WritingTrees.md", "### 4.3 The leaf", "TLeaf", "then TLeafI"),
+        ("WritingGraphs.md", "## 3. The fields", "TGraph", "all"),
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        import element_lists
+        cls.infos = element_lists.writer_infos()
+
+    def members(self, doc, heading):
+        """The backticked names in the first column of the table under
+        `heading`, in row order."""
+        import re
+        lines = (self.SPEC / doc).read_text().splitlines()
+        self.assertIn(heading, lines, f"{doc}: the heading moved")
+        rows, started = [], False
+        for line in lines[lines.index(heading) + 1:]:
+            if line.startswith("#"):
+                break
+            if not line.startswith("|"):
+                if started:
+                    break
+                continue
+            started = True
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if set("".join(cells)) <= set("-: "):
+                continue
+            rows.append(cells[0])
+        return [name for cell in rows[1:]
+                for name in re.findall(r"`(\w+)`", cell)]
+
+    def expected(self, cls, covers):
+        names = [e.name for e in self.infos[cls].elements]
+        if covers == "after base":
+            return names[1:]
+        if covers.startswith("then "):
+            sub = [e.name for e in self.infos[covers[5:]].elements]
+            return names + sub[1:]
+        return names
+
+    def test_every_member_table_is_in_the_writer_order(self):
+        for doc, heading, cls, covers in self.TABLES:
+            with self.subTest(doc=doc, cls=cls):
+                self.assertEqual(self.members(doc, heading),
+                                 self.expected(cls, covers))
+
+    def test_v3_is_caught(self):
+        # The row "fTimerInterval, fUpdate" above fScanField.
+        doc, heading, cls, covers = self.TABLES[4]
+        names = self.members(doc, heading)
+        at = names.index("fScanField")
+        names[at], names[at + 1] = names[at + 1], names[at]
+        self.assertEqual(names[at - 1:at + 2],
+                         ["fTimerInterval", "fUpdate", "fScanField"])
+        self.assertNotEqual(names, self.expected(cls, covers))
+
+
 if __name__ == "__main__":
     unittest.main()

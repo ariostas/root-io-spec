@@ -160,7 +160,9 @@ and no manifest accounts for.
 and key list of a 5 GB file cost a few hundred bytes each. `gen/cern/LARGE.toml`
 records the measured facts for eleven files from 1.3 GB to 15.9 GB, three of them
 from CERN Open Data by an absolute `url`. **This is the only thing that exercises
-the large-file layout at all**; no fixture does. It has already confirmed the
+the large-file layout at all**; no fixture does.
+`.github/workflows/large-files.yml` runs it weekly, on demand, and on a pull
+request that touches `LARGE.toml` or `fetch_cern.py`. It has already confirmed the
 interleaved 10-byte/18-byte `TFree` entries of `FreeSegments.md` §2.1 on
 `volume.root` (51 entries, 32 large). Re-running `--headers` after a
 `rootfile.py` change is a cheap regression check on the container layer.
@@ -418,7 +420,9 @@ invariant this project published that was outright false was also one nobody had
 wired up (`PLAN.md` §8.13); wiring up the rest found two more wrong
 (`ElementTypes` 11.3 and 11.4) within the hour. There are 267 entries, 200 with a
 check. The `unchecked` reason is a worklist, not an excuse, and it should stay
-short.
+short. A second worklist is `--untested`: the checked labels no unit test names,
+so no test has seen them fire. `tools/test_corruption.py` covers every label that
+has been wrong before; add one there when a label joins that list.
 
 **`inventory.py`** finds the classes whose streamer info does not describe their
 bytes, which a reader cannot learn from a file. It reads every
