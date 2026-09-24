@@ -649,6 +649,87 @@ class WhichClassesMustBeDescribed(unittest.TestCase):
                           type_name="TMatrixTSym<double>"))
         self.assertEqual(self.failures(si, {"TMatrixTSym"}), [])
 
+    def test_an_element_may_spell_the_class_otherwise(self):
+        # StreamerInfo.md 7.3. The info is named by the class's normalised
+        # name; the element, before 6.00/00, by the member's declared spelling.
+        # Each pair is from a roottest file ROOT wrote.
+        cases = [
+            # meta/evolution/checksum_v5.root, 5.34/18: a ROOT typedef
+            ("UserTmplt<Int_t>", "UserTmplt<int>", "HasTypeDef"),
+            # io/emulated/lariat-si.root, 6.11/01: long long is Long64_t
+            ("artdaq::QuickVec<unsigned long long>",
+             "artdaq::QuickVec<ULong64_t>", "artdaq::Fragment"),
+            # meta/MakeProject/CMSSW_3_1_0_pre11-...root, 5.22/00: a default
+            # template argument left out
+            ("ROOT::Math::PositionVector3D<ROOT::Math::Cartesian3D<Double32_t> >",
+             "ROOT::Math::PositionVector3D<ROOT::Math::Cartesian3D<Double32_t>,"
+             "ROOT::Math::DefaultCoordinateSystemTag>", "reco::LeafCandidate"),
+            # meta/evolution/version5/nestedColl.root, 5.34/33: the owner's
+            # namespace left out
+            ("OtherInner", "HepExp::OtherInner", "HepExp::Outer"),
+        ]
+        for spelled, recorded, owner in cases:
+            si = info(element("fX", cls="TStreamerObjectAny", ftype=62,
+                              type_name=spelled), name=owner)
+            self.assertEqual(self.failures(si, {recorded}), [], spelled)
+
+    def test_another_class_is_still_caught(self):
+        # Double32_t is part of a normalised name, a user's typedef is not in
+        # the file, and a name no class has stays unresolved.
+        cases = [
+            ("Cartesian3D<Double32_t>", {"Cartesian3D<double>"}),
+            ("UserTmplt<Named_t>", {"UserTmplt<TNamed>"}),
+            ("Belle2::ModuleStatistics::CalcMeanCov<2,value_type>",
+             {"Belle2::CalcMeanCov<2,double>"}),
+            ("A<int>", {"A<int,X>", "A<int,Y>"}),          # ambiguous
+            ("A<int,X,Z>", {"A<int,X>"}),                  # longer, not shorter
+            ("Inner", {"Other::Inner"}),                   # not an enclosing scope
+        ]
+        for spelled, described in cases:
+            si = info(element("fX", cls="TStreamerObjectAny", ftype=62,
+                              type_name=spelled), name="Outer::Holder")
+            self.assertEqual(self.failures(si, described),
+                             ["StreamerDriven 10.5"], spelled)
+
+
+class RecordedClassName(unittest.TestCase):
+    """rootfile.recorded_class_name and the checksum fallback of the Decoder."""
+
+    def test_canonical_spelling(self):
+        c = rootfile.canonical_class_name
+        self.assertEqual(c("vector<pair<Char_t,UChar_t> >"),
+                         "vector<pair<char,unsigned char> >")
+        self.assertEqual(c("std::map<std::string, std::vector<Int_t>>"),
+                         "map<string,vector<int> >")
+        self.assertEqual(c("A<long long,unsigned long long>"),
+                         "A<Long64_t,ULong64_t>")
+        self.assertEqual(c("A<Double32_t,Float16_t>"), "A<Double32_t,Float16_t>")
+        self.assertEqual(c("A<Int_t*>"), "A<int*>")
+
+    def infos(self, *pairs):
+        return [rootfile.StreamerInfo(name=n, title="", version=9, bits=0,
+                                      checksum=k, class_version=1, elements=[])
+                for n, k in pairs]
+
+    def test_a_unique_checksum_names_the_class(self):
+        d = rootfile.Decoder(b"", 0, self.infos(("HepExp::Inner", 0xCFDF7F18),
+                                                ("HepExp::OtherInner", 0xF64AB7E0)))
+        self.assertEqual(set(d.alias_by_checksum("Alias", 0xCFDF7F18)), {1})
+        self.assertEqual(d.aliases["Alias"], "HepExp::Inner")
+        self.assertEqual(d.infos_of("Alias")[1].name, "HepExp::Inner")
+
+    def test_a_shared_checksum_names_nothing(self):
+        d = rootfile.Decoder(b"", 0, self.infos(("A", 7), ("B", 7)))
+        self.assertEqual(d.alias_by_checksum("C", 7), {})
+
+    def test_never_for_a_pair_or_the_record_class(self):
+        # A pair's checksum need not be unique (Collections.md 8.2), and a
+        # TBasket's payload is not an object of its key's class.
+        d = rootfile.Decoder(b"", 0, self.infos(("X", 7)))
+        self.assertEqual(d.alias_by_checksum("pair<int,int>", 7), {})
+        d.record_class = "TBasket"
+        self.assertEqual(d.alias_by_checksum("TBasket", 7), {})
+
 
 class OneIdentityTwoLayoutsIsCaught(unittest.TestCase):
     """SchemaEvolution 9.6 against a real file, by forging a duplicate.
@@ -741,6 +822,24 @@ class SetAndMultimapWereSwapped(unittest.TestCase):
             self.skipTest("neither RooFit file is fetched")
         # 5 on disk in the older file, 6 in the newer, and one value out here.
         self.assertEqual(seen, {rootfile.STL_SET})
+
+    def test_a_pre_5_24_multimap_is_stored_as_a_map(self):
+        """Collections.md 1: before 5.24/00 the name-parsing constructor tested
+        "map" before "multimap". ROOT's repair covers 5 and 6 only, so the 4
+        survives the parser, and invariant 10 is scoped by release."""
+        path = (Path(__file__).resolve().parents[1] / "root/roottest/root/meta/"
+                "MakeProject/CMSSW_3_1_0_pre11-RelValZTT-default-copy.root")
+        if not path.exists():
+            self.skipTest("root/roottest is not checked out")
+        checker = check_invariants.Checker(path)
+        self.assertEqual(checker.header.root_version, (5, 22, 0))
+        _, _, infos = checker.streamer_infos()
+        el = next(e for i in infos if i.name == "reco::IsoDeposit"
+                  for e in i.elements if e.name == "theDeposits")
+        self.assertTrue(el.type_name.startswith("multimap<"))
+        self.assertEqual(el.tail["fSTLtype"], rootfile.STL_MAP)
+        self.assertLess(checker.header.root_version,
+                        check_invariants.STL_KIND_FROM_NAME_SINCE)
 
     def test_every_collection_element_agrees_with_its_type_name(self):
         """Invariant 10, over one file, through the real parser."""

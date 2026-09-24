@@ -143,7 +143,11 @@ have 16 between them, all named `<top>.edm::EDProduct`.
 [`TBranch` §9.2](TBranch.md#92-a-leafless-branch-may-still-hold-data) describes the entries. On those 16, `fWriteBasket`
 and `fTotBytes` are 0 only because nothing was flushed: the basket is embedded
 in the `TTree` record. So an `fType` 1 branch with no children is not
-necessarily empty. The test is whether it has baskets holding entries.
+necessarily empty. The test is whether it has baskets holding entries. Nothing
+stops it being flushed: a full basket is written as a record, and from 5.20/00
+`TTree::Write` flushes every basket holding entries, so in a file of 5.20/00 to
+5.34/19 or 6.00 to 6.01 such a branch has `fWriteBasket` at least 1 and
+`fTotBytes` non-zero. None is measured, but invariant 6 exempts it.
 
 The count branches need care. On all 105 `fType` 3 and 4 branches in the
 corpora, `fLeaves` holds exactly one entry, and that entry is **not the leaf
@@ -427,7 +431,10 @@ content of each procedure in step 7 is in `ReadingEntries.md`.
 5. A branch with `fType` 1 or 2 has no leaf; every other `fType` has exactly
    one. On `fType` 3 and 4 that leaf is always a back-reference, never written
    in place.
-6. A branch with `fType` 1 or 2 has `fWriteBasket` 0 and `fTotBytes` 0.
+6. A branch with `fType` 1 or 2 has `fWriteBasket` 0 and `fTotBytes` 0, unless
+   it is the empty-base branch of
+   [`TBranch` §9.2](TBranch.md#92-a-leafless-branch-may-still-hold-data), which
+   holds an entry per event and is flushed like any other data branch.
 7. `fBranchCount` is set if and only if `fType` is 31 or 41, or the branch is an
    `fType` ≤ 2 member with a counter in another branch.
 8. If `fID ≥ 0`, it is a valid index into the element list of the streamer info

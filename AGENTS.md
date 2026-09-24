@@ -184,15 +184,18 @@ a generator that reproduces it.
 The entry check samples large baskets. `TLeaf.md` 10.7 costs one `entry_spans`
 call per entry per branch, so a 42 000-entry tree with 32 branches needs millions
 of them. Above 256 entries in a basket, `check_invariants.py` checks the first and
-last 32 and a stride through the middle, and prints `SAMPLED n basket(s)`.
+last 32 and a stride through the middle, and prints `SAMPLED n basket(s)`, a
+count of distinct baskets.
 `--all-entries` forces the exhaustive check. Both modes give 0 failures over the
 fixtures and `gen/foreign/`, which justifies the default.
 
 When a check cannot run, it prints `SKIPPED n branch-basket(s)` for each reason,
-and the run ends with an `ENTRIES` line giving the fraction it reached. Over the
-two corpora, with `lz4` installed, that is **48295 of 48399, 99.8%**, with 0
-failures. All 104 skips are
-things no reader could decode from the file, of two kinds:
+and the run ends with an `ENTRIES` line. Every branch-basket that holds entries
+is in it exactly once: checked, failed, or skipped with a reason. A failure does
+not take a basket out of the denominator, and a skip or failure in one basket
+does not end its branch. Over the two corpora, with `lz4` installed, that is
+**48278 of 48501, 99.5%**, with 0 failed. Of the 223 skips, 153 are things no
+reader could decode from the file, of two kinds:
 
 - a collection whose value class has no streamer info in the file.
   `Collections.md` §9 says nobody can read those, ROOT included;
@@ -200,6 +203,12 @@ things no reader could decode from the file, of two kinds:
   of these are identified from the bytes rather than from a list:
   `nEXO::SmartRef` has no byte count, and neither of the two readings
   `StreamerDriven.md` §7.1 allows ends where its entry does.
+
+The other 70 can be read, just not by this checker from this file: 65 baskets of
+`alice_ESDs.root`'s `ESDfriend` branches, whose `fFileName` puts them in
+`AliESDfriends.root`, which no corpus holds; and 5 `TBranchObject` baskets,
+whose `TLeafObject` has no width, so the leaf-driven check cannot walk them. The
+second is a reader gap.
 
 Read a `0 failure(s)` line together with the `ENTRIES` line: it means zero
 failures among the things checked, and that is the number to quote. Two past
@@ -214,6 +223,12 @@ mistakes show why:
   byte count version first, which by coincidence lands exactly on each 20-byte
   `SmartRef`, but fails on `skim.root`, which ROOT reads correctly. A pass means
   only as much as the reading behind it.
+- Until 2026-09-24 the ratio lost baskets in four ways. A branch's decode
+  stopped at its first skip or failure. A failed basket, or one whose codec was
+  missing, left the denominator. A `TBranchObject` never entered it. And a slot
+  holding both an embedded basket and a record was counted twice. All four walks
+  of a branch's baskets now go through `Checker.branch_baskets`, and the figure
+  went from 99.8% of 48399 to 99.5% of 48501.
 
 The figure was 99.7% until 2026-09-17, then 96.4%, and both changes were
 corrections. Neither entry check had looked at an embedded basket, one kept

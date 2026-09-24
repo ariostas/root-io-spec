@@ -250,7 +250,10 @@ assumes otherwise:
 - **`fNbytes`, `fSeekKey` and `fSeekPdir` are 0**, because the key was never placed
   in a file, and **`fObjlen` is stale**: it holds the buffer's capacity, not a
   length. A reader MUST NOT use `fObjlen` here. §3's arithmetic test does not
-  apply, and the flag determines what follows.
+  apply, and the flag determines what follows. The exception is a basket read
+  back from its record and streamed again before 6.11/02
+  ([TBranch §5.1](TBranch.md#51-a-slot-below-fwritebasket-may-hold-a-copy-of-a-written-basket)):
+  all four fields are then the record's, and so is the reserved key area.
 - **Nothing is compressed.** The basket sits inside whatever compression the
   enclosing record uses.
 
@@ -544,7 +547,8 @@ no type information.
 
 These are the invariants of a basket **record**. An embedded basket satisfies 1,
 3, 5, 7 and 8 with its own start in place of the record's, and satisfies neither
-4 nor 6: its `fObjlen` is stale (§4.1).
+4 nor 6: its `fObjlen` is stale (§4.1), except in a read-back copy, whose
+`fObjlen` is its record's.
 
 1. `fKeylen` equals the ordinary key length plus 19, or plus 20 when `fIOBits` is
    present, and the header ends exactly at `fKeylen`.

@@ -123,6 +123,7 @@ def probe(path: Path, quiet: bool = False
             continue
         start, end = rootfile.payload_range(rec)
         decoder = rootfile.Decoder(data, rec.offset, infos, tolerant=True)
+        decoder.record_class = rec.class_name
         try:
             # A basket is not a serialized object; it has its own reader.
             if rec.class_name == "TBasket":

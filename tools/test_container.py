@@ -471,6 +471,45 @@ class NfreeMustMatchTheList(unittest.TestCase):
         self.assertTrue(all("FileHeader 10.7" in f for f in bad), bad)
 
 
+class TheLargeFileFlag(unittest.TestCase):
+    """FileHeader 10.9 and 10.10, in the direction the format requires.
+
+    The flag is required past 2 GB and legal below it: ROOT selects the layout
+    from it alone, and root/roottest/root/meta/evolution/foreignVec.root
+    (5.34/18) has it at 7460 bytes with fUnits 4. fUnits is 4 in the small
+    layout, since ROOT sets 8 only together with the flag.
+    """
+
+    PATH = Path(__file__).resolve().parents[1] / "data/container/file-minimal.root"
+
+    def failures(self, units):
+        buf = bytearray(self.PATH.read_bytes())
+        self.assertEqual(buf[32], 4)
+        buf[32] = units
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(bytes(buf))
+            checker = check_invariants.Checker(path)
+            checker.run()
+            return checker.failures
+
+    def test_fUnits_8_in_the_small_layout_is_caught(self):
+        bad = self.failures(8)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("FileHeader 10.10", bad[0])
+
+    def test_a_flagged_small_file_passes(self):
+        path = (Path(__file__).resolve().parents[1]
+                / "root/roottest/root/meta/evolution/foreignVec.root")
+        if not path.exists():
+            self.skipTest("root/roottest is not checked out")
+        checker = check_invariants.Checker(path)
+        self.assertTrue(checker.header.large)
+        self.assertEqual(checker.header.units, 4)
+        checker.run()
+        self.assertEqual(checker.failures, [])
+
+
 CORPUS = Path(__file__).resolve().parents[1] / "build"
 
 

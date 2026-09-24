@@ -11,6 +11,56 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Layouts from ROOT's own test files, and a stricter entry figure.** Every
+  failure the checks gave on `root/roottest/` was diagnosed; 32 remain, in 4
+  files, three of them at fault.
+  - [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) §8.2, §8.3: `fType`
+    521 (`kStreamLoop + kOffsetL`) is a real code for `T *m[N]; //[n]`, and
+    before 5.16/00 a loop of pointers holds bare objects, not object slots.
+  - [`Collections.md`](spec/02-serialization/Collections.md): in a member-wise
+    block a counter is a column, one count per object (§4.1). Before 5.24/00 a
+    multimap was stored as `fSTLtype` 4 and a multiset as 5; take the container
+    from `fTypeName` (§1). A collection of an enum is read as the type `fCtype`
+    names, and `Int_t` when it is 0, which it is before 6.36/00 (§7.1).
+  - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md): before 5.32/00 an
+    empty entry of a split collection's member is 0 bytes (§3.2). A split
+    `kStreamLoop` branch before 5.27/06 has no `fBranchCount`; find its counter
+    by name (§4).
+  - [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) §7.3: before
+    6.00/00 an element's `fTypeName` is spelled as declared, with typedefs, and
+    can omit default template arguments or a namespace. The section gives the
+    lookup order that resolves it.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md): a slot below `fWriteBasket` can hold
+    a read-back copy of a written basket (§5.1); every basket is embedded when the
+    tree had no file (§5); a fast-cloned split parent has `fEntryNumber` equal to
+    `fEntries` (§7).
+  - [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) invariant 6 and
+    [`Splitting.md`](spec/04-ttree/Splitting.md): an empty-base branch can be
+    flushed; a split node of a class with no elements has no children and empty
+    entries; a count branch's title need not match its name after a rename.
+  - [`FileHeader.md`](spec/01-container/FileHeader.md) invariant 9: a large-file
+    header can sit on a small file. Take the header layout from the flag and every
+    other width from the structure's own version word.
+  - [`Auxiliary.md`](spec/04-ttree/Auxiliary.md) §2.2: a copied `TTreeIndex` is
+    not trimmed and can name entries the tree does not have; bounds-check them.
+  - The entry figure counts every branch-basket once, failed or skipped included:
+    48278 of 48501 over the corpora, 99.5%, where it was 99.8% of a smaller total.
+
+- **Basket slots.**
+  - [`TBranch.md`](spec/04-ttree/TBranch.md) §5.1: a slot of `fBaskets` below
+    `fWriteBasket` may hold a basket that was read back from its record and
+    streamed again, before 6.11/02. Its key's `fSeekKey` and `fNbytes` are the
+    record's, and its data are the record's. A reader may use either copy;
+    invariants 5 and 9 now allow it. [`TBasket.md`](spec/04-ttree/TBasket.md)
+    §4.1: such a copy's key fields are not 0 and its `fObjlen` is not stale.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md) §5: a count branch of a tree made
+    by `CloneTree`, `CopyTree` or `TChain::Merge` before 5.18/00 has one slot,
+    not the two of the leafcount basket, because `TBranch::Reset` removes it.
+  - [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) invariant 6 exempts
+    the empty-base branch of `TBranch.md` §9.2, which a writer flushes like any
+    data branch: from 5.20/00 to 5.34/19 and in 6.00 and 6.01 it has
+    `fWriteBasket` at least 1 and `fTotBytes` non-zero.
+
 - **Smaller corrections.**
   - [`Collections.md`](spec/02-serialization/Collections.md) §11.3: a pointer to
     a collection (`vector<T>*`, `fSTLtype` 41) has no pointer tag and no null

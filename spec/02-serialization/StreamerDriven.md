@@ -110,8 +110,13 @@ stream, so the loop MUST retain values as it goes:
   ([Element types §2.1](ElementTypes.md#21-kcounter-6)). ROOT reads the count
   as an `Int_t` whatever the counter's code, so a reader MUST retain every
   element of code 3, 6 or 13.
-- **`kStreamLoop` (501)** does the same
+- **`kStreamLoop` (501)**, and its fixed-array form 521, do the same
   (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1462-1697`).
+
+In a member-wise block, a `TClonesArray` in the bypass form or a member-wise
+collection, the counter is a column with one value per element, and each
+element's counted member takes that element's value
+([Collections §4.1](Collections.md#41-the-columns-are-not-uniformly-framed)).
 
 The counter always precedes the members that name it, because ROOT emits members
 in declaration order and the `[n]` annotation can only name an already-declared
@@ -327,6 +332,11 @@ An absent info is not always an error. Only a class whose bytes are written
 **inline** has to be described, because there the declared type is the only
 indication of what the bytes are. Where the bytes identify their own class, or may
 not exist at all, the declared type is not a promise.
+
+A class is described when an info matches its name by the rules of
+[Streamer information §7.3](StreamerInfo.md#73-ftypename-is-not-always-spelled-as-the-info-it-names).
+Before 6.00/00 an element spelled the class as its member was declared, which
+need not be the info's name.
 
 | Where a class is named | Must the file describe it? |
 |---|---|
@@ -648,9 +658,12 @@ scalars) must all be implemented for any class the reader claims to support.
    a `TStreamerSTL` and may precede it (§4.3).
 5. Every class named by a `TStreamerBase` element, and every class named in the
    `fTypeName` of a member whose bytes are written **inline** — codes 61, 62, 63
-   and 68, with `kOffsetL` where it applies — has a streamer info in the same
-   file, unless its `Streamer` is hand-written or forwarding, or it is an STL
-   container (§6.1, which has the three lists and the measurement). A member of
+   and 68, with `kOffsetL` where it applies — names, after steps 1 to 3 of the
+   matching in
+   [Streamer information §7.3](StreamerInfo.md#73-ftypename-is-not-always-spelled-as-the-info-it-names),
+   a class with a streamer info in the same file, unless its `Streamer` is
+   hand-written or forwarding, or it is an STL container (§6.1, which has the
+   three lists and the measurement). A member of
    code 64 or 69 has **no** such requirement: it may be null in every object
    the file holds, and a non-null one names its class in the bytes.
 6. An element with `fType` of -1 is a `TStreamerBase` whose info carries

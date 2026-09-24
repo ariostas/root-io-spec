@@ -356,6 +356,85 @@ them, and the rest of the format assumes the values they produce:
 | version == 3 and `fFactor > 0` | set `kHasRange` (`root/core/meta/src/TStreamerElement.cxx:583`) |
 | version > 3 and `kHasRange` set | parse `fTitle` for the range (`root/core/meta/src/TStreamerElement.cxx:586`) |
 
+### 7.3 `fTypeName` is not always spelled as the info it names
+
+An info is named by its class's normalised name: typedefs resolved, `long long`
+spelled `Long64_t`, and `std::` and the STL's default template arguments dropped
+(`TClassEdit::GetNormalizedName`,
+`root/core/foundation/src/TClassEdit.cxx:924-925`). An element's `fTypeName`
+need not be spelled the same way. Before 6.00/00 `Build` recorded the member's
+declared spelling, `GetFullTypeName()`
+(`v5-34-18:io/io/src/TStreamerInfo.cxx:325`). Root commit `452898f2b72`
+(2014-05-21, first in 6.00/00) switched to `GetTrueTypeName()`
+(`root/io/io/src/TStreamerInfo.cxx:573`), and its message gives the reason:
+"With the typedef in the name, the ROOT file is not self describing". ROOT
+joins the two spellings through its interpreter, in `TClass::GetClass`; a reader
+with only the file has to do it by rule.
+
+Measured over `data/`, both corpora and 271 files of `root/roottest/`. The
+renamings a reader can resolve occur only in `root/roottest/`:
+
+| Mechanism | Elements | Files (writer) | Example |
+|---|---|---|---|
+| a ROOT typedef of a fundamental type as a template argument | 4 | `checksum_v5.root`, `checksum_v53418.root` (5.34/18), `pairs_v5.root` (5.34/19), `checksum_v6.root` (5.99/06) | `UserTmplt<Int_t>`, info `UserTmplt<int>` |
+| `unsigned long long` for `ULong64_t` | 1 | `lariat-si.root` (6.11/01) | `artdaq::QuickVec<unsigned long long>`, info `artdaq::QuickVec<ULong64_t>` |
+| a default template argument of a non-STL class left out | 8 | `CMSSW_3_1_0_pre11-RelValZTT-default-copy.root` (5.22/00) | `PositionVector3D<Cartesian3D<Double32_t> >`, info `…,ROOT::Math::DefaultCoordinateSystemTag>` |
+| the enclosing namespace left out | 1 | `nestedColl.root` (5.34/33) | `vector<OtherInner>` in `HepExp::Outer`, info `HepExp::OtherInner` |
+
+ROOT 6.40.04 resolves `TClass::GetClass("UserTmplt<Int_t>")` to
+`UserTmplt<int>`, and roottest's `io/emulated/execROOT8804.C` exists to check that
+`artdaq::QuickVec<unsigned long long>` finds the `ULong64_t` info. It also writes
+names that match: an interpreted class with members of `UserTmplt<Int_t>`,
+`vector<Int_t>`, `vector<Named_t>` (a typedef of `TNamed`),
+`UserTmplt<long long>` and `PositionVector3D<Cartesian3D<Double32_t> >` records
+`UserTmplt<int>`, `vector<int>`, `vector<TNamed>`, `UserTmplt<Long64_t>` and the
+name with `DefaultCoordinateSystemTag`, as the infos do. Without the classes' dictionaries,
+ROOT 6.40.04 cannot read `nestedColl.root`'s collections of `OtherInner`
+(`CheckByteCount … vector<OtherInner> read too few bytes: 6 instead of 20`).
+
+**A reader MUST match a class name in an element to an info in this order,**
+taking the first step that finds one:
+
+1. The name as written.
+2. The name with its spelling made uniform: ROOT's typedefs of fundamental
+   types resolved wherever one stands as a whole template argument
+   (`root/core/foundation/inc/RtypesCore.h:51-103`), except `Double32_t` and
+   `Float16_t`, which change the bytes and so stay in the normalised name;
+   `long long` and `unsigned long long` as `Long64_t` and `ULong64_t`; `std::`
+   dropped and whitespace normalised. For an unqualified name, first try it
+   qualified by each enclosing scope of the class that holds the element,
+   innermost first, as C++ name lookup would. A user's typedef cannot be
+   resolved, because the file does not record it
+   ([Collections §9](Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)).
+3. The same, allowing trailing template arguments to be left out at any depth,
+   provided exactly one info matches.
+4. Where the bytes hold a version word of 0 and a checksum
+   ([Buffer framing §4](Buffer.md#4-a-version-word-of-0-has-two-different-meanings)),
+   the one class in the file whose info has that checksum, provided exactly one
+   has it. Never for a `pair`, whose checksums collide
+   ([Collections §8.2](Collections.md#82-the-checksum-does-not-identify-the-pair)),
+   and never for the class the record's key names: a `TBasket` payload is not an
+   object of its key's class, and it can begin with an object whose checksum is
+   unique in the file.
+
+Step 4 goes beyond ROOT, which looks a checksum up only among the infos of a
+class it has already resolved by name
+([Collections §11.2](Collections.md#112-a-class-that-is-a-collection-the-this-element)).
+It is what reads the collections of `nestedColl.root`: `fValue`, a
+`vector<OtherInner>`, is `40 09 | 00 00 f6 4a b7 e0 | …`, member-wise with
+value-class version 0 and checksum `0xf64ab7e0`, `HepExp::OtherInner`'s, and
+`fAlias`, a `vector<Alias>` with `typedef Inner Alias;`, carries
+`HepExp::Inner`'s `0xcfdf7f18`. It is also the only step that resolves a name no
+class has. In `output_Coulomb_LER_study_10.root`, ROOT 6.07/01 recorded the type
+of `m_stats[6]` (code 82) as
+`Belle2::ModuleStatistics::CalcMeanCov<2,value_type>`, and ROOT 6.40.04 reports
+that it "Cannot determine alignment" for that type. Every object in the array is
+`40 00 00 36 | 00 00 | b1 66 76 3d | …`, and `0xb166763d` is the checksum of
+`Belle2::CalcMeanCov<2,double>`, whose info then reads each object's 54 bytes
+exactly. The name is still the writer's fault, and
+[Streamer-driven reading](StreamerDriven.md#10-invariants) invariant 5, which
+takes steps 1 to 3 only, fails on that element.
+
 ## 8. The element subclasses
 
 Each subclass record starts with its own byte count and version, followed by the

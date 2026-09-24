@@ -285,6 +285,8 @@ large-file layout.
 initialization, a write, or a read into a member that nothing consults afterwards.
 A reader MUST branch on `fVersion` (§3) and MAY use `fUnits` only as a cross-check.
 Where the two disagree, `fVersion` is authoritative, since it is what ROOT uses.
+They do disagree on a flagged file below 2 GB: `foreignVec.root` has the large
+layout and `fUnits` 4 (invariant 10).
 
 ### 5.8 `fCompress`
 
@@ -456,15 +458,22 @@ make the data ambiguous.
 8. `fSeekInfo` is either `<= fBEGIN` (no streamer info) or satisfies
    `fBEGIN < fSeekInfo < fEND` with `fNbytesInfo` equal to the `fNbytes` of the
    record there.
-9. `fVersion >= 1000000` **if** `fEND > 2000000000`, and on every file seen so far
-   the reverse holds too. The reverse is not guaranteed: the flag is set when `fEND`
-   crosses the threshold (`root/io/io/src/TFile.cxx:2679`) and is never cleared, so
-   a file that shrank below it again would keep the flag and still be readable.
-   `tools/check_invariants.py` enforces the strict `iff`, which is slightly
-   stricter than the format requires; no file in either corpus violates it. A
-   reader MUST take the key width from the flag, never from `fEND`.
-10. `fUnits` is 4 when `fVersion < 1000000` and 8 otherwise. ROOT does not enforce
-    this and does not read the field.
+9. `fVersion >= 1000000` **if** `fEND > 2000000000`. The reverse is not
+   guaranteed: the flag is set when `fEND` crosses the threshold
+   (`root/io/io/src/TFile.cxx:2679`) and is never cleared, so a file that shrank
+   below it again would keep the flag and still be readable. Two files below
+   2 GB have the flag: `foreignVec.root` in `root/roottest/` (5.34/18, 7460
+   bytes) and `uproot-issue261.root` in the foreign corpus (10561 bytes).
+   `tools/check_invariants.py` checks the direction stated. A reader MUST take
+   the header layout from the flag and every other width from the structure's
+   own version word
+   ([Large files §7](LargeFiles.md#7-reading)), never from `fEND`:
+   `foreignVec.root` has the flag and only small keys.
+10. `fUnits` is 4 when `fVersion < 1000000`, and 8 when `fEND > 2000000000`. A
+    flagged file below 2 GB may hold either: the two files of invariant 9 hold 4,
+    although the one place ROOT adds the flag also sets 8
+    (`root/io/io/src/TFile.cxx:2679`). ROOT does not enforce this and does not
+    read the field.
 11. `fBEGIN` is at least the length of the header its own `fVersion` selects:
     63 bytes for the small layout, 75 for the large one. The header is
     rewritten in place at every close, so it would overwrite a first record that

@@ -26,13 +26,13 @@ Measured, 2026-09-23, by the checks in `tools/`:
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 86 / 2203, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1706, 0 failures |
+| Source citations checked | 1764, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 100 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
-| Entries decoded and checked | 48295 of 48399 branch-baskets, 99.8% |
-| Unit tests | 548 |
+| Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
+| Unit tests | 610 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
 register: every gap the written documents record, so that each can be picked up
@@ -2182,43 +2182,71 @@ they are now measured with it: 48295 of 48399, 0 failures.
 Two checker defects surfaced as well. Every basket of a leafless branch was
 counted twice in the `ENTRIES` denominator (the fixtures read 109 of 115, not 109
 of 113). And `Checker.check_branch` returns early for a leafless branch, so
-`TBranch` 11.5 to 11.7 are never checked on one, `TBranchSTL` included; that one
-is still open.
+`TBranch` 11.5 to 11.7 are never checked on one, `TBranchSTL` included; that
+one is fixed in the second round below.
 
-**Open leads.** A sweep of all 272 roottest files, one process each, now gives
-590 failures in 27 files, none of them a file the documents cite. They are
-undiagnosed, and roottest holds some files that are broken on purpose, so each is
-a lead:
+**The second round (2026-09-24).** A sweep of all 272 roottest files, one process
+each, gave 590 failures in 27 files. Six agents diagnosed them. None of the files
+is at fault except the three noted below, and nothing was added to
+`gen/foreign/IGNORE.toml`, which covers only the foreign corpus.
 
-- `ReadingEntries` 8.5, "names counter ... not yet seen", on an `Int_t` counter
-  (`fNsp` in `tree/selector/Event1-3.root` and `io/evolution/Event_2.root`,
-  `fNrSrcs` in `memleak.root`, `fN` in `varyingArray_51508.root`). This is not
-  the `issue213` mechanism, whatever the lead reports expected.
-- `ReadingEntries` 8.5 on collection columns: `small_aod.pool.root` (350, "no
-  byte count") and the two `S_1_*KGrec.root` files (54 each, the column ends
-  104 bytes short of its byte count).
-- `TBranch` 11.9 in `tree/friend/dat_00{1,2,3}.root` (4.04/02, plain `TBranch`):
-  slot 11 holds an embedded basket while `fBasketSeek[11]` points at a real
-  `TBasket` record.
-- Structural labels in single files: `Splitting` 8.1, 8.3, 8.4; `TBranch` 11.3,
-  11.5, 11.6; `StreamerDriven` 10.5 (7 files); `Collections` 14.6 and 14.10;
-  `FileHeader` 10.9 and 10.10 (`foreignVec.root`); `ElementTypes` 11.1 (`fType`
-  521 in `varyingArray_51508.root`); `Auxiliary` 8.3.
-- `ReadingEntries` 8.1, 8.3 and 8.4 pass vacuously on a file whose baskets are all
-  embedded, such as `mksm.root`, because `Checker.entries_of` skips embedded
-  baskets.
-- A basket whose codec is missing, or whose check fails, leaves the `ENTRIES`
-  denominator rather than counting against it. So do a branch's later baskets
-  after its first skip: `check_entry_decode` counts one branch-basket and returns,
-  so `RefTest.root`'s "SKIPPED 4" meant four branches, and its denominator grew
-  from 52 to 60 once they decoded.
-- Seven count branches of `skim.root` (4.03/05) have `fWriteBasket` 0 and one
-  slot, not the two of `TBranch.md` §5. `TBranch::Reset`, which `CloneTree`
-  calls, would explain it, but how the file was made is not known.
-- Whether a pre-6.02/00 empty-base branch (`TBranch.md` §9.2) was ever flushed.
-  The 16 known ones keep their only basket embedded, so `TBranchElement`
-  invariant 6 (`fWriteBasket` and `fTotBytes` 0 on `fType` 1 and 2) holds on them
-  by accident; a flushed one would break it.
+- *Counters the reader never found.* A member-wise `TClonesArray` stores its
+  counter as a column, one count per object (`Event1-3.root`, `Event_2.root`;
+  `Collections.md` §4.1). A split `kStreamLoop` branch before 5.27/06 has no
+  `fBranchCount`, so its counter is found by name (`memleak.root`,
+  `varyingArray_51508.root`; `ReadingEntries.md` §4). `fType` 521,
+  `kStreamLoop + kOffsetL`, is a real code that 6.40.04 still writes, and before
+  5.16/00 a loop of pointers held bare objects, which a byte-span check cannot
+  tell from slots (`ElementTypes.md` §8.2, §8.3).
+- *Empty collection entries.* Before 5.32/00 an empty entry of a split
+  collection's member was 0 bytes, not a 6-byte header (`small_aod.pool.root`,
+  the `S_1_*KGrec.root` files; `ReadingEntries.md` §3.2). A collection of an enum
+  is read as the type `fCtype` names, `Int_t` when it is 0, and `fCtype` holds the
+  underlying type only from 6.36/00 (`Collections.md` §7.1).
+- *Basket slots.* `dat_00x.root` holds a basket read back from its record and
+  streamed again, identical to the record (`TBranch.md` §5.1). `skim.root`'s one
+  slot is `CloneTree`'s `Reset`: 55 branches carry an `fEntryOffsetLen` of 2000
+  that a 10-entry tree cannot produce. An empty-base branch could have been
+  flushed from 5.20/00 to 5.34/19 and 6.00 to 6.01, so `TBranchElement`
+  invariant 6 now exempts it; no file has one.
+- *Tree structure.* A split node of a class with no elements (`lhcb.root`), split
+  parents after fast cloning (`bigFile.root`, `lhcb.root`, the Coulomb file), a
+  tree written with no file behind it (`v5formula_clones.root`), and folder
+  branches renamed after construction (`ship_ROOT_9674.root`); `Splitting.md` §1.1
+  and §3.3, `TBranch.md` §5 and §7.
+- *Serialization.* Before 6.00/00 an element's `fTypeName` is spelled as declared,
+  not normalised (`StreamerInfo.md` §7.3). Before 5.24/00 a multimap was stored
+  as 4 and a multiset as 5 (`Collections.md` §1). A large-file header can sit on
+  a small file (`foreignVec.root`; `FileHeader.md` invariant 9). A copied
+  `TTreeIndex` is not trimmed, so a reader must bounds-check it
+  (`Auxiliary.md` §2.2).
+- *The checker checked less than it reported.* `TBranch` 11.5 to 11.7 now run on
+  leafless branches, and `ReadingEntries` 8.1, 8.3 and 8.4 on embedded baskets
+  (on `mksm.root` they read 0 entries before and 1410 count entries now). The
+  `ENTRIES` ratio counts every branch-basket once, failed or skipped included,
+  which moves the corpus figure from 48295 of 48399 to 48278 of 48501, 99.5%.
+
+Roottest now gives 32 failures in 4 files. Three are the files' fault:
+`checksum_v5.root` and `checksum_v53418.root` record a class-scoped typedef
+nothing resolves, and `output_Coulomb_LER_study_10.root` records a class name no
+class has. ROOT 6.40.04, without a dictionary, fails on all three.
+
+**Open leads.**
+
+- `tlorentzvec.root` (5.27/01): count branches titled `_` whose members say
+  `[muon4mom_]`. No ROOT constructor produces it and the writer is unknown, so
+  `Splitting` 8.4 was not widened; the file fails it 28 times.
+- `output_Coulomb_LER_study_10.root`: a `TGlobal` info whose base `TDictionary`
+  has no info (`StreamerDriven` 10.5). Nothing in the file uses `TGlobal`, and
+  6.40.04 does not reproduce the omission.
+- How `foreignVec.root`'s flagged header with `fUnits` 4 was written.
+- `TBranchObject` entries are not decoded: 5 baskets in the corpora, 1 in the
+  fixtures, 8 in `v5formula_clones.root`.
+- A possible ROOT bug: for a file of version 51508 or below, the write action for
+  `kStreamLoop` calls a read function
+  (`root/io/io/src/TStreamerInfoActions.cxx:1699-1708`). Untested.
+- Whether any split parent was fast-cloned and then filled entry by entry, which
+  would leave `0 < fEntryNumber < fEntries`.
 
 **Side findings followed up.**
 

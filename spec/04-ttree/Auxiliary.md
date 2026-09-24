@@ -94,6 +94,35 @@ empty arrays, and ROOT **discards them on read with a warning**
 (`root/tree/tree/src/TTree.cxx:9840-9844`). A reader should ignore them and use
 `fTreeIndex`.
 
+### 2.2 An index can name entries the tree does not have
+
+`fN` is the number of rows in the index, not the tree's `fEntries`, and an entry
+number in `fIndex` can be past the end of the tree that holds it.
+`TTree::CopyEntries` gives the new tree a clone of the source tree's whole index
+and never trims it (`R__HandleIndex`, `kKeep` at
+`root/tree/tree/src/TTree.cxx:3510-3514` and `kBuild` on an empty tree at
+`:3516-3521`, called at `:3707`). `CloneTree` with an entry count copies through
+`CopyEntries` (`root/tree/tree/src/TTree.cxx:3328`). ROOT 6.40.04 writes such a
+file from scratch: a 20-entry tree with `BuildIndex`, then `CloneTree(5)`, gives
+a tree of 5 entries whose index has `fN` 20.
+
+What does hold is that `fIndex` is a permutation of `[0, fN)`. The constructor
+sorts the identity (`root/tree/treeplayer/src/TTreeIndex.cxx:222-224`), and
+`Append` offsets the appended rows by the old `fN`
+(`root/tree/treeplayer/src/TTreeIndex.cxx:310-312`).
+
+ROOT does not bounds-check the result: `GetEntryNumberWithIndex` returns the
+stored `fIndex[pos]` (`root/tree/treeplayer/src/TTreeIndex.cxx:489-497`). **A
+reader MUST bounds-check an entry number found through the index** against the
+tree's `fEntries`.
+
+> Seen in `root/roottest/root/tree/cloning/files/output_Coulomb_LER_study_10.root`
+> and `output_Coulomb_LER_study_small.root` beside it. Both trees have 10
+> entries, and both indexes have `fN` 320 with `fIndex` the identity 0 to 319.
+> The `_small` file is the output of the test's own `CloneTree(0)` and
+> `CopyEntries` (`root/roottest/root/tree/cloning/exectrim.C`), and re-running it
+> with ROOT 6.40.04 reproduces it.
+
 ## 3. `TFriendElement`
 
 Class version 2 (`root/tree/tree/inc/TFriendElement.h:76`), streamer-info
@@ -290,8 +319,8 @@ covers a `TChain`; the shape above is from the source.
 1. A `TTreeIndex`'s three arrays each hold exactly `fN` values, and `fN` is not
    negative.
 2. A `TTreeIndex`'s `fIndexValues` is non-decreasing — it is the sort key.
-3. Every entry number in a `TTreeIndex`'s `fIndex` is in `[0, fEntries)` of the
-   tree that points at it.
+3. A `TTreeIndex`'s `fIndex` is a permutation of `[0, fN)`. `fN` need not be the
+   `fEntries` of the tree that points at it (§2.2).
 4. A `TFriendElement` has a non-empty `fTreeName`.
 5. A `TBranchRef`'s name is `TRefTable`.
 6. A `TEntryListBlock` with `fType` 0 has `fN` 4000; one with `fType` 1 has

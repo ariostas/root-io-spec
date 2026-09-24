@@ -54,6 +54,27 @@ with a basket of framed, empty base-class objects
 
 An empty `fLeaves` does **not** by itself mean a branch holds nothing; see §5.
 
+A split node (`fType` 0, `fID` −2) can also be childless, in files of any
+release. `TTree::Bronch` gives a top-level branch `fID` −2 whenever it splits
+(`root/tree/tree/src/TTree.cxx:2604-2608`) and then lets `Unroll` add one
+sub-branch per element of the class's streamer info
+(`root/tree/tree/src/TTree.cxx:2615-2617`). A class whose streamer info lists no
+element, because every member is transient or there is none, gets no
+sub-branch. `TClass::CanSplit` refuses only a class whose `sizeof` is 1
+(`root/core/meta/src/TClass.cxx:2384-2388`), so a class with transient members
+is still split. The branch keeps its one `TLeafElement`, fills through
+`TBranch::Fill` because it has no sub-branch
+(`root/tree/tree/src/TBranchElement.cxx:1297-1306`), and each entry is empty:
+the fill writes the elements of an info that has none.
+
+> Measured in `lhcb.root` of `root/roottest/` (5.17/07, written by LHCb's POOL
+> layer): branch `DataObject`, whose `DataObject` streamer info lists no
+> element, has `fID` −2, no sub-branch, one leaf and an embedded basket of 498
+> entries whose offsets are all equal to `fKeylen` 79, so every entry is 0
+> bytes. ROOT 6.40.04 writes the same shape for a class whose only members are
+> marked `//!`: `fID` −2, split level 99 or 1, no sub-branch, and a basket
+> record of 3 entries of 0 bytes.
+
 ## 2. Which classes are split
 
 A reader never has to make this decision, because the file records the outcome.
@@ -145,9 +166,11 @@ cannot tell which from the name alone.
 
 ### 3.3 The count-branch convention
 
-Titles, unlike names, record one relationship reliably. A collection or
-`TClonesArray` count branch's title is its name with an underscore appended, and
-every member branch of its content has a title of the form `member[count_]`:
+Titles, unlike names, record one relationship, fixed when the branches are
+constructed. A collection or
+`TClonesArray` count branch's title is the name it was constructed with, a
+trailing dot removed and an underscore appended, and every member branch of its
+content has a title of the form `member[count_]`:
 
 ```
 fDet.fHits          title  fDet.fHits_
@@ -155,9 +178,41 @@ fDet.fHits.fId      title  fId[fDet.fHits_]
 fDet.fHits.fE       title  fE[fDet.fHits_]
 ```
 
-`BuildTitle` builds both: it strips a trailing dot, appends `_`
-(`root/tree/tree/src/TBranchElement.cxx:1186-1189`), and formats the bracketed
-form for each member (`root/tree/tree/src/TBranchElement.cxx:1218`).
+The constructor sets the count branch's title, and its leaf's name and title,
+to that one string (`root/tree/tree/src/TBranchElement.cxx:818-825` for a
+`TClonesArray`, `root/tree/tree/src/TBranchElement.cxx:985-989` for a
+collection, and `root/tree/tree/src/TBranchElement.cxx:579-585` and
+`root/tree/tree/src/TBranchElement.cxx:633-639` for the same as a member).
+`BuildTitle` derives the same string again from the same name
+(`root/tree/tree/src/TBranchElement.cxx:1185-1189`) and gives each member the
+bracketed form, on the member branch and on its leaf alike
+(`root/tree/tree/src/TBranchElement.cxx:1217-1222`).
+
+The relationship is fixed at construction and nothing re-derives it, so it holds
+between the titles, not between a title and `fName`. A program may rename a
+branch afterwards with `TNamed::SetName`, and then the count branch's name no
+longer is its title's stem.
+
+> Measured in `ship_ROOT_9674.root` of `root/roottest/` (6.17/01, FairShip).
+> `TTree::Branch(foldername)` names a folder's branches after the folder path,
+> `cbmroot.Stack.MCTrack` (`root/tree/tree/src/TTree.cxx:1927-1946`), and marks
+> them `kBranchFolder`. The ten `TClonesArray` branches here have that bit set,
+> titles such as `cbmroot.Stack.MCTrack_` and leaves named
+> `cbmroot.Stack.MCTrack_` and `cbmroot.Stack.MCTrack.fPx`, but branch names
+> `MCTrack` and `MCTrack.fPx`: the writer stripped the folder prefix from the
+> branches and not from their titles or leaves. ROOT 6.40.04 reads the file,
+> and `RDataFrame` reads `MCTrack.fPdgCode` from it, which is what the roottest
+> test checks.
+>
+> `tlorentzvec.root` of `root/roottest/` (5.27/01) departs the other way. Its
+> seven `vector<TLorentzVector>` count branches, such as `muon4mom`, have title
+> `_` and a leaf named and titled `_`, while their members are titled
+> `fP[muon4mom_]`. No constructor at `v5-26-00` or `v5-27-02` produces that:
+> each sets the count's title and the members' brackets from one name. How the
+> file was written is not known. ROOT 6.40.04 reads it, as does the
+> `TTreeProxy` test it belongs to. Until its writer is known, the file fails
+> invariant 4 rather than the invariant being widened to fit it (`PLAN.md`
+> §8.16).
 
 This is the human-readable form of the relationship. The machine-readable form
 is the member branch's `fBranchCount`
@@ -336,16 +391,21 @@ does with the result:
 
 ## 8. Invariants
 
-1. A branch with `fID` −2 has a non-empty `fBranches`.
+1. A branch with `fID` −2 has a non-empty `fBranches`, unless it is a top-level
+   branch (`fType` 0) of a class whose streamer info lists no element. That
+   branch has one leaf and every entry in its baskets is 0 bytes (§1.1).
 2. A branch with `fType` 1 or 2 has a non-empty `fBranches`: an interior node
    with no children would describe nothing. The exception is an `fType` 1 branch
    whose element is a base class whose streamer info lists no elements, which
    ROOT before 5.34/20 and 6.02/00 wrote as a childless branch with data (§1.1).
-3. A count branch's title is its name with a trailing dot removed and `_`
-   appended.
+3. A count branch's title ends in `_` and equals its leaf's name and its
+   leaf's title. ROOT constructs all three as the branch's construction name
+   with a trailing dot removed and `_` appended, but a writer may rename the
+   branch afterwards, so its current `fName` is not part of the invariant
+   (§3.3).
 4. Every member branch of a split container (`fType` 31 or 41) has a title of
-   the form `member[count_]`, where `count_` is its `fBranchCount` branch's
-   title.
+   the form `member[count_]`, equal to its leaf's title, where `count_` is its
+   `fBranchCount` branch's title.
 5. A `TBranchSTL` has no leaf.
 
 ## 9. Errata
@@ -354,6 +414,7 @@ does with the result:
 |---|---|---|
 | 1 | `root/io/doc/TFile/README.md:256-257`: "Each TBranch contains an array of zero or more leaves (class TLeaf), each corresponding to a basic variable type or a class object that has not been split" | The leaf array does not describe the branch's data in two of the shapes here. On a count branch its single entry is a back-reference rather than a leaf, so a reader that does not resolve it sees none ([TBranchElement §4](TBranchElement.md#4-two-ftype-values-have-no-leaf-and-two-reach-theirs-only-by-reference)); and a `TBranchSTL` has an empty leaf array *and* baskets full of data (§5) |
 | 2 | That `fSplitLevel` records how deeply a branch is split, the natural reading of `root/io/doc/TFile/ttree.md:54`, "Branch split level" | It records the writer's remaining budget. It is 0 on branches that were split and on branches that were not, and differs between branches at the same depth (§4.2) |
+| 3 | *This document, until 2026-09-23*: a count branch's title is its name with `_` appended, and a split node always has children (invariants 1 and 3) | The title is its *construction* name with `_`, and a writer may rename the branch later (`ship_ROOT_9674.root`); a split node of a class with no streamer-info element has no children and fills empty entries, in current ROOT too (§1.1, §3.3) |
 
 ## 10. Reference files
 

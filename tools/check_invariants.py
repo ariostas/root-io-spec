@@ -59,6 +59,16 @@ RBLOB_MULTIPAGE = (
 #: release carrying commit 3970c0bead.
 BASKET_LARGE_KEY_SINCE = (4, 2, 0)
 
+#: Collections.md 1: before this release the TStreamerSTL constructor that parses
+#: a type name tested "map" before "multimap" and "set" before "multiset"
+#: (v5-22-00:core/meta/src/TStreamerElement.cxx:1486-1491), so a multimap was
+#: stored as kSTLmap (4) and a multiset as the old kSTLset (5), which ROOT now
+#: reads as a multimap. Fixed by root commit 32b2215c0d0 (2009-06-02). ROOT's
+#: read-side repair covers neither, and needs to: the container it reads is
+#: taken from the name (root/io/io/src/TEmulatedCollectionProxy.cxx:135).
+STL_KIND_FROM_NAME_SINCE = (5, 24, 0)
+LEGACY_STL_KINDS = {(4, 5), (5, 7)}      # (stored, named): map/multimap, multimap/multiset
+
 #: TTree.md 6.3: the first release whose TTree::AutoSave stores fZipBytes in
 #: fSavedBytes; every earlier one stored fTotBytes (root commit fa3ad228d72).
 SAVED_BYTES_ZIP_SINCE = (5, 27, 2)
@@ -260,6 +270,11 @@ def undescribed_classes(info, described: set[str]) -> list[tuple[str, str]]:
     def is_described(name: str) -> bool:
         if not name or name in described or name in NO_INFO_OF_ITS_OWN:
             return True
+        # An element need not spell the class as its info does: typedefs,
+        # `long long`, default template arguments and, before 6.00/00, the
+        # owner's scope. StreamerInfo.md 7.3.
+        if rootfile.recorded_class_name(name, described, info.name):
+            return True
         # A hand-written layout is recorded under the template name, as ClassDef
         # spells it, while a file names the specialization: TMatrixTSym against
         # TMatrixTSym<double>. Matrix.md 2.2.
@@ -339,11 +354,19 @@ class Checker:
         # (StreamerDriven.md 7), so the list has to come from outside it.
         self.custom = set(custom or ())
         self.sampled = 0
+        self._sampled_at: set[int] = set()
         self.skipped: dict[tuple[str, str, str], int] = {}
         #: branch-baskets on which an entry check ran to completion. The
         #: denominator for the SKIPPED counts, so that "0 failures" can be read
         #: against how much was reached.
         self.verified = 0
+        #: branch-baskets on which an entry check ran and failed, by label. They
+        #: stay in the ENTRIES denominator: a basket that fails was reached,
+        #: and dropping it would make the ratio rise when a check breaks.
+        self.failed: dict[str, int] = {}
+        #: Why a record's object data could not be had, by offset: a missing
+        #: codec or a failed decompression. Read back as a skip reason.
+        self._undecoded: dict[int, str] = {}
         #: The payload of the TTree record whose branches are being checked,
         #: where an embedded basket lives. TBranch.md 5.
         self._tree_payload = None
@@ -385,6 +408,7 @@ class Checker:
             out = rootfile.object_data(self.buf, rec)
         except rootfile.MissingCodec as exc:
             self.no_codec.add(f"some records were not decompressed: {exc}")
+            self._undecoded[rec.offset] = f"its codec is missing: {exc}"
             out = None
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
             # An RBlob is a sequence of sealed pages, not one compressed object,
@@ -394,6 +418,7 @@ class Checker:
                 self.rblob_unchecked(rec)
             else:
                 self.bad("Compression 9", str(exc))
+            self._undecoded[rec.offset] = "it does not decompress (Compression 9)"
             out = None
         # An uncompressed record shares self.buf, so caching it costs nothing; a
         # compressed one is a file-sized copy, so keep only a handful.
@@ -492,10 +517,16 @@ class Checker:
                     self.bad("FileHeader 10.8",
                              f"fNbytesInfo {h.nbytes_info} != fNbytes at fSeekInfo ({got})")
 
-        if h.large != (h.end > KSTART_BIG_FILE):
+        # 10.9 in the direction the format requires: a file past 2 GB has the
+        # flag. The flag on a smaller file is legal and ROOT reads it (FileHeader.md
+        # 3); foreignVec.root in root/roottest has one.
+        if h.end > KSTART_BIG_FILE and not h.large:
             self.bad("FileHeader 10.9",
                      f"large flag {h.large} but fEND is {h.end}")
-        if h.units != (8 if h.large else 4):
+        # 10.10: ROOT sets fUnits to 8 only together with the flag, so a small
+        # layout has 4 and a file past 2 GB has 8. A flagged file below 2 GB may
+        # hold either; ROOT never reads the field (FileHeader.md 5.7).
+        if (not h.large and h.units != 4) or (h.end > KSTART_BIG_FILE and h.units != 8):
             self.bad("FileHeader 10.10", f"fUnits {h.units} disagrees with the version flag")
 
         self.check_header_floor(h.begin, h.large)
@@ -859,7 +890,8 @@ class Checker:
     FORBIDDEN_TYPES = {10, 70, 71, 300, 365, 600, 1000, 1001, 1002, 99997, 99999, -2, -3}
 
     def _on_disk_type(self, t: int) -> bool:
-        if t == -1 or t in (500, 501):
+        # 521 is kStreamLoop + kOffsetL, `T *m[d]; //[n]`. ElementTypes.md 8.2.
+        if t == -1 or t in (500, 501, 521):
             return True
         if t in self.FORBIDDEN_TYPES:
             return False
@@ -1005,9 +1037,10 @@ class Checker:
                         "TStreamerSTL", "TStreamerSTLstring"):
                     self.bad("ElementTypes 11.3",
                              f"{where}: fType {e.ftype} on a {e.cls}")
-                elif e.ftype == 501 and e.cls != "TStreamerLoop":
+                elif e.ftype in (501, 521) and e.cls != "TStreamerLoop":
                     self.bad("ElementTypes 11.3",
-                             f"{where}: fType 501 on a {e.cls}, not a TStreamerLoop")
+                             f"{where}: fType {e.ftype} on a {e.cls}, not a "
+                             f"TStreamerLoop")
                 # 11.4. fArrayLength is the fixed extent: positive for a
                 # kOffsetL code, and 0 for a kOffsetP one, whose length is its
                 # counter's. The published invariant claimed positive for all of
@@ -1075,7 +1108,8 @@ class Checker:
             if data is None:
                 continue
             try:
-                value = rootfile.decode_record(data, target, infos)
+                value = rootfile.decode_record(data, target, infos,
+                                               self.header.version)
             except rootfile.UnsupportedClass:
                 continue    # a hand-written Streamer; StreamerDriven.md 7
             except (rootfile.FormatError, struct.error,
@@ -1337,6 +1371,10 @@ class Checker:
                             f"{el.type_name} is not a container name this "
                             f"specification knows (Collections.md 1)")
                         continue
+                    if (bare != want
+                            and self.header.root_version < STL_KIND_FROM_NAME_SINCE
+                            and (bare, want) in LEGACY_STL_KINDS):
+                        continue
                     if bare != want:
                         self.bad("Collections 14.10",
                                  f"{info.name}.{el.name} has fSTLtype {stl}, but "
@@ -1395,7 +1433,12 @@ class Checker:
                     self.bad("Collections 14.4",
                              f"{name} is member-wise but its value class "
                              f"{value!r} is one CanSplit refuses")
-                if not value.startswith("pair<") and value not in known:
+                # A value class may be named in another spelling than its info
+                # (StreamerInfo.md 7.3): resolved from the name, or by the
+                # decoder from the checksum in the frame.
+                if (not value.startswith("pair<") and value not in known
+                        and not decoder.aliases.get(value)
+                        and rootfile.recorded_class_name(value, known) is None):
                     self.bad("Collections 14.6",
                              f"{name} is a member-wise collection of {value!r}, "
                              f"which has no streamer info in this file")
@@ -2692,7 +2735,8 @@ class Checker:
             _, _, infos = self.streamer_infos()
             reader = rootfile.TreeReader(self.buf, tree, infos or [],
                                          self.fetch_basket, custom=self.custom,
-                                         tree_payload=data)
+                                         tree_payload=data,
+                                         file_version=self.header.version)
             for branch in rootfile.walk_branches(top):
                 self.check_branch(data, branch)
                 self.check_branch_element(branch, by_slot)
@@ -2710,6 +2754,89 @@ class Checker:
         payload = self.data(rec)
         return None if payload is None else (rec, payload)
 
+    def branch_baskets(self, br, tree_payload):
+        """Every basket of `br` that holds entries, in slot order.
+
+        Yields `(slot, record, payload, basket, why)`. When the basket can be
+        had, `why` is None; otherwise the other three are None and `why` says
+        what stopped it, for a SKIPPED line. The one enumeration every entry
+        check uses, so that none of them can see a basket another misses.
+
+        An embedded basket is read out of `tree_payload`, the TTree record it
+        was streamed into, with its raw block standing in for a record offset
+        (TBranch.md 5, TBasket.md 4.1). The slot is consulted before
+        fBasketSeek, as ROOT does (root/tree/tree/src/TBranch.cxx:1234-1236)
+        and as rootfile.TreeReader does. A slot holding no entries, embedded or
+        not, is not a basket anything could check and is not yielded.
+        """
+        for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+            emb = br.embedded.get(i)
+            if emb is not None:
+                if not emb.basket.nev_buf:
+                    continue
+                if br.file_name:
+                    # In this file, but a counter it needs may not be: this
+                    # checker resolves every fBasketSeek in this file.
+                    yield i, None, None, None, (
+                        "an embedded basket of a branch whose other baskets "
+                        "are in another file, fFileName: not decoded")
+                    continue
+                if emb.block < 0 or tree_payload is None:
+                    yield i, None, None, None, ("an embedded basket with "
+                                                "entries but no buffer")
+                    continue
+                rec = rootfile.Record(offset=emb.block, nbytes=0,
+                                      key_len=emb.key_len)
+                yield i, rec, tree_payload, emb.basket, None
+                continue
+            if not br.basket_seek[i]:
+                if i < br.write_basket:
+                    # TBranch 11.5 reports it as a failure of the branch.
+                    yield i, None, None, None, ("the slot has neither a basket "
+                                                "record nor an embedded basket")
+                continue
+            if br.file_name:
+                yield i, None, None, None, ("the basket is in another file, "
+                                            "fFileName (TBranch.md 9)")
+                continue
+            rec = self.basket_record(br.basket_seek[i])
+            if rec is None or rec.class_name != "TBasket":
+                yield i, None, None, None, "fBasketSeek names no TBasket record"
+                continue
+            payload = self.data(rec)
+            if payload is None:
+                yield i, None, None, None, (
+                    "the basket record was not decompressed: "
+                    + self._undecoded.get(rec.offset, "unknown reason"))
+                continue
+            try:
+                basket = self.basket(rec, payload)
+            except (rootfile.FormatError, struct.error, IndexError,
+                    ValueError):
+                yield i, None, None, None, "the basket record does not parse"
+                continue
+            if basket.nev_buf:
+                yield i, rec, payload, basket, None
+
+    @staticmethod
+    def decodes_entries(br) -> bool:
+        """Is `br` read by rootfile.TreeReader rather than by its leaves?
+
+        A TBranchElement that holds data (ReadingEntries.md 2). Exactly one
+        check accounts for each branch-basket in the ENTRIES line: this one,
+        the leaf-driven check_entries, or the leafless path of check_leaves.
+        """
+        ft = br.element_type
+        if ft is None:
+            return False
+        if ft in rootfile.INTERIOR_TYPES:
+            return False
+        return not (ft == 0 and br.element_id == rootfile.SPLIT_NODE_ID)
+
+    def tally_failed(self, label: str) -> None:
+        """A branch-basket whose entry check ran and failed."""
+        self.failed[label] = self.failed.get(label, 0) + 1
+
     def check_entry_decode(self, reader, br) -> None:
         """ReadingEntries.md invariant 5: the bytes a branch's entry occupies
         equal the bytes its decoding consumes.
@@ -2717,57 +2844,56 @@ class Checker:
         It generalises the other four, and is the one a third-party reader
         should test itself against. It needs a decoder rather than a rule;
         rootfile.TreeReader is that decoder.
+
+        Every basket of the branch is accounted for, one outcome each: checked,
+        failed or skipped. A skip or a failure in one basket does not end the
+        branch, so its later baskets stay in the ENTRIES ratio. The failure is
+        reported once per branch, with the number of baskets it failed in.
         """
-        if br.element_type is None or br.file_name or not reader.holds_data(br):
-            return
-        # Every basket the branch has, including the one it kept in memory: an
-        # embedded basket holds data just as a flushed one does, and TreeReader
-        # reads it out of the TTree payload (TBranch.md 5).
-        for i in range(min(br.write_basket + 1, len(br.basket_seek))):
-            if i in br.embedded:
-                emb = br.embedded[i]
-                if (emb.block < 0 or not emb.basket.nev_buf
-                        or self._tree_payload is None):
-                    continue
-                rec = rootfile.Record(offset=emb.block, nbytes=0,
-                                      key_len=emb.key_len)
-                payload, basket = self._tree_payload, emb.basket
-            else:
-                if not br.basket_seek[i]:
-                    continue        # no record and no embedded basket: nothing
-                got = self.fetch_basket(br.basket_seek[i])
-                if got is None:
-                    self.skip("ReadingEntries 8.5", "basket unavailable")
-                    continue
-                rec, payload = got
-                try:
-                    basket = self.basket(rec, payload)
-                except (rootfile.FormatError, struct.error, IndexError,
-                        ValueError):
-                    continue
+        if not self.decodes_entries(br) or br.file_name:
+            return              # a branch with fFileName: check_leaves counts it
+        label = "ReadingEntries 8.5"
+        first, nfail = None, 0
+        for i, rec, payload, basket, why in self.branch_baskets(
+                br, self._tree_payload):
+            if why is not None:
+                self.skip(label, why)
+                continue
             if basket.generated:
-                continue                # TBasket 5.2.1 offsets, not stored
-            for e in self.entry_sample(basket.nev_buf):
+                self.skip(label, "basket flag 80: the entry offsets are "
+                                 "generated, TBasket.md 5.2.1")
+                continue
+            problem = None
+            for e in self.entry_sample(basket.nev_buf, rec.offset):
                 entry = br.basket_entry[i] + e
                 try:
                     start, end, consumed = reader.entry_end(br, entry)
                 except rootfile.UnsupportedClass as exc:
                     # Not a pass: the decode could not run. Counted and named
                     # in the SKIPPED report.
-                    self.skip("ReadingEntries 8.5", str(exc))
-                    return
+                    problem = ("skip", str(exc))
+                    break
                 except (rootfile.FormatError, struct.error, IndexError,
                         ValueError, KeyError) as exc:
-                    self.bad("ReadingEntries 8.5",
-                             f"branch {br.name!r} entry {entry}: {exc}")
-                    return
+                    problem = ("fail", f"branch {br.name!r} entry {entry}: {exc}")
+                    break
                 if consumed != end:
-                    self.bad("ReadingEntries 8.5",
-                             f"branch {br.name!r} entry {entry}: the basket "
-                             f"gives it {end - start} bytes, decoding consumed "
-                             f"{consumed - start}")
-                    return
-            self.verified += 1
+                    problem = ("fail",
+                               f"branch {br.name!r} entry {entry}: the basket "
+                               f"gives it {end - start} bytes, decoding "
+                               f"consumed {consumed - start}")
+                    break
+            if problem is None:
+                self.verified += 1
+            elif problem[0] == "skip":
+                self.skip(label, problem[1])
+            else:
+                self.tally_failed(label)
+                nfail += 1
+                first = first or problem[1]
+        if first is not None:
+            more = f" (and {nfail - 1} more basket(s))" if nfail > 1 else ""
+            self.bad(label, first + more)
 
     #: fType values a TBranchElement may carry. TBranchElement.md 10.1.
     ELEMENT_TYPES = {-1, 0, 1, 2, 3, 4, 31, 41}
@@ -2828,8 +2954,11 @@ class Checker:
                      f"{name}: fType {ft} writes its leaf in full rather than "
                      f"referencing the copy in a member's fLeafCount")
 
-        # 6. An interior node holds nothing.
-        if ft in (1, 2) and (br.write_basket or br.tot_bytes):
+        # 6. An interior node holds nothing. The empty-base branch of TBranch.md
+        #    9.2 is not an interior node: it holds one object per entry, and a
+        #    writer flushes its baskets like any other (TBranchElement.md 4).
+        if (ft in (1, 2) and (br.write_basket or br.tot_bytes)
+                and self.empty_base_info(br) is None):
             self.bad("TBranchElement 10.6",
                      f"{name}: fType {ft} with fWriteBasket "
                      f"{br.write_basket} and fTotBytes {br.tot_bytes}")
@@ -2918,30 +3047,56 @@ class Checker:
         if ft is None:
             return
 
-        # 1 and 2. An interior node with no children describes nothing.
+        # 1 and 2. An interior node with no children describes nothing. The
+        #    exception is a top-level split branch of a class whose streamer
+        #    info lists no element: Unroll found nothing to make a branch of,
+        #    and the branch holds zero-byte entries itself. Splitting.md 1.1.
         if br.element_id == -2 and not br.branches:
-            self.bad("Splitting 8.1",
-                     f"{name}: fID -2 marks a split node, but fBranches is empty")
+            if self.empty_class_info(br) is None:
+                self.bad("Splitting 8.1",
+                         f"{name}: fID -2 marks a split node, but fBranches is "
+                         f"empty")
+            else:
+                self.check_empty_class_entries(br)
         if ft in (1, 2) and not br.branches and self.empty_base_info(br) is None:
             self.bad("Splitting 8.2",
                      f"{name}: fType {ft} is an interior node, but fBranches "
                      f"is empty")
 
-        # 3. A count branch's title is its name, trailing dot dropped, plus "_".
+        # 3. A count branch's title, its leaf's name and its leaf's title are
+        #    one string, set together at construction: the construction name,
+        #    trailing dot dropped, plus "_". The branch's own fName is not part
+        #    of the invariant, because a writing program may rename a branch
+        #    afterwards and ROOT never re-derives the title (FairRoot does, in
+        #    ship_ROOT_9674.root). Splitting.md 3.3.
         if ft in (3, 4):
-            want = br.name.rstrip(".") + "_"
-            if br.title != want:
+            if not br.title.endswith("_"):
                 self.bad("Splitting 8.3",
-                         f"{name}: count branch title {br.title!r}, expected "
-                         f"{want!r}")
+                         f"{name}: count branch title {br.title!r} does not "
+                         f"end in _")
+            leaf = br.leaves[0] if len(br.leaves) == 1 else None
+            if leaf is not None and (leaf.name, leaf.title) != (br.title,
+                                                                  br.title):
+                self.bad("Splitting 8.3",
+                         f"{name}: count branch title {br.title!r}, but its "
+                         f"leaf is {leaf.name!r} / {leaf.title!r}")
 
-        # 4. A member of a split container names its count branch in brackets.
+        # 4. A member of a split container names its count branch's title in
+        #    brackets, and its leaf carries the same title (BuildTitle sets
+        #    both). tlorentzvec.root breaks the first half with a writer nobody
+        #    has identified; it stays a failure. Splitting.md 3.3.
         if ft in (31, 41) and br.count_slot >= 0:
             target = by_slot.get(br.count_slot)
-            if target is not None and not br.title.endswith(f"[{target.title}]"):
-                self.bad("Splitting 8.4",
-                         f"{name}: title {br.title!r} does not end in "
-                         f"[{target.title}]")
+            if target is not None:
+                if not br.title.endswith(f"[{target.title}]"):
+                    self.bad("Splitting 8.4",
+                             f"{name}: title {br.title!r} does not end in "
+                             f"[{target.title}]")
+                leaf = br.leaves[0] if len(br.leaves) == 1 else None
+                if leaf is not None and leaf.title != br.title:
+                    self.bad("Splitting 8.4",
+                             f"{name}: title {br.title!r}, but its leaf's "
+                             f"title is {leaf.title!r}")
 
     def check_reading(self, br, by_slot) -> None:
         """The Invariants of spec/04-ttree/ReadingEntries.md."""
@@ -3002,22 +3157,18 @@ class Checker:
         with the span because a span is meaningless without it: on an
         uncompressed file every buffer happens to be the same bytes, and on a
         compressed one they are not.
+
+        An embedded basket is included, read out of the TTree record
+        (TBranch.md 5). Leaving it out made ReadingEntries 8.1, 8.3 and 8.4
+        pass vacuously on a file whose baskets are all embedded, such as
+        roottest's mksm.root.
         """
         out = []
-        for i in range(min(br.write_basket, len(br.basket_seek))):
-            rec = self.basket_record(br.basket_seek[i])
-            if rec is None or rec.class_name != "TBasket":
-                continue
-            payload = self.data(rec)
-            if payload is None:
-                continue
-            try:
-                basket = self.basket(rec, payload)
-            except (rootfile.FormatError, struct.error, IndexError, ValueError):
-                continue
-            if basket.generated:
+        for i, rec, payload, basket, why in self.branch_baskets(
+                br, self._tree_payload):
+            if why is not None or basket.generated:
                 continue             # TBasket 5.2.1 offsets, not stored
-            for e in self.entry_sample(basket.nev_buf):
+            for e in self.entry_sample(basket.nev_buf, rec.offset):
                 try:
                     span = rootfile.basket_entry_range(rec, basket, e)
                 except (rootfile.FormatError, struct.error, IndexError,
@@ -3048,6 +3199,70 @@ class Checker:
         if bases and all(not i.elements for i in bases):
             return bases[0]
         return None
+
+    def check_empty_class_entries(self, br) -> None:
+        """Every entry of an elementless split branch is zero bytes.
+
+        Its fill path writes element fID -2 of an info with no elements, which
+        is nothing, and ReadLeavesMember reads nothing back. Without this the
+        exemption in Splitting 8.1 would pass vacuously, and these baskets
+        would be in neither side of the ENTRIES line. Splitting.md 1.1.
+        """
+        name = f"branch {br.name!r}"
+        for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+            emb = br.embedded.get(i)
+            if emb is not None:
+                basket = emb.basket
+            elif br.basket_seek[i] and not br.file_name:
+                rec = self.basket_record(br.basket_seek[i])
+                payload = self.data(rec) if rec is not None else None
+                if payload is None:
+                    self.skip("ReadingEntries 8.5", "basket unavailable")
+                    continue
+                try:
+                    basket = rootfile.read_basket(self.buf, rec, payload)
+                except (rootfile.FormatError, struct.error, IndexError,
+                        ValueError):
+                    continue
+            else:
+                continue
+            if not basket.nev_buf:
+                continue
+            if basket.data_end != basket.data_start:
+                self.bad("Splitting 8.1",
+                         f"{name}: basket {i} of a split branch of an "
+                         f"elementless class holds "
+                         f"{basket.data_end - basket.data_start} bytes for "
+                         f"{basket.nev_buf} entries, not 0")
+            self.verified += 1
+
+    @staticmethod
+    def split_parent(br) -> bool:
+        """A branch with sub-branches that fills none of its own baskets.
+
+        TBranchElement's fill path counts fEntries and descends for every type
+        but a collection counter (TBranchElement.cxx:1308-1320); TBranchObject's
+        does the same (TBranchObject.cxx:175-176). TBranch.md 7.
+        """
+        return bool(br.branches) and br.element_type not in (3, 4)
+
+    def empty_class_info(self, br):
+        """The info of the elementless class a childless split branch stands for.
+
+        TTree::Bronch marks a top-level branch fID -2 whenever it splits, and
+        Unroll then makes one sub-branch per element. A class whose streamer
+        info lists no element (every member transient, or none) gets none, and
+        TClass::CanSplit refuses only a class whose sizeof is 1. The branch
+        keeps its leaf and fills zero-byte entries. Splitting.md 1.1.
+        """
+        if (getattr(br, "cls", "TBranch") != "TBranchElement"
+                or br.element_type != 0 or br.element_id != -2
+                or br.branches):
+            return None
+        info = self.element_info(br)
+        if info is None or info.elements:
+            return None
+        return info
 
     def element_info(self, br):
         """The streamer info fClassName/fClassVersion/fCheckSum select."""
@@ -3107,13 +3322,20 @@ class Checker:
                          f"[{i - 1}] {ix.values[i - 1]}")
                 break
 
-        # 3. Every entry number it names exists in the tree.
-        for i, e in enumerate(ix.index):
-            if e < 0 or e >= tree.entries:
-                self.bad("Auxiliary 8.3",
-                         f"{where}: fIndex[{i}] is {e}, outside "
-                         f"[0, {tree.entries})")
-                break
+        # 3. fIndex is a permutation of [0, fN): the constructor sorts the
+        #    identity (root/tree/treeplayer/src/TTreeIndex.cxx:222-224) and
+        #    Append offsets the appended rows by the old fN (:310-312). fN is
+        #    not the tree's fEntries: CopyEntries clones the source tree's
+        #    whole index onto a copy of fewer entries
+        #    (root/tree/tree/src/TTree.cxx:3516-3521), so an entry number may
+        #    be past the end of the tree that holds the index. Auxiliary.md 2.
+        if sorted(ix.index) != list(range(ix.n)):
+            bad = next((i for i, e in enumerate(ix.index)
+                        if not 0 <= e < ix.n), None)
+            self.bad("Auxiliary 8.3",
+                     f"{where}: fIndex is not a permutation of [0, {ix.n})"
+                     + (f"; fIndex[{bad}] is {ix.index[bad]}" if bad is not None
+                        else "; an entry number repeats"))
 
     def check_entry_lists(self) -> None:
         """Auxiliary.md invariants 6 and 7, over the records of this file."""
@@ -3314,7 +3536,12 @@ class Checker:
             self.bad("TBranch 11.2", f"{name}: fWriteBasket {br.write_basket}")
             return
 
-        if br.basket_entry[0] != br.first_entry:
+        # A split parent fills no basket, so its fBasketEntry and fEntryNumber
+        # describe none. Fast cloning sets them anyway: TTreeCloner makes
+        # fEntryNumber equal fEntries, and until 6.22/08 and 6.23/02 wrote the
+        # last input's first entry into fBasketEntry[0]. TBranch.md 7.
+        parent = self.split_parent(br)
+        if br.basket_entry[0] != br.first_entry and not parent:
             self.bad("TBranch 11.3",
                      f"{name}: fBasketEntry[0] {br.basket_entry[0]} != fFirstEntry "
                      f"{br.first_entry}")
@@ -3322,12 +3549,18 @@ class Checker:
         if any(b < a for a, b in zip(span, span[1:])):
             self.bad("TBranch 11.3", f"{name}: fBasketEntry decreases: {span}")
         last_embedded = br.embedded.get(br.write_basket)
-        if last_embedded is None:
+        if parent:
+            if br.entry_number not in (0, br.first_entry + br.entries):
+                self.bad("TBranch 11.3",
+                         f"{name}: a split parent's fEntryNumber "
+                         f"{br.entry_number} is neither 0 nor fFirstEntry + "
+                         f"fEntries {br.first_entry + br.entries}")
+        elif last_embedded is None:
             if span[-1] != br.entry_number:
                 self.bad("TBranch 11.3",
                          f"{name}: fBasketEntry[fWriteBasket] {span[-1]} != "
                          f"fEntryNumber {br.entry_number}")
-        elif span[-1] > br.entry_number and not br.branches:
+        elif span[-1] > br.entry_number:
             # The terminator was never written: the element is the embedded
             # basket's first entry, so it is at most fEntryNumber (equal when
             # that basket is empty). It is unconstrained on a split parent, where
@@ -3363,13 +3596,26 @@ class Checker:
             self.bad("TBranch 11.9",
                      f"{name}: fBaskets has {br.basket_slots} slots, more than "
                      f"fMaxBaskets = {br.max_baskets}")
-        for index in br.embedded:
+        for index, emb in sorted(br.embedded.items()):
             if unassigned_garbage:
                 break           # never assigned: TBranch.md 11.9
-            if index < len(br.basket_seek) and br.basket_seek[index]:
-                self.bad("TBranch 11.9",
-                         f"{name}: slot {index} holds an embedded basket but "
-                         f"fBasketSeek[{index}] is {br.basket_seek[index]}")
+            seek = br.basket_seek[index] if index < len(br.basket_seek) else 0
+            if not seek:
+                continue
+            if index < br.write_basket and emb.seek_key == seek:
+                # A basket read back from its record and still in memory when
+                # the tree was streamed, which no writer before 6.11/02
+                # prevented. It is a second copy of the record, and must be
+                # the same bytes. TBranch.md 5.1.
+                problem = self.readback_mismatch(br, index, emb, data)
+                if problem:
+                    self.bad("TBranch 11.9",
+                             f"{name}: slot {index} holds a copy of the basket "
+                             f"record at {seek}, but {problem}")
+                continue
+            self.bad("TBranch 11.9",
+                     f"{name}: slot {index} holds an embedded basket but "
+                     f"fBasketSeek[{index}] is {seek}")
         # A slot above fWriteBasket is never read. The only producer measured
         # is the second, never-filled basket that TBranchElement's constructor
         # gave a split collection branch before 5.18/00 (TBranch.md 5), so a
@@ -3390,20 +3636,11 @@ class Checker:
             self.bad("TBranch 11.11",
                      f"{name}: fEntryOffsetLen {br.entry_offset_len} is below the "
                      f"floor of 10")
-        if not br.leaves:
-            # A branch with no leaf at all. Two shapes reach here: the interior
-            # nodes of TBranchElement.md 4, which have no basket either and so
-            # cost nothing, and a TBranchSTL, which has baskets full of data and
-            # still no leaf (Splitting.md 5). TLeaf 10.5 to 10.7 are about what a
-            # branch's leaves say, so they have nothing to check.
-            #
-            # A leafless branch that *does* have baskets must still be counted.
-            # Returning silently once left a TBranchSTL's baskets out of both the
-            # numerator and the denominator of the ENTRIES line, the same
-            # mistake the embedded baskets exposed (AGENTS.md).
-            # Counted once, in check_leaves.
-            return
-
+        # A branch with no leaf goes on: 11.5 to 11.7 are about its baskets,
+        # not its leaves, and a TBranchSTL or an empty-base branch (TBranch.md
+        # 9.2) has baskets full of data and no leaf. An interior node has no
+        # basket, so for it they compare zeros. Returning here once left all
+        # three unchecked on every leafless branch.
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
                        for lf in br.leaves)
         if variable and not br.entry_offset_len:
@@ -3412,7 +3649,10 @@ class Checker:
 
         emb = br.embedded.get(br.write_basket)
         if emb is not None:
-            want_n = br.entry_number - br.basket_entry[br.write_basket]
+            # A split parent never fills its basket (TBranch.md 7), whatever
+            # fast cloning left in fEntryNumber.
+            want_n = (0 if self.split_parent(br)
+                      else br.entry_number - br.basket_entry[br.write_basket])
             if emb.basket.nev_buf != want_n:
                 self.bad("TBranch 11.6",
                          f"{name}: the embedded basket holds "
@@ -3423,6 +3663,21 @@ class Checker:
             return                      # 11.5 to 11.7 are about this file only
         tot = zip_ = 0
         for i in range(min(br.write_basket, len(br.basket_seek) - 1)):
+            emb = br.embedded.get(i)
+            if emb is not None and not br.basket_seek[i]:
+                # A basket that was never written as a record: a tree with no
+                # file keeps every basket in its slot (TBasket::WriteBuffer
+                # returns 0), and writing the tree later embeds them all. It
+                # adds nothing to fZipBytes and fTotBytes (11.7). TBranch.md 5.
+                # An embedded basket beside a non-zero seek is 11.9's to
+                # report; the record the seek names is checked below as usual.
+                want_n = br.basket_entry[i + 1] - br.basket_entry[i]
+                if emb.basket.nev_buf != want_n:
+                    self.bad("TBranch 11.6",
+                             f"{name}: embedded basket {i} holds "
+                             f"{emb.basket.nev_buf} entries, fBasketEntry says "
+                             f"{want_n}")
+                continue
             basket_rec = self.basket_record(br.basket_seek[i])
             if basket_rec is None or basket_rec.class_name != "TBasket":
                 self.bad("TBranch 11.5",
@@ -3458,6 +3713,43 @@ class Checker:
                      f"{name}: fTotBytes {br.tot_bytes} != the sum of "
                      f"fObjlen + fKeylen {tot}")
 
+    def readback_mismatch(self, br, index, emb, data) -> str | None:
+        """How a read-back copy in slot `index` differs from its record, if it does.
+
+        TBranch.md 5.1: the key keeps the record's fNbytes and fSeekKey, and
+        the fLast bytes of the block are the record's key area and uncompressed
+        data. Only the data and the entry offsets are compared: the key area of
+        the block is outside every entry.
+        """
+        rec = self.basket_record(br.basket_seek[index])
+        if rec is None or rec.class_name != "TBasket":
+            return "no TBasket record starts there"
+        if emb.nbytes != rec.nbytes or rec.nbytes != br.basket_bytes[index]:
+            return (f"its key's fNbytes {emb.nbytes}, the record's {rec.nbytes} and "
+                    f"fBasketBytes[{index}] {br.basket_bytes[index]} disagree")
+        payload = self.data(rec)
+        if payload is None:
+            return None                 # codec missing: counted as not checked
+        try:
+            disk = rootfile.read_basket(self.buf, rec, payload)
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            return f"the record does not parse: {exc}"
+        copy = emb.basket
+        if (copy.nev_buf, copy.last, copy.key_len) != (disk.nev_buf, disk.last,
+                                                      disk.key_len):
+            return (f"fNevBuf/fLast/fKeylen are {copy.nev_buf}/{copy.last}/"
+                    f"{copy.key_len} in the copy and {disk.nev_buf}/{disk.last}/"
+                    f"{disk.key_len} in the record")
+        if copy.entry_offsets is not None:
+            if (disk.entry_offsets is None
+                    or disk.entry_offsets[:copy.nev_buf] != copy.entry_offsets):
+                return "the entry offsets differ"
+        if emb.block >= 0:
+            a, b = emb.block + copy.key_len, emb.block + copy.last
+            if data[a:b] != payload[rec.offset + disk.key_len:rec.offset + disk.last]:
+                return "the entry data differ"
+        return None
+
     def check_empty_base_entries(self, data, br, base) -> None:
         """Each entry of an empty-base branch is one framed object of `base`.
 
@@ -3466,22 +3758,10 @@ class Checker:
         name the base class's streamer info. TBranch.md 9.2.
         """
         name = f"branch {br.name!r}"
-        for i in range(min(br.write_basket + 1, len(br.basket_seek))):
-            if br.basket_seek[i]:
-                rec = self.basket_record(br.basket_seek[i])
-                payload = self.data(rec) if rec is not None else None
-                if payload is None:
-                    continue
-                try:
-                    basket = self.basket(rec, payload)
-                except (rootfile.FormatError, struct.error, IndexError, ValueError):
-                    continue
-                buf = payload
-            else:
-                emb = br.embedded.get(i)
-                if emb is None or not emb.basket.nev_buf:
-                    continue
-                basket, buf = emb.basket, data
+        for i, _, buf, basket, why in self.branch_baskets(br, data):
+            if why is not None:
+                self.skip("ReadingEntries 8.5", why)
+                continue
             if basket.entry_offsets is None:
                 self.skip("ReadingEntries 8.5",
                           "empty-base branch basket with no entry offsets")
@@ -3508,7 +3788,10 @@ class Checker:
                     self.bad("ReadingEntries 8.5",
                              f"{name}: basket {i} entry {j} version "
                              f"{frame.version}, {base.name} is {base.class_version}")
-            self.verified += 1
+            if ok:
+                self.verified += 1
+            else:
+                self.tally_failed("ReadingEntries 8.5")
 
     def check_leaves(self, data, br, leaves) -> None:
         name = f"branch {br.name!r}"
@@ -3541,6 +3824,15 @@ class Checker:
                 self.bad("TLeaf 10.8",
                          f"{where}: the first leaf has fOffset {lf.offset}")
 
+        if br.file_name:
+            # The baskets are in another file (TBranch.md 9). Not a pass: each
+            # one that holds entries is a branch-basket no check reached.
+            if (br.element_type is None or self.decodes_entries(br)
+                    or self.empty_base_info(br) is not None):
+                for *_, why in self.branch_baskets(br, data):
+                    self.skip("ReadingEntries 8.5", why)
+            return
+
         if not br.leaves:
             # A branch with no leaf at all. Two shapes reach here: the interior
             # nodes of TBranchElement.md 4, which have no basket either and so
@@ -3552,77 +3844,69 @@ class Checker:
             if base is not None:
                 self.check_empty_base_entries(data, br, base)
                 return
+            if self.decodes_entries(br):
+                return          # check_entry_decode accounts for it
             # A leafless branch that *does* have baskets must still be counted.
             # Returning silently once left a TBranchSTL's baskets out of both the
             # numerator and the denominator of the ENTRIES line, the same
             # mistake the embedded baskets exposed (AGENTS.md).
-            for i in range(min(br.write_basket + 1, len(br.basket_seek))):
-                if not br.basket_seek[i]:
-                    emb = br.embedded.get(i)
-                    # Mirror the guard the leaf-driven path uses: an embedded
-                    # slot with no entries is not data and must not inflate the
-                    # denominator either.
-                    if emb is None or emb.block < 0 or not emb.basket.nev_buf:
-                        continue
-                self.skip("ReadingEntries 8.5",
+            for _, _, _, _, why in self.branch_baskets(br, data):
+                self.skip("ReadingEntries 8.5", why or
                           "leafless branch: a TBranchSTL entry is one framed "
                           "TIndArray, Splitting.md 5.1")
             return
 
         variable = any(lf.count_slot >= 0 or lf.cls == "TLeafC"
                        for lf in br.leaves)
-        fixed_width = 0
+        fixed_width = None
         if not variable:
             widths = [lf.width for lf in br.leaves]
-            if None in widths:
-                return                  # a leaf class with no fixed width
-            fixed_width = sum(w * lf.length for w, lf in zip(widths, br.leaves))
+            if None not in widths:
+                fixed_width = sum(w * lf.length
+                                  for w, lf in zip(widths, br.leaves))
+            elif br.element_type is not None:
+                # A TLeafElement: check_entry_decode reads these entries and
+                # accounts for them.
+                return
+            # Otherwise a TLeafObject, which has no fixed width either. TLeaf
+            # 10.6 has no size to compare, and the entry check below reports
+            # the basket as skipped. A TBranchObject's baskets used to leave
+            # the ENTRIES line through an early return here.
 
-        if br.file_name:
-            return
-        for i in range(min(br.write_basket, len(br.basket_seek))):
-            basket_rec = self.basket_record(br.basket_seek[i])
-            if basket_rec is None or basket_rec.class_name != "TBasket":
+        # One outcome per branch-basket, from check_entries. A TBranchElement
+        # is accounted for by check_entry_decode instead.
+        owner = br.element_type is None
+        for i, basket_rec, payload, basket, why in self.branch_baskets(br, data):
+            if why is not None:
+                if owner:
+                    self.skip("TLeaf 10.7", why)
                 continue
-            payload = self.data(basket_rec)
-            if payload is None:
-                continue
-            try:
-                basket = rootfile.read_basket(self.buf, basket_rec, payload)
-            except (rootfile.FormatError, struct.error, IndexError, ValueError):
-                continue
-            if variable and not basket.has_offsets and not basket.generated:
-                self.bad("TLeaf 10.5",
-                         f"{name}: basket {i} has no entry-offset array though a "
-                         f"leaf is variable-size")
-            if not variable and not br.entry_offset_len:
-                # fEntryOffsetLen is the writer's decision and the baskets follow
-                # it: g4tools leaves it at 1000 on a fixed-width branch and
-                # writes offsets anyway. TLeaf.md 10.6.
-                if basket.has_offsets:
-                    self.bad("TLeaf 10.6",
-                             f"{name}: basket {i} has an entry-offset array though "
-                             f"every leaf is fixed-size and fEntryOffsetLen is 0")
-                elif basket.nev_buf_size != fixed_width:
-                    self.bad("TLeaf 10.6",
-                             f"{name}: fNevBufSize {basket.nev_buf_size} != the "
-                             f"leaves' {fixed_width} bytes an entry")
-            if len(br.leaves) == 1 and br.leaves[0].cls == "TLeafC":
-                self.check_leafc_strings(payload, basket_rec, basket, br,
-                                         br.leaves[0])
+            if i not in br.embedded:
+                # A basket with its own record. TLeaf 10.5, 10.6 and 10.11
+                # have only ever been checked on these; an embedded basket
+                # is checked by the entry walk alone.
+                if variable and not basket.has_offsets and not basket.generated:
+                    self.bad("TLeaf 10.5",
+                             f"{name}: basket {i} has no entry-offset array "
+                             f"though a leaf is variable-size")
+                if not variable and not br.entry_offset_len:
+                    # fEntryOffsetLen is the writer's decision and the baskets
+                    # follow it: g4tools leaves it at 1000 on a fixed-width
+                    # branch and writes offsets anyway. TLeaf.md 10.6.
+                    if basket.has_offsets:
+                        self.bad("TLeaf 10.6",
+                                 f"{name}: basket {i} has an entry-offset array "
+                                 f"though every leaf is fixed-size and "
+                                 f"fEntryOffsetLen is 0")
+                    elif (fixed_width is not None
+                          and basket.nev_buf_size != fixed_width):
+                        self.bad("TLeaf 10.6",
+                                 f"{name}: fNevBufSize {basket.nev_buf_size} != "
+                                 f"the leaves' {fixed_width} bytes an entry")
+                if len(br.leaves) == 1 and br.leaves[0].cls == "TLeafC":
+                    self.check_leafc_strings(payload, basket_rec, basket, br,
+                                             br.leaves[0])
             self.check_entries(payload, basket_rec, basket, br, leaves, i)
-
-        # The basket that was never written as a record. Its entry offsets are
-        # relative to the raw block inside the TTree record rather than to a
-        # key, so the block start stands in for the record offset. Without this
-        # every branch of a file whose baskets are all embedded (every legacy
-        # file in the corpora) would be counted as checked while nothing in it
-        # was. TBranch.md 5, TBasket.md 4.1.
-        for i, emb in sorted(br.embedded.items()):
-            if i > br.write_basket or emb.block < 0 or not emb.basket.nev_buf:
-                continue
-            self.check_entries(data, rootfile.Record(offset=emb.block, nbytes=0),
-                               emb.basket, br, leaves, i)
 
     def check_leafc(self, br, leaf) -> None:
         """TLeaf 10.9 and 10.10: what a `TLeafC` records about itself."""
@@ -3700,19 +3984,29 @@ class Checker:
             basket.key_len, basket.nev_buf, leaf.len_type, counts, header)
 
     def check_entries(self, payload, basket_rec, basket, br, leaves, index) -> None:
-        """TLeaf.md 10.7: the leaves account for each entry exactly."""
+        """TLeaf.md 10.7: the leaves account for each entry exactly.
+
+        For a plain TBranch this is the ENTRIES line's check, and each call
+        gives its basket exactly one outcome. For a TBranchElement it runs for
+        the failures it can find, and check_entry_decode keeps the account.
+        """
+        owner = br.element_type is None
         if basket.generated:
             offsets = self.generated_offsets(basket, br, leaves, index)
             if offsets is None:
+                if owner:
+                    self.tally_failed("TBasket 5.2.1")
                 return
             if offsets[-1] > basket.last:
                 self.bad("TBasket 5.2.1",
                          f"branch {br.name!r}: generated offsets run to "
                          f"{offsets[-1]}, past fLast {basket.last}")
+                if owner:
+                    self.tally_failed("TBasket 5.2.1")
                 return
             basket = dataclasses.replace(basket, entry_offsets=offsets,
                                          generated=False)
-        for e in self.entry_sample(basket.nev_buf):
+        for e in self.entry_sample(basket.nev_buf, basket_rec.offset):
             entry = br.basket_entry[index] + e
             try:
                 counts = self.leaf_counts(br, leaves, entry)
@@ -3723,18 +4017,20 @@ class Checker:
                 # silent would hide the split branches of PLAN.md 9.11 inside a
                 # "0 failures" line. Counted and reported; the count should fall
                 # as 04-ttree/ grows.
-                if br.element_type is not None:
-                    # A TBranchElement: entry_spans is leaf-driven and a
-                    # TLeafElement has no fixed width, but check_entry_decode
-                    # reads the entry properly and owns the accounting for it.
-                    return
-                self.skip("TLeaf 10.7", str(exc))
+                if owner:
+                    self.skip("TLeaf 10.7", str(exc))
+                # A TBranchElement: entry_spans is leaf-driven and a
+                # TLeafElement has no fixed width, but check_entry_decode
+                # reads the entry properly and owns the accounting for it.
                 return
             except (rootfile.FormatError, struct.error, IndexError,
                     ValueError) as exc:
                 self.bad("TLeaf 10.7", f"branch {br.name!r}: {exc}")
+                if owner:
+                    self.tally_failed("TLeaf 10.7")
                 return
-        self.verified += 1
+        if owner:
+            self.verified += 1
 
     # A basket with at most this many entries is checked entry by entry. Above
     # it, only the ends and a stride through the middle are, because the check
@@ -3745,8 +4041,13 @@ class Checker:
     ENTRY_SAMPLE_ABOVE = 256
     ENTRY_SAMPLE_ENDS = 32
 
-    def entry_sample(self, nev_buf: int) -> list[int]:
-        """Which entries of a basket to check. TLeaf.md 10.7."""
+    def entry_sample(self, nev_buf: int, at: int | None = None) -> list[int]:
+        """Which entries of a basket to check. TLeaf.md 10.7.
+
+        `at` is the basket's record offset, or its raw block's for an embedded
+        one, so that SAMPLED counts baskets rather than the checks that
+        sampled them: several checks read one basket's entries.
+        """
         if self.all_entries or nev_buf <= self.ENTRY_SAMPLE_ABOVE:
             return list(range(nev_buf))
         ends = self.ENTRY_SAMPLE_ENDS
@@ -3755,7 +4056,10 @@ class Checker:
         picked = set(range(ends)) | set(range(nev_buf - ends, nev_buf))
         stride = max(1, nev_buf // ends)
         picked |= set(range(0, nev_buf, stride))
-        self.sampled += 1
+        if at is None or at not in self._sampled_at:
+            self.sampled += 1
+            if at is not None:
+                self._sampled_at.add(at)
         return sorted(picked)
 
     def leaf_counts(self, br, leaves, entry) -> dict[int, int]:
@@ -3876,6 +4180,7 @@ def main(argv: list[str]) -> int:
     no_codec: set[str] = set()
     sampled = 0
     verified = 0
+    failed: dict[str, int] = {}
     skipped: dict[tuple[str, str, str], int] = {}
     for path in paths:
         checker = Checker(path, all_entries=all_entries,
@@ -3884,6 +4189,8 @@ def main(argv: list[str]) -> int:
         no_codec |= checker.no_codec
         sampled += checker.sampled
         verified += checker.verified
+        for label, n in checker.failed.items():
+            failed[label] = failed.get(label, 0) + n
         for reason, n in checker.skipped.items():
             skipped[reason] = skipped.get(reason, 0) + n
 
@@ -3912,13 +4219,21 @@ def main(argv: list[str]) -> int:
     for reason, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"SKIPPED {n:5} {reason[2]}(s): {reason[0]} could not run -- "
               f"{reason[1]}", file=sys.stderr)
-    total = verified + sum(n for reason, n in skipped.items()
-                           if reason[2] == "branch-basket")
+    # Every branch-basket that holds entries is in the denominator exactly
+    # once: checked, failed or skipped. A failed one is not dropped, or the
+    # ratio would rise when a check breaks. Failures of branch-baskets that an
+    # IGNORE.toml entry suppressed are still counted here, as failed.
+    nfailed = sum(failed.values())
+    nskipped = sum(n for reason, n in skipped.items()
+                   if reason[2] == "branch-basket")
+    total = verified + nfailed + nskipped
     if total:
+        detail = ", ".join(f"{n} {label}" for label, n in sorted(failed.items()))
         print(f"ENTRIES  {verified} of {total} branch-basket(s) had their "
               f"entries decoded and checked "
-              f"({100 * verified / total:.1f}%); the rest are the SKIPPED lines "
-              f"above", file=sys.stderr)
+              f"({100 * verified / total:.1f}%); {nfailed} failed"
+              f"{f' ({detail})' if detail else ''} and {nskipped} are the "
+              f"SKIPPED lines above", file=sys.stderr)
     if sampled:
         print(f"SAMPLED {sampled} basket(s) held more than "
               f"{Checker.ENTRY_SAMPLE_ABOVE} entries, so TLeaf 10.7 checked the "

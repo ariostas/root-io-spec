@@ -68,6 +68,14 @@ A node with sub-branches reads its own basket only when `fType` is 3 or 4
 exists only to be descended through. ROOT's own test for a split node is at
 `root/tree/tree/src/TBranchElement.cxx:5692`.
 
+An `fType` 0, `fID` −2 branch with **no** sub-branches, the split node of a class
+whose streamer info lists no element, is not a split node to ROOT, whose test requires a non-empty `fBranches`
+(the same line). It reads its own baskets, and every entry in them is zero bytes
+([Splitting §1.1](Splitting.md#11-interior-nodes-hold-nothing-and-say-so-twice)).
+A reader may treat it as holding no data. So may it treat a split parent's
+`fEntryNumber`, which fast cloning sets to `fEntries` although the branch holds
+nothing ([TBranch §7](TBranch.md#7-the-entry-counters)).
+
 ## 3. What an entry contains
 
 There are six shapes; the first four are short enough to give in full.
@@ -108,6 +116,44 @@ fDet.fHits.fE    entry 0   00 00 00 00 3f 00 00 00      0.0f, 0.5f
 **An empty collection gives an empty entry**, not a zero or a marker. Entry 1
 occupies no bytes, so a variable-length column needs the offset array of §1; its
 entries cannot be located by multiplication.
+
+That holds for members like these, whose column is the values and nothing else.
+A member whose column has a header of its own (§5.3), such as a `std::vector` or
+a `std::string`, depends on the release **and on `fType`**:
+
+| Writer | `fType` 41, *n* = 0 | `fType` 31, *n* = 0 |
+|---|---|---|
+| before 5.32/00 | nothing | the header |
+| 5.32/00 and later | the header, with no values after it | the header |
+
+ROOT's reader for `fType` 41 returns before touching the buffer when *n* is 0
+(`root/tree/tree/src/TBranchElement.cxx:4493-4496`), so it reads both forms. The
+`fType` 31 reader has no such test and reads the header
+(`root/tree/tree/src/TBranchElement.cxx:4566-4581`). Before 5.32/00 the
+`fType` 41 writer went through `WriteBufferSTL`, which returned at once for an
+empty collection (`v5-30-00:tree/tree/src/TBranchElement.cxx:1418`,
+`v5-30-00:io/io/src/TStreamerInfoWriteBuffer.cxx:867`); root commit
+`7de5e0a080f` (2011, first in 5.32/00) moved it to the write actions, which
+write the column's header whatever *n* is
+(`root/io/io/src/TStreamerInfoWriteBuffer.cxx:613-621`). For a `vector<float>`
+member, ROOT 6.40.04 writes the six bytes `40 00 00 02 00 0a` (byte count 2, then
+`TStreamerInfo`'s version 10) for each empty entry, and the same six for a
+`std::string` member and for a `vector<float>` member of a `TClonesArray`'s class
+(`fType` 31). A member-wise `vector<Sub>` member writes twelve: the frame with
+`40 0a`, then `Sub`'s version word 0 and its checksum (§5.3). The cell for
+`fType` 31 before 5.32/00 is from the source only: `WriteBufferClones` has no
+early return (`v5-10-00:meta/src/TStreamerInfoWriteBuffer.cxx:642-648`), and
+the `kSTL` case writes its header before its loop in both modes
+(`v5-10-00:meta/src/TStreamerInfoWriteBuffer.cxx:461` and `:480`). No file of that age
+with such a column has been examined.
+
+`S_1_104_qgsjet_100_1.KGrec.root` in `root/roottest/` (5.10/00) has the old form:
+the first 19 entries of `event.fSDEvent.fStations` are empty, and so are the
+first 19 of its `vector<UShort_t>` member `fHighGainTrace1`. Entry 19 holds 26
+stations, each with an empty trace, and occupies 110 bytes: the header and 26
+counts of 0. A reader that decodes a header for an empty entry reads entry 19's
+instead, and the byte count then says it stopped 104 bytes short. The same holds
+for 350 `vector` and `string` members in `small_aod.pool.root` (5.22/00).
 
 A column of `TObject::fBits` values (`kBits`, 15) is not fixed-width either. Each
 value is 4 bytes, or 6 when it has `kIsReferenced` set and carries a `pidf`
@@ -208,11 +254,27 @@ The count comes from one of three different places.
 | `fType` 31 | the count branch's decoded value | `root/tree/tree/src/TBranchElement.cxx:4566` |
 | `fType` 41 | the same | `root/tree/tree/src/TBranchElement.cxx:4493` |
 | `fType` ≤ 2 with `fBranchCount` | the counter branch's decoded value | `root/tree/tree/src/TBranchElement.cxx:4649` |
+| `fType` 0 whose element is `kStreamLoop` (501 or 521) | the counter branch's decoded value, the branch found by name (§4.1) | `root/tree/tree/src/TBranchElement.cxx:442-457` |
 
-In every case but the first, the branch named by `fBranchCount`
+In every case but the first, the counter's branch
 ([TBranchElement §6](TBranchElement.md#6-fbranchcount-is-a-back-reference-and-fbranchcount2-is-never-set))
 must be read for the same entry **before** this one, and a reader has to order
 its work accordingly: a member column cannot be decoded in isolation.
+
+The last row needs no `fBranchCount` in ROOT. The branch applies the element's
+action to the object (`root/tree/tree/src/TBranchElement.cxx:4619`), and the
+loop reads its count from the object
+(`root/io/io/src/TStreamerInfoActions.cxx:1724-1725`), where the counter branch
+has already stored it for this entry. `Init` has set `fBranchCount` on such a
+branch only since root commit `6d10ac6c209` (2010-07-29, first in 5.27/06), so
+in an older file it is -1 and the counter can be found only by name.
+
+> Byte-verified on `root/roottest/root/tree/addresses/memleak.root` (ROOT
+> 5.17/06). Branch `fPnts`, a `TArrayD *fPnts; //[fNrSrcs]`, has `fType` 0 and
+> `fBranchCount` -1, and its counter is the sibling `fNrSrcs`, whose entries 0
+> and 1 are 4 bytes each. With that count, `fPnts`'s entries 0 and 1, 16218
+> bytes each, decode to exactly their length. `varyingArray_51508.root` (5.15/08)
+> has the same shape in `A.fTable`, whose counter `A.fN` is 3.
 
 ### 4.1 Resolve the counter by name, not by `fBranchCount`
 
@@ -374,14 +436,17 @@ Normative, for one entry of one branch.
 
 1. If the branch has sub-branches and `fType` is not 3 or 4, it holds nothing:
    read its children and stop (§2).
-2. If `fBranchCount` is set, read that branch's entry first and keep its value as
-   *n* (§4).
+2. If `fBranchCount` is set, or the element is a `kStreamLoop`, read the
+   counter's branch's entry first and keep its value as *n* (§4).
 3. Locate this entry's byte range (§1).
 4. Select the read shape from `fType`, `fID`, `fSplitLevel` and `fStreamerType`
    ([TBranchElement §8](TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)).
 5. Decode:
    - `fType` 3 or 4: one `Int_t`; check it against `fMaximum` (§6).
    - `fType` 31 or 41: *n* values of the selected element's type (§3.2, §5.3).
+     For `fType` 41 with *n* 0 the byte range may be empty even where the
+     column has a header, if the writer predates 5.32/00; then there is
+     nothing to read (§3.2).
    - `fType` ≤ 2 with `fBranchCount`: a flag byte then *n* values (§3.4).
    - `fType` 0 with `fID` −1: every element of `fClassName`'s streamer info, in
      order, with no class-level framing (§3.3).
@@ -422,15 +487,20 @@ and `tools/check_coverage.py` checks that record.
 Invariant 5 is the general statement of the others, and a third-party reader
 should test itself against it. It cannot be checked by a rule, only by decoding,
 which is what `tools/rootfile.py`'s `TreeReader` exists for. Over both corpora it
-holds on **48 295 branch-baskets, 99.8% of them**. The remaining 104 are named individually in the
-checker's `SKIPPED` report, each with a count and a reason, and **no reader could
-decode any of them from the file**. Each is either a collection whose value class
+holds on **48 278 branch-baskets, 99.5% of them**, with none failing. The
+remaining 223 are named individually in the checker's `SKIPPED` report, each with
+a count and a reason. 153 of them **no reader could decode from the file**. Each
+of those is either a collection whose value class
 has no streamer info in the file
 ([Collections §9](../02-serialization/Collections.md#9-the-value-classs-streamer-info-can-be-missing-entirely)
 says nobody can read those, ROOT included), or a class whose `Streamer` is
 hand-written; two of those classes are recognised by their bytes alone, as
 [Streamer-driven reading §7.1](../02-serialization/StreamerDriven.md#71-an-object-with-no-byte-count)
-describes.
+describes. The other 70 are 65 baskets written to another file, which no corpus
+holds (`fFileName`, [TBranch](TBranch.md)), and 5 `TBranchObject` baskets, which
+`rootfile.py` does not decode yet. Invariants 1, 3 and 4 are checked on embedded
+baskets too; until 2026-09-24 they were not, and passed without reading anything
+on a file whose baskets are all embedded.
 
 > Neither reason is a defect, and neither can be resolved from inside the file. A
 > class whose `Streamer` is hand-written has a streamer info that does not

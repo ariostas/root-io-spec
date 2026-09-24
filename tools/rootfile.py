@@ -13,6 +13,7 @@ raises `MissingCodec`.
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass, field
 
@@ -1197,6 +1198,12 @@ SCALAR_WIDTH = {
 
 OFFSET_L = 20
 OFFSET_P = 40
+#: kStreamLoop, and the fixed-array form ROOT writes for `T *m[d]; //[n]`,
+#: kStreamLoop + kOffsetL (root/core/meta/src/TStreamerElement.cxx:510-517).
+STREAM_LOOP = (501, 521)
+#: The last file version whose `T **m; //[n]` loop holds bare objects rather
+#: than object slots (root/io/io/src/TStreamerInfoReadBuffer.cxx:1506).
+LOOP_BARE_OBJECTS_UP_TO = 51508
 
 # Classes whose Streamer is hand-written *at the versions a current file uses*, so
 # that their streamer info, though still in the file, does not describe their
@@ -1396,9 +1403,13 @@ class Decoder:
     """
 
     def __init__(self, buf: bytes, base: int, infos: list[StreamerInfo],
-                 tolerant: bool = False, custom: "set[str] | None" = None):
+                 tolerant: bool = False, custom: "set[str] | None" = None,
+                 file_version: int | None = None):
         self.buf = buf
         self.base = base
+        # The header's fVersion. One layout depends on it: a `T **m; //[n]`
+        # loop, ElementTypes.md 8.3. None means a current file.
+        self.file_version = file_version
         # StreamerDriven.md section 7: nothing in a file marks a class whose
         # Streamer is hand-written, so a reader needs a list. CUSTOM_STREAMER is
         # this specification's; `custom` extends it with classes a caller has
@@ -1416,6 +1427,14 @@ class Decoder:
         self.infos: dict[str, dict[int, StreamerInfo]] = {}
         for info in infos:
             self.infos.setdefault(info.name, {})[info.class_version] = info
+        # A type name that is not spelled as the info describing it, mapped to
+        # that info's name: by recorded_class_name, or by the checksum a
+        # version word of 0 carries (StreamerInfo.md 7.3). Filled on a miss.
+        self.aliases: dict[str, str | None] = {}
+        # The class a record's key names. It is not a declared type, and a
+        # TBasket's payload is not an object of it, so no checksum in the
+        # payload may stand in for it.
+        self.record_class = ""
         self.classes: dict[int, str] = {}
         # (member name, value class, frame offset, collections in the frame)
         # for each member-wise member or column reached, recorded before it is
@@ -1429,6 +1448,38 @@ class Decoder:
         # an enclosing extent rejected the no-version reading of them.
         self.versioned: set[str] = set()
 
+    def infos_of(self, cls: str) -> dict[int, StreamerInfo]:
+        """The infos describing `cls`, by version, under whatever name the
+        file gives them; empty if none does."""
+        found = self.infos.get(cls)
+        if found:
+            return found
+        if cls not in self.aliases:
+            self.aliases[cls] = recorded_class_name(cls, self.infos)
+        alias = self.aliases[cls]
+        return self.infos.get(alias, {}) if alias else {}
+
+    def alias_by_checksum(self, cls: str, checksum: int) -> dict[int, StreamerInfo]:
+        """The infos of the one class in the file whose info has `checksum`.
+
+        For a type name that names no info even after recorded_class_name, as
+        in a file whose element records a name no class has
+        (`Belle2::ModuleStatistics::CalcMeanCov<2,value_type>`, ROOT 6.07/01),
+        or an unqualified class ROOT 5 wrote (`vector<OtherInner>`). ROOT keys
+        a checksum by the class it resolved from the name (Collections.md
+        8.2), so it cannot read these without a dictionary; the checksum alone
+        can, when exactly one class in the file carries it. Never used for a
+        pair, whose checksums collide.
+        """
+        if cls.startswith(("pair<", "std::pair<")) or cls == self.record_class:
+            return {}
+        owners = {i.name for by in self.infos.values() for i in by.values()
+                  if i.checksum == checksum}
+        if len(owners) != 1:
+            return {}
+        self.aliases[cls] = owners.pop()
+        return self.infos[self.aliases[cls]]
+
     def base_info(self, el: Element) -> StreamerInfo:
         """The info a TStreamerBase element selects, where no version word does.
 
@@ -1440,7 +1491,7 @@ class Decoder:
         version, checksum = el.tail.get("fBaseVersion", -1), el.base_checksum
         if version >= 0 or checksum == 0:
             return self.info_for(el.name, version)
-        for info in self.infos.get(el.name, {}).values():
+        for info in self.infos_of(el.name).values():
             if info.checksum == checksum:
                 return info
         raise UnsupportedClass(
@@ -1450,7 +1501,7 @@ class Decoder:
     def info_for(self, cls: str, version: int) -> StreamerInfo:
         if cls in self.custom:
             raise UnsupportedClass(f"{cls} has a hand-written Streamer")
-        by_version = self.infos.get(cls)
+        by_version = self.infos_of(cls)
         if not by_version:
             raise UnsupportedClass(f"no streamer info for {cls}")
         if version in by_version:
@@ -1606,7 +1657,7 @@ class Decoder:
             if current in seen:
                 continue
             seen.add(current)
-            for info in self.infos.get(current, {}).values():
+            for info in self.infos_of(current).values():
                 stack += [el.name for el in info.elements
                           if el.cls == "TStreamerBase"]
         return False
@@ -1630,7 +1681,7 @@ class Decoder:
         caller that knows the enclosing extent can tell a reading that does not
         fit it from a failure (within_extent).
         """
-        by_version = self.infos.get(cls, {})
+        by_version = self.infos_of(cls)
         if not by_version:
             return None
         info = by_version.get(_i16(self.buf, offset)) \
@@ -1702,7 +1753,7 @@ class Decoder:
         therefore a member the streamer does not write and is ignored here.
         ForwardingStreamers.md section 3.
         """
-        by_version = self.infos.get(cls, {})
+        by_version = self.infos_of(cls)
         if not by_version:
             raise UnsupportedClass(
                 f"{cls} writes only its bases, and no streamer info in this "
@@ -2171,13 +2222,15 @@ class Decoder:
         """
         if frame.version > 0:
             return frame.version, frame.body
-        by_version = self.infos.get(cls, {})
+        by_version = self.infos_of(cls)
         if 0 in by_version:
             return 0, frame.body
+        checksum = _u32(self.buf, frame.body)
+        if not by_version:
+            by_version = self.alias_by_checksum(cls, checksum)
         if not by_version:
             raise UnsupportedClass(
                 f"version word 0 for {cls}, which has no streamer info here")
-        checksum = _u32(self.buf, frame.body)
         for version, info in by_version.items():
             if info.checksum == checksum:
                 return version, frame.body + 4
@@ -2368,10 +2421,10 @@ class Decoder:
             end = self.read_collection(el, offset)
             return done(end)
 
-        if t == 501:                                  # kStreamLoop
+        if t in STREAM_LOOP:                          # kStreamLoop [+ kOffsetL]
             frame = read_frame(buf, offset)
             if frame.end is None:
-                raise FormatError(f"element {el.name} type 501 has no byte count")
+                raise FormatError(f"element {el.name} type {t} has no byte count")
             count = counters.get(el.count_name)
             if count is None:
                 raise FormatError(
@@ -2379,8 +2432,11 @@ class Decoder:
             # No length is written: the counter is the only source (ElementTypes.md
             # 8). A counter of 0 writes the frame and nothing else, so the loop
             # below does not run. Two stars in the type name mean object slots
-            # rather than bare objects.
-            slots = "**" in el.type_name
+            # rather than bare objects, except in a file of 5.15/08 or earlier,
+            # which wrote bare objects for both (ElementTypes.md 8.3).
+            slots = "**" in el.type_name and (
+                self.file_version is None
+                or self.file_version > LOOP_BARE_OBJECTS_UP_TO)
             cls = _bare_class(el.type_name)
             pos = frame.body
             for _ in range(max(el.array_length, 1)):
@@ -2395,7 +2451,7 @@ class Decoder:
                         pos = self.read_object(cls, pos).end
             if pos != frame.end:
                 raise FormatError(
-                    f"element {el.name} type 501 ends at {pos}, "
+                    f"element {el.name} type {t} ends at {pos}, "
                     f"but its byte count says {frame.end}")
             return done(frame.end)
 
@@ -2523,8 +2579,9 @@ class Decoder:
         mask = self.BYPASS_STREAMER if version >= 4 else self.BYPASS_STREAMER_V3
         if bits & mask:
             info = self.info_for(cls, int(text))
+            columns: dict[str, list[int]] = {}
             for element in info.elements:
-                pos = self.read_column(element, count, pos)
+                pos = self.read_column(element, count, pos, columns=columns)
         else:
             for _ in range(max(count, 0)):
                 present = self.buf[pos]
@@ -2620,8 +2677,10 @@ class Decoder:
             # (uproot-issue468.root, BDSOutputROOTEventCollimatorInfo).
             if info is None:
                 info = self.value_info(value, version)
+            columns: dict[str, list[int]] = {}
             for element in info.elements:
-                pos = self.read_column(element, max(count, 0), pos)
+                pos = self.read_column(element, max(count, 0), pos,
+                                       columns=columns)
         return pos
 
     def resolve_bare_version(self, cls: str, offset: int) -> tuple[int, int]:
@@ -2634,7 +2693,8 @@ class Decoder:
         if version > 0:
             return version, offset + 2
         checksum = _u32(self.buf, offset + 2)
-        for candidate, info in self.infos.get(cls, {}).items():
+        for candidate, info in (self.infos_of(cls)
+                                or self.alias_by_checksum(cls, checksum)).items():
             if info.checksum == checksum:
                 return candidate, offset + 6
         if cls.startswith("pair<"):
@@ -2666,7 +2726,8 @@ class Decoder:
         return None
 
     def read_column(self, element, count: int, offset: int,
-                    counters: dict[str, int] | None = None) -> int:
+                    counters: dict[str, int] | None = None,
+                    columns: dict[str, list[int]] | None = None) -> int:
         """One member, written `count` times back to back.
 
         Two things in this specification have that shape and ROOT reads them with
@@ -2674,10 +2735,19 @@ class Decoder:
         a split branch's member column (ReadingEntries.md 3.2). They also share
         the once-per-column header of ReadingEntries.md 5.3, so this cannot be a
         loop over read_element_value for every type.
+
+        `columns` is shared by the columns of one member-wise block. A counter's
+        column is recorded in it, one value per object, because a counted
+        pointer's column later in the same block takes object k's length from
+        object k's counter (root/io/io/src/TStreamerInfoReadBuffer.cxx:87-119).
+        Collections.md 4.4.
         """
         t = element.ftype
         width = element_width(element)
         if width is not None:
+            if columns is not None and t in COUNTER_TYPES:
+                columns[element.name] = [_i32(self.buf, offset + 4 * k)
+                                         for k in range(count)]
             return offset + count * width
         if t == 0 and element.cls == "TStreamerBase":
             # A base in array mode is its own info read over the same array:
@@ -2686,7 +2756,8 @@ class Decoder:
             # once per element; the two differ as soon as the base has two
             # members. Collections.md 4.1 and 4.2.
             for member in self.base_info(element).elements:
-                offset = self.read_column(member, count, offset)
+                offset = self.read_column(member, count, offset,
+                                          counters, columns)
             return offset
         if OFFSET_L <= t < OFFSET_P:                  # a C array per element
             inner = t - OFFSET_L
@@ -2697,7 +2768,7 @@ class Decoder:
                         * quantised_width(inner, element.title))
         if t == 500 and element.cls in ("TStreamerSTL", "TStreamerSTLstring"):
             return self.read_collection_column(element, count, offset)
-        if t == 501:
+        if t in STREAM_LOOP:
             # kStreamLoop: a pointer whose length is another member of the class
             # (fCountName). In a split branch that member is a column on a
             # sibling branch, so the per-element lengths are not reachable from
@@ -2712,9 +2783,38 @@ class Decoder:
         # Everything else is the scalar encoding repeated: the rule of
         # ReadingEntries.md 5.3, to which 5.3's two families are the exceptions.
         pos = offset
-        for _ in range(count):
-            pos = self.read_element_value(element, pos, counters or {}).end
+        per_object = (columns or {}).get(element.count_name) \
+            if element.count_name else None
+        for k in range(count):
+            here = counters or {}
+            if per_object is not None:
+                here = {**here, element.count_name: per_object[k]}
+            pos = self.read_element_value(element, pos, here).end
         return pos
+
+    #: The type names an enum's underlying type is read as, by fCtype.
+    ENUM_UNDERLYING = {1: "Char_t", 2: "Short_t", 3: "Int_t", 4: "Long_t",
+                       5: "Float_t", 8: "Double_t", 11: "UChar_t",
+                       12: "UShort_t", 13: "UInt_t", 14: "ULong_t",
+                       16: "Long64_t", 17: "ULong64_t", 18: "Bool_t"}
+
+    def enum_value(self, el, value: str) -> str:
+        """The value type to read a collection's elements as, when it is an enum.
+
+        An enum has no streamer info and its name looks like a class's, so only
+        fCtype tells them apart. ROOT records the enum's underlying type there
+        (root/core/meta/src/TStreamerElement.cxx:1816-1819); before that it
+        left it 0 (v5-10-00:meta/src/TStreamerElement.cxx:1425-1427), and a
+        value type ROOT cannot find is read as an Int_t "enum"
+        (root/io/io/src/TGenCollectionProxy.cxx:439-443). Collections.md 7.1.
+        """
+        bare = value[5:] if value.startswith("std::") else value
+        if (value in FUNDAMENTAL or value in self.infos
+                or bare in ("string", "TString")
+                or not all(part.isidentifier() for part in value.split("::"))):
+            return value
+        ctype = el.tail.get("fCtype", 0)
+        return self.ENUM_UNDERLYING.get(3 if ctype == 0 else ctype, value)
 
     def read_collection_column(self, el, count: int, offset: int) -> int:
         """`count` objects' worth of one collection member, under one header.
@@ -2759,6 +2859,7 @@ class Decoder:
                 pos = self.read_object_wise("bool", STL_VECTOR, pos)
         else:
             value, stl = collection_value(el)
+            value = self.enum_value(el, value)
             if frame.member_wise:
                 self.member_wise.append((el.name, value, offset, n))
                 # kSTLp is chosen by a trailing '*' on the type name
@@ -2794,14 +2895,18 @@ def basket_value(buf: bytes, rec: Record, data: bytes) -> Value:
 
 
 def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
-                          tolerant: bool = False) -> tuple[Decoder, Value | None]:
+                          tolerant: bool = False,
+                          file_version: int | None = None
+                          ) -> tuple[Decoder, Value | None]:
     """decode_record, but hand back the Decoder even when the read fails.
 
     A checker needs what the decoder saw on the way to the failure, notably
     which collections were member-wise, which only the data records.
     """
     start, end = payload_range(rec)
-    decoder = Decoder(buf, rec.offset, infos, tolerant=tolerant)
+    decoder = Decoder(buf, rec.offset, infos, tolerant=tolerant,
+                      file_version=file_version)
+    decoder.record_class = rec.class_name
     if rec.class_name == "TBasket":
         try:
             return decoder, basket_value(buf, rec, buf)
@@ -2816,13 +2921,15 @@ def decode_record_verbose(buf: bytes, rec: Record, infos: list[StreamerInfo],
     return decoder, value
 
 
-def decode_record(buf: bytes, rec: Record, infos: list[StreamerInfo]) -> Value:
+def decode_record(buf: bytes, rec: Record, infos: list[StreamerInfo],
+                  file_version: int | None = None) -> Value:
     """Apply the streamer-driven read to one uncompressed record's object data.
 
     Raises UnsupportedClass when the record's class has a hand-written Streamer.
     """
     start, end = payload_range(rec)
-    decoder = Decoder(buf, rec.offset, infos)
+    decoder = Decoder(buf, rec.offset, infos, file_version=file_version)
+    decoder.record_class = rec.class_name
     value = decoder.read_object(rec.class_name, start)
     if value.end != end:
         raise FormatError(
@@ -2992,6 +3099,123 @@ def template_args(name: str) -> list[str]:
         current += ch
     args.append(current.strip())
     return [a for a in args if a]
+
+
+#: How a class's own streamer info spells a template argument that an element's
+#: `fTypeName` may spell differently (StreamerInfo.md 7.3). The info is named by
+#: the class's normalised name, which resolves ROOT's typedefs of fundamental
+#: types and renames `long long` to `Long64_t`
+#: (`TClassEdit::GetNormalizedName`, root/core/foundation/src/TClassEdit.cxx:923-925).
+#: An element recorded the member's declared spelling before 6.00/00 (commit
+#: 452898f2b72), and `unsigned long long` as late as 6.11/01. `Double32_t` and
+#: `Float16_t` are absent on purpose: they are part of the normalised name,
+#: because they change what is written. The typedefs are
+#: root/core/foundation/inc/RtypesCore.h:51-103.
+NORMALISED_SPELLING = {
+    "Char_t": "char", "UChar_t": "unsigned char", "Short_t": "short",
+    "UShort_t": "unsigned short", "Int_t": "int", "UInt_t": "unsigned int",
+    "Seek_t": "int", "Long_t": "long", "ULong_t": "unsigned long",
+    "Float_t": "float", "Double_t": "double", "LongDouble_t": "long double",
+    "Text_t": "char", "Bool_t": "bool", "Byte_t": "unsigned char",
+    "Version_t": "short", "Ssiz_t": "int", "Real_t": "float",
+    "Axis_t": "double", "Stat_t": "double", "Font_t": "short",
+    "Style_t": "short", "Marker_t": "short", "Width_t": "short",
+    "Color_t": "short", "SCoord_t": "short", "Coord_t": "double",
+    "Angle_t": "float", "Size_t": "float",
+    "long long": "Long64_t", "long long int": "Long64_t",
+    "unsigned long long": "ULong64_t", "unsigned long long int": "ULong64_t",
+}
+
+
+def _split_template(name: str) -> tuple[str, list[str] | None, str]:
+    """`(head, arguments, tail)` of a type name; arguments None if it has none.
+
+    The tail is whatever follows the closing `>`: a nested name such as
+    `::value_type`, or pointer stars.
+    """
+    lt = name.find("<")
+    if lt < 0:
+        return name, None, ""
+    depth = 0
+    for i in range(lt, len(name)):
+        depth += (name[i] == "<") - (name[i] == ">")
+        if depth == 0:
+            return name[:lt].strip(), template_args(name[lt:i + 1]), \
+                name[i + 1:].strip()
+    raise FormatError(f"unbalanced template brackets in {name!r}")
+
+
+@functools.lru_cache(maxsize=None)
+def canonical_class_name(name: str) -> str:
+    """A class name spelled as ROOT names the class's own streamer info.
+
+    Resolves the fundamental typedefs of `NORMALISED_SPELLING` wherever they
+    stand as a whole template argument, drops `std::`, and fixes the
+    whitespace, so that two spellings of one class compare equal. It does not
+    resolve a user's typedef, which the file does not record.
+    """
+    name = " ".join(name.split())
+    if name.startswith("std::"):
+        name = name[5:]
+    head, args, tail = _split_template(name)
+    if args is None:
+        core = head.rstrip("*").strip()
+        stars = head[len(head.rstrip("*")):]
+        return NORMALISED_SPELLING.get(core, core) + stars
+    args = [canonical_class_name(a) for a in args]
+    close = " >" if args[-1].endswith(">") else ">"
+    return f"{head}<{','.join(args)}{close}{tail}"
+
+
+def _defaults_omitted(short: str, full: str) -> bool:
+    """Is `short` the class `full` with trailing default arguments left out?
+
+    Both canonical. A pre-6.00/00 element omits a non-STL template's default
+    arguments, which the class's normalised name spells out:
+    `PositionVector3D<Cartesian3D<Double32_t> >` for
+    `PositionVector3D<Cartesian3D<Double32_t>,DefaultCoordinateSystemTag>`.
+    """
+    if short == full:
+        return True
+    h1, a1, t1 = _split_template(short)
+    h2, a2, t2 = _split_template(full)
+    if h1 != h2 or t1 != t2 or a1 is None or a2 is None or len(a1) > len(a2):
+        return False
+    return all(_defaults_omitted(x, y) for x, y in zip(a1, a2))
+
+
+def recorded_class_name(name: str, known, owner: str = "") -> str | None:
+    """The name among `known` (the file's info names) that `name` refers to.
+
+    `name` is an element's type name or base name, which is not always spelled
+    as the info that describes the class (StreamerInfo.md 7.3). In order: the
+    name itself; the same class up to the spellings `canonical_class_name`
+    removes; the same with default template arguments left out. Before
+    6.00/00 an element also dropped the enclosing scope of a class declared in
+    the owner's namespace (`vector<OtherInner>` in `HepExp::Outer`), so with an
+    `owner` the owner's enclosing scopes are tried as C++ name lookup would.
+    None when nothing matches, or when more than one info does.
+    """
+    if name in known:
+        return name
+    canon = {canonical_class_name(k): k for k in known}
+    # The owner itself is the innermost scope: a class nested in it is found
+    # first. Only an unqualified name is looked up this way, and only in an
+    # owner whose name has no template arguments to split wrongly.
+    scopes = owner.split("::") if owner and "<" not in owner \
+        and "::" not in _split_template(name)[0] else []
+    candidates = ["::".join(scopes[:i] + [name])
+                  for i in range(len(scopes), 0, -1)] + [name]
+    for wanted in candidates:
+        found = canon.get(canonical_class_name(wanted))
+        if found is not None:
+            return found
+    for wanted in candidates:
+        c = canonical_class_name(wanted)
+        hits = {k for ck, k in canon.items() if _defaults_omitted(c, ck)}
+        if len(hits) == 1:
+            return hits.pop()
+    return None
 
 
 def is_collection_name(name: str) -> bool:
@@ -4180,8 +4404,10 @@ class TreeReader:
     def __init__(self, buf: bytes, tree: Tree, infos: list[StreamerInfo],
                  fetch=None, tolerant: bool = False,
                  custom: "set[str] | None" = None,
-                 tree_payload: bytes | None = None):
+                 tree_payload: bytes | None = None,
+                 file_version: int | None = None):
         self.buf = buf
+        self.file_version = file_version
         # The TTree record's own object data, in which Branch.embedded[i].block
         # is an offset. Without it a basket that was never written as a record is
         # unreachable, and that is most of the baskets in a file written by
@@ -4277,7 +4503,8 @@ class TreeReader:
         decoder = self._decoders.pop(key, None)
         if decoder is None:
             decoder = Decoder(payload, rec.offset, self.infos,
-                              tolerant=self.tolerant, custom=self.custom)
+                              tolerant=self.tolerant, custom=self.custom,
+                              file_version=self.file_version)
             # A decoder keeps its buffer alive, and the buffer of a compressed
             # basket is a copy of the file up to that basket (object_data), so
             # keeping one per basket costs the file size times the basket count.
@@ -4450,6 +4677,14 @@ class TreeReader:
         # fType 31 and 41: n values of that element, back to back.
         if ft in (31, 41):
             objects = max(self.count_for(br, entry), 0)
+            if ft == 41 and objects == 0 and start == end:
+                # ROOT reads nothing for an empty collection's member
+                # (root/tree/tree/src/TBranchElement.cxx:4493-4496), and before
+                # 5.32/00 wrote nothing either
+                # (v5-30-00:io/io/src/TStreamerInfoWriteBuffer.cxx:867). Since
+                # then the column's header is written with no values after it,
+                # which is decoded below. ReadingEntries.md 3.2.
+                return start
             if OFFSET_P <= el.ftype < 60 and el.count_name:
                 # Every object has its own count, held in the sibling branch
                 # that holds the counter, one value per object.
@@ -4463,9 +4698,12 @@ class TreeReader:
 
         # fType <= 2 with fBranchCount: the Int_t n; Float_t *x; //[n] shape,
         # whose element is kOffsetP + T and whose count is on the other branch.
+        # A kStreamLoop member, `T *x; //[n]`, is the same shape with objects:
+        # ROOT reads n from the object the sibling branch has already filled.
         counters: dict[str, int] = {}
         if el.count_name and (br.count_slot >= 0
-                              or OFFSET_P <= el.ftype < 60):
+                              or OFFSET_P <= el.ftype < 60
+                              or el.ftype in STREAM_LOOP):
             counter = self.counter_branch(br, el.count_name)
             counters[el.count_name] = self.count_at(counter, entry)
         return decoder.read_element_value(el, start, counters).end
@@ -4488,6 +4726,11 @@ class EmbeddedBasket:
     key_len: int          # fKeylen, which covers the key and the basket header
     basket: Basket
     block: int            # where the raw buffer copy begins; -1 if absent
+    # The key's own fNbytes and fSeekKey. Both are 0 on a basket that never
+    # reached the file. A basket read back from its record keeps the record's
+    # values, and is then a second copy of that record (TBranch.md 5.1).
+    nbytes: int = 0
+    seek_key: int = 0
 
 
 def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
@@ -4496,7 +4739,9 @@ def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
     large = version > LARGE_KEY_VERSION
     obj_len = _i32(buf, offset + 6)
     key_len = _i16(buf, offset + 14)
-    seek = offset + (18 if large else 18)
+    nbytes = _i32(buf, offset)
+    seek_key = (struct.unpack_from(">q", buf, offset + 18)[0] if large
+                else _i32(buf, offset + 18))
     o = offset + (34 if large else 26)
     for _ in range(3):                      # fClassName, fName, fTitle
         _, o = _counted_string(buf, o)
@@ -4561,7 +4806,7 @@ def read_embedded_basket(buf: bytes, offset: int) -> EmbeddedBasket:
                     data_end=block + last if block >= 0 else -1,
                     entry_offsets=offsets)
     return EmbeddedBasket(start=offset, end=o, key_len=key_len, basket=basket,
-                          block=block)
+                          block=block, nbytes=nbytes, seek_key=seek_key)
 
 
 def embedded_entry_range(emb: EmbeddedBasket, index: int) -> tuple[int, int]:

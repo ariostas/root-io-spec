@@ -60,6 +60,26 @@ collection's, with no pointer tag (§11.3).
 > reader applies the repair. The pointer forms are not repaired: ROOT tests for 5
 > and 6 only, so a `set<T>*` at 45 keeps whatever it was given.
 
+**Before 5.24/00 a `multimap` was stored as 4 and a `multiset` as 5.** The
+`TStreamerSTL` constructor took `fSTLtype` from the type name, and tested for
+`map` before `multimap` and for `set` before `multiset`
+(`v5-22-00:core/meta/src/TStreamerElement.cxx:1485-1491`). Root commit
+`32b2215c0d0` (2009-06-02, first in 5.24/00) reordered the tests. A multimap
+therefore got `kSTLmap` (4), and a multiset got the old `kSTLset` (5), which the
+repair above leaves as a multimap because the name is not `set`. ROOT reads both
+correctly: the container it reads is the one its collection proxy parses from the
+name (`root/io/io/src/TEmulatedCollectionProxy.cxx:135`,
+`root/io/io/src/TGenCollectionProxy.cxx:867`). A map and a multimap have the same
+bytes, so the 4 is harmless. A multiset read as a multimap would be read as
+pairs, so a reader SHOULD take the container from `fTypeName` whenever the two
+disagree.
+
+> `reco::IsoDeposit.theDeposits`, a
+> `multimap<reco::isodeposit::Direction::Distance,float>`, has `fSTLtype` 4 in
+> `root/roottest/root/meta/MakeProject/CMSSW_3_1_0_pre11-RelValZTT-default-copy.root`
+> (ROOT 5.22/00). No multiset stored as 5 by a release before 5.24/00 has been
+> found.
+
 **`fType` on disk is always 500**
 ([Streamer information §10](StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)),
 written deliberately for forward compatibility
@@ -118,7 +138,7 @@ byteCount  version(0x000A)   count:i32   <each element, in full>
 
 | Element | On disk | Cited |
 |---|---|---|
-| fundamental or enum | its natural width, back to back | `root/io/io/src/TGenCollectionStreamer.cxx:891` |
+| fundamental or enum | its natural width, back to back; an enum is known by `fCtype` alone (§7.1) | `root/io/io/src/TGenCollectionStreamer.cxx:891` |
 | `Double32_t` or `Float16_t` | **not** its natural width: 4 bytes and 3 bytes respectively (see the note below) | `root/io/io/src/TGenCollectionStreamer.cxx:931-933`, `:952-953` |
 | a class | a full framed object: byte count, version, and a checksum if foreign | `root/io/io/src/TGenCollectionStreamer.cxx:976` |
 | `std::string` | a bare counted string | `root/io/io/src/TGenCollectionStreamer.cxx:979` |
@@ -237,6 +257,7 @@ occupies one contiguous column.
 | `TString` (65) | none: *n* counted strings, back to back |
 | an object member (61, 62) | each element has its own byte count and version word |
 | a pointer member (64, 69) | each element is an [object slot](Buffer.md#6-object-slots) |
+| a counted pointer (40 + T) | per element, the flag byte and then that element's count of values. The count is the element's own value in the counter's column, read earlier in the same block; no length is written (`root/io/io/src/TStreamerInfoReadBuffer.cxx:87-119`, `:1000-1015`) |
 | a collection member (500), `std::string` included | **one** byte count and version word for the whole column |
 
 The last row follows from how the action is built: a collection column falls
@@ -248,6 +269,23 @@ the frame is written once inside that single call.
 > same but the framing differs, and only the member's element class says which it
 > is. `serialization/pairs` has both, twelve bytes
 > apart.
+
+**A counter is a column too.** A counted member takes, for each element, the
+value that element holds in its counter's column
+([Element types §4](ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)). ROOT
+reads the column in array mode and looks up `arr[k]`'s counter for element *k*
+(`root/io/io/src/TStreamerInfoActions.cxx:2692-2697`,
+`root/io/io/src/TStreamerInfoReadBuffer.cxx:778-779`), and the counter column
+was read into the same objects earlier in the block. A reader MUST therefore
+keep each counter column as one value per element. The counter may be a member
+of a base class, whose columns come first (§4.2).
+
+> Byte-verified on `root/roottest/root/tree/selector/Event1.root` (ROOT 3.03/09).
+> Its `fTracks` branch holds a whole `TClonesArray` of `Track` in each entry, in
+> the bypass form of §12. `Track::fPointValue` is a `Double32_t *[fNsp]`, and the
+> `fNsp` column before it reads `2, 1, 1, 2, 1, 2, 0, 1, …` over 600 tracks. With
+> one count per object, entries 0, 1 and 2 consume exactly their 58733, 60659
+> and 59095 bytes.
 
 ### 4.2 A base class loses its version word
 
@@ -385,6 +423,34 @@ distinguishes them**, and a reader must parse the type name.
 > have `fCtype` 61, and are respectively a bare nested collection, a counted
 > string, and a transposed pair.
 
+### 7.1 A collection of an enum is the one case where `fCtype` decides
+
+An enum has no streamer info, and its name looks like a class's, so a
+`vector<EStatus>` cannot be told from a `vector<SomeClass>` by `fTypeName`.
+Its elements are written at the width of the enum's underlying type, back to
+back (§3). `fCtype` is what identifies it:
+
+| Writer | `fCtype` of a collection of an enum |
+|---|---|
+| 6.36/00 and later | the underlying type's code, 3 when it is unknown (`root/core/meta/src/TStreamerElement.cxx:1816-1819`, root commit `6500f124e3d`; a backport to the 6.34 branch was reverted before 6.34/02) |
+| 5.10/00 | 0 (`v5-10-00:meta/src/TStreamerElement.cxx:1425-1427` never assigns it) |
+
+ROOT itself, reading a collection whose value type it cannot find as a class,
+an enum or a fundamental type, treats it as an `Int_t` enum
+(`root/io/io/src/TGenCollectionProxy.cxx:439-443`). So a reader SHOULD read
+the elements of a collection whose value type is a plain name with no streamer
+info in the file as the basic type `fCtype` names, and as `Int_t` when `fCtype`
+is 0. With `fCtype` 61 or 63 the value type was a class, and §9 applies instead.
+
+Byte-verified on two files. ROOT 6.40.04 records `fCtype` 13 for a
+`vector<EStatus>` whose enumerators are 1 and 7, since the compiler picked
+`unsigned int`. `S_1_104_qgsjet_100_1.KGrec.root` in `root/roottest/`
+(5.10/00) records 0 for `vector<EPixelStatus>`, and entry 19 of its split
+member `fFdRecPixel.fStatus` is a six-byte header, a count of 78 and 312 bytes:
+78 four-byte values. ROOT 6.40.04, with no dictionary for the class, reads 78
+there. Between 5.10/00 and 6.36/00 the value may be 0 or the collection proxy's
+own type code; which one, release by release, has not been established.
+
 ## 8. `std::map`
 
 A map is written in either layout, depending on the mode:
@@ -473,6 +539,9 @@ one pair's own versions.
 **A reader MUST do the same**: take the pair from the member's type name, and use
 the checksum only to select a version within it. One that keeps a global
 checksum → info table will decode two of those three maps as the wrong type.
+The one cross-class use of a checksum this specification allows is a last resort
+for a type name that matches no info at all, and it never applies to a pair
+([Streamer information §7.3](StreamerInfo.md#73-ftypename-is-not-always-spelled-as-the-info-it-names)).
 
 > The cause is a caching artefact, not the format.
 > `TClass::GetCheckSum` computes from the class's data-member list and caches the
@@ -520,6 +589,20 @@ and the data is lost.
 
 A reader SHOULD report a member-wise collection whose value class has no streamer
 info, rather than guess.
+
+**Before 6.00/00 the value class can also be named by a user's typedef.** An
+element then recorded the member's declared spelling
+([Streamer information §7.3](StreamerInfo.md#73-ftypename-is-not-always-spelled-as-the-info-it-names)),
+so a class-scoped `typedef TNamed Named_t;` gave a `vector<Named_t>`, and
+nothing in the file maps `Named_t` to `TNamed`. The value-class version word
+is `TNamed`'s 1 rather than 0, so no checksum follows it either
+(§4), and nothing identifies the class.
+`checksum_v5.root` and `checksum_v53418.root` in `root/roottest/` (ROOT 5.34/18)
+have one: `HasTypeDef::fVec3` reads `40 00 00 08 | 40 09 | 00 01 | 00 00 00 00`. It is empty, so nothing is lost,
+but ROOT 6.40.04 without the dictionary reports `object of class
+vector<Named_t> read too few bytes: 6 instead of 8`. The same class written by
+5.99/06 (`checksum_v6.root`) records `vector<TNamed>`. Invariant 6 fails on
+those two files, correctly: the writer is at fault.
 
 ## 10. `std::string`
 
@@ -780,6 +863,10 @@ base deliberately so that the encoding is self-describing
 | set (the default) | **transposed**, one column per member of the element class as in §4, but with **no second version word and no `kStreamedMemberWise` bit** (`root/io/io/src/TBufferIO.cxx:384-393`) |
 | clear | per slot: a `Char_t` flag, 1 or 0, and if 1 the object written in full |
 
+The transposed body is read by the member-wise action sequence of the element
+class (`root/io/io/src/TBufferIO.cxx:371-379`), so its columns are framed as
+§4.1 says, and a counted member's lengths come from its counter's column.
+
 > **The bit moved.** In class version 3 it was `BIT(14)`
 > (`root/core/cont/src/TClonesArray.cxx:757-758`); the version was bumped to 4
 > for no other reason. A reader MUST branch on the class version before testing
@@ -842,9 +929,11 @@ it, the collection is not readable (§9).
    collection, or a pointer — the four cases `CanSplit` refuses.
 5. Applying §13 to a collection member consumes exactly the bytes its byte count
    delimits.
-6. Every class named as the value class of a member-wise collection has a
-   streamer info in the same file, unless it is a `pair` — for which the file may
-   have one or not (§8).
+6. Every class named as the value class of a member-wise collection names,
+   after the matching of
+   [Streamer information §7.3](StreamerInfo.md#73-ftypename-is-not-always-spelled-as-the-info-it-names),
+   a class with a streamer info in the same file, unless it is a `pair` — for
+   which the file may have one or not (§8).
 
 7. A `TClonesArray`'s `"<class>;<version>"` string names a class that has a
    streamer info in the same file, at that class version.
@@ -867,7 +956,9 @@ it, the collection is not readable (§9).
     1368 `TStreamerSTL` elements of `data/` and both corpora, and three of them
     need the repair to pass. **It does not apply to an element named `This`
     whose `fTypeName` is not a container name**, since its `fSTLtype` comes from
-    the class's proxy (§11.2).
+    the class's proxy (§11.2), and a file written before 5.24/00 may store a
+    multimap as 4 and a multiset as 5 (§1). The CMSSW file of §1 has such a
+    multimap.
 11. An element named `This` is the only element of its streamer info, and its
     `fTypeName` is the name of the class that info describes (§11.2).
 

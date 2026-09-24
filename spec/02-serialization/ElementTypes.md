@@ -44,6 +44,7 @@ are added to a base code.
 | 300 | `kSTL` | **no** — written as 500 |
 | 365 | `kSTLstring` | **no** — never an `fType` at all |
 | 500, 501 | `kStreamer`, `kStreamLoop` | yes |
+| 521 | `kStreamLoop + kOffsetL` | yes — a fixed array of counted object pointers, `T *m[d]; //[n]`; §8.2 |
 | 600 | `kCache` | no |
 | 1000–1002 | `kArtificial`, `kCacheNew`, `kCacheDelete` | no |
 | 99997, 99999 | `kNeedObjectForVirtualBaseClass`, `kMissing` | no — offset sentinels, not types |
@@ -567,7 +568,8 @@ The commented-out length write is still visible in ROOT's source
 
 The two payload forms are chosen by a `strstr` for `**` in `fTypeName`
 (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:700`), so `Cls *m; //[n]` is *c*
-objects and `Cls **m; //[n]` is *c* object slots. Each object's framing comes from
+objects and `Cls **m; //[n]` is *c* object slots, except in a file older than
+5.16/00, where both are *c* objects (§8.3). Each object's framing comes from
 its own class: a `TString*` loop is *c* bare counted strings, because
 `TString::Streamer` writes no version word and no byte count (§7.1).
 
@@ -601,6 +603,91 @@ only in the one 6.36 file and in the fixtures. **Every real-world file predating
 > number, never compare the word to 10.** The same applies to the 85/86/87 form
 > of §7.2 and to the collection frames of
 > [Collections §2](Collections.md#2-the-frame).
+
+### 8.2 A fixed array of loops is 521
+
+A member `Cls *m[d]; //[n]` is `d` pointers, each to a counted array of `Cls`.
+`TStreamerInfo::Build` makes a `TStreamerLoop` for a counted pointer to a class
+(`root/io/io/src/TStreamerInfo.cxx:737-739`) and then calls `SetArrayDim` on it
+(`root/io/io/src/TStreamerInfo.cxx:777`). `TStreamerLoop` does not override
+`SetArrayDim` (`root/core/meta/inc/TStreamerElement.h:233-265`), so the base
+adds `kOffsetL` (`root/core/meta/src/TStreamerElement.cxx:510-517`), and the
+stored code is 501 + 20 = **521**. The three pointer classes that do override
+it, at `root/core/meta/inc/TStreamerElement.h:223`, `:348` and `:370`, are the
+reason codes 40–59 (§4) and the object pointers of §7.2 never gain `kOffsetL`.
+
+Both read paths and the writer handle 521 as a `kStreamLoop`
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1467`,
+`root/io/io/src/TStreamerInfoActions.cxx:3723`,
+`root/io/io/src/TStreamerInfoWriteBuffer.cxx:689`). The whole array shares one
+frame: the loop over its `fArrayLength` blocks runs between one `ReadVersion`
+and one `CheckByteCount`
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1505`, `:1523`, `:1695`):
+
+```
+bc  ver
+for each of fArrayLength blocks:  c objects, or c object slots if
+                                  fTypeName contains "**" (§8.3)
+```
+
+Every block has the same length `c`, because one object has one counter.
+
+> Byte-verified on `root/roottest/root/io/vararyobj/varyingArray_51508.root`
+> (ROOT 5.15/08). Branch `A.fFixedTable[5]` holds a `B *fFixedTable[5]; //[fN]`,
+> and its entry 0 is 642 bytes: the frame `40 00 02 7e 00 05`, then 15 framed
+> `B` objects, `Entry1` to `Entry15`, which is 5 blocks of `fN` = 3. ROOT 6.40.04
+> still writes the code: a compiled class with `P *fFix[2]; //[fN]` records a
+> `TStreamerLoop` with `fType` 521 and `fArrayLength` 2. No fixture has one yet.
+
+### 8.3 Before 5.16/00 a loop of pointers held bare objects
+
+The payload of a `Cls **m; //[n]` loop, 501 or 521, depends on the version of
+the file being read. Both read paths take it from the buffer's file, the raw
+header `fVersion` (`root/io/io/src/TFile.cxx:734`; a basket's buffer has its
+file as parent, `root/tree/tree/src/TBasket.cxx:262`):
+
+| File `fVersion` | `Cls *m; //[n]` | `Cls **m; //[n]` |
+|---|---|---|
+| above 51508 | *c* framed objects | *c* object slots |
+| 51508 or below | *c* framed objects | ***c* framed objects**, with no class record |
+
+The first row is `root/io/io/src/TStreamerInfoReadBuffer.cxx:1506-1592`, which
+reads the slots with `ReadFastArray` of `void**`; the second is `:1593-1694`,
+which calls the class's `Streamer` once per object. The action-based reader
+branches the same way (`root/io/io/src/TStreamerInfoActions.cxx:1961-1971`).
+Object slots, which allow a derived class per element, arrived with root commit
+`556a8af3e3d` (2007-06-16), first in 5.16/00. Its message says the switch is
+keyed on the file version, so a 5.15/09 development build from before the
+commit wrote the old layout under a version the new rule reads as slots, and
+nothing in such a file tells the two apart.
+
+The test is on the raw `fVersion`, which carries the 1000000 flag in a large
+file ([File header §3](../01-container/FileHeader.md#3-fversion-and-the-large-file-flag)),
+so ROOT would read a pre-5.16/00 file past 2 GB with the new rule. No such file
+is known.
+
+> Byte-verified on `varyingArray_51508.root`, whose `fVersion` is 51508. Entry 0
+> of `A.fPtrTable`, a `B **fPtrTable; //[fN]`, is 131 bytes: the frame
+> `40 00 00 7f 00 05`, then `40 00 00 25 00 01 40 00 00 13 00 01 …`, a framed
+> `B` named `Dopey` with `fX` 247 and no `kNewClassTag` before it. Its
+> `A.fFixedPtrTable[5]` likewise holds 15 bare objects.
+>
+> A byte-span check alone does not catch a reader that reads these as slots.
+> Read as a slot, each bare object is a byte count followed by an object
+> reference, its version word and the next two bytes taken as the tag
+> ([Buffer framing §6.1](Buffer.md#61-object-references)). A slot reader skips
+> it by that byte count, so the span still matches. Only decoding the object's
+> members tells the readings apart.
+
+> **Untested: ROOT may not write the old layout correctly.** The action-based
+> writer's branch for a file at 51508 or below calls `ReadStreamerLoopStatic`, a
+> read function, where `WriteStreamerLoopStatic` exists beside it
+> (`root/io/io/src/TStreamerInfoActions.cxx:1699-1708`, `:1625`). The older
+> `WriteBufferAux` path writes the bare objects as the table says
+> (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:758-797`). A file opened for
+> update keeps the `fVersion` in its header (`root/io/io/src/TFile.cxx:734`), so
+> writing such a member into a pre-5.16/00 file would reach that branch. This has
+> not been tried.
 
 ## 9. `kSTL` (300) and `kSTLstring` (365) — framing only
 
@@ -657,19 +744,23 @@ two as separate skip and convert paths, but they change no bytes.
 2. No element has `fType` in the `kSkip`, `kConv`, `kCache` or `kArtificial`
    families, or equal to 71, 300 or 365.
 3. `fType` **500** belongs to a `TStreamerSTL` or a `TStreamerSTLstring`, and
-   **501** to a `TStreamerLoop`, the counted pointer to objects of §8. Measured
-   over `data/` and both corpora: 1264, 226 and 13 elements, with no other element
-   class carrying either code. The 18 elements that carry 300 instead are all
-   `TStreamerSTL`, and all written by g4tools.
+   **501** and **521** to a `TStreamerLoop`, the counted pointer to objects of
+   §8 and its fixed-array form (§8.2). Measured over `data/` and both corpora:
+   1264, 226 and 13 elements, with no other element class carrying any of these
+   codes; all 13 `TStreamerLoop` elements there are 501. `root/roottest/` adds
+   13 more, 11 at 501 and 2 at 521, both of those in `varyingArray_51508.root`.
+   The 18 elements that carry 300 instead are all `TStreamerSTL`, and all
+   written by g4tools.
 4. `fArrayLength` is the **fixed** extent and nothing else, so it is positive for
-   a `kOffsetL` code in `[20, 39]` and **0** for a `kOffsetP` code in `[40, 59]`,
-   whose length is its counter's value at read time. It is 0 for a scalar, with
-   one exception: an object-pointer code (63, 64, 68 or 69) represents a fixed
-   array as `fArrayLength > 1` with **no** `kOffsetL` added (§7), so those have an
-   extent while looking scalar. Measured over `data/` and both corpora: 651
+   a `kOffsetL` code in `[20, 39]` and for 521 (§8.2), and **0** for a `kOffsetP`
+   code in `[40, 59]`, whose length is its counter's value at read time. It is 0
+   for a scalar, with one exception: an object-pointer code (63, 64, 68 or 69)
+   represents a fixed array as `fArrayLength > 1` with **no** `kOffsetL` added
+   (§7), so those have an extent while looking scalar. Measured over `data/` and both corpora: 651
    `kOffsetL` elements, all positive; 2229 `kOffsetP` elements, all 0; and of the
    28 856 remaining, exactly one with an extent, `ElementZoo.fPtrArr`, an
-   `EPoint*[2]` in `serialization/element-types`.
+   `EPoint*[2]` in `serialization/element-types`. The two 521 elements of
+   `varyingArray_51508.root` have `fArrayLength` 5.
 5. An element with `fType` in `[40, 59]` is a `TStreamerBasicPointer` and names a
    counter in `fCountName`.
 6. An element with `fType` -1 is a `TStreamerBase` named `TObject`.
@@ -679,8 +770,9 @@ two as separate skip and convert paths, but they change no bytes.
    `kOffsetL` and `kOffsetP`.
 
 Invariants 1 and 2 hold on every ROOT-written file available, from ROOT 3.04 on.
-A third-party writer may break them: g4tools stores 300, the real STL code, where
-ROOT stores 500
+Until 2026-09-23 §1 left out 521, and invariant 1 failed on the two elements of
+`varyingArray_51508.root` that carry it. A third-party writer may break them:
+g4tools stores 300, the real STL code, where ROOT stores 500
 ([Streamer information §10.1](StreamerInfo.md#101-where-the-stored-code-is-not-500)).
 No release writes 365 as an `fType`: `TStreamerSTLstring`'s constructor sets
 `kSTL` (or `kSTLp` for a pointer) and puts 365 in `fSTLtype` and `fCtype`
@@ -704,6 +796,8 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 10 | — | Nothing describes `kDouble32`/`kFloat16` at all: that their width is 3 or 4 bytes, that it depends on parsing the comment string, or that a `Double32_t` annotated `[0,0,15]` silently degrades to a plain float while a `Float16_t` does not (§5.3) |
 | 11 | — | Nothing distinguishes `->` from an ordinary pointer, though the byte layouts differ completely (§7) |
 | 12 | *This document, until 2026-09-23*: ROOT 4 wrote 300 for an STL element, and wrote a `TArray` counter as 3 | Both came from two files written by g4tools, whose headers claim ROOT 4.00/00. Every ROOT-written file available stores 500 there, and 6 or 13 for a counter (§2.1, §11) |
+| 13 | *This document, until 2026-09-23*: 521 was not in the on-disk set, and 501 was the only `TStreamerLoop` code | `T *m[d]; //[n]` is stored as 521, `kStreamLoop + kOffsetL`, and ROOT 6.40.04 still writes it (§8.2) |
+| 14 | — | Nothing states that a `T **m; //[n]` loop in a file before 5.16/00 holds bare objects rather than object slots (§8.3) |
 
 ## 13. Reference files
 
@@ -726,3 +820,7 @@ itself, `fBits` plus a `pidf` when `kIsReferenced` is set, is asserted through t
 `TObject` base in eleven cases, `serialization/references` among them.
 
 `kAnyPnoVT` (70) has no fixture because it has no producer (§7.3).
+
+521 (§8.2) and the pre-5.16/00 loop of pointers (§8.3) have no fixture either.
+Both are in `varyingArray_51508.root` of `root/roottest/`, where
+`tools/check_invariants.py` decodes them.
