@@ -496,7 +496,7 @@ phase.
 | 6 | Where a divergent class is specified | **Cross-reference, do not re-home.** A class stays in the layer document where its behaviour arises; `03-classes/index.md` maps every divergent class to wherever that is. `TObject` belongs with buffer framing, `TList`/`TObjArray` with streamer information, `TClonesArray` with collections, `TRef` with references, `TStringLong` with the string encodings |
 | 7 | **Version floor** (✅ stated 2026-09-17, `spec/index.md` §Scope) | The specification claims reading for files written by ROOT 4.00 and later, and M4 measured that it works back to 3.04/02. The floor is a property of the file rather than a release number: object decoding needs streamer infos, and a file old enough has none. One corpus file is in that state, `pippa.root` (ROOT 2.24/00), and for it the container layer applies alone: all 517 records are located, none of the 468 objects is decodable (§9.10) |
 | 8 | **What is out of scope** (✅ stated 2026-09-17, `spec/index.md` §Scope; **revised 2026-09-21: RooFit is in**) | Four groups. First, the frameworks inside ROOT that define their own persistent classes: the SQL backend, PROOF, both event displays, SOFIE, each with its reason in `streamers.toml`. RooFit was on that list and was removed on the demand argument of §8.13: rootfilespec asked for it rather than reverse-engineer it, the strongest signal this project has had about what to write next. Second, what `TGeo*` fields *mean*, its classes being streamer-info driven anyway. Third, the compression algorithms themselves, as against ROOT's framing of them. Fourth, on the write side, what decision 3 leaves out after its 2026-09-18 revision and its 2026-09-21 extension: earlier class versions, two writers on one file at once, writing a split `TBranchElement`, and ROOT's policy choices. GUI classes are not on this list after all: they are version 0 and forwarding-only, so `ForwardingStreamers.md` covers them |
-| 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and a changelog scoped to releases.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document that describes somebody else's format. The number that matters is ROOT's; it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. Releases are therefore `YYYY.MM.DD`, tagged when the specification reaches a milestone. They exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` was deleted the same day and restored a few hours later, and the reason for the reversal is worth recording. The argument for deleting it was that the git log records what changed and also how each fact was established, so a changelog keeps only the weaker half. That holds for a per-commit changelog but not for this one: a commit body says what was *found*, a changelog entry says what a reader should now do differently, and the 69 entries under `## Unreleased` were the second kind. A dated tag also needs release notes, and generating them from 500 commit bodies at tag time is not the same as writing them when the change is fresh. The changelog stays, scoped to releases and to reader-facing changes only (`AGENTS.md` says which). One release exists under the old scheme, `v0.1.0`, and it stays where it is. |
+| 9 | **Versioning and the changelog** (✅ decided 2026-09-22) | **CalVer at milestones, and a changelog scoped to releases.** A semantic version invites a reader to ask what changed *incompatibly*, which is the wrong question for a document that describes somebody else's format. The number that matters is ROOT's; it is stated on the front page and held to the submodule by `check_pin.py` and `check_citations.py`. Releases are therefore `YYYY.MM.DD`, tagged when the specification reaches a milestone. They exist so that the reference files can be vendored and cited from a fixed point, not to signal compatibility. `CHANGELOG.md` was deleted the same day and restored a few hours later, and the reason for the reversal is worth recording. The argument for deleting it was that the git log records what changed and also how each fact was established, so a changelog keeps only the weaker half. That holds for a per-commit changelog but not for this one: a commit body says what was *found*, a changelog entry says what a reader should now do differently, and the 69 entries under `## Unreleased` were the second kind. A dated tag also needs release notes, and generating them from 500 commit bodies at tag time is not the same as writing them when the change is fresh. The changelog stays, scoped to releases and to reader-facing changes only (`AGENTS.md` says which). |
 | 10 | **Third-party files** (✅ decided 2026-09-23) | **Never committed.** roottest and rntuple-validation are LGPL-2.1, which `data/`'s BSD-3-Clause cannot include, and every other corpus is kept out for the same provenance reason: the corpora are read in place or fetched, and only manifests of digests are committed. A fact one of them teaches becomes a fixture by writing a generator that reproduces it. `LICENSE` states the rule and `tools/test_provenance.py` enforces it: a tracked `.root` with no case, or any tracked file identical to a roottest file, fails |
 
 ## 7. Open items
@@ -682,7 +682,7 @@ unstated scope, and no licence. All four were resolved the same day (§8.1).
 
 ### 8.1 Release criteria
 
-**All six are met as of 2026-09-17, and 0.1.0 is tagged.** What each one was, and
+**All six are met as of 2026-09-17**, the tag of criterion 5 aside, which is the first dated release. What each one was, and
 what satisfied it:
 
 1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
@@ -732,10 +732,10 @@ what satisfied it:
    `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
-   published site. ✅ M7. The version number was reconsidered on 2026-09-22
-   (decision 9): the criterion wanted the work to be citable and the fixtures
-   vendorable, and a dated tag does that without claiming a semantics the
-   document does not have. The changelog was deleted the same day and restored;
+   published site. ✅ M7, but for the tag. The version number was reconsidered
+   on 2026-09-22 (decision 9): the criterion wanted the work to be citable and
+   the fixtures vendorable, and a dated tag does that without claiming a
+   semantics the document does not have, so the first tag is a dated one. The changelog was deleted the same day and restored;
    decision 9 records why.
 6. **The front pages are accurate.** ✅ M4, and re-measured at M5 and M6; both
    quote the counts the checks print.
@@ -1046,7 +1046,7 @@ things no reader could decode.
 `StreamerInfo.md` still describes their shape only in passing; and the directory
 record versions need a fixture rather than a reader (M4).
 
-**M7 — ✅ done 2026-09-17. Release plumbing, and version 0.1.0.**
+**M7 — ✅ done 2026-09-17. Release plumbing.**
 *Without it the reference files cannot legally be vendored as test vectors, which
 is the main way a third party would use this.*
 
@@ -2181,7 +2181,7 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 1. ~~**The licence question.**~~ Decided 2026-09-23: **no file of theirs is
    ever committed**, and no third-party corpus file at all — decision 10.
-2. **When to cut the first CalVer release.** The survey's corrections landed
+2. **When to cut the first release.** The survey's corrections landed
    under `## Unreleased`; cutting now makes them part of the first release.
 
 ### 8.15 "ROOT 4" was g4tools (2026-09-23)

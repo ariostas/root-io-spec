@@ -633,6 +633,7 @@ specification should now do differently. Add one under `## Unreleased` when a
 change is reader-facing (a new document, a corrected claim, a closed gap, a fact a
 reader would get wrong without it), and add none when it is not: a fixture, a
 check or a refactor of `tools/` gets no entry. Releases are CalVer, `YYYY.MM.DD`,
-tagged at a milestone. Cutting one means retitling `## Unreleased` with the date
-and bumping `version` and `date-released` in `CITATION.cff`, and nothing else,
+tagged at a milestone. Cutting one means retitling `## Unreleased` with the date,
+whose section opens by naming the ROOT release it is descriptive of, and setting
+`version` and `date-released` in `CITATION.cff`, and nothing else,
 because the only version the documents state is ROOT's.

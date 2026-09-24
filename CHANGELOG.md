@@ -11,6 +11,102 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+First release. Descriptive of **ROOT 6.40.04**, pinned as the `root/` submodule
+at `v6-40-04`.
+
+Enough to implement a reader: locate any object in a ROOT file, decompress it,
+read the file's own streamer information, decode any class the generic algorithm
+covers — including every ordinary user-defined class — handle the classes it does
+not, and read an entry out of a split or an unsplit `TTree`. Enough, too, to
+implement a writer whose files ROOT reads back.
+
+### The specification
+
+- **Container** — the file header and the large-file variants past 2 GB, records
+  and keys, directories and key lists, the free-segment list, and compression
+  including the five codecs and multi-block payloads.
+- **Serialization** — buffer framing and the object map, streamer information,
+  the 60-odd element type codes, the streamer-info-driven reading algorithm,
+  collections, schema evolution, and references.
+- **Standard classes** — the divergent set: the classes whose recorded streamer
+  information does **not** describe their bytes. Twelve narrow ones remain, of
+  which two (`TASImage` and `RooWorkspace::CodeRepo`) occur anywhere in the
+  corpora.
+- **`TTree`** — the tree record, `TBranch` including class versions 6 to 9,
+  the `TLeaf` family, `TBasket` and its embedded form, splitting, and reading one
+  entry out of a split or an unsplit tree.
+- **Writing** — a file with subdirectories, reopening one to add to it, an object
+  and its streamer info, `TH1F`, `TH1D`, `TH2F`, `TH2D`, `TProfile`, `TGraph`,
+  `TGraphErrors`, and a flat `TTree` of any number of baskets per branch, all at
+  the current version of each class; what a file must contain for a reader whose
+  classes differ from the writer's; and the element lists of the thirty-five
+  classes a writer has to describe.
+- **RNTuple** — ROOT's own specification tracked byte for byte, plus thirteen
+  errata from auditing every envelope, the linked attribute sets and the type
+  mapping against ROOT's code.
+- **Appendix** — a reader's checklist as a work order of eight milestones,
+  forty-eight pitfalls, the bootstrap class set, the two class lists that cannot
+  be derived from a file, the invariants a writer must satisfy, a glossary, and a
+  bibliography of the prior art.
+
+### What backs it
+
+- **90 reference files** with **2330 byte-level assertions**, checkable with
+  nothing but Python, and meant to be vendored as test vectors.
+- **1861 source citations** across 49 documents, each checked to exist at the
+  pinned commit; 64 class-version claims checked against `ClassDef` itself.
+- **14 files this project wrote**, with 493 assertions of their own. Every record
+  in them that has a ROOT-written counterpart is byte-identical to it, and five
+  match a ROOT-written file in every byte but the timestamps, the file's name and
+  the UUIDs. ROOT opens each one, finds the values that went in, and prints no
+  diagnostics.
+- Per-layer **invariants** run over **252 files this project did not write**, 180
+  from uproot's regression corpus and 72 published by the ROOT team, from ROOT
+  2.24/00 to 6.38/00, at **0 failures**. 95% of their records decode, and 99.5%
+  of their 48501 branch-baskets have their entries decoded and checked; what the
+  rest is, and why, is named file by file rather than averaged away. Eleven files
+  of 1.3 GB to 15.9 GB are checked by range request.
+- Every published invariant is checked by a tool, or has a stated reason in
+  `gen/invariants.toml` why it is not.
+- An independent reference reader, `tools/rootfile.py`, written from the
+  specification rather than from ROOT's code, so that the two disagreeing is a
+  detectable event. It reproduces `TFile::Map()` exactly.
+
+### Notable facts a reader will not find in ROOT's own documentation
+
+- A **byte count is a lower bound, not a length**: some classes read further
+  bytes after `ReadClassBuffer`, outside their own count, so `TMatrixTSym` cannot
+  be skipped by it.
+- **534 classes have a generated `Streamer` that writes only their bases** — no
+  version word, no byte count, no members — and nothing in a file distinguishes
+  them from an ordinary class. The list has to be carried out of band.
+- The **key width in a large file is not decided by the key's own offset** but by
+  where the file ended when the key was built, so a wide key can hold a small
+  offset.
+- Below `TBranch` class version 10, `fEntries`, `fTotBytes` and `fZipBytes` are
+  **doubles**, and `fBasketSeek`'s *is present* flag byte is a **width selector**.
+- `fSeekParent` is unusable for parentage before ROOT 6.38, where it held the
+  *top* directory's offset for every nested directory.
+- ROOT itself **misreads a counted array** when a tree holds two split objects of
+  one class without parent prefixes: in `alice_ESDs.root` it reads 0 indices for
+  entries holding 18, 22, 6 and 13. A reader should resolve the counter among
+  siblings.
+
+### Known gaps
+
+`PLAN.md` §9 lists every one, and each is a missing witness rather than a missing
+explanation. The only two a file in either corpus reaches are `TASImage` and
+`RooWorkspace::CodeRepo`. Files old enough to carry no streamer information at
+all are out of scope by decision. The writing side is narrower than the reading
+side; [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what
+it does not cover.
+
+### Changes since 2026-09-17
+
+The site has been published from `main` throughout. If you read it or vendored a
+reference file before this release, these entries say what a reader should now do
+differently.
+
 - **Every numbered reading procedure re-read against its own text and the
   source**; about fifty steps corrected. The ones a reader is most likely to act
   on:
@@ -147,7 +243,7 @@ was established, which is the other half of the story.
 
 - **Recorded late: the first outside review's corrections, and RooFit.** These
   landed on 2026-09-21 and 22 without an entry here; the second consistency
-  review found the gap (`PLAN-review.md` V30).
+  review found the gap (`PLAN.md` §8.17).
   - [`RooFit.md`](spec/03-classes/RooFit.md), new: `RooRealVar`,
     `RooLinkedList`, `RooAbsBinning`, `RooRefArray` and `RooCategory` below class
     version 3, whose hand-written `Streamer`s their streamer infos do not
@@ -631,13 +727,6 @@ was established, which is the other half of the story.
   on by default, so this is the ordinary case. No fixture had seen it because all
   eight RNTuple generators wrote with compression off.
 
-- **Releases are dated now, not numbered.** CalVer, `YYYY.MM.DD`, cut at a
-  milestone: a tag marks a point in the document stable enough to cite or to
-  vendor a fixture from, not a compatibility boundary. The documents no longer
-  state a version of their own. [spec/index.md](spec/index.md) and the site config
-  state the ROOT release instead, which is the number `check_pin.py` and
-  `check_citations.py` can keep in place. `v0.1.0` is the last release under the
-  old scheme and stays where it is.
 - **[Writing an object §8](spec/06-writing/WritingObjects.md) specifies schema
   evolution from the writing side**: what has to be in a file so that a reader
   whose version of a class is not the writer's can still read it. There is less to
@@ -1193,73 +1282,3 @@ was established, which is the other half of the story.
   For `fType` 31 or 41 whose element is `T *x; //[n]`, the entry is one flag byte
   then that object's values, per object, with the counts held as a column in the
   sibling branch. Nothing in the file points from the member to that branch.
-
-## 0.1.0 — 2026-09-17
-
-First release. Descriptive of **ROOT 6.40.04**, pinned as the `root/` submodule.
-
-Enough to implement a reader: locate any object in a ROOT file, decompress it,
-read the file's own streamer information, decode any class the generic algorithm
-covers — including every ordinary user-defined class — handle the classes it does
-not, and read an entry out of a split or an unsplit `TTree`.
-
-### The specification
-
-- **Container** — the file header and the large-file variants past 2 GB, records
-  and keys, directories and key lists, the free-segment list, and compression
-  including the five codecs and multi-block payloads.
-- **Serialization** — buffer framing and the object map, streamer information,
-  the 60-odd element type codes, the streamer-info-driven reading algorithm,
-  collections, schema evolution, and references.
-- **Standard classes** — the divergent set: the classes whose recorded streamer
-  information does **not** describe their bytes. Ten narrow ones remain, of which
-  one (`TASImage`) occurs anywhere in the corpora.
-- **`TTree`** — the tree record, `TBranch` including class versions 6 to 9,
-  the `TLeaf` family, `TBasket` and its embedded form, splitting, and reading one
-  entry through all eleven split procedures.
-- **RNTuple** — ROOT's own specification tracked byte for byte, plus six errata
-  from auditing it. The type mapping is partly audited.
-- **Appendix** — a reader's checklist as a work order, 45 pitfalls, the bootstrap
-  class set, the two class lists that cannot be derived from a file, a glossary,
-  and a bibliography of the prior art.
-
-### What backs it
-
-- **65 reference files** with **1563 byte-level assertions**, checkable with
-  nothing but Python, and meant to be vendored as test vectors.
-- **1134 source citations** across 40 documents, each checked to exist at the
-  pinned commit; 25 class-version claims checked against `ClassDef` itself.
-- Per-layer **invariants** run over **the two corpora this project did not write**,
-  from ROOT 2.24/00 to 6.36/02, at **0 failures**. 94% of their records decode and
-  96.4% of their branch-baskets have their entries decoded and checked; what the
-  rest is, and why, is named file by file rather than averaged away. (The file count
-  published with 0.1.0 was 226, which counted files no manifest recorded; the
-  reproducible corpus is 180. See the Unreleased entry.)
-- An independent reference reader, `tools/rootfile.py`, written from the
-  specification rather than from ROOT's code, so that the two disagreeing is a
-  detectable event. It reproduces `TFile::Map()` exactly.
-
-### Notable facts a reader will not find in ROOT's own documentation
-
-- A **byte count is a lower bound, not a length**: three classes read further
-  bytes after `ReadClassBuffer`, outside their own count, so `TMatrixTSym` cannot
-  be skipped by it.
-- **534 classes have a generated `Streamer` that writes only their bases** — no
-  version word, no byte count, no members — and nothing in a file distinguishes
-  them from an ordinary class. The list has to be carried out of band, and three
-  of them occur in real files.
-- The **key width in a large file is not decided by the key's own offset** but by
-  where the file ended when the key was built, so a wide key can hold a small
-  offset.
-- Below `TBranch` class version 10, `fEntries`, `fTotBytes` and `fZipBytes` are
-  **doubles**, and `fBasketSeek`'s *is present* flag byte is a **width selector**.
-- `fSeekParent` is unusable for parentage before ROOT 6.38, where it held the
-  *top* directory's offset for every nested directory.
-
-### Known gaps
-
-`PLAN.md` §9 lists every one, and each is a missing witness rather than a missing
-explanation. The largest: 920 branch-baskets whose basket is embedded in the
-`TTree` record, which the entry decoder cannot yet fetch; `TASImage`; the RNTuple
-type mapping; and the object layouts of files old enough to carry no streamer
-information at all, which are out of scope by decision.

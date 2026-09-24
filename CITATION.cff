@@ -37,7 +37,5 @@ license:
   - BSD-3-Clause
 license-url: https://github.com/ariostas/root-io-spec/blob/main/LICENSE
 # The specification tracks ROOT rather than carrying a meaning of its own, so its
-# releases are CalVer (YYYY.MM.DD), tagged at a milestone. Bumping these two lines
-# is part of cutting one. 0.1.0 was the last release under the old scheme.
-version: 0.1.0
-date-released: '2026-09-17'
+# releases are CalVer (YYYY.MM.DD), tagged at a milestone. Cutting one adds
+# `version` and `date-released` here, or updates them.
