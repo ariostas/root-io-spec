@@ -1,5 +1,7 @@
 # ROOT I/O Specification
 
+[![ci](https://github.com/ariostas/root-io-spec/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ariostas/root-io-spec/actions/workflows/ci.yml?query=branch%3Amain) [![docs](https://github.com/ariostas/root-io-spec/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/ariostas/root-io-spec/actions/workflows/docs.yml?query=branch%3Amain) [![large files](https://github.com/ariostas/root-io-spec/actions/workflows/large-files.yml/badge.svg?branch=main)](https://github.com/ariostas/root-io-spec/actions/workflows/large-files.yml?query=branch%3Amain)
+
 ### 📖 [Read the specification →](https://ariostas.github.io/root-io-spec/)
 
 A specification of the [ROOT](https://root.cern) on-disk binary formats, written so
