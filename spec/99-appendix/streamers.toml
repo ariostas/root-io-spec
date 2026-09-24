@@ -135,8 +135,6 @@ spec = "[Matrices and vectors](../03-classes/Matrix.md) — `extending`: the upp
 status = "specified"
 spec = "[RNTuple](../05-rntuple/index.md) — `extending`: an 8-byte XXH3-64 checksum follows the anchor's members, outside the byte count ([errata 2 and 3](../05-rntuple/ERRATA.md))"
 
-# --------------------------------------------------------------------- gaps --
-
 [class.TMap]
 status = "specified"
 spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
@@ -151,11 +149,11 @@ spec = "[TMap, TExMap and TBtree](../03-classes/Containers.md)"
 
 [class.TBranchClones]
 status = "specified"
-spec = "[TBranchElement 13](../04-ttree/TBranchElement.md)"
+spec = "[TBranchElement §13](../04-ttree/TBranchElement.md#13-tbranchclones-and-the-only-api-that-makes-one)"
 
 [class.TStringLong]
 status = "specified"
-spec = "[Conventions 5.1.1](../00-conventions.md)"
+spec = "[Conventions §5.1.1](../00-conventions.md#511-tstringlong-the-same-idea-with-a-four-byte-count)"
 
 [class.TQObject]
 status = "specified"
@@ -164,6 +162,23 @@ spec = "[TCanvas](../03-classes/Canvas.md)"
 [class.TCanvas]
 status = "specified"
 spec = "[TCanvas](../03-classes/Canvas.md)"
+
+[class.TGraphEdge]
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
+
+[class.TGraphNode]
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
+
+[class.TGraphStruct]
+status = "specified"
+spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
+note = "graf2d/gviz; its Streamer writes nothing at all"
+
+# --------------------------------------------------------------------- gaps --
 
 [class.TASImage]
 status = "gap"
@@ -192,21 +207,6 @@ note = "graf3d/g3d, the pre-TGeo geometry"
 [class.TClassTree]
 status = "gap"
 note = "graf2d/gpad"
-
-[class.TGraphEdge]
-status = "specified"
-spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
-note = "graf2d/gviz; its Streamer writes nothing at all"
-
-[class.TGraphNode]
-status = "specified"
-spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
-note = "graf2d/gviz; its Streamer writes nothing at all"
-
-[class.TGraphStruct]
-status = "specified"
-spec = "[Buffer framing §2.3](../02-serialization/Buffer.md#23-a-records-object-data-does-not-always-begin-with-one)"
-note = "graf2d/gviz; its Streamer writes nothing at all"
 
 # ---------------------------------------------------------- not persistable --
 

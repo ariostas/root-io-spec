@@ -60,6 +60,13 @@ these thirty-five classes needs a fourth:
   collection's value class is found and the element type follows from it
   (`root/core/meta/src/TStreamerElement.cxx:1810-1812`).
 
+The column is ordered for reading, not as the bytes are. On disk a
+`TStreamerBasicPointer`'s tail is `fCountVersion`, `fCountName`, `fCountClass`
+(`root/core/meta/inc/TStreamerElement.h:202-204`), the reverse of the column's
+counter, class, version; and a base's checksum is not in the tail at all but in
+the `TStreamerElement` part before it. A writer takes the order from
+[Streamer info §8](../02-serialization/StreamerInfo.md#8-the-element-subclasses), not from this column.
+
 No rule anywhere states **which subclass a member takes**; the tables specify it
 by example. A primitive or an enum is a `TStreamerBasicType`, a `TString` a
 `TStreamerString`, a counted array a
@@ -83,7 +90,7 @@ there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all thirty-five, and in all **1000** streamer
+The info's own `fTitle` is empty in all thirty-five, and in all **1020** streamer
 infos in this repository's reference files. It is not the class's comment, which
 [Writing an object §7.1](WritingObjects.md#71-the-nesting) said until
 2026-09-24; the value to write there is an empty string.

@@ -1,0 +1,92 @@
+id   = "ttree/split-empty-collection"
+file = "data/ttree/split-empty-collection.root"
+size = 18858
+
+description = """
+Two split collections at split level 99, three entries of 0, 1 and 2 elements,
+compression off: `e`, a `std::vector<EHit>` whose value class has no data
+members, and `p`, a `std::vector<PHit>` with one.
+
+A split collection's count leaf is created before its sub-branches
+(root/tree/tree/src/TBranchElement.cxx:975-996), and each sub-branch leaf
+points at it through fLeafCount. TBranch streams fBranches before fLeaves, so
+the first sub-branch's leaf writes the count leaf in full and the collection's
+own fLeaves entry is a back-reference to it. That is branch `p`. With no data
+members there is no sub-branch, nothing writes the leaf first, and the
+collection's fLeaves entry is the leaf itself. That is branch `e`.
+
+Written for PLAN-review.md V43. TBranchElement.md invariant 5 said the leaf of
+an fType 3 or 4 branch is *always* a back-reference, on a measurement of 105
+branches that all had sub-branches. This file, written by ROOT, falsified it.
+EHit, PHit and the vectors' dictionaries come from classes.h.
+"""
+
+spec = [
+  "spec/04-ttree/TBranchElement.md",
+]
+
+[[bytes]]
+offset = 1099
+type = "i32"
+value = 0
+note = "branch e's fBranches holds no sub-branch: EHit has no data members. TBranchElement.md 10.5"
+
+[[bytes]]
+offset = 1124
+type = "i32"
+value = 1
+note = "branch e's fLeaves holds one entry"
+
+[[bytes]]
+offset = 1132
+type = "u32"
+value = 1073741901
+note = "and it is written in place: a byte count, 0x4000004d. TBranchElement.md 10.5"
+
+[[bytes]]
+offset = 1136
+type = "u32"
+value = 4294967295
+note = "kNewClassTag: TLeafElement's class is described here, the first time it is written. Buffer.md 6"
+
+[[bytes]]
+offset = 1140
+type = "bytes"
+value = "TLeafElement"
+note = "the leaf's class name"
+
+[[bytes]]
+offset = 1181
+type = "string"
+value = "e_"
+note = "the leaf's fName, the collection name with an underscore. Splitting.md 3.1"
+
+[[bytes]]
+offset = 1646
+type = "i32"
+value = 1
+note = "branch p's fBranches holds one sub-branch, p.fId"
+
+[[bytes]]
+offset = 1907
+type = "u32"
+value = 1073741888
+note = "inside p.fId's leaf, its fLeafCount writes the count leaf p_ in full: a byte count, 0x40000040"
+
+[[bytes]]
+offset = 1911
+type = "u32"
+value = 2147484141
+note = "then a class reference, 0x800001ed: map position 493, the kNewClassTag at 1136. Buffer.md 6"
+
+[[bytes]]
+offset = 2278
+type = "i32"
+value = 1
+note = "branch p's own fLeaves holds one entry"
+
+[[bytes]]
+offset = 2286
+type = "u32"
+value = 1264
+note = "and it is an object reference to map position 1264, the byte count at 1907 (645 + 1264 - 2): the leaf p.fId already wrote. TBranchElement.md 10.5"

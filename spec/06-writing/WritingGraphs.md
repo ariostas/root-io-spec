@@ -83,7 +83,7 @@ and title.
 | `fX`, `fY` | the points, in the order the writer supplies them (§3.2) | free |
 | `fFunctions` | a pointer to an **empty `TList`**, never null (§3.5) | fixed |
 | `fHistogram` | **null** (§3.4) | fixed, for a writer |
-| `fMinimum`, `fMaximum` | the y range, or the `-1111` sentinel (§3.3) | free |
+| `fMinimum`, `fMaximum` | the `-1111` sentinel unless a y range was set (§3.3) | fixed in practice |
 | `fOption` | an empty string. Nothing in ROOT ever assigns it for a `TGraph` | free |
 
 ### 3.1 The attribute values are not a histogram's

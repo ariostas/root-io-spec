@@ -78,7 +78,7 @@ Because ROOT wrote them, a failure there is evidence.
 ROOT-written files from 2.23/12 to 6.41/01. The ones this specification cites are
 listed in `gen/cern/README.md`. It is LGPL-2.1, so none of it is copied here.
 
-**The reference files here.** `data/` holds 89 small files ROOT wrote, plus the
+**The reference files here.** `data/` holds 90 small files ROOT wrote, plus the
 14 in `data/written/` that this project wrote. Each has a `case.toml` of
 byte-level assertions that can be checked with only the standard library, so the
 files work as test vectors for an implementation in any language

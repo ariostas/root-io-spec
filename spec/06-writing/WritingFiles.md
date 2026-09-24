@@ -499,6 +499,15 @@ go in the header as `fSeekInfo` and `fNbytesInfo`, and **it is deliberately not 
 the key list**: `WriteStreamerInfo` removes it (`root/io/io/src/TFile.cxx:3555`)
 after the constructor has added it.
 
+Its key's **`fTitle` is `"Doubly linked list"`**, fixed. The key takes the title
+of the object it holds (`root/io/io/src/TKey.cxx:236`); a `TList` has no title of
+its own, so `TObject::GetTitle` returns the class's, which is the comment on
+`TList`'s `ClassDef` (`root/core/base/src/TObject.cxx:504-507`,
+`root/core/cont/inc/TList.h:115`). With the short key layout that makes `fKeylen`
+**64**: 26 fixed bytes, then `TList`, `StreamerInfo` and the title as counted
+strings (6 + 13 + 19). A writer that leaves the title empty writes a key 18 bytes
+shorter, and every offset after it moves.
+
 Its contents are described in [Writing an object](WritingObjects.md). This section
 covers whether a writer needs it at all.
 

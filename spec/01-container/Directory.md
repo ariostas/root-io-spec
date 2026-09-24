@@ -443,6 +443,16 @@ Step 3 works because a subdirectory's `fNbytesName` equals its `fKeylen`, so
 
 Do not use `fSeekParent` in step 3 (§4.3).
 
+Step 3 selects by class name, and that is safe there: it reads the entries of a
+key list, and an entry for a subdirectory always names `TDirectory` or
+`TDirectoryFile`. The class names that cannot be trusted are those on records
+met by walking the chain: the top directory's record and every key-list and
+free-list record carry the class of the directory they belong to, which may be
+any `TFile` subclass ([Records §3.9](Record.md#39-fclassname)). A reader that
+finds directories from the record chain rather than from the key lists
+recognises them structurally instead, as the
+[reader checklist](../99-appendix/ReaderChecklist.md) says.
+
 ## 9. Invariants
 
 1. `fSeekDir` equals the offset of this directory's own record.

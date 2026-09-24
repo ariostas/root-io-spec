@@ -11,6 +11,20 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **A split collection's leaf can be written in place.**
+  [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) invariant 5 said the leaf
+  of an `fType` 3 or 4 branch is always a back-reference. It is one only because
+  a sub-branch writes it first; a collection of a class with no data members has
+  no sub-branch, and ROOT writes its leaf in place. A reader must accept both.
+  New reference file `ttree/split-empty-collection`.
+- [`WritingFiles.md`](spec/06-writing/WritingFiles.md) §7: the `StreamerInfo`
+  key's `fTitle` is `"Doubly linked list"`, which makes its `fKeylen` 64.
+- Wording a reader would act on: `FileHeader.md` §9 reads 75 bytes, not 100;
+  `Directory.md` §8 says when selecting subdirectories by class name is safe;
+  `-1111` in `fMinimum`/`fMaximum` is "fixed in practice" in
+  `WritingHistograms.md` and `WritingGraphs.md`; `ElementLists.md`'s Extra column
+  is not in disk order.
+
 - **An STL array's `fArrayDim` of 0 does not mean a scalar.**
   [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) §13 said invariant
   11 legitimately fails on files before ROOT 6.24/02. It does not: those files

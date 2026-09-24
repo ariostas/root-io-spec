@@ -446,8 +446,8 @@ count at each of the first three levels and only a version word at `TObject`.
 |---|---|---|
 | `TStreamerBase` | 3 | `fBaseVersion`: `i32`, **version > 2 only** |
 | `TStreamerBasicType` | 2 | none |
-| `TStreamerBasicPointer` | 2 | `fCountVersion`: `i32`, `fCountName`: string, `fCountClass`: string |
-| `TStreamerLoop` | 2 | `fCountVersion`: `i32`, `fCountName`: string, `fCountClass`: string |
+| `TStreamerBasicPointer` | 2 | `fCountVersion`: `i32`, `fCountName`: counted string, `fCountClass`: counted string |
+| `TStreamerLoop` | 2 | `fCountVersion`: `i32`, `fCountName`: counted string, `fCountClass`: counted string |
 | `TStreamerObject` | 2 | none |
 | `TStreamerObjectAny` | 2 | none |
 | `TStreamerObjectPointer` | 2 | none |
@@ -767,8 +767,8 @@ primitive spelling as an enum.
 
 **The checksum is computed from the class definition, not from the streamer info**
 (`root/core/meta/src/TClass.cxx:6650-6653`), and the two do not always contain the
-same information. This repository's reference files hold 1000 streamer infos,
-and `tools/test_write.py` reproduces 937 of them by applying §11's algorithm to the
+same information. This repository's reference files hold 1020 streamer infos,
+and `tools/test_write.py` reproduces 956 of them by applying §11's algorithm to the
 info's own elements. The rest fall into three groups, each with a known cause:
 
 | Cause | Classes | What the info lacks |

@@ -120,10 +120,20 @@ Over all 6736 branches in the corpora, with no exceptions:
 |---|---|---|
 | −1, 0, 31, 41 | exactly 1, written in place | yes |
 | 1, 2 | **none** | **never** — 141/141 and 16/16 have `fWriteBasket` 0 |
-| 3, 4 | exactly 1, **always a back-reference** | yes — 16/21 and 69/84 have baskets |
+| 3, 4 | exactly 1, **a back-reference whenever the branch has sub-branches** | yes — 16/21 and 69/84 have baskets |
 
 `fType` 1 and 2 are pure interior nodes: no leaf, no basket, no data. A reader
 descends through them to their children.
+
+The back-reference on `fType` 3 and 4 is a consequence of the write order, not a
+rule. The count leaf is created before the sub-branches
+(`root/tree/tree/src/TBranchElement.cxx:974-990`), each sub-branch leaf points
+at it through `fLeafCount`, and `TBranch` streams `fBranches` before `fLeaves`,
+so the first sub-branch writes the leaf in full and the collection's own
+`fLeaves` entry refers back to it. **A collection whose value class has no data
+members has no sub-branches, and its leaf is written in place.** All 105 in the
+corpora had sub-branches; `ttree/split-empty-collection` has one of each. A
+reader MUST accept both forms.
 [`TBranch` §9.1](TBranch.md#91-a-branch-may-have-no-leaves) already describes
 this shape from the `TBranch` side.
 
@@ -372,7 +382,7 @@ The selection is made at `root/tree/tree/src/TBranchElement.cxx:5772-5816`.
 | `fType == 3` | `ReadLeavesClones` | 21, in 2 files |
 | `fType == 31` | `ReadLeavesClonesMember` | 733, in 2 files |
 | `fType < 0` | `ReadLeavesCustomStreamer` | 16, in 4 files |
-| `fType == 0` and `fID == -1` | `ReadLeavesMember` | 216, in 25 files |
+| `fType == 0` and `fID == -1` | `ReadLeavesMember`, unless the class *now* has a custom streamer, which is then used (`root/tree/tree/src/TBranchElement.cxx:5795-5803`); that test is about the reading session's dictionary, not the file | 216, in 25 files |
 | `fType <= 2` and `fBranchCount` set | `ReadLeavesMemberBranchCount` | 16, in 2 files |
 | `fType <= 2` and `fStreamerType == 6` | `ReadLeavesMemberCounter` | 2, in 2 files |
 | `fType <= 2` otherwise | `ReadLeavesMember` | 4143, in 31 files |
@@ -429,8 +439,8 @@ content of each procedure in step 7 is in `ReadingEntries.md`.
    (`root/tree/tree/src/TBranchElement.cxx:6053-6057`).
 4. `fClonesName` is non-empty if and only if `fType` is 3 or 4.
 5. A branch with `fType` 1 or 2 has no leaf; every other `fType` has exactly
-   one. On `fType` 3 and 4 that leaf is always a back-reference, never written
-   in place.
+   one. On `fType` 3 and 4 with at least one sub-branch, that leaf is a
+   back-reference, never written in place (§4).
 6. A branch with `fType` 1 or 2 has `fWriteBasket` 0 and `fTotBytes` 0, unless
    it is the empty-base branch of
    [`TBranch` §9.2](TBranch.md#92-a-leafless-branch-may-still-hold-data), which
@@ -567,6 +577,7 @@ begins with its parent's.
 | `ttree/split-nested` | `fType` 2, `fType` 4 with `fID` ≥ 0, `fType` 41, and the `fStreamerType` 300-against-500 divergence of §5.2 on both sides |
 | `ttree/split-clones` | `fType` 3 and `fType` 31, and a `TObject` base flattened into two member branches whose `fClassName` is `TObject` |
 | `ttree/split-stl-toplevel` | `fType` 4 with `fID` −1, where `fClassName` is the collection type and `fStreamerType` is −1 |
+| `ttree/split-empty-collection` | `fType` 4 with no sub-branches, whose leaf is written in place, beside one with a sub-branch, whose leaf is a back-reference (§4, invariant 5) |
 | `ttree/split-ptr-collection` | `fSplitLevel` ≥ 100 and a `TBranchSTL`; see [Splitting §5](Splitting.md#5-collections-of-pointers-and-tbranchstl) |
 | `ttree/split-double32` | Five truncated-float members behind identical `TLeafElement` leaves, whose widths differ and are recoverable only from the streamer element's title |
 | `ttree/split-stl-pointer` | The §5.2 divergences a current ROOT writes: `fStreamerType` 71, 91 and 320 against a stored 500, with a `Bool_t` member at 18 on both sides as the control |

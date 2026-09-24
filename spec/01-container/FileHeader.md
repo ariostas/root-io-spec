@@ -422,7 +422,9 @@ This does not matter, because ROOT never reads the header UUID (§6).
 
 A conforming reader performs the following steps.
 
-1. Read at least 100 bytes. Verify bytes 0-3 are `root`; otherwise reject.
+1. Read the first 75 bytes, which hold either layout's fields and UUID (§2).
+   Reading more is harmless, but nothing from `fBEGIN` on is header, and
+   `fBEGIN` may be 64 (§8.1). Verify bytes 0-3 are `root`; otherwise reject.
 2. Read `fVersion` at offset 4. If `fVersion >= 1000000`, use the large-file
    offsets from §2.2 and subtract 1000000 to recover the release.
 3. Read `fBEGIN` at offset 8. Do not assume 100.

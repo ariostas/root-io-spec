@@ -290,6 +290,36 @@ class ReaderFailuresAreNamed(unittest.TestCase):
             rootfile._read_branch_ref(b"", {"fBranchRef": ref}, 0)
 
 
+class CountLeafByReference(unittest.TestCase):
+    """TBranchElement 10.5: an fType 3 or 4 branch's leaf is a back-reference
+    only because a sub-branch's fLeafCount writes it first. With no sub-branch
+    it is written in place, as ROOT does for a collection of a class with no
+    data members (ttree/split-empty-collection, PLAN-review.md V43)."""
+
+    def failures(self, **kw):
+        c = stub_checker()
+        fields = dict(name="e", cls="TBranchElement", element_type=4,
+                      element_id=-1, class_name="vector<EHit>",
+                      clones_name="EHit", streamer_type=-1,
+                      leaves=[leaf(name="e_", cls="TLeafElement")],
+                      leaf_refs=[])
+        fields.update(kw)
+        c.check_branch_element(branch(**fields), {})
+        return [f for f in labelled(c, "TBranchElement 10.5")
+                if "in full" in f]
+
+    def test_in_place_with_no_sub_branch_passes(self):
+        self.assertEqual(self.failures(), [])
+
+    def test_in_place_with_a_sub_branch_fails(self):
+        self.assertEqual(len(self.failures(branches=[branch(name="e.fId")])), 1)
+
+    def test_the_fixture_passes(self):
+        path = Path(__file__).resolve().parents[1] / \
+            "data/ttree/split-empty-collection.root"
+        self.assertEqual(check_invariants.Checker(path).run(), [])
+
+
 def tree(**kw) -> rootfile.Tree:
     fields = dict(
         name="t", title="", version=20, entries=0, tot_bytes=0, zip_bytes=0,

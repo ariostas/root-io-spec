@@ -50,7 +50,11 @@ Reading an RNTuple therefore needs
 [the file header](../01-container/FileHeader.md),
 [records and keys](../01-container/Record.md) and
 [compression](../01-container/Compression.md) from this specification, the anchor
-and everything below it from the tracked copy, and the three errata in between.
+and everything below it from the tracked copy as corrected by
+[its errata](ERRATA.md), and in between the three notes on where the two layers
+meet: NOTES [1](NOTES.md#1-an-rblob-keys-fobjlen-is-decorative),
+[2](NOTES.md#2-decompression-tests-equality-and-anything-else-is-an-error) and
+[3](NOTES.md#3-big-endian-in-the-anchor-little-endian-everywhere-else).
 
 ## Status
 

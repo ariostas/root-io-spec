@@ -94,6 +94,33 @@ class Compressed(unittest.TestCase):
         self.assertTrue(fired(failures, "Compression 9.1"), failures)
 
 
+class MultiBlock(unittest.TestCase):
+    """Compression 9.5 was checked as a block count until 2026-09-24, which a
+    chain whose sizes are wrong but sum to fObjlen passed (V42)."""
+
+    PATH = DATA / "ttree/basket-multiblock.root"
+
+    def test_the_fixture_passes(self):
+        self.assertEqual(checker(self.PATH).run(), [])
+
+    def test_compression_9_5_every_block_but_the_last_is_full(self):
+        # The basket at 302 is two blocks, 0xFFFFFF and 22797 bytes. Move one
+        # byte from the first to the second: the count and the sum still hold.
+        buf, _, records = rootfile.load(self.PATH)
+        rec = next(r for r in records if r.offset == 302)
+        first = rec.payload_offset
+        comp = int.from_bytes(buf[first + 3:first + 6], "little")
+        second = first + 9 + comp
+        self.assertEqual(int.from_bytes(buf[first + 6:first + 9], "little"),
+                         0xFFFFFF)
+        last = int.from_bytes(buf[second + 6:second + 9], "little")
+        failures = checker(self.PATH, [
+            (first + 6, (0xFFFFFE).to_bytes(3, "little")),
+            (second + 6, (last + 1).to_bytes(3, "little"))]).run()
+        self.assertTrue(fired(failures, "Compression 9.5"), failures)
+        self.assertFalse(fired(failures, "Compression 9.3"), failures)
+
+
 class References(unittest.TestCase):
     PATH = DATA / "serialization/references.root"
 

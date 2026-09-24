@@ -867,7 +867,7 @@ statements rather than wording: `TLeaf.md`'s `nbits ≤ 31`, `StreamerDriven.md`
 "ROOT 5 and later" for `fType` 500, `RooFit.md`'s diagram pointing at §2.3, and
 `SchemaEvolution.md`'s "up to 5.34.18". Criterion 1 waits on those as well.
 
-### V42. Wording a reader would misread ◐
+### V42. Wording a reader would misread ✅
 
 `TLeaf.md:364` `nbits ≤ 31` excludes the legal 32 (`TStreamerElement.cxx:141-148`;
 `ElementTypes.md` §5 has it right); `TBranchElement.md:45` a column headed
@@ -932,7 +932,27 @@ index's "three errata", the `WritingHistograms` kind label, the `StreamerInfo`
 key's `fTitle`, the Extra column's order, `streamers.toml`'s headers, and the
 `Compression 9.5` check strength.
 
-### V43. Whether `TBranchElement` invariant 5 is an invariant ☐
+**The rest done.** `TBranchElement.md`'s dispatch row names the
+`hasCustomStreamer` test and says it is about the reading session. `FileHeader.md`
+§9 step 1 reads 75 bytes and warns that `fBEGIN` may be 64. `Directory.md` says
+why selecting subdirectories by class name is safe in a key list and not on the
+record chain, which is what the checklist's "structurally" is about. The RNTuple
+index's "three errata" dated from when there were three; it now points at the
+errata and at NOTES 1 to 3. The histogram and graph `-1111` fields are "fixed in
+practice", the qualifier `index.md` defines for exactly this case.
+`WritingFiles.md` §7 states the `StreamerInfo` key's `fTitle`, `"Doubly linked
+list"`, and the `fKeylen` of 64 it produces, checked on two fixtures.
+`ElementLists.md` says the Extra column is not in disk order, and
+`StreamerInfo.md`'s `fCountName`/`fCountClass` are counted strings. In
+`streamers.toml` the two `spec` strings have `§` and anchors, and the ten
+`specified` entries under the `# gaps` header moved above it. `Compression 9.5`
+now checks each block's size rather than the count: a chain whose sizes are
+wrong but sum to `fObjlen` used to pass. `basket-multiblock` now exists, so the
+review's "no multi-block fixture" no longer holds, and a corruption test uses it;
+both corpora pass the stricter check, and hold one multi-block record between
+them.
+
+### V43. Whether `TBranchElement` invariant 5 is an invariant ✅
 
 `spec/04-ttree/TBranchElement.md:431-433`: "On `fType` 3 and 4 that leaf is
 always a back-reference". The leaf is created before `Unroll`
@@ -942,6 +962,16 @@ has an info with no elements would get no sub-branches and a leaf written in
 place. Measured 105/105; decide whether it is an invariant or an observation,
 and if the latter, move it out of *Invariants* with the reason. **Reported,
 unsure.**
+
+**Done: the reviewer was right, and it was false.** ROOT writes a split
+`std::vector` of a class with no data members as an `fType` 4 branch with no
+sub-branches, and its leaf is in place; the checker failed that ROOT-written file.
+`ttree/split-empty-collection` has one of each, with the back-reference resolved
+in its assertions. Invariant 5 now requires the back-reference only when the
+branch has sub-branches, `TBranchElement.md` §4 explains the write order that
+causes it, and the check is scoped the same way. The file's 20 streamer infos
+include one more unreproducible `TSeqCollection`, a known §11.2 cause, so the
+counts become 1020 and 956.
 
 ### V44. Discharge ☐
 

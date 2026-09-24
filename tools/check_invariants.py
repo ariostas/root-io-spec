@@ -2398,6 +2398,7 @@ class Checker:
                 continue
 
             produced, o, blocks, unreadable = 0, payload, 0, False
+            sizes: list[int] = []       # each block's declared uncompressed size
             while o < end:
                 if o + 9 > end:
                     self.bad("Compression 9.2", f"truncated block header at {o}")
@@ -2429,6 +2430,7 @@ class Checker:
                 if magic == b"L4" and comp < 8:
                     self.bad("Compression 9.6", f"LZ4 block at {o} has compressed size {comp} < 8")
                 produced += unc
+                sizes.append(unc)
                 blocks += 1
                 o += 9 + comp
                 if produced >= rec.obj_len:
@@ -2474,17 +2476,23 @@ class Checker:
             if o != end and not (sealed and o == end - RN_PAGE_CHECKSUM):
                 self.bad("Compression 9.2",
                          f"block chain ends at {o}, payload ends at {end}")
-            # 9.5: every block but the last holds exactly kMAXZIPBUF bytes.
+            # 9.5: every block but the last declares exactly kMAXZIPBUF bytes.
             # This too is about one object's chain: ROOT splits a single buffer
             # at kMAXZIPBUF. An RBlob's blocks come from several pages
-            # compressed independently, so the count follows the page size and
-            # the number of pages and is unrelated to fObjLen: 1310 blocks
-            # against an "expected" 6 on test_ntuple_storage_1col_10e6evt.root.
-            if not sealed and blocks > 1 and rec.obj_len > KMAXZIPBUF:
-                expected = 1 + (rec.obj_len - 1) // KMAXZIPBUF
-                if blocks != expected:
-                    self.bad("Compression 9.5",
-                             f"{blocks} blocks for fObjlen {rec.obj_len}, expected {expected}")
+            # compressed independently, so their sizes follow the page size:
+            # 1310 blocks against an "expected" 6 on
+            # test_ntuple_storage_1col_10e6evt.root. Until 2026-09-24 this
+            # compared only the block count with fObjlen, which a chain of
+            # wrong sizes that still summed to fObjlen passed (PLAN-review.md
+            # V42).
+            if not sealed:
+                for k, unc in enumerate(sizes[:-1]):
+                    if unc != KMAXZIPBUF:
+                        self.bad("Compression 9.5",
+                                 f"block {k + 1} of {len(sizes)} in the record "
+                                 f"at {rec.offset} declares {unc} bytes, not "
+                                 f"0xFFFFFF")
+                        break
 
     # -- spec/05-rntuple/: the footer and its linked attribute sets ---------
     #
@@ -3098,9 +3106,12 @@ class Checker:
             self.bad("TBranchElement 10.5",
                      f"{name}: fType {ft} with {len(br.leaves)} leaf/leaves")
 
-        # 5b. On a count branch that leaf is never written in place: it is a
-        #     back-reference to the copy inside a member leaf's fLeafCount.
-        if ft in self.ELEMENT_LEAF_BY_REF and not br.leaf_refs:
+        # 5b. On a count branch with sub-branches that leaf is never written in
+        #     place: it is a back-reference to the copy inside a member leaf's
+        #     fLeafCount. With no sub-branch (a value class with no data
+        #     members) nothing writes it first, and it is in place
+        #     (ttree/split-empty-collection, PLAN-review.md V43).
+        if ft in self.ELEMENT_LEAF_BY_REF and br.branches and not br.leaf_refs:
             self.bad("TBranchElement 10.5",
                      f"{name}: fType {ft} writes its leaf in full rather than "
                      f"referencing the copy in a member's fLeafCount")

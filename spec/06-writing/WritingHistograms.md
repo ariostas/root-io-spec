@@ -110,8 +110,8 @@ something else) or free (ROOT's value given for reference).
 | `fTsumw2` | `f64` | Σ w² over in-range fills | derived |
 | `fTsumwx` | `f64` | Σ w·x | derived |
 | `fTsumwx2` | `f64` | Σ w·x² | derived |
-| `fMaximum` | `f64` | **-1111** unless a ceiling was set explicitly | free, with constraints — the default is mandatory, §6 |
-| `fMinimum` | `f64` | **-1111** likewise | free, with constraints — as `fMaximum` |
+| `fMaximum` | `f64` | **-1111** unless a ceiling was set explicitly | fixed in practice — §6 |
+| `fMinimum` | `f64` | **-1111** likewise | fixed in practice — as `fMaximum` |
 | `fNormFactor` | `f64` | 0 | free |
 | `fContour` | `TArrayD` | empty: an `i32` 0 and nothing else | free |
 | `fSumw2` | `TArrayD` | empty, or one entry per cell — §5.1 | derived |
