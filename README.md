@@ -67,8 +67,8 @@ that a reader whose classes differ from the writer's can still read it.
 `tools/rootwrite.py` is its executable form. The conformance test is that ROOT
 opens what it wrote, finds the values that went in, and prints no diagnostics.
 
-The results go beyond that test. Every object-bearing record in `data/written/` is
-byte-identical to the one ROOT wrote: a `TH1F`, a `TH1D`, a `TH2F`, a `TH2D`, two
+The results go beyond that test. Every record in `data/written/` that has a
+ROOT-written counterpart is byte-identical to it: a `TH1F`, a `TH1D`, a `TH2F`, a `TH2D`, two
 `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s, nine `TBasket`s, and
 seven complete `StreamerInfo` records. Those records hold up to nineteen class
 descriptions each, with every checksum computed from scratch and, where ROOT
@@ -119,8 +119,9 @@ the format. The allocator and key ordering ROOT actually uses are specified as
 well, because a byte comparison against a ROOT-written file needs them.
 
 The writing side is deliberately narrower than the reading side. It covers a
-file, an object, the five histogram classes `TH1F`, `TH1D`, `TH2F`, `TH2D` and
-`TProfile`, and a flat `TTree` of any number of baskets per branch with its
+file with subdirectories, reopening one to add to it, an object, the five
+histogram classes `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`, `TGraph` and
+`TGraphErrors`, and a flat `TTree` of any number of baskets per branch with its
 cluster ranges.
 [Writing §4](spec/06-writing/index.md#4-what-is-not-specified) lists what it does
 not cover, and `PLAN.md` §8.5 ranks that list by how much each item blocks a third

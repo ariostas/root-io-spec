@@ -7,7 +7,7 @@ documents to read, the reference files that test it, and the invariants worth
 checking at that point.
 
 It assumes you want to read files written by ROOT 6, and to cope with files
-written by ROOT 4 and 5; see [Conventions §1](../00-conventions.md#1-status-of-this-specification)
+written by ROOT 4 and 5; see [How far back it reads](../index.md#how-far-back-it-reads)
 for what is in scope.
 
 [Bootstrap classes](Bootstrap.md) covers milestone 3 in more detail: the classes
@@ -22,7 +22,7 @@ Almost everything below depends on this milestone and nothing else.*
 
 | Read | For |
 |---|---|
-| [Conventions](../00-conventions.md) | Byte order, the primitive widths, the four string encodings |
+| [Conventions](../00-conventions.md) | Byte order, the primitive widths, the five string encodings |
 | [File header](../01-container/FileHeader.md) | The 64/100-byte header, and the `+1000000` flag that widens three fields — `fEND`, `fSeekFree` and `fSeekInfo` |
 | [Records and keys](../01-container/Record.md) | The key layout, `fNbytes`/`fObjlen`/`fKeylen`, cycles, the record chain |
 | [Directories and key lists](../01-container/Directory.md) | The root directory record, nested directories, the list of keys |
@@ -40,7 +40,7 @@ there may be listed as `TDirectoryFile` rather than `TDirectory`
 
 Test it with `container/file-minimal`, `container/directories`,
 `container/cycles`, `container/empty-directory` and `container/gap`, then check
-the invariants of all four documents above.
+the invariants of the four container documents above (Conventions has none).
 
 ## 2. Decompress
 
@@ -133,8 +133,10 @@ physics file is most likely to need are
 [`TList` and `TObjArray`](../02-serialization/StreamerInfo.md#4-tlist),
 [`TClonesArray`](../02-serialization/Collections.md#12-tclonesarray) and
 [`TMatrixTSym`](../03-classes/Matrix.md). The last matters because a covariance
-matrix is symmetric, and because it is the only class whose bytes continue past
-its own byte count.
+matrix is symmetric, and because it is the one class a physics file is likely to
+hold whose bytes continue past its own byte count (the other two such classes are
+`ROOT::RNTuple` and `TPointSet3D`,
+[Hand-written streamers §3](HandWrittenStreamers.md#3-extending-the-streamer-info-describes-a-prefix-and-stops)).
 
 If the files you care about are workspaces, plots or fit results, also do
 [RooFit](../03-classes/RooFit.md) early: five classes, two of which every
@@ -192,7 +194,7 @@ only know that the values look plausible, not that they are right.
   `tree-branchref` and `tree-ntuple` cover them.
 - [RNTuple](../05-rntuple/index.md) — a different format in the same container.
   Read ROOT's own specification, which this project tracks verbatim, together
-  with [the errata](../05-rntuple/ERRATA.md): ten places where it and ROOT's code
+  with [the errata](../05-rntuple/ERRATA.md): thirteen places where it and ROOT's code
   disagree. One of them has already made two readers in the same repository
   diverge.
 
@@ -225,14 +227,18 @@ Deliberately, and without losing the ability to read ordinary files:
 - **Writing a file of your own**, if you only need to read. The `Invariants`
   sections state what a conforming file satisfies, collected for a writer in
   [A writer's invariants](WriterInvariants.md). If you do need to write,
-  [Writing](../06-writing/index.md) gives the procedures (the container, an
-  object and its streamer info, `TH1F`/`TH1D` and a flat `TTree`) with every
+  [Writing](../06-writing/index.md) gives the procedures (a file with
+  subdirectories, reopening one, an object and its streamer info, `TH1`, `TH2`
+  and `TProfile`, `TGraph` and `TGraphErrors`, and a flat `TTree`) with every
   field marked fixed, derived or free.
 - **Class layouts older than ROOT 4.** A file written before streamer
   information existed has none, and its classes can only be read from
   hardcoded per-version layouts this specification does not give
   ([Streamer-driven reading §6](../02-serialization/StreamerDriven.md#6-when-there-is-no-usable-streamer-info)).
-- **`TBranch` below class version 10**, whose legacy layout is described but not
-  fully specified ([Branches §13](../04-ttree/TBranch.md#13-class-versions)).
-- **RooFit, `TGeo*` internals, EVE and the GUI classes.** They do appear in
-  files, but reading them is a per-experiment concern rather than a format one.
+- **`TBranch` below class version 10**, if your files are all ROOT 5 or later.
+  Versions 6 to 9 are specified
+  ([Branches §13.1](../04-ttree/TBranch.md#131-the-layout-below-version-10)) and
+  occur in the corpora only in files whose header names ROOT 4.00 or earlier.
+- **RooFit, unless you read workspaces, plots or fit results** (§5), and
+  **`TGeo*` internals, EVE and the GUI classes.** They do appear in files, but
+  reading them is a per-experiment concern rather than a format one.

@@ -11,7 +11,7 @@ source code, or someone else's reverse engineering.
 maintained with the code, and the model this project follows. It is tracked here
 verbatim as [`05-rntuple/BinaryFormatSpecification.md`](../05-rntuple/BinaryFormatSpecification.md)
 with [errata](../05-rntuple/ERRATA.md) beside it. Read the copy for the format
-and the errata for the ten places where it and ROOT's code disagree.
+and the errata for the thirteen places where it and ROOT's code disagree.
 
 **`root/io/doc/TFile/*.md`** — the `TFile` and `TTree` documentation ROOT ships.
 It describes **release 3.02.06**, with four of its pages partially updated to
@@ -61,18 +61,25 @@ format fact that neither documented.
 ## 3. Files to test against
 
 **`scikit-hep-testdata`** (<https://github.com/scikit-hep/scikit-hep-testdata>) —
-the corpus uproot runs its regression tests against, 155 files, all of which
-this project uses. Its provenance is mixed: it contains files uproot wrote, so a
-disagreement is a lead rather than evidence (`PLAN.md` §3.4).
+the corpus uproot runs its regression tests against. This project uses a
+selection of 179 of its files, 24 of them RNTuple, which with one file from
+go-hep's `groot/testdata` make up the 180 of `gen/foreign/`. Its provenance is
+mixed: it contains files uproot wrote, so a disagreement is a lead rather than
+evidence (`PLAN.md` §3.4).
 
 **`root.cern/files`** (<https://root.cern/files/>) — files published by the ROOT
-team, written by ROOT, from release 2.24/00 to 6.35/01. This project uses 34 of
-them: 26 downloaded, and 8 multi-gigabyte files read only by range request
-(`gen/cern/LARGE.toml`). `gen/cern/README.md` gives the reason for each. Because
-ROOT wrote them, a failure there is evidence.
+team, written by ROOT, from release 2.24/00 to 6.35/01. This project downloads
+72 of them and reads 8 more, of several gigabytes each, only by range request;
+`gen/cern/LARGE.toml` lists those 8 and 3 more from CERN Open Data
+(<https://opendata.cern.ch/>). `gen/cern/README.md` gives the reason for each.
+Because ROOT wrote them, a failure there is evidence.
 
-**The reference files here.** `data/` holds 76 small files ROOT wrote, plus the
-9 in `data/written/` that this project wrote. Each has a `case.toml` of
+**`root/roottest/`** — ROOT's own test suite, inside the pinned submodule: 273
+ROOT-written files from 2.23/12 to 6.41/01. The ones this specification cites are
+listed in `gen/cern/README.md`. It is LGPL-2.1, so none of it is copied here.
+
+**The reference files here.** `data/` holds 87 small files ROOT wrote, plus the
+14 in `data/written/` that this project wrote. Each has a `case.toml` of
 byte-level assertions that can be checked with only the standard library, so the
 files work as test vectors for an implementation in any language
 ([Conventions §8](../00-conventions.md#8-reference-files)).

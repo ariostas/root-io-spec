@@ -101,7 +101,7 @@ would list.
 > `TCanvas::Streamer` never calls `WriteClassBuffer`
 > (`root/graf2d/gpad/src/TCanvas.cxx:2221`), which is the only path that forces an
 > info to be recorded, and a scan of every `StreamerInfo` record in this project's
-> reference files and both corpora, 305 files, finds zero. **A reader must dispatch
+> reference files and both corpora, 352 files on 2026-09-24, finds zero. **A reader must dispatch
 > on the class name**, as for the containers of
 > [TList and friends §4](Containers.md). If an info were present it would be in
 > declaration order, where `fCatt` is the first member
@@ -172,7 +172,7 @@ raised by the reader.
 
 | # | Claim | Correction |
 |---|---|---|
-| 1 | `TCanvas`'s streamer info describes its bytes | No file has one: `TCanvas::Streamer` never calls `WriteClassBuffer`, so nothing forces the info to be recorded, and zero of 305 files scanned contain it (§2.1). A reader must dispatch on the class name. Even if one were present, six of the eight trailing bytes of §2.1 are `fBits` flags or the transient `fBatch` and correspond to no element |
+| 1 | `TCanvas`'s streamer info describes its bytes | No file has one: `TCanvas::Streamer` never calls `WriteClassBuffer`, so nothing forces the info to be recorded, and zero of 352 files scanned contain it (§2.1). A reader must dispatch on the class name. Even if one were present, six of the eight trailing bytes of §2.1 are `fBits` flags or the transient `fBatch` and correspond to no element |
 | 2 | A base class with no persistent members occupies nothing | It depends on why it has none. §3: 0, 6 and 0 bytes for three such classes, determined by a `ClassDef` version and a `LinkDef` suffix, neither of which is in the file |
 
 ## 7. Reference files

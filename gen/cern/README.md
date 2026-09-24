@@ -159,7 +159,7 @@ range requests with no redirect (`LARGE.toml`'s header says how to form the URL)
 (record 12341). At both URLs the header, the UUID and the 874-byte free record
 are the same bytes, so it is listed once.
 
-## `root/roottest/` — 16 files, already on disk
+## `root/roottest/` — 39 files cited, already on disk
 
 ROOT's own regression suite has been inside `root-project/root` since April 2025,
 so the pinned submodule ships it: 273 `.root` files from ROOT 2.23/12 to 6.41/01,
@@ -224,14 +224,16 @@ byte-identical to rows of the tiers above and would be counted twice. Inside
 
 ## Standing result
 
-Run 2026-09-21, tier `all`:
+Run 2026-09-24, tier `all`, with the codecs:
 
-- `tools/check_invariants.py`: **72 files, 0 failures**, and every branch-basket
-  in them decoded (1696 of 1696). Each `NOT CHECKED` reason names a class or a
-  codec rather than passing anything over. Re-measured 2026-09-21 with the
-  `geometry` tier listed: 46 more files and one more branch-basket.
-- `tools/coverage_probe.py`, re-measured 2026-09-23: 1623 decoded, 264
-  container, 480 partial, 13 blocked. The partial ones are overwhelmingly ROOT
+- `tools/check_invariants.py`: **72 files, 0 failures**, and 1696 of 1761
+  branch-baskets decoded. The other 65 are `alice_ESDs.root`'s `ESDfriend`
+  baskets, whose `fFileName` puts them in a file no corpus holds; until the
+  2026-09-24 recount they were outside the denominator, and this line read
+  "1696 of 1696". Each `NOT CHECKED` reason names a class or a codec rather than
+  passing anything over.
+- `tools/coverage_probe.py`: 1624 decoded, 264 container, 4 RNTuple `RBlob`s,
+  480 partial, 8 blocked. The partial ones are overwhelmingly ROOT
   2.x histograms in files with no streamer infos. That is the version floor of
   [the scope statement](../../spec/index.md#how-far-back-it-reads) rather than a
   gap in it. The RooFit records of the two `stressRooFit_*` files, once most of

@@ -1,0 +1,150 @@
+# Figures the project states about itself, and every page that states each one.
+#
+# tools/check_figures.py recomputes each figure from the repository and requires
+# the page to contain the text below with the value filled in. `{name}` renders
+# digits, `{name:word}` English, `{name:Word}` capitalised; whitespace is
+# normalised. `tools/check_figures.py --values` prints every name.
+#
+# List a sentence here when it states the current count. Leave out a measurement
+# dated in the text: it records that run, and pinning it to a live count would
+# make it wrong. Until 2026-09-24 only the citation total was checked
+# (check_citations.py), and about fifteen of these had gone stale
+# (PLAN-review.md V27-V30).
+
+# -- the reference files -------------------------------------------------------
+
+[[at]]
+file = "README.md"
+text = "{cases} reference files, {bytes} byte-level assertions"
+[[at]]
+file = "README.md"
+text = "plus {written} files this project wrote with {written_bytes} assertions of their own"
+[[at]]
+file = "spec/index.md"
+text = "{cases} reference files with {bytes} byte-level assertions"
+[[at]]
+file = "spec/index.md"
+text = "The writing layer adds {written:word} files this project *did* write, with {written_bytes} assertions of their own"
+[[at]]
+file = "PLAN.md"
+text = "| Reference files / byte assertions | {cases} / {bytes}, 0 failures |"
+[[at]]
+file = "PLAN.md"
+text = "| Files this project wrote / assertions | {written} / {written_bytes}, 0 failures |"
+[[at]]
+file = "spec/99-appendix/Bibliography.md"
+text = "`data/` holds {cases} small files ROOT wrote, plus the {written} in `data/written/`"
+
+# -- the invariants ------------------------------------------------------------
+
+[[at]]
+file = "spec/99-appendix/WriterInvariants.md"
+text = "There are {invariants} entries across {invariant_docs} documents"
+[[at]]
+file = "spec/index.md"
+text = "re-sorts the {invariants} `Invariants` entries"
+[[at]]
+file = "spec/index.md"
+text = "including the {silent:word} cases where nothing does"
+[[at]]
+file = "AGENTS.md"
+text = "There are {invariants} entries, {invariants_checked} with a check"
+[[at]]
+file = "PLAN.md"
+text = "The {invariants} `Invariants` entries of the whole specification, across {invariant_docs} documents"
+
+# -- RNTuple errata ------------------------------------------------------------
+
+[[at]]
+file = "README.md"
+text = "plus {rntuple_errata:word} errata"
+[[at]]
+file = "spec/index.md"
+text = "are {rntuple_errata:word} entries so far"
+[[at]]
+file = "spec/05-rntuple/index.md"
+text = "There are {rntuple_errata:word} errata"
+[[at]]
+file = "spec/99-appendix/Bibliography.md"
+text = "the errata for the {rntuple_errata:word} places where it and ROOT's code disagree"
+[[at]]
+file = "spec/99-appendix/ReaderChecklist.md"
+text = "{rntuple_errata:word} places where it and ROOT's code disagree"
+[[at]]
+file = "PLAN.md"
+text = "RNTuple tracks ROOT's own specification plus {rntuple_errata:word} errata"
+[[at]]
+file = "PLAN.md"
+text = "`ERRATA.md` ({rntuple_errata:word} entries)"
+[[at]]
+file = "PLAN.md"
+text = "The {rntuple_errata:word} RNTuple errata"
+
+# -- the appendix --------------------------------------------------------------
+
+[[at]]
+file = "spec/index.md"
+text = "one of {gap_classes:word} in [Hand-written streamers]"
+[[at]]
+file = "spec/index.md"
+text = "open beside it: {pitfalls:word} facts"
+[[at]]
+file = "PLAN.md"
+text = "| {pitfalls:Word} things that are true, unobvious"
+
+# -- the corpora ---------------------------------------------------------------
+
+[[at]]
+file = "README.md"
+text = "The invariants also run over {corpus} files this project did not write, where"
+[[at]]
+file = "README.md"
+text = "The invariants also run over {corpus} files this project did not write: {foreign} from uproot's regression corpus and {cern} published by the ROOT team"
+[[at]]
+file = "CITATION.cff"
+text = "run over {corpus} ROOT files this project did not write"
+[[at]]
+file = "spec/index.md"
+text = "run over {corpus} files this project did not write"
+[[at]]
+file = "PLAN.md"
+text = "| Invariants over both corpora | {corpus} files,"
+[[at]]
+file = "PLAN.md"
+text = "| `gen/foreign/` | {foreign} |"
+[[at]]
+file = "PLAN.md"
+text = "| `gen/cern/` | {cern} — 24 core, 46 geometry, 2 physics (+{large} more by range request"
+[[at]]
+file = "AGENTS.md"
+text = "# {foreign} third-party files"
+[[at]]
+file = "AGENTS.md"
+text = "# all three, {cern} files"
+[[at]]
+file = "AGENTS.md"
+text = "# the {large} multi-GB files"
+[[at]]
+file = "spec/99-appendix/Bibliography.md"
+text = "make up the {foreign} of `gen/foreign/`"
+[[at]]
+file = "spec/99-appendix/Bibliography.md"
+text = "This project downloads {cern} of them"
+[[at]]
+file = "spec/99-appendix/ReaderChecklist.md"
+text = "the {cern} files of `gen/cern/` were published by the ROOT team"
+[[at]]
+file = "spec/99-appendix/ReaderChecklist.md"
+text = "The {foreign} of `gen/foreign/`"
+
+# -- root/roottest/, which needs the submodule ---------------------------------
+
+[[at]]
+file = "AGENTS.md"
+text = "submodule: {roottest} ROOT-written files"
+[[at]]
+file = "spec/99-appendix/Bibliography.md"
+text = "inside the pinned submodule: {roottest} ROOT-written files"
+[[at]]
+file = "gen/cern/README.md"
+text = "so the pinned submodule ships it: {roottest} `.root` files"

@@ -288,8 +288,8 @@ easy to miss:
   `Double_t` as `double`, and `fTypeName` in the record uses the resolved spelling
   too, so the two agree.
 
-If ROOT has the class compiled in, the value must be **ROOT's**. For 614 of
-the 653 streamer infos in this repository's reference files it can be
+If ROOT has the class compiled in, the value must be **ROOT's**. For 698 of
+the 743 streamer infos in this repository's reference files it can be
 recomputed from the info's own elements; the exceptions, and the reasons for them,
 are in [StreamerInfo §11.2](../02-serialization/StreamerInfo.md#112-what-cannot-be-recomputed).
 

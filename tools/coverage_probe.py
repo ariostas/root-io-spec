@@ -16,6 +16,8 @@ A record is one of:
   decoded     read in full from the file's own streamer info
   partial     read, but one or more nested objects were skipped by byte count
   blocked     not readable at all
+  rntuple     an RBlob: an RNTuple page or envelope, not an object; the anchor
+              that reaches it is read by spec/05-rntuple/ and counted decoded
 
 `blocked` and the classes behind `partial` are the working list for
 spec/03-classes/ and spec/04-ttree/, in the order a real file needs them.
@@ -100,6 +102,35 @@ def probe(path: Path, quiet: bool = False
         if rec.offset in container:
             outcome["container"] += 1
             show(f"{label} container")
+            continue
+        # RNTuple's records are not serialized objects, and until 2026-09-24
+        # the generic decoder reported them as ~165 blocked records: every
+        # RBlob as a class with no streamer info, and every anchor as 8 bytes
+        # short, the checksum its info does not list (ERRATA 2). An RBlob is a
+        # page or an envelope, read through the anchor's locators; an anchor is
+        # read by spec/05-rntuple/, header and footer included.
+        if rec.class_name == "RBlob":
+            outcome["rntuple"] += 1
+            show(f"{label} rntuple    read through its anchor")
+            continue
+        if rec.class_name == "ROOT::RNTuple":
+            try:
+                anchor = rootfile.read_rntuple_anchor(buf, rec)
+                schema = rootfile.read_rntuple_header(buf, anchor)
+                rootfile.read_rntuple_footer(buf, anchor, schema)
+            except rootfile.MissingCodec as exc:
+                outcome["no codec"] += 1
+                reasons[f"codec: {exc}"] += 1
+                show(f"{label} NO CODEC  {exc}")
+                continue
+            except (rootfile.FormatError, IndexError, ValueError,
+                    struct.error) as exc:
+                outcome["blocked"] += 1
+                reasons[f"ROOT::RNTuple: {exc}"] += 1
+                show(f"{label} BLOCKED   {exc}")
+                continue
+            outcome["decoded"] += 1
+            show(f"{label} decoded (RNTuple anchor, header and footer)")
             continue
         try:
             data = rootfile.object_data(buf, rec)
@@ -196,8 +227,8 @@ def main(argv: list[str]) -> int:
         else:
             print()
     print("\noutcome")
-    for key in ("container", "decoded", "partial", "blocked", "no codec",
-                "unreadable"):
+    for key in ("container", "decoded", "rntuple", "partial", "blocked",
+                "no codec", "unreadable"):
         if total[key]:
             print(f"  {total[key]:4}  {key}")
     if reasons:

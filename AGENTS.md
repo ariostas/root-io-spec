@@ -33,9 +33,8 @@ reproduced here separate from one a survey merely reported, because five of the
 survey's claims did not survive re-measurement.
 
 One sub-plan is open: `PLAN-review.md`, the second consistency review
-(2026-09-24), whose items are V1–V44. Phases A and B (twenty wrong or
-contradictory claims) are done; `PLAN.md` §8.1 criterion 1 does not hold again
-until the stale figures of Phase D are corrected. A sub-plan is deleted once
+(2026-09-24), whose items are V1–V44. Phases A, B and D are done; `PLAN.md`
+§8.1 criterion 1 does not hold again until its V41 and V25 are. A sub-plan is deleted once
 discharged, with anything durable moved into `PLAN.md` or `spec/` first.
 
 `spec/00-conventions.md` holds the conventions every specification document depends
@@ -55,6 +54,7 @@ tools/check_write.py           # gates 1 and 2 of spec/06-writing/ (--root adds 
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/check_citations.py       # every cited file and line exists, and the front
                               #   pages quote the right total (needs submodule)
+tools/check_figures.py         # every other count the pages quote, per gen/figures.toml
 tools/check_versions.py        # every class-version table matches ClassDef (needs submodule)
 tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream (needs submodule)
 tools/inventory.py --check     # the hand-written Streamer list matches the submodule
@@ -511,8 +511,11 @@ prints `OK` even when `check1` fails, so that idiom gives a false guarantee. Cha
 the suite with `&&` instead, and treat CI as the authority:
 
 ```sh
-tools/generate.py --check && tools/check_invariants.py && tools/check_pin.py \
-  && tools/check_citations.py && tools/check_versions.py \
+tools/generate.py --check && tools/check_invariants.py \
+  && tools/check_coverage.py --check && tools/check_write.py \
+  && tools/check_pin.py && tools/check_citations.py && tools/check_versions.py \
+  && tools/check_figures.py && tools/sync_rntuple.py --check \
+  && tools/inventory.py --check && tools/element_lists.py --check \
   && PYTHONPATH=. .venv/bin/zensical build --clean --strict \
   && PYTHONPATH=tools .venv/bin/python -m unittest discover -s tools -p "test_*.py"
 ```

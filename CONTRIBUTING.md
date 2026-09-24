@@ -31,7 +31,11 @@ git clone --recurse-submodules https://github.com/ariostas/root-io-spec
 cd root-io-spec
 tools/generate.py --check      # the byte assertions in every case.toml
 tools/check_invariants.py      # the Invariants sections, over the reference files
+tools/check_coverage.py --check # every published invariant is checked, or has a reason
+tools/check_write.py           # the files tools/rootwrite.py writes (--root adds ROOT)
+tools/element_lists.py --check # the published element lists match the fixtures
 tools/check_citations.py       # every cited file and line exists (needs the submodule)
+tools/check_figures.py         # the counts the pages quote, per gen/figures.toml
 tools/check_versions.py        # every class-version table matches ClassDef
 tools/check_pin.py             # zensical.toml cites the pinned submodule commit
 tools/sync_rntuple.py --check  # spec/05-rntuple/ matches upstream
@@ -113,8 +117,9 @@ byte table from ROOT's source alone.
   check. Never add a raw `git diff -- data/` check.
 
 A digest that differs is an error: either the format changed or a fixture stopped
-being reproducible. `--accept` re-records it, and is the right move only when you
-changed the case yourself.
+being reproducible. So is a case with no line in the manifest. `--accept`
+re-records the digests, and is the right move only when you changed or added the
+case yourself.
 
 ### When the digest differs between platforms
 
@@ -153,7 +158,9 @@ procedure, **Invariants**, **Errata**, **Reference files**.
   and pin it with a unit test instead.
 - Writing is specified as invariants, never as algorithms (`PLAN.md` §2.8).
   Free-space allocation, basket sizing and key ordering are ROOT's choices, not
-  requirements of the format.
+  requirements of the format, so they are marked free; where a byte comparison
+  with ROOT needs ROOT's own choice, it is specified as that and still marked
+  free (`spec/06-writing/WritingFiles.md` §8).
 - Errata stay in the document they concern, as a table. Do not collect them
   centrally.
 - **Do not edit `spec/05-rntuple/BinaryFormatSpecification.md`.** It is a tracked

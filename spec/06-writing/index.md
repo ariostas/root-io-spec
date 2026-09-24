@@ -68,7 +68,8 @@ here are compared byte for byte with a plain `sha256`.
 | [Writing an object](WritingObjects.md) | Framing one object: the byte count, the version word, strings, the object map, compression, the `StreamerInfo` record, and **what has to be in it for a reader at another version of a class** |
 | [Writing histograms](WritingHistograms.md) | `TH1F`, `TH1D`, `TH2F`, `TH2D` and `TProfile`, member by member, at the current class version |
 | [Writing trees](WritingTrees.md) | A `TTree` of flat branches: the tree record, a branch, its leaf — fixed-width or a `TLeafC` string — its baskets, and flushing: more than one basket per branch, and the cluster ranges that come with it |
-| [Element lists](ElementLists.md) | The streamer info of each of the thirty-five classes the other four documents need: every element, with every field |
+| [Writing a graph](WritingGraphs.md) | `TGraph` and `TGraphErrors`, member by member: the four attribute bases, the counted arrays that hold the points, and the members a writer is most likely to fill in wrongly |
+| [Element lists](ElementLists.md) | The streamer info of each of the thirty-five classes the other five documents need: every element, with every field |
 
 Each is written as a numbered procedure, with a table per record or per class
 giving every field and, for each, whether its value is **fixed** (only one value is
@@ -157,8 +158,8 @@ original class versions. A reader must not infer a class version from the file's
   ([Writing an object §8](WritingObjects.md#8-writing-for-a-reader-that-is-not-you)).
 - **Writing a split `TBranchElement`.** Reading one is specified
   ([Split branches](../04-ttree/TBranchElement.md),
-  [Splitting](../04-ttree/Splitting.md)) and is complete: 99.8% of branch-baskets
-  across both corpora decode, and neither remaining skip is a splitting gap.
+  [Splitting](../04-ttree/Splitting.md)) and is complete: 99.5% of branch-baskets
+  across both corpora decode (48278 of 48501), and neither remaining skip is a splitting gap.
   Writing one is excluded, for three reasons, none of them the effort involved:
 
     1. **Jagged data does not need splitting, and this layer already writes it.**

@@ -2,7 +2,7 @@
 
 Facts that are unobvious and have cost somebody time, each stated in a sentence
 or two with a link to where it is specified. Most were found by comparing ROOT's
-source with real bytes. Thirteen were found by checking this specification
+source with real bytes. Others were found by checking this specification
 against files it was not written from, and were errors in it before they were
 listed here.
 
@@ -161,10 +161,12 @@ applies to every type, not only `Bool_t`.
 **`Long_t` and `ULong_t` occupy 8 bytes on disk even where they are 4 in
 memory.** [Conventions §4](../00-conventions.md#4-primitive-types)
 
-**There are four string encodings and they are routinely confused**: the counted
-string with its 255 escape, `TString` (which is the same encoding but written
-with no frame wherever it appears), `TStringLong` with a four-byte count and no
-escape, and the NUL-terminated names in class records.
+**There are five string encodings and they are routinely confused**: the counted
+string with its 255 escape, which is also `TString` (written with no frame
+wherever it appears); `TStringLong`, with a four-byte count and no escape; the
+NUL-terminated names in class records; a `std::string` member, a counted string
+inside a byte count and a version word; and a `char*` member, a four-byte length
+with no escape and no terminator.
 [Conventions §5](../00-conventions.md#5-string-encodings)
 
 **A `std::string` written as a whole object has no frame at all**, and no file

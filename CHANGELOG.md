@@ -11,6 +11,49 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **What the front pages and the appendix say about scope, corrected.**
+  - [`ReaderChecklist.md`](spec/99-appendix/ReaderChecklist.md) §10: RooFit is
+    in scope for anyone reading workspaces, plots or fit results, and `TBranch`
+    versions 6 to 9 are specified; the page said to leave out both.
+  - [`spec/index.md`](spec/index.md): the writing layer also covers graphs,
+    subdirectories and updating a file, and ROOT's allocator and key order are
+    specified (as ROOT's choice, marked free) rather than left out.
+  - [`Pitfalls.md`](spec/99-appendix/Pitfalls.md): there are five string
+    encodings, not four; `std::string` and `char*` members were missing.
+  - Every count these pages quote is recomputed; several were stale, among them
+    the reference files (87 and 14), the corpora (180, 72, and 273 in
+    roottest), the RNTuple errata (thirteen) and the invariant entries (267).
+    `tools/coverage_probe.py` now reads RNTuple anchors with the RNTuple reader.
+
+- **Recorded late: the first outside review's corrections, and RooFit.** These
+  landed on 2026-09-21 and 22 without an entry here; the second consistency
+  review found the gap (`PLAN-review.md` V30).
+  - [`RooFit.md`](spec/03-classes/RooFit.md), new: `RooRealVar`,
+    `RooLinkedList`, `RooAbsBinning`, `RooRefArray` and `RooCategory` below class
+    version 3, whose hand-written `Streamer`s their streamer infos do not
+    describe. Without them a workspace, a plot or a fit result cannot be read.
+  - [`SchemaEvolution.md`](spec/02-serialization/SchemaEvolution.md) §8.1: two
+    infos for one class and checksum differ in `fBits` by session state
+    (`kIsCompiled` or `kBuildOldUsed`), not by anything about the class. Ignore
+    `fBits` when matching.
+  - [`SchemaEvolution.md`](spec/02-serialization/SchemaEvolution.md) §3.1: an
+    `fCheckSum` of 0 records a computation that failed. Treat the field as
+    absent; never use it as a lookup key.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §6.2: a
+    file whose `TTime` records have no `TTime` info was written wrongly, not by
+    a ROOT that omits it: ROOT 6.40.04 writes the info, measured. A reader skips
+    such a record by its byte count.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §6.1,
+    replacing invariant 5: a class named as a base has an info in the same
+    file, but an object-valued member's class need not, and whether it does
+    depends on the member's framing, not on the class.
+  - [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) invariants 3 and
+    4: 501 and 521 belong to `TStreamerLoop`, and `fArrayLength` is 0 on a
+    counted pointer. Both invariants had said otherwise and neither was checked.
+  - [`Collections.md`](spec/02-serialization/Collections.md) §3.1: a
+    collection of pointers puts two frames in a row, the collection's and each
+    object's class frame. It is not a doubled collection frame.
+
 - **Procedures and invariants that contradicted their own documents**, from the
   second consistency review.
   - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §9 step 3:

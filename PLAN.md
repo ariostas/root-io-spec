@@ -23,8 +23,9 @@ files and three large Open Data files. Two gaps closed with new specification:
 read-only reviewers went over every document, the front matter and `tools/` at
 `385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
 literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
-same day. §8.1 release criterion 1 does **not** hold until the stale figures of
-its V27–V28 are corrected too; about thirty more statements are contradictory, stale or narrower
+same day, and its stale figures (V27–V30) with a check that keeps them current.
+§8.1 release criterion 1 does **not** hold until the few false statements left
+in its V41 are corrected, and V25 is settled with a ROOT run; about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three
@@ -44,7 +45,7 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Invariants over the fixtures and the written files | 101 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 645 |
+| Unit tests | 649 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -271,7 +272,7 @@ RNTuple already has a real specification and we do not fork it.
 | ✅ `ReaderChecklist.md` | The whole specification as a work order: eight milestones, each with its documents, fixtures and checks |
 | ✅ `Pitfalls.md` | Forty-eight things that are true, unobvious and have cost somebody time, each linked to the section that specifies it; §6 is the three that are ROOT's bugs rather than yours |
 | ✅ `Bibliography.md` | ROOT's own documentation and what each part of it is good for, the five other readers, and the two corpora |
-| ✅ `WriterInvariants.md` | The 259 `Invariants` entries of the whole specification, across 32 documents, re-sorted by the order a file is produced in, with a column the reading side does not need: who notices a violation (`tools/check_invariants.py`, ROOT, or nothing). §7 is the ten cases where nothing does |
+| ✅ `WriterInvariants.md` | The 267 `Invariants` entries of the whole specification, across 33 documents, re-sorted by the order a file is produced in, with a column the reading side does not need: who notices a violation (`tools/check_invariants.py`, ROOT, or nothing). §7 is the ten cases where nothing does |
 
 ### 2.8 Write support, part one: invariants ✅
 
@@ -878,7 +879,10 @@ asserting it, and the measurement changed decision 7:
   8 records in `galaxy.root` and `gallery.root`. The other nine are named but
   unwitnessed. *Seven since 2026-09-22*: the three `graf2d/gviz` wrappers write
   nothing at all and are specified as such (`Buffer.md` §2.3), so six remain
-  unwitnessed.
+  unwitnessed. *Twelve since 2026-09-22*, when RooFit came into scope: its
+  `RooWorkspace::CodeRepo` and four `RooCFunctionNRef` classes are gaps, and
+  `CodeRepo` occurs, once in each `stressRooFit` file. So two gap classes occur
+  in the corpora, `TASImage` and `CodeRepo` (re-measured 2026-09-24).
 - **GUI classes are not an out-of-scope group.** Decision 8 listed them; the M2
   extraction shows that it did not need to: `gui/gui` alone contributes 197
   classes to `ForwardingStreamers.md`, and no `TG*` class has a hand-written
@@ -2074,7 +2078,8 @@ Ten published claims were wrong or under-scoped. How each was found:
 | `TBasket.md` §1's "always the large key layout" is true only from 4.02 (C2) | the survey, then a census of 12 385 roottest basket keys |
 | `Buffer.md` §2.3 omitted `TDatime`, and two more classes (C3) | the survey, then reading every persisted hand-written `Streamer` |
 | `Record.md` §8.6 needed a 6.34/6.35 RNTuple exception (C4) | the survey |
-| `Directory.md` §7 and `FileHeader.md` §8 release boundaries (C11) | re-measuring a witness before quoting it |
+| `Directory.md` §7 said directory version 1 had ended by 3.03/01; a 3.03/02 file still has it (C11) | re-measuring a witness before quoting it |
+| `FileHeader.md` §8 said the header UUID was written by 3.03/01; the same file has none (C11) | the same witness |
 | `TLeaf.md` §7/§12's `TLeafF16`/`TLeafD32` v2 was 6.38, not 6.40 (C9) | reading the class at the release tags |
 | `FreeSegments.md` §4.2's "never missing" marker (C13) | a checker crash on a newly added file |
 | `Collections.md` §4.1's member-wise base (C13) | the same file |
@@ -2460,7 +2465,7 @@ version in the writing ROOT (9 in practice, 10 only from 6.36.00), and a
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ⏸ worth adding as a complement; set aside |
 | Four fixtures were not digest-portable between macOS and Linux | ✅ three fixed by masks, one exempted with a reason; the causes are in §3.3 |
 | `classes/roofit` was pushed without the container loop of §3.3 and CI caught it | ✅ 2026-09-21. `generate.py --check` cannot see a cross-platform drift, because it does not regenerate; only the ROOT-having job can, so a green local suite is not evidence about a **new** case |
-| Twelve upstream bug candidates banked, not reported | ☐ §7.1, M10 |
+| Fifteen upstream bug candidates banked, not reported | ☐ §7.1, M10 |
 
 ### 9.7 What the coverage probe measures
 
@@ -2477,10 +2482,13 @@ coverage is the `ENTRIES` line.
 
 ### 9.8 Standing result over `gen/foreign/`
 
-180 files, **0 failures**, as of 2026-09-23. The probe: 32200 decoded, 785
-container, 6 partial, 178 blocked, 1 not walkable, plus 132 records whose LZ4
-codec is unavailable locally. Entries, with `lz4` installed: 46599 of 46703
-branch-baskets, 99.8% (44441 of 44545 without it, §8.16).
+180 files, **0 failures**, as of 2026-09-24. The probe, with the codecs: 32360
+decoded, 785 container, 132 RNTuple `RBlob`s (read through their anchors, not as
+objects), 6 partial, 18 blocked, 1 not walkable; without `lz4`, 132 records
+fewer decode. Entries, with `lz4` installed: 46582 of 46740 branch-baskets, 99.7%
+(44424 of 44582 without it). *As of 2026-09-23 it read 32200 decoded and 178
+blocked, because the probe read RNTuple's records as objects, and 46599 of 46703,
+before every branch-basket was counted in `ENTRIES` (§8.16).*
 
 Re-measured 2026-09-22 for `PLAN-corpus.md` C13, which added the 23-file RNTuple
 tier. The change comes from those files alone: the 157 files before it give 26410
@@ -2677,9 +2685,11 @@ at every depth. Measured, not estimated:
 | `fSplitLevel` | 0, 1, 2, 3, 4, 97, 98, 99 — never 100, so the two pointer-collection procedures have zero corpus coverage and `ttree/split-ptr-collection` is their only witness |
 | `fBranchCount2` | null in all 6736 |
 
-**What the decoder still cannot reach**, largest first, re-measured after M6.
-This is what the `SKIPPED` and `ENTRIES` lines of `check_invariants.py` count:
-1001 of 27949 branch-baskets over the two corpora.
+**What the decoder still cannot reach**, largest first. This is what the
+`SKIPPED` and `ENTRIES` lines of `check_invariants.py` count: 223 of 48501
+branch-baskets over the two corpora, re-measured 2026-09-24. (It was 1001 of
+27949 after M6, before embedded baskets were reached and before every
+branch-basket was counted, §8.16.)
 
 1. A collection whose value class has no streamer info in the file. This is not a
    gap at all: `Collections.md` §9 says it is unreadable by anyone, ROOT
@@ -2688,8 +2698,11 @@ This is what the `SKIPPED` and `ENTRIES` lines of `check_invariants.py` count:
    classes of `gen/foreign/IGNORE.toml`. It is the only `fType` value with no
    fixture, and needs a branch whose class has a hand-written `Streamer`.
 
-Those two are all that is left, 67 branch-baskets of 28036, and both are things
-no reader could decode. The embedded basket that was item 1 here is closed (M8),
+Those two are 138 branch-baskets, 93 and 45, and both are things no reader
+could decode. With 15 more of the same kind (user classes with a hand-written
+`Streamer`, and two with no info at all) they are the 153 of `AGENTS.md`; the
+other 70 are readable, only not from these files (65 baskets in a file no corpus
+holds, and 5 `TBranchObject` baskets, item 6). The embedded basket that was item 1 here is closed (M8),
 and so is the embedded counter basket (M6). What remains below is about values
 rather than about reaching them:
 
@@ -2700,7 +2713,7 @@ rather than about reaching them:
    but it is not a `TBranchElement` and has no leaf, so neither entry check
    reaches it. `Splitting.md` §5 describes the branch; its entries stay
    undecoded.
-5. A non-null `fBranchCount2`: no file in 178 has one, so the second-dimension
+5. A non-null `fBranchCount2`: no file of the census has one, so the second-dimension
    path is unexercised and unwritten.
 6. `TBranchObject` entries. Its `TLeafObject` has no fixed width, so the
    leaf-driven check cannot walk it, and since 2026-09-24 its baskets are counted

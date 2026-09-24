@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phases A and B (V1–V20), V26, V31 and V32 done 2026-09-24.** V6 turned out
+**Status: open. Phases A, B and D (V1–V20, V26–V30), V31 and V32 done 2026-09-24.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -483,7 +483,7 @@ One sweep, one commit, then a check so it cannot recur. The reviewer recomputed
 every figure below at `385a3e2` with stdlib Python, `find` and `git`; the
 recomputed value is the one given.
 
-### V27. Stale counts in `Bibliography.md` ☐
+### V27. Stale counts in `Bibliography.md` ✅
 
 `spec/99-appendix/Bibliography.md:63-75`: "155 files, all of which this project
 uses" (scikit-hep-testdata) → the `gen/foreign/` manifest has 180 lines and
@@ -494,7 +494,7 @@ holds 76 small files … plus the 9 in `data/written/`" → 87 and 14. Also `:14
 "the ten places" (RNTuple errata) → thirteen. **Confirmed here** for lines
 68–75.
 
-### V28. Counts on the front pages and in the appendix that were never re-measured ☐
+### V28. Counts on the front pages and in the appendix that were never re-measured ✅
 
 | Where | Says | Is |
 |---|---|---|
@@ -514,7 +514,7 @@ holds 76 small files … plus the 9 in `data/written/`" → 87 and 14. Also `:14
 | `gen/cern/README.md:227-232` | "1696 of 1696" branch-baskets, run 2026-09-21 | predates the denominator change; re-run or date it |
 | `spec/99-appendix/Pitfalls.md:5-7` | "Thirteen were found by checking … against files" | README says nineteen; say which population |
 
-### V29. Scope statements that disagree across README, index and checklist ☐
+### V29. Scope statements that disagree across README, index and checklist ✅
 
 - `spec/index.md:100-104` "Four documents (the container, an object, histograms,
   a flat `TTree`)": `spec/06-writing/` has six; `:28-30` and
@@ -541,7 +541,7 @@ holds 76 small files … plus the 9 in `data/written/`" → 87 and 14. Also `:14
 - `CITATION.cff:12-20` abstract lists four layers and omits the writing layer
   and the RNTuple audit.
 
-### V30. Missing `CHANGELOG.md` entries, and a check so figures stop drifting ☐
+### V30. Missing `CHANGELOG.md` entries, and a check so figures stop drifting ✅
 
 `## Unreleased` has no entry for `spec/03-classes/RooFit.md` itself (`5d6a95b`,
 six newly decodable classes), nor for five of the eight §8.13 corrections
@@ -560,6 +560,19 @@ and greps every listed page for the value. A figure that can only come from a
 corpus run is listed with its date, and the check requires the date to appear
 beside it. `CONTRIBUTING.md:32-39`'s check list also omits `check_coverage.py`,
 `check_write.py` and `element_lists.py`; add the new one and those.
+
+**Done, V27–V30.** Every figure in the tables above is corrected, each
+re-measured rather than copied from another page: the probe over both corpora
+(which also showed the "What is missing" table had never listed 165 RNTuple
+records; the probe now reads anchors with the RNTuple reader and counts `RBlob`s
+as RNTuple data, so blocked went from 191 to 26), the LZ4 figure in an
+environment without `lz4` (132; `PLAN.md` was right and `spec/index.md` wrong),
+the `gen/cern` entries (1696 of **1761**, not of 1696), the `TCanvas` scan (352
+files), and the gap and bug-candidate counts. §8.14's "ten" was right; the table
+had merged two C11 claims into one row. `tools/check_figures.py` now recomputes
+sixteen figures and checks 40 statements of them across nine pages
+(`gen/figures.toml`), in CI's `spec` job; a stale value fails with what the page
+says and what it should.
 
 ## 6. Phase E — the tools
 

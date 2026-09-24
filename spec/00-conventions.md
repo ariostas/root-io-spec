@@ -202,7 +202,7 @@ n:i32   payload:n bytes
 
 This is not the counted string of §5.1, and confusing the two is a common bug. A
 null pointer and an empty string are indistinguishable: both are four zero bytes.
-See `02-serialization/ElementTypes.md`, type code 7 (`kCharStar`).
+See [Element types](02-serialization/ElementTypes.md), type code 7 (`kCharStar`).
 
 On the writing side, a hand-written streamer using `buf << someCharPointer`
 produces the null-terminated form of §5.2, not this one.

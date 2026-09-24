@@ -26,9 +26,10 @@ enough to locate any object in a ROOT file and to decode any user-defined class
 from the file's own streamer info. Built on them, `TArray` and the full `TTree`
 reading path (the tree record, branches, leaves, baskets, splitting and decoding
 one entry) are written and checked. **[Writing](06-writing/index.md)** is
-specified for the container, an object and its streamer info, histograms and a
-flat `TTree`, at the current version of each class, and checked by having ROOT
-read the result. The repository's `PLAN.md` has the phasing, and its §9 lists
+specified for the container with subdirectories, an object and its streamer
+info, histograms and profiles, graphs, and a flat `TTree`, at the current
+version of each class, and for reopening a file to add to it; each is checked by
+having ROOT read the result. The repository's `PLAN.md` has the phasing, and its §9 lists
 every known gap.
 
 | Layer | State |
@@ -49,8 +50,8 @@ invariants of every layer run over 252 files this project did not write (ROOT
 2.24/00 to 6.38/00) with **0 failures**.
 
 The writing layer adds fourteen files this project *did* write, with 493
-assertions of their own. In twelve of them, every object-bearing record is
-**byte-identical to the one ROOT wrote**: a `TH1F`, a `TH1D`, a `TH2F`, a `TH2D`,
+assertions of their own. Every record in them that has a ROOT-written
+counterpart is **byte-identical to it**: a `TH1F`, a `TH1D`, a `TH2F`, a `TH2D`,
 two `TProfile`s, a `TGraph`, a `TGraphErrors`, three `TTree`s, nine `TBasket`s,
 and seven complete `StreamerInfo` records. Those records hold one, fifteen,
 seventeen, eighteen and nineteen class descriptions; every checksum is computed
@@ -78,7 +79,7 @@ says what it must contain.
 [Implementing a reader](99-appendix/ReaderChecklist.md). It arranges this material
 as a work order: eight milestones, each ending in something that works, with the
 documents, reference files and checks for each. Keep
-[Pitfalls](99-appendix/Pitfalls.md) open beside it: forty-five facts that are
+[Pitfalls](99-appendix/Pitfalls.md) open beside it: forty-eight facts that are
 true, not obvious, and have cost somebody time.
 
 To study the format rather than build on it, start with
@@ -99,9 +100,10 @@ Then read the layers in order, since each builds on the previous ones:
 4. **`TTree`** — branches, leaves, baskets, splitting, and reading an entry.
 5. **[Writing](06-writing/index.md)** — the same format from the writer's side:
    which bytes to emit, in what order, for the current version of each class.
-   Four documents (the container, an object, histograms, a flat `TTree`) mark
-   every field fixed, derived or free, and each is checked by having ROOT read
-   what this project wrote.
+   Five procedure documents (a file, an object, histograms, graphs, a flat
+   `TTree`) mark every field fixed, derived or free, a sixth publishes the
+   element lists they need, and each is checked by having ROOT read what this
+   project wrote.
 6. **[RNTuple](05-rntuple/index.md)** — a **verbatim tracked copy** of ROOT's own
    RNTuple specification, which this project does not fork, plus the errata and
    implementation notes from its audit so far. Read the copy for the format and
@@ -116,9 +118,9 @@ order.
 [Hand-written streamers](99-appendix/HandWrittenStreamers.md) and
 [Forwarding streamers](99-appendix/ForwardingStreamers.md) are two lists that
 cannot be derived from a file and so have to be published.
-[A writer's invariants](99-appendix/WriterInvariants.md) re-sorts the 256
+[A writer's invariants](99-appendix/WriterInvariants.md) re-sorts the 267
 `Invariants` entries of every layer for a writer, adding a column the reading side
-does not need: who notices when you get it wrong, including the nine cases where
+does not need: who notices when you get it wrong, including the ten cases where
 nothing does.
 [Glossary](99-appendix/Glossary.md) defines every term used with a meaning it does
 not have in ordinary English, and
@@ -145,8 +147,10 @@ are more welcome than additions.
 layer ends with an `Invariants` section stating what a conforming file satisfies,
 so a writer can validate its own output, and [Writing](06-writing/index.md) gives
 the procedures (which bytes, in what order) for the current version of each class
-a writer needs. Free-space reuse, basket sizing and key ordering are left
-unspecified: they are ROOT's choices, not requirements of the format.
+a writer needs. Where records go, how big baskets are and the order of keys are
+ROOT's choices, not requirements of the format, and are marked free. Writing a
+file still specifies ROOT's allocator and key order, because matching a
+ROOT-written file byte for byte needs them.
 
 ### How far back it reads
 
@@ -174,21 +178,28 @@ practice back to 3.04/02.** Below that, only the container layer applies.
 ### What is missing rather than excluded
 
 Across both corpora 95% of records decode. Every record that does not has a
-known cause, and `tools/coverage_probe.py` prints it per record:
+known cause, and `tools/coverage_probe.py` prints it per record (measured
+2026-09-24):
 
 | Cause | Reads | What it is |
 |---|---|---|
 | No streamer infos in the file | 468 | the version floor above |
-| An LZ4 payload, when the `lz4` package is not installed | 0 here, 137 without it | the checker's environment, not the format |
+| An LZ4 payload, when the `lz4` package is not installed | 0 here, 132 without it | the checker's environment, not the format |
 | `TASImage` | 8 | **a gap** — one of twelve in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
 | `RooWorkspace::CodeRepo` | 2 | **a gap**, one partial `RooWorkspace` in each `stressRooFit` file. The five RooFit classes [RooFit](03-classes/RooFit.md) specifies decode |
 
 `TASImage` and `RooWorkspace::CodeRepo` are the only **specification** gaps that
-a file in either corpus reaches. The rest are single records of three kinds, none of them a gap in this
-document: a class whose streamer info the file does not contain, so no reader
-could decode it; entry offsets that the probe does not regenerate from the leaf,
-which [TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets)
-specifies; and one file that ROOT itself refuses to open.
+a file in either corpus reaches. The rest are single records of three kinds, none
+of them a gap in this document: a class whose streamer info the file does not
+contain, so no reader could decode it; entry offsets that the probe does not
+regenerate from the leaf, which
+[TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets) specifies; and
+one file that ROOT itself refuses to open.
+
+RNTuple's records are read by [RNTuple](05-rntuple/index.md), not as objects:
+its 29 anchors decode, headers and footers included, and its 136 `RBlob`
+records are pages and envelopes reached through them. Until 2026-09-24 the probe
+counted all 165 as undecoded.
 
 **No class in 252 files is below a hand-written version threshold except
 `TBranch`, whose legacy layout is now specified**:
