@@ -1385,7 +1385,7 @@ class ChoosingAnInfo(unittest.TestCase):
             self.decoder(1).info_for("C", 3)
 
 
-class ThisElement(unittest.TestCase):
+class ThisElementInvariant(unittest.TestCase):
     """Collections.md invariant 11, which no file in data/ exercises.
 
     A class that is itself a collection gets a single `This` element whose type

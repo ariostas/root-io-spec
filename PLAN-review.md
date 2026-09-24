@@ -610,7 +610,11 @@ submodule: 19 such skips, all caught; 0 with it. The 8 remaining skips are
 case with no manifest line and on a line no case produces (both mutation-tested);
 `inventory.py` fails on a doubt; `check_invariants.py --ignore` reports every
 entry and fails on one that suppressed nothing (none does over the corpus; a
-bogus one fails); `Collections 14.11` has three unit tests.
+bogus one fails); `Collections 14.11` has three unit tests. Adding those
+tests found one more silence: the new class was named `ThisElement`, which an
+existing class already was, so five older tests stopped running with nothing
+reported (the count went from 640 to 638). `tools/test_hygiene.py` now fails on
+any name defined twice at the top level of a test module or within a test class.
 
 ### V33. `rootfile.py` paths that swallow a failure into "absent" ☐
 
