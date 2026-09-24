@@ -37,5 +37,5 @@ license:
   - BSD-3-Clause
 license-url: https://github.com/ariostas/root-io-spec/blob/main/LICENSE
 # The specification tracks ROOT rather than carrying a meaning of its own, so its
-# releases are CalVer (YYYY.MM.DD), tagged at a milestone. Cutting one adds
-# `version` and `date-released` here, or updates them.
+# releases are CalVer (YYYY.MM.DD), tagged at a milestone. The tag is the version;
+# this file deliberately carries none, so it never needs bumping.

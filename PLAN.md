@@ -682,7 +682,7 @@ unstated scope, and no licence. All four were resolved the same day (§8.1).
 
 ### 8.1 Release criteria
 
-**All six are met as of 2026-09-17**, the tag of criterion 5 aside, which is the first dated release. What each one was, and
+**All six are met as of 2026-09-17**, and the first release, `2026.09.24`, is tagged. What each one was, and
 what satisfied it:
 
 1. **No published claim is known to be wrong.** ✅ as of M1; the `delegating`
@@ -732,7 +732,7 @@ what satisfied it:
    `aod_flushed.root`, is cleared.
 5. **Citable and reusable**: a licence for `spec/` and for `tools/`+`gen/`, a
    `CITATION.cff`, a version number, a changelog, a tagged release, and a
-   published site. ✅ M7, but for the tag. The version number was reconsidered
+   published site. ✅ M7, and tagged 2026-09-24. The version number was reconsidered
    on 2026-09-22 (decision 9): the criterion wanted the work to be citable and
    the fixtures vendorable, and a dated tag does that without claiming a
    semantics the document does not have, so the first tag is a dated one. The changelog was deleted the same day and restored;
@@ -1069,10 +1069,10 @@ is the main way a third party would use this.*
   addition and needs no fixture, which nothing in the repository had said.
 - **`CITATION.cff`**, **`CHANGELOG.md`**, and the version in three places that
   cannot drift silently: `[project.extra]` in `zensical.toml`, the front page, and
-  the citation file. Amended by decision 9 on 2026-09-22: of those three places
-  only the citation file still has a version. The other two give the *ROOT*
-  release instead, which is the number a reader needs and the one the checkers can
-  hold in place. The changelog stays, scoped to releases.
+  the citation file. Amended by decision 9 on 2026-09-22 and on 2026-09-24:
+  none of the three has a version of its own, and the tag is the only one. The
+  front page and the site give the *ROOT* release instead, which is the number a
+  reader needs and the one the checkers can hold in place. The changelog stays, scoped to releases.
 - **Pages already serves the current build**: `LargeFiles/` and
   `ReaderChecklist/`, both published today, answer 200 at
   <https://ariostas.github.io/root-io-spec/>. No deploy work was needed.
@@ -2181,8 +2181,8 @@ exactly what ERRATA 1/2/3/5 and `gen/cases/rntuple/anchor` cover.
 
 1. ~~**The licence question.**~~ Decided 2026-09-23: **no file of theirs is
    ever committed**, and no third-party corpus file at all — decision 10.
-2. **When to cut the first release.** The survey's corrections landed
-   under `## Unreleased`; cutting now makes them part of the first release.
+2. ~~**When to cut the first release.**~~ Cut 2026-09-24 as `2026.09.24`, with
+   the survey's corrections and both reviews' in it.
 
 ### 8.15 "ROOT 4" was g4tools (2026-09-23)
 

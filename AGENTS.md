@@ -629,11 +629,12 @@ record of how the format was reverse-engineered.
 
 **`CHANGELOG.md` is the reader's half of the same record** (`PLAN.md` decision 9).
 A commit body says what was found; a changelog entry says what a reader of the
-specification should now do differently. Add one under `## Unreleased` when a
-change is reader-facing (a new document, a corrected claim, a closed gap, a fact a
-reader would get wrong without it), and add none when it is not: a fixture, a
-check or a refactor of `tools/` gets no entry. Releases are CalVer, `YYYY.MM.DD`,
+specification should now do differently. Add one under `## Unreleased`
+(creating the heading if the last release consumed it) when a change is
+reader-facing (a new document, a corrected claim, a closed gap, a fact a reader
+would get wrong without it), and add none when it is not: a fixture, a check or a
+refactor of `tools/` gets no entry. Releases are CalVer, `YYYY.MM.DD`,
 tagged at a milestone. Cutting one means retitling `## Unreleased` with the date,
-whose section opens by naming the ROOT release it is descriptive of, and setting
-`version` and `date-released` in `CITATION.cff`, and nothing else,
-because the only version the documents state is ROOT's.
+whose section opens by naming the ROOT release it is descriptive of, and tagging
+the commit with the bare date (`2026.09.24`, no `v`). Nothing else changes, not
+even `CITATION.cff`, because the only version the documents state is ROOT's.

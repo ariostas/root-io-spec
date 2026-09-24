@@ -9,7 +9,7 @@ has a bug ([spec/index.md](spec/index.md)).
 This file records what changed for a **reader**. The git log records how each fact
 was established, which is the other half of the story.
 
-## Unreleased
+## 2026.09.24
 
 First release. Descriptive of **ROOT 6.40.04**, pinned as the `root/` submodule
 at `v6-40-04`.
