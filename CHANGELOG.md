@@ -11,6 +11,49 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Procedures and invariants that contradicted their own documents**, from the
+  second consistency review.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §9 step 3:
+    501 is never on a `TStreamerSTL`, and the procedure now has the step for 501
+    and 521 on a `TStreamerLoop` that it was missing.
+  - [`SchemaEvolution.md`](spec/02-serialization/SchemaEvolution.md) §4,
+    erratum 7: take a class's only streamer info for an unmatched version word
+    **only when the word is 1**, as ROOT does. Any other unmatched version is
+    skipped by its byte count. Taking the lone info for every version let two
+    g4tools histograms read one frame off at every level and still end on their
+    byte counts.
+  - [`Collections.md`](spec/02-serialization/Collections.md) §13 step 5.1:
+    there is no value-class version below `TStreamerInfo` version 8 (9 for a
+    pointer to a collection), and at version 0 the checksum follows only when the
+    value class is not itself version 0. §6 now cites both thresholds.
+  - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §1: every
+    `TBranchElement` with a non-zero `fType` has an offset array, including an
+    `Int_t` inside a split collection. The text said container nodes only.
+  - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §2 and §7, and
+    [`TBranch.md`](spec/04-ttree/TBranch.md) §7: a `TBranchSTL` has
+    sub-branches **and** reads its own baskets first.
+  - [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) §11: only a
+    `TStreamerBase` folds `fBaseCheckSum` into the checksum; an STL base folds
+    its name alone.
+  - [`Buffer.md`](spec/02-serialization/Buffer.md) §4: a foreign class whose
+    `Class_Version()` is 0 writes a checksum the version-0 rule does not expect.
+  - [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) invariant 4:
+    `fArrayLength` is also positive for codes 81, 82 and 85 to 87, and on a
+    `TStreamerSTL` counts the collections in the frame.
+  - [`FreeSegments.md`](spec/01-container/FreeSegments.md) invariant 2: a
+    recovered file's last `fLast` is `fEND + 1000000000`, not a multiple.
+  - [`WritingTrees.md`](spec/06-writing/WritingTrees.md) invariant 4:
+    `fMaxBaskets` is `max(fWriteBasket + 1, 10)`, as `TBranch.md` says.
+  - Smaller corrections: `TMatrixTBase`'s `Streamer` is guarded
+    ([`Matrix.md`](spec/03-classes/Matrix.md)); `TCollection` is a real frame
+    that `TBtree` writes; a `TCanvas` has eight trailing bytes, not seven; nine
+    RooFit classes have a hand-written `Streamer`, not five
+    ([`RooFit.md`](spec/03-classes/RooFit.md)); `TClonesArray` version 3 is
+    tested on two different bits (`Collections.md` erratum 14); the free list
+    in `container/directories` is at 1755; a key image agrees with its record
+    field by field, not byte for byte
+    ([`WritingFiles.md`](spec/06-writing/WritingFiles.md) §14).
+
 - **Nine wrong claims corrected, from the second consistency review.** Each is
   a statement a reader or writer following the text would act on.
   - [`Record.md`](spec/01-container/Record.md) §6 step 5: a payload is

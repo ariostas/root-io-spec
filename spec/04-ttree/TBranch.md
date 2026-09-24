@@ -391,9 +391,9 @@ collection counter (`fType` 3 or 4), its fill path is a bare `++fEntries`
 This is consistent: the parent holds no data of its own, since all of it is in
 the sub-branches. A reader must not take such a branch's `fEntryNumber` for the
 tree's entry count, and must not read its baskets at all: ROOT's read path for a
-branch with sub-branches reads its own basket only for `fType` 3 and 4
-(`root/tree/tree/src/TBranchElement.cxx:2744-2766`), and a `TBranchObject`'s
-never (`root/tree/tree/src/TBranchObject.cxx:213-228`). The structure identifies
+`TBranchElement` with sub-branches reads its own basket only for `fType` 3 and
+4 (`root/tree/tree/src/TBranchElement.cxx:2744-2766`), a `TBranchSTL` always
+(`root/tree/tree/src/TBranchSTL.cxx:381`), and a `TBranchObject`'s never (`root/tree/tree/src/TBranchObject.cxx:213-228`). The structure identifies
 such a parent, not its counters, because **fast cloning rewrites them**:
 
 - `TTreeCloner::CopyMemoryBaskets` calls `SetEntries(fEntries + the input's

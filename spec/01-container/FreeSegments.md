@@ -215,7 +215,9 @@ To read the list:
 
 1. `fEND` equals the last entry's `fFirst`.
 2. The last entry's `fLast > fEND`, and is at least 2000000000. Above that it is a
-   multiple of 1000000000.
+   multiple of 1000000000 (§5), except in a recovered file: `TFile::Recover` sets
+   it to `fEND + 1000000000` once `fEND` has passed 2000000000
+   (`root/io/io/src/TFile.cxx:2189-2191`), and the next `Write` persists that.
 3. `nfree` in the header equals the number of entries. This is advisory only
    (`FileHeader.md` §5.4): every ROOT-written file available satisfies it, but
    g4tools writes 0 for a two-entry list.
@@ -238,7 +240,11 @@ To read the list:
 
 Invariants 6 and 7 can legitimately fail, because a `MakeFree` write may have been
 lost (§4.2). A recovered file's list is built by plain appends instead of the
-merging insert, so it may violate 5 as well.
+merging insert, so it may violate 5 as well, and above 2 GB the multiple in 2.
+Nothing on disk says a file was recovered (`kRecovered` is an in-memory bit), so
+a reader that finds these violations on a file over 2 GB SHOULD suspect a
+recovery rather than a corrupt list. No file available here is both recovered and
+over 2 GB, so this is read from the source.
 
 ## 9. Errata
 

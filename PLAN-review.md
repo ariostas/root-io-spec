@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phase A (V1–V9) and V26 done 2026-09-24.** V6 turned out
+**Status: open. Phases A and B (V1–V20) and V26 done 2026-09-24.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -71,7 +71,8 @@ LOW items are summarised in §7 with enough of a locator to find each one.
 These are one commit, `fix(spec): nine wrong claims from the second review`.
 They are the claims that produce wrong bytes or a wrong reader; §8.1 criterion 1
 also needs Phase B, because V18 and V19 are false statements too, only smaller
-ones. Each is a small edit; the value is in the commit body, which records what
+ones, and the stale figures of V27–V28, which are false statements about the
+project itself. Each is a small edit; the value is in the commit body, which records what
 was wrong and how it was shown.
 
 ### V1. `Record.md` §6 step 5 states the compression test as "differs" ✅
@@ -199,7 +200,7 @@ One commit per document or per pair, each with its `CHANGELOG.md` line. These
 are the items where a reader who trusts the procedure and a reader who trusts
 the field text build different readers.
 
-### V10. `StreamerDriven.md` §9 step 3.4 puts 501 on a `TStreamerSTL` and has no `TStreamerLoop` branch ☐
+### V10. `StreamerDriven.md` §9 step 3.4 puts 501 on a `TStreamerSTL` and has no `TStreamerLoop` branch ✅
 
 `spec/02-serialization/StreamerDriven.md:623-624`: "If `fType` is 500 or 501 on
 a `TStreamerSTL`, read a collection". `ElementTypes.md` invariant 11.3 says 501
@@ -211,7 +212,7 @@ the counter from `fCountName`. While there, `:182` and `:624` write
 `02-serialization/Collections.md` as inline code; conventions §6.5 says a
 document that exists MUST be a link. **Confirmed here** by reading the step.
 
-### V11. `SchemaEvolution.md` §4 step 1 takes a lone info for any version ☐
+### V11. `SchemaEvolution.md` §4 step 1 takes a lone info for any version ✅
 
 `spec/02-serialization/SchemaEvolution.md:164-165`: "If exactly one entry exists
 for the class, take it." This contradicts step 3 ("If no entry matches, the
@@ -225,7 +226,17 @@ step 1 to versions 0/1 and the info's own; change `info_for` to match; note in
 the commit whether any fixture or corpus number moves. **Confirmed here** by
 reading both.
 
-### V12. `Collections.md` §13 has no pre-8/pre-9 branch and reads a checksum ROOT does not ☐
+**Done, and the fallback was hiding something.** Instrumented over the fixtures
+and both corpora, the lone-info fallback fired in three files, all written by
+g4tools or unknown writers, never by ROOT. In `uproot-from-geant4.root` and
+`uproot-issue-250.root` a `TH1D` record opens with two bare version words,
+`TH1D` 1 and `TH1` 3; the reader chose the reading one level too shallow, so
+`TH1` took version 1 and `TNamed` version 3, each borrowed its only info, and
+the read landed exactly on the byte count. With ROOT's rule (version 1 only) that
+reading fails and the correct one is chosen; every successful `TH1` read is now
+at version 3. Corpus figures unchanged: 48278 of 48501, 0 failures.
+
+### V12. `Collections.md` §13 has no pre-8/pre-9 branch and reads a checksum ROOT does not ✅
 
 `spec/02-serialization/Collections.md:890-919`: step 5.1 always reads a
 value-class version word, so a reader following §13 on a file at `TStreamerInfo`
@@ -242,7 +253,7 @@ reads. Also §6 row 1 cites the `kSTLp` half (`TStreamerInfoReadBuffer.cxx:1166-
 citations; reproduce by reading the two ROOT functions, then fix text and reader
 together.
 
-### V13. `ReadingEntries.md` §3 misstates when a `TBranchElement` has an offset array ☐
+### V13. `ReadingEntries.md` §3 misstates when a `TBranchElement` has an offset array ✅
 
 `spec/04-ttree/ReadingEntries.md:56-61`: `fEntryOffsetLen` is non-zero "unless
 the branch is a container node, or `fStreamerType` is …". The source is
@@ -254,7 +265,7 @@ array `[78, 86, 86, 0]`. The next sentence, "A column of `Int_t` therefore has
 no offset array", is false for a column inside a collection. **Confirmed here**
 at the source line.
 
-### V14. `TBranchSTL` holds data, and two documents say it does not ☐
+### V14. `TBranchSTL` holds data, and two documents say it does not ✅
 
 `spec/04-ttree/ReadingEntries.md:437` (§7 step 1) "If the branch has sub-branches
 and `fType` is not 3 or 4, it holds nothing" and `TBranch.md:392-397` say the
@@ -264,7 +275,7 @@ then the element branches at `:453`). `rootfile.TreeReader.holds_data` treats it
 as data-bearing. **Fix:** add the exception to both sentences. **Reported**,
 citations given; reproduce by opening `TBranchSTL.cxx`.
 
-### V15. Three invariants are stated differently from what is true or checked ☐
+### V15. Three invariants are stated differently from what is true or checked ✅
 
 - `spec/01-container/FreeSegments.md:217-218`, invariant 2: above 2 GB the
   sentinel "is a multiple of 1000000000". `TFile::Recover`
@@ -292,7 +303,7 @@ citations given; reproduce by opening `TBranchSTL.cxx`.
 **Confirmed here** for the `fMaxBaskets` pair (both lines read); the other two
 **reported** with citations.
 
-### V16. `StreamerInfo.md` §11 folds a base checksum for every base ☐
+### V16. `StreamerInfo.md` §11 folds a base checksum for every base ✅
 
 `spec/02-serialization/StreamerInfo.md:656-660`, step 2: "for each element that
 is a base … `acc_num(id, fBaseCheckSum)`". `root/io/io/src/TStreamerInfo.cxx:3600`
@@ -303,7 +314,7 @@ name only. `tools/rootwrite.py:1486-1487` is right by accident (`is_base` tests
 derives from `std::vector` gets a different value from the text. **Confirmed
 here** at `:3598-3602`.
 
-### V17. Buffer §4's checksum rule misses the foreign version-0 class ☐
+### V17. Buffer §4's checksum rule misses the foreign version-0 class ✅
 
 `spec/02-serialization/Buffer.md:277-287` and `SchemaEvolution.md:64-71`: info
 `fClassVersion == 0` ⇒ no checksum after the version word. `TBufferFile::WriteVersion`
@@ -316,7 +327,7 @@ comment saying exactly this. No fixture and no known corpus file exhibits it.
 two cases (a reader can only try the checksum when the info is version 0 and
 foreign-shaped). **Confirmed here** at both lines.
 
-### V18. Five smaller contradictions between documents ☐
+### V18. Five smaller contradictions between documents ✅
 
 - `spec/03-classes/Matrix.md:25`: `TMatrixTBase` "none of its own" vs
   `HandWrittenStreamers.md` `guarded` (`root/math/matrix/src/TMatrixTBase.cxx:1057-1072`).
@@ -341,7 +352,7 @@ foreign-shaped). **Confirmed here** at both lines.
 
 All **reported**, each with a citation to reproduce from.
 
-### V19. Two offsets and a claim about RNTuple files are wrong ☐
+### V19. Two offsets and a claim about RNTuple files are wrong ✅
 
 - `spec/01-container/Directory.md:257`: "the free list at 1786" — the header's
   `fSeekFree` in `data/container/directories.root` is 1755 and
@@ -356,7 +367,7 @@ All **reported**, each with a citation to reproduce from.
 
 **Confirmed here**, all three, from the bytes.
 
-### V20. `WriterInvariants.md` and `WritingFiles.md` §14 disagree with the checker about what is checked ☐
+### V20. `WriterInvariants.md` and `WritingFiles.md` §14 disagree with the checker about what is checked ✅
 
 `spec/99-appendix/WriterInvariants.md:54`: "Every key image in the key list is
 byte-identical to the first `fKeylen` bytes of the record … | Directory 9 |
@@ -370,6 +381,14 @@ invariant that is 14.8. `spec/06-writing/WritingFiles.md:1061-1066` says "Items
 field-wise. **Fix:** the row says "checked, field-wise (Directory 9.11)"; the
 §14 sentence lists what is checked from `gen/invariants.toml` rather than from
 memory. **Reported**; reproduce by reading the two tables against the toml.
+
+**Done, and larger than reported.** The `gen/invariants.toml` reasons for
+`WritingFiles 14.1`–`14.15` were misaligned with §14's numbering: written against
+an older list, they named the wrong check for most items (14.2's reason was the
+record walk, which is item 7). All sixteen reasons are rewritten from a mapping
+checked against the labels `check_invariants.py` emits, and §14's closing
+paragraph now gives the same mapping. Item 8 is only partly checked (Record 8.6
+requires a directory, not the right one) and item 10's spelling not at all.
 
 ## 4. Phase C — what the code knows and the prose does not
 

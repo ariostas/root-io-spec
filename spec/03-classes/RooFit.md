@@ -1,7 +1,10 @@
 # RooFit
 
-Five RooFit classes replace the `Streamer` their `ClassDef` would generate, and
-a file containing a workspace, a plot or a fit result holds several of them.
+Nine RooFit classes replace the `Streamer` their `ClassDef` would generate, and
+`RooCategory` does so below class version 3. This document specifies the five
+that a file containing a workspace, a plot or a fit result holds: `RooRealVar`,
+`RooLinkedList`, `RooAbsBinning`, `RooRefArray` and `RooCategory`. The other five,
+`RooWorkspace::CodeRepo` and the four `RooCFunctionNRef` classes, are gaps (§9).
 Without them the rest of a RooFit file cannot be read: every `RooAbsArg` has a
 proxy list, every `RooRealVar` has a binning, and a reader that stops at one of
 these also stops at the object that contains it.

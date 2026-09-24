@@ -1506,10 +1506,17 @@ class Decoder:
             raise UnsupportedClass(f"no streamer info for {cls}")
         if version in by_version:
             return by_version[version]
-        if len(by_version) == 1:
-            # A single info for the class: ROOT renumbers a version of 0, so an
-            # exact match is not required (SchemaEvolution).
+        if (version < 0 or version == 1) and len(by_version) == 1:
+            # A version below 0 is unknown (a TStreamerBase with fBaseVersion -1
+            # and no checksum), so the one info is the only candidate. Version 1
+            # is ROOT's own exception: with no info for it, ROOT reads it with
+            # the class's current layout (root/io/io/src/TBufferFile.cxx:3505),
+            # which for a reader driven by the file is its one info.
             return next(iter(by_version.values()))
+        # Any other version word with no matching info is not readable from the
+        # file; ROOT skips it by its byte count (SchemaEvolution.md 4). Until
+        # 2026-09-24 a lone info was taken for any version, which let a misread
+        # g4tools histogram land on its byte count one frame off at every level.
         raise UnsupportedClass(f"no streamer info for {cls} version {version}")
 
     # -- objects ----------------------------------------------------------
@@ -2659,7 +2666,11 @@ class Decoder:
         a pointer to one (root/io/io/src/TStreamerInfoReadBuffer.cxx:1166-1168);
         below that ROOT uses the class's current version.
         """
-        version, pos = 0, offset
+        # Below the threshold no value-class version is written and ROOT uses
+        # its current class; to a reader driven by the file the version is
+        # unknown, which info_for reads as "the one info there is"
+        # (Collections.md 6 and 13).
+        version, pos = -1, offset
         if collection_version >= (9 if pointer else 8):
             version, pos = self.resolve_bare_version(value, offset)
         info = None
@@ -2687,11 +2698,16 @@ class Decoder:
         """ReadVersionForMemberWise: a Version_t with no byte count.
 
         As with an ordinary version word, 0 or less is followed by a checksum
-        for a foreign class (Buffer.md 4), and the checksum selects the info.
+        for a foreign class and by nothing for a class that declares version 0
+        (Buffer.md 4): ROOT reads the checksum only when the class's version is
+        not 0 (root/io/io/src/TBufferFile.cxx:3093-3095). The file's own infos
+        say which, as in resolve_version, and the checksum selects the info.
         """
         version = _i16(self.buf, offset)
         if version > 0:
             return version, offset + 2
+        if 0 in self.infos_of(cls):
+            return 0, offset + 2
         checksum = _u32(self.buf, offset + 2)
         for candidate, info in (self.infos_of(cls)
                                 or self.alias_by_checksum(cls, checksum)).items():

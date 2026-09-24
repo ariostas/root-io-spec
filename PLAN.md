@@ -22,9 +22,9 @@ files and three large Open Data files. Two gaps closed with new specification:
 **The second consistency review, 2026-09-24 — open; `PLAN-review.md`.** Seven
 read-only reviewers went over every document, the front matter and `tools/` at
 `385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
-literally (its V1–V9, fixed the same day), and several of its Phase B items are
-false statements too, so §8.1 release criterion 1 does **not** hold until Phase B
-lands; about thirty more statements are contradictory, stale or narrower
+literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
+same day. §8.1 release criterion 1 does **not** hold until the stale figures of
+its V27–V28 are corrected too; about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three
@@ -38,13 +38,13 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 87 / 2290, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1798, 0 failures |
+| Source citations checked | 1808, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 101 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 636 |
+| Unit tests | 640 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,

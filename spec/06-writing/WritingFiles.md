@@ -1011,8 +1011,10 @@ to get wrong:
    strings that follow it, and equals the copy inside the record.
 4. `fSeekKeys` plus `fNbytesKeys` does not exceed `fEND`, and the record at
    `fSeekKeys` has exactly `fNbytesKeys` bytes.
-5. Every key image in the key list is byte-identical to the first `fKeylen` bytes of
-   the record at its own `fSeekKey`.
+5. Every key image in the key list agrees with the key of the record at its own
+   `fSeekKey`: the same `fNbytes`, `fObjlen`, `fKeylen`, `fCycle` and strings,
+   with `TDirectory` and `TDirectoryFile` counted as one class name
+   ([Directories §9](../01-container/Directory.md#9-invariants) 11).
 6. Every record's `fNbytes` equals `fKeylen` plus the stored payload, and
    `fObjlen == fNbytes - fKeylen` **iff** the payload is stored uncompressed (§6).
 7. Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no record
@@ -1059,11 +1061,18 @@ is checked the same way on a file that was written once and on a file that was
 reopened eleven times, because nothing in the result records which it was.
 
 Items 1, 2, 5, 6, 7 and 9 to 17 are the ones ROOT does not detect at all (§15).
-Items 9 to 15 and 17 are checked by `tools/check_invariants.py`, as
-[Directories §9](../01-container/Directory.md#9-invariants) 3, 11 and 13, 8, 12
-and 14, as
-[Free segments §8](../01-container/FreeSegments.md#8-invariants) 6, 7 and 10,
-and as [File header §10](../01-container/FileHeader.md#10-invariants) 11.
+Every item but 16 is checked by `tools/check_invariants.py`, which gate 2 runs on
+every written file: 1 as [Free segments §8](../01-container/FreeSegments.md#8-invariants)
+1 and 9, 2 as Free segments 2, 3 and 9 as
+[Directories §9](../01-container/Directory.md#9-invariants) 3, 4 as Directories
+5, 5 as Directories 11, 6 through every
+[Compression](../01-container/Compression.md#9-invariants) check, 7 as
+[Records and keys §8](../01-container/Record.md#8-invariants) 8, 8 in part as
+Records and keys 6 (it requires `fSeekPdir` to name a directory, not the right
+one), 10 as Records and keys 3 and Directories 13 (the length, not the spelling
+itself), 11 as Directories 8, 12 as Directories 12, 13 as Free segments 6 and 7,
+14 as Free segments 10, 15 as Directories 14, and 17 as
+[File header §10](../01-container/FileHeader.md#10-invariants) 11.
 Item 16 is checked in the writer itself: it is a property of the *act* of
 writing rather than of the file, since a finished file cannot say which of two
 overlapping records was meant to be live. The remaining obligation in

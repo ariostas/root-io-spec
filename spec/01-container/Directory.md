@@ -254,7 +254,7 @@ class inherits from `TFile` (`root/io/io/src/TFile.cxx:2171-2172`).
 
 > In `container/directories`, three separate records carry the class name
 > `"TFile"` and the file's own name: the root directory at 100, its key list at
-> 1255, and the free list at 1786.
+> 1255, and the free list at 1755.
 
 ### 6.3 What is in the list
 

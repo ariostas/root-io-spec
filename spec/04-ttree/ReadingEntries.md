@@ -54,16 +54,25 @@ negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and
 step 8 of [TBasket §8](TBasket.md#8-reading) say the same.
 
 Which of the two cases applies is decided when the branch is created. For a
-`TBranchElement`, `fEntryOffsetLen` is 0 (no offset array) unless the branch is a
-container node, or `fStreamerType` is `kBase` or below, `kCharStar`, `kBits`, or
-above `kFloat16` (`root/tree/tree/src/TBranchElement.cxx:361-363`). A column of
-`Int_t` therefore has no offset array and a column of `TString` has one; `fBits`
-has one because a referenced `TObject` writes two extra bytes.
+`TBranchElement`, `fEntryOffsetLen` is 0 (no offset array) unless `fType` is
+non-zero, or `fStreamerType` is `kBase` or below, `kCharStar`, `kBits`, or above
+`kFloat16` (`root/tree/tree/src/TBranchElement.cxx:361-363`, where `btype` is the
+branch's `fType`). A top-level-object column of `Int_t` (`fType` 0) therefore has
+no offset array, while the same `Int_t` as a member of a split collection
+(`fType` 31 or 41) has one, because each entry holds a different number of
+values; a column of `TString` has one either way, and `fBits` has one because a
+referenced `TObject` writes two extra bytes.
+
+> Demonstrated by `ttree/split-nested`: `fDet.fHits.fId`, an `Int_t` at `fType`
+> 41, has `fNevBufSize` 1000 and entry offsets `78, 86, 86`.
 
 ## 2. Which branches hold data at all
 
-A node with sub-branches reads its own basket only when `fType` is 3 or 4
-(`root/tree/tree/src/TBranchElement.cxx:2749-2752`). Every other interior node
+A `TBranchElement` with sub-branches reads its own basket only when `fType` is 3
+or 4 (`root/tree/tree/src/TBranchElement.cxx:2749-2752`). A `TBranchSTL` has
+sub-branches too and also reads its own basket first, one `TIndArray` entry per
+entry (`root/tree/tree/src/TBranchSTL.cxx:381`, then the element branches at
+`:453`; [Splitting §7](Splitting.md#7-reading)). Every other interior node
 (`fType` 1, `fType` 2, and `fType` 0 with `fID` −2) consumes **zero bytes** and
 exists only to be descended through. ROOT's own test for a split node is at
 `root/tree/tree/src/TBranchElement.cxx:5692`.
@@ -434,8 +443,8 @@ read a column ROOT would have left empty.
 
 Normative, for one entry of one branch.
 
-1. If the branch has sub-branches and `fType` is not 3 or 4, it holds nothing:
-   read its children and stop (§2).
+1. If the branch has sub-branches, is not a `TBranchSTL`, and `fType` is not 3
+   or 4, it holds nothing: read its children and stop (§2).
 2. If `fBranchCount` is set, or the element is a `kStreamLoop`, read the
    counter's branch's entry first and keep its value as *n* (§4).
 3. Locate this entry's byte range (§1).

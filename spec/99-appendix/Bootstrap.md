@@ -131,13 +131,13 @@ among them `TBasket` and `TBranchClones`.
 | `TRef`, `TRefArray` | a referenced `TObject` writes two extra bytes and the reader desynchronises by two | [References §3](../02-serialization/References.md#3-tref), [§4](../02-serialization/References.md#4-trefarray) |
 | `TDatime` | expects framing; it is four bare bytes | [Records and keys §3.7](../01-container/Record.md#37-fdatime) |
 | `std::string` | no file contains an info for it at all | [Collections §10](../02-serialization/Collections.md#10-stdstring) |
-| `TCollection`, `TSeqCollection` | reachable only through the incorrect infos above; a reader that never follows those never meets them | not specified, deliberately |
+| `TCollection` | as a base of `TList` only through the incorrect info above; as a real frame, version 3, written by `TBtree` through `TSeqCollection` | [TMap, TExMap and TBtree §3.2](../03-classes/Containers.md#32-the-elements-come-from-tcollection-through-a-class-that-adds-nothing) |
 | `TBranchClones` | no streamer info at all; derives from `TBranch` and streams ten of its fields individually instead of a base | [TBranchElement §13](../04-ttree/TBranchElement.md) |
 | `TBasket` | no streamer info at all, and its fields sit inside the key | [TBasket](../04-ttree/TBasket.md) |
 | `TTreeIndex` | no streamer info at all, and its arrays carry no is-present flag | [Auxiliary classes §2](../04-ttree/Auxiliary.md#2-ttreeindex-the-one-class-with-no-streamer-info) |
 | `TStringLong` | appears as element code 62, so the reader looks for a frame; no file carries an info for it either | [Conventions §5.1.1](../00-conventions.md#511-tstringlong-the-same-idea-with-a-four-byte-count) |
 | `TQObject` | its `kBase` element occupies zero bytes, and a modern file has no info for it at all; following the element desynchronises immediately. Every `TPad` and `TCanvas` has one | [Streamer-driven reading §4.4](../02-serialization/StreamerDriven.md), [Canvas §3](../03-classes/Canvas.md) |
-| `TCanvas` | seven trailing bytes its info does not mention, five of them `fBits` flags | [Canvas](../03-classes/Canvas.md) |
+| `TCanvas` | seven trailing fields, eight bytes, that its info does not mention; six of the bytes, five `fBits` flags and the transient `fBatch`, correspond to nothing an info could describe | [Canvas](../03-classes/Canvas.md) |
 | `TMap`, `TExMap`, `TBtree` | pointer-streamed pairs, a forced hash bit, and a `TCollection` frame reached through a class that adds nothing | [TMap, TExMap and TBtree](../03-classes/Containers.md) |
 | `TMatrixTSym` | the elements sit past the byte count and the file has no info for the class, only for its base. A reader that stops where the byte count says loses the whole matrix and reports nothing | [Matrices and vectors](../03-classes/Matrix.md) |
 | `RooRealVar`, `RooLinkedList`, `RooAbsBinning`, `RooRefArray`, `RooCategory` | a `RooRealVar` has no info in the file at all; a `RooLinkedList`'s info names a member that is not on disk and omits the object slots that are, and the object has no byte count to catch it | [RooFit](../03-classes/RooFit.md) |

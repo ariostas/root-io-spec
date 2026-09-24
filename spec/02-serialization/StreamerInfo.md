@@ -655,9 +655,13 @@ Then, for the current variant:
 1. `id = 0`; `acc_str(id, class name)`.
 2. **Bases.** Skipped entirely for a class with a collection proxy or a
    `std::pair` (`root/io/io/src/TStreamerInfo.cxx:3594`). Otherwise, for each
-   element that is a base, in order: `acc_str(id, element name)`, then
-   `acc_num(id, fBaseCheckSum)`, where `fBaseCheckSum` is `fMaxIndex[1]` (§9)
-   (`root/io/io/src/TStreamerInfo.cxx:3596-3602`).
+   element that is a base, in order: `acc_str(id, element name)`, then, **only
+   if the element is a `TStreamerBase`**, `acc_num(id, fBaseCheckSum)`, where
+   `fBaseCheckSum` is `fMaxIndex[1]` (§9)
+   (`root/io/io/src/TStreamerInfo.cxx:3596-3602`). A base that is an STL
+   collection is a `TStreamerSTL` whose `IsBase()` is true
+   ([Streamer-driven reading §4.3](StreamerDriven.md#43-a-base-class-that-is-an-stl-container)) and folds its name alone;
+   it has no `fBaseCheckSum`.
 3. **Members.** Walk the elements again from the start, skipping bases. For each:
    - if the member is an enum, `acc_num(id, 1)`. The test, which ROOT itself uses,
      is `fType` **3** with an `fTypeName` that is not a primitive spelling (§11.1)

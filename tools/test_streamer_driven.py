@@ -1357,5 +1357,33 @@ class RefArrayLength(unittest.TestCase):
         self.assertEqual(end - start, 31)
 
 
+class ChoosingAnInfo(unittest.TestCase):
+    """SchemaEvolution.md 4 step 1: a lone info stands in for version 1 only.
+
+    ROOT reads a version 1 it has no info for with the class's current layout
+    (TBufferFile.cxx:3505) and skips any other unmatched version. Taking the
+    lone info for every version let two g4tools TH1D records read one frame off
+    at every level and still land on their byte counts (erratum 7).
+    """
+
+    def decoder(self, class_version):
+        si = replace(info(element("fX"), name="C"), class_version=class_version)
+        return rootfile.Decoder(b"", 0, [si])
+
+    def test_an_exact_match_is_taken(self):
+        self.assertEqual(self.decoder(3).info_for("C", 3).class_version, 3)
+
+    def test_version_1_borrows_the_only_info(self):
+        self.assertEqual(self.decoder(2).info_for("C", 1).class_version, 2)
+
+    def test_an_unknown_version_borrows_the_only_info(self):
+        # A TStreamerBase with fBaseVersion -1 and no checksum.
+        self.assertEqual(self.decoder(2).info_for("C", -1).class_version, 2)
+
+    def test_any_other_version_is_not_readable(self):
+        with self.assertRaises(rootfile.UnsupportedClass):
+            self.decoder(1).info_for("C", 3)
+
+
 if __name__ == "__main__":
     unittest.main()

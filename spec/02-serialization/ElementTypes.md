@@ -704,10 +704,11 @@ read with the element's class known
 **The member-wise flag is in that version word**: `kStreamedMemberWise`
 (`0x4000`), as described in
 [Buffer framing §3.1](Buffer.md#31-kbytecountvmask-and-kstreamedmemberwise-are-the-same-number).
-When it is set, a second version word, for the value class, follows for
-sufficiently recent `TStreamerInfo` versions
-(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1168`,
-`root/io/io/src/TStreamerInfoReadBuffer.cxx:1273`). When it is clear, the
+When it is set, a second version word, for the value class, follows from
+`TStreamerInfo` version 8 for a collection (`kSTL`,
+`root/io/io/src/TStreamerInfoReadBuffer.cxx:1273`) and from version 9 for a
+pointer to one (`kSTLp`, `root/io/io/src/TStreamerInfoReadBuffer.cxx:1168`); the
+two thresholds differ ([Collections §6](Collections.md#6-older-files)). When it is clear, the
 collection is written object-wise and `ver` is the writer's `TStreamerInfo` class
 version (§8.1).
 
@@ -752,12 +753,16 @@ two as separate skip and convert paths, but they change no bytes.
    The 18 elements that carry 300 instead are all `TStreamerSTL`, and all
    written by g4tools.
 4. `fArrayLength` is the **fixed** extent and nothing else, so it is positive for
-   a `kOffsetL` code in `[20, 39]` and for 521 (§8.2), and **0** for a `kOffsetP`
-   code in `[40, 59]`, whose length is its counter's value at read time. It is 0
-   for a scalar, with one exception: an object-pointer code (63, 64, 68 or 69)
+   every `kOffsetL` form: a basic code in `[20, 39]`, the object codes 81, 82,
+   85, 86 and 87 (§7), and 521 (§8.2). It is **0** for a `kOffsetP` code in
+   `[40, 59]` and for 501, whose length is a counter's value at read time. On a
+   `TStreamerSTL` it is the number of collections in the frame, 0 for one
+   (`Collections.md` §11.1): code 500 carries no `kOffsetL` on disk, which ROOT
+   adds only when reading (`root/core/meta/src/TStreamerElement.cxx:2126-2128`).
+   It is 0 for a scalar, with one exception: an object-pointer code (63, 64, 68 or 69)
    represents a fixed array as `fArrayLength > 1` with **no** `kOffsetL` added
    (§7), so those have an extent while looking scalar. Measured over `data/` and both corpora: 651
-   `kOffsetL` elements, all positive; 2229 `kOffsetP` elements, all 0; and of the
+   basic `kOffsetL` elements, all positive; 2229 `kOffsetP` elements, all 0; and of the
    28 856 remaining, exactly one with an extent, `ElementZoo.fPtrArr`, an
    `EPoint*[2]` in `serialization/element-types`. The two 521 elements of
    `varyingArray_51508.root` have `fArrayLength` 5.

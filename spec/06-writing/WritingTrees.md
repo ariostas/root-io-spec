@@ -639,8 +639,11 @@ the record in that one field and in nothing a reader checks
    and the array is strictly increasing in between.
 3. `fBasketSeek[i]` points at a record whose key reports the same `fSeekKey`, and
    `fBasketBytes[i]` equals that key's `fNbytes`.
-4. `fMaxBaskets >= fWriteBasket + 1`, and the three counted arrays each hold
-   exactly `fMaxBaskets` values.
+4. `fMaxBaskets == max(fWriteBasket + 1, 10)`, the value `TBranch::Streamer`
+   writes (`root/tree/tree/src/TBranch.cxx:3190-3193`), and the three counted
+   arrays each hold exactly `fMaxBaskets` values. A smaller value parses, but it
+   is not what ROOT writes, and gate 2 applies
+   [TBranch](../04-ttree/TBranch.md) invariant 1, which requires the floor.
 5. A branch's `fEntryOffsetLen` is non-zero **iff** its baskets carry an offset
    array.
 6. In a basket, `fLast == fKeylen +` the data length, and the offset array's first

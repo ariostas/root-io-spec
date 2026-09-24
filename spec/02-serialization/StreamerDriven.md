@@ -179,7 +179,7 @@ its members inline with no byte count and no version word, and the base version
 must be taken from the element record. A comment in ROOT's source at that point
 calls this a design defect
 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1405-1409`). See
-`02-serialization/Collections.md`.
+[Collections](Collections.md).
 
 ### 4.2 A suppressed `TObject` base
 
@@ -620,14 +620,21 @@ To read an object whose class, version and byte range are known:
        `fTypeName` otherwise, and apply this procedure recursively. If the
        object has no byte count and its class derives from `TObject`, choose
        between its two readings as §7.1 says.
-    4. If `fType` is 500 or 501 on a `TStreamerSTL`, read a collection as
-       specified in `02-serialization/Collections.md`.
+    4. If `fType` is 500 on a `TStreamerSTL` or `TStreamerSTLstring`, read a
+       collection as specified in [Collections](Collections.md). No
+       `TStreamerSTL` carries 501
+       ([Element types](ElementTypes.md) invariant 3).
     5. If `fType` is 500 on any other element, the member is opaque: seek to the
        end of its byte count.
-    6. Otherwise consume the fixed number of bytes
+    6. If `fType` is 501 or 521 on a `TStreamerLoop`, read the counted array of
+       objects of [Element types §8](ElementTypes.md#8-kstreamer-500-and-kstreamloop-501),
+       taking the count from the element named in `fCountName`; 521 repeats it
+       `fArrayLength` times
+       ([§8.2](ElementTypes.md#82-a-fixed-array-of-loops-is-521)).
+    7. Otherwise consume the fixed number of bytes
        [Element types](ElementTypes.md) specifies, taking any count from the
        element named in `fCountName`.
-    7. Record the value. If the element's code is 3, 6 or 13, retain it for
+    8. Record the value. If the element's code is 3, 6 or 13, retain it for
        later elements: any of the three can be a counter
        ([Element types §2.1](ElementTypes.md#21-kcounter-6)).
 4. Compare the position reached with the end implied by the object's byte count.

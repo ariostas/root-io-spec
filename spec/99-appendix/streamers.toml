@@ -125,7 +125,7 @@ spec = "[Auxiliary structures §2](../04-ttree/Auxiliary.md)"
 
 [class.TCollection]
 status = "specified"
-spec = "[Streamer-driven reading §7](../02-serialization/StreamerDriven.md) — reachable only through `TList`'s fictional streamer info, which no reader should follow"
+spec = "[TMap, TExMap and TBtree §3.2](../03-classes/Containers.md#32-the-elements-come-from-tcollection-through-a-class-that-adds-nothing) — one frame at version 3: `TObject`, `fName`, a count and the objects. `TBtree` writes it through `TSeqCollection`; `TList`'s streamer info names `TCollection` as a base, and that info is not to be followed"
 
 [class.TMatrixTSym]
 status = "specified"

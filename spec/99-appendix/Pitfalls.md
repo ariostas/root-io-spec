@@ -34,8 +34,9 @@ walker but not a reader.
 [Records and keys §1](../01-container/Record.md#1-the-record-chain)
 
 **A directory record is not identified by its class name.** A `TFile` subclass,
-such as CMS's `TStorageFactoryFile`, is still a directory, and RNTuple's minimal
-writer leaves the name empty. Recognise the structure.
+such as CMS's `TStorageFactoryFile`, is still a directory. Recognise the
+structure; a key-list entry names `TDirectory` or `TDirectoryFile`, but the top
+directory's own key carries whatever `TFile` subclass wrote the file.
 [Directories §6.2](../01-container/Directory.md#62-the-key-list-record-cannot-be-identified-from-its-key)
 
 **`fSeekParent` is not reliably the parent directory.** Before ROOT 6.38 it held

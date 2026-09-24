@@ -22,7 +22,7 @@ whereas the `ClassDef` macro names the template. This table checks the latter:
 
 | Class | Class version | `Streamer` | What a reader does |
 |---|---|---|---|
-| `TMatrixTBase` | 5 | none of its own | nothing: its info describes the prefix of every matrix in the family |
+| `TMatrixTBase` | 5 | guarded above version 1 (`root/math/matrix/src/TMatrixTBase.cxx:1057`); version 1 is refused | nothing: its info describes the prefix of every matrix in the family |
 | `TMatrixT` | 4 | guarded above version 2 (`root/math/matrix/src/TMatrixT.cxx:3155`) | nothing for a current file — §3 |
 | `TMatrixTSym` | **2, and never on disk** | `extending` (`root/math/matrix/src/TMatrixTSym.cxx:2030`) | **§2** |
 | `TMatrixTSparse` | 3 | delegating | nothing |

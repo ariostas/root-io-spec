@@ -388,7 +388,7 @@ backward-compatibility branches:
 
 | Condition | Difference |
 |---|---|
-| `version < 8` (`kSTL`), `< 9` (`kSTLp`) | **no second version word at all**; the value-class version is taken as 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1166-1169`) |
+| `version < 8` (`kSTL`), `< 9` (`kSTLp`) | **no second version word at all**; the value-class version is taken as 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1271-1274` for `kSTL`, `:1166-1169` for `kSTLp`) |
 | `version < 7` | the body was written even when `count` was 0 (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1197`) |
 | `version < 9` (`kSTLp`), `< 8` (`kSTL`) | **schema evolution of the value class is refused**: ROOT reports that the old `TStreamerInfo` "did not record enough information to convert" and skips the member entirely (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1160-1164` and `:1264-1268`). A reader with the file's own info does not need the conversion and can read the member as written |
 
@@ -904,8 +904,14 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
     1. Read `count:i32`.
     2. Read `count` elements as §3, dispatching on `fTypeName`, not on `fCtype`.
 5. If bit 14 is set:
-    1. Read a bare `Version_t` for the value class; if it is 0 or less, read a
-       `u32` checksum and use it to select the value class's streamer info.
+    1. If the version word of step 1, with bit 14 masked off, is at least 8 (at
+       least 9 for a pointer to a collection, §11.3), read a bare `Version_t`
+       for the value class; below that there is none and the value class's
+       version is unknown (§6). If the word is 0 or less, apply
+       [Buffer framing §4](Buffer.md#4-a-version-word-of-0-has-two-different-meanings):
+       no checksum when the file has an info for the value class with
+       `fClassVersion` 0, and otherwise a `u32` checksum that selects the value
+       class's streamer info (`root/io/io/src/TBufferFile.cxx:3093-3097`).
     2. Read `count:i32`.
     3. For each member of the value class, in order, read `count` values as a
        column, framed per §4.1.
@@ -984,7 +990,7 @@ Against `root/io/doc/TFile/*.md`, which documents release 3.02.06:
 | 11 | — | Nothing states that a `std::string` member's version word is `TStreamerInfo`'s 10 and not `std::string`'s 2 (§10) |
 | 12 | — | Nothing states that a pair's checksum need not identify it. Three distinct pairs share one in `serialization/pairs`, so a reader that looks a pair up by checksum rather than by name decodes two of them as the wrong type (§8.2) |
 | 13 | — | Nothing states that an empty member-wise collection writes no columns at all, nor that this changed at `TStreamerInfo` version 6 (§4.3) |
-| 14 | — | Nothing states that at `TClonesArray` version 3 ROOT tests the bypass bit **before** `TObject::Streamer` overwrites `fBits`, so it tests its own in-memory bit rather than the file's (`root/core/cont/src/TClonesArray.cxx:756-761`). A reader MUST use the value in the record; ROOT's own behaviour at that version cannot be used as the reference (§12) |
+| 14 | — | Nothing states that at `TClonesArray` version 3 ROOT tests two different bits at two different times. It tests `BIT(14)` of its own in-memory `fBits` **before** `TObject::Streamer` overwrites them, and sets `BIT(12)` if so (`root/core/cont/src/TClonesArray.cxx:756-758`); then, after the overwrite, it decides with `CanBypassStreamer()`, which tests `BIT(12)` of the bits **read from the file** (`:811`), a bit that meant nothing to a version-3 writer. A reader MUST use bit 14 of the record's own `fBits` at version 3; ROOT's own behaviour at that version cannot be used as the reference (§12) |
 
 ## 16. Reference files
 

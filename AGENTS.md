@@ -33,10 +33,10 @@ reproduced here separate from one a survey merely reported, because five of the
 survey's claims did not survive re-measurement.
 
 One sub-plan is open: `PLAN-review.md`, the second consistency review
-(2026-09-24), whose items are V1–V44. Its Phase A (nine wrong published claims)
-is done; `PLAN.md` §8.1 criterion 1 does not hold again until Phase B lands. A
-sub-plan is deleted once discharged, with anything durable moved into `PLAN.md`
-or `spec/` first.
+(2026-09-24), whose items are V1–V44. Phases A and B (twenty wrong or
+contradictory claims) are done; `PLAN.md` §8.1 criterion 1 does not hold again
+until the stale figures of Phase D are corrected. A sub-plan is deleted once
+discharged, with anything durable moved into `PLAN.md` or `spec/` first.
 
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read it before writing spec text; this file covers how to work here, not

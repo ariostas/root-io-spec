@@ -41,18 +41,18 @@ From [File header](../01-container/FileHeader.md),
 |---|---|---|
 | Bytes 0-3 are `root`, and `0 <= fBEGIN <= fEND <= filesize` | FileHeader 1, 2, 5 | ROOT: it refuses to open |
 | `fEND` equals the last free entry's `fFirst` | FreeSegments 8, WritingFiles 14.1 | checked |
-| The last free entry's `fLast` is strictly greater than `fEND` | FreeSegments 8 | nothing, and the next writer overwrites data |
+| The last free entry's `fLast` is strictly greater than `fEND` | FreeSegments 8.2, WritingFiles 14.2 | checked; in ROOT nothing, and the next writer overwrites data |
 | `10 <= fNbytesName <= 10000`, and it equals the root directory record's `fKeylen` plus the two counted strings | FileHeader 10.4, Directory 9 | ROOT range-checks only |
 | Walking from `fBEGIN` by `fNbytes` reaches exactly `fEND`, with no overlap and no unclaimed bytes | Record 8.8 | checked |
-| A freed span begins with a negative `fNbytes` | FreeSegments 4 | nothing, until a reader walks the chain |
+| A freed span begins with a negative `fNbytes` | FreeSegments 4, 8.6 | checked; in ROOT nothing, until a reader walks the chain |
 | A record placed in a span with bytes to spare is followed by a four-byte marker holding the remainder, and that remainder is in the free list | FreeSegments 8.6, WritingFiles 14.13 | checked |
 | No free segment is 1, 2 or 3 bytes long: the allocator skips a span it cannot leave a marker in | FreeSegments 8.10, WritingFiles 14.14 | checked |
 | Keys sharing a name have distinct cycles in descending order, and none is 0 | Directory 9.14, WritingFiles 14.15 | checked, but nothing on ROOT's side: it takes the first match, so the wrong order returns the oldest copy |
 | A negative `fCycle` is the keep flag, and its magnitude is the cycle; a writer copying keys must not normalise the sign away | Record 3.8, WritingFiles 8.2 | nothing |
 | No two **live** records overlap. A record placed in released space correctly overwrites the bytes of the one that was there | WritingFiles 14.16 | nothing; `tools/rootwrite.py` checks it while writing, because a finished file does not record which of two records was meant to be live |
 | `fSeekFree`, `fSeekInfo` and `fSeekKeys` each name a record whose `fNbytes` matches the header's or the directory's copy | FileHeader 10.6, 10.8, Directory 9 | checked |
-| Every key image in the key list is byte-identical to the first `fKeylen` bytes of the record at its own `fSeekKey` | Directory 9 | nothing |
-| `fSeekPdir` is 0 in the root directory record's key and `fBEGIN` in every other key of that directory | WritingFiles 4.1 | nothing, but `TFile::Recover` filters on it |
+| Every key image in the key list agrees with the key of the record at its own `fSeekKey`, field by field, with `TDirectory` and `TDirectoryFile` counted as one class name | Directory 9.11, WritingFiles 14.5 | checked; in ROOT nothing, because ROOT frames the read from the image |
+| `fSeekPdir` is 0 in the root directory record's key and `fBEGIN` in every other key of that directory | Record 8.6, WritingFiles 14.8 | checked in part: Record 8.6 requires a directory, not the right one. In ROOT nothing, but `TFile::Recover` filters on it |
 | A subdirectory's `fNbytesName` is its own record's `fKeylen` alone, so its fields begin where its key ends | Directory 9.3, WritingFiles 5.2 | checked |
 | A subdirectory's key names its class `TDirectory`, and its `fKeylen` is sized for that spelling and not for `TDirectoryFile` | WritingFiles 5.2, Directory 6.5 | nothing; ROOT does not see the four-byte difference, because it parses the strings rather than trusting `fKeylen` |
 | Every key image occupies exactly its own `fKeylen` bytes in the list | Directory 9.13 | checked, with the one pre-5.34 exception the invariant names |

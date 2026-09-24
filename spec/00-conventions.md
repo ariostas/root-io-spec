@@ -130,9 +130,9 @@ word, both in a `TKey` and when a `TString` is a data member. A byte count and a
 class record appear only when a `TString` is written as a standalone object through
 a pointer, not by value.
 
-> Demonstrated by `container/file-minimal`: the `TObjString` payload ends at offset
-> 392 with `05 68 65 6c 6c 6f`, the bare counted string for `hello`, immediately
-> after the base `TObject` and with nothing in between.
+> Demonstrated by `container/file-minimal`: the `TObjString` payload ends with
+> `05 68 65 6c 6c 6f` at offsets 392 to 397, the bare counted string for `hello`,
+> immediately after the base `TObject` and with nothing in between.
 
 ### 5.1.1 `TStringLong` — the same idea with a four-byte count
 

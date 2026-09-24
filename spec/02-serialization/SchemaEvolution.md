@@ -162,7 +162,11 @@ Given a class name and a version word, a reader picks an entry from the file's
 `StreamerInfo` list:
 
 1. If the version word is positive, take the entry whose `fClassVersion` equals
-   it. If exactly one entry exists for the class, take it.
+   it. If there is none, the version word is 1, and exactly one entry exists for
+   the class, take that entry: ROOT reads a version 1 it has no info for with the
+   class's current layout (`root/io/io/src/TBufferFile.cxx:3505`), and for a
+   reader driven by the file that layout is its one info. No other version word
+   borrows another version's entry.
 2. If the version word is 0 or negative, apply
    [Buffer framing §4](Buffer.md#4-a-version-word-of-0-has-two-different-meanings):
    no checksum if some entry has `fClassVersion == 0`, otherwise read a `u32`
@@ -179,8 +183,16 @@ the class is foreign or its on-file version is below 2.
 > **A file can legitimately hold several infos for the same class with the same
 > `fClassVersion`.** Foreign classes are all written as version 1, so two
 > different layouts of the same interpreted class in one file are distinguished
-> only by checksum. Step 1's "exactly one entry" shortcut is what makes step 2
-> necessary rather than optional.
+> only by checksum, which is why step 2 matches by checksum rather than by
+> version.
+>
+> *Until 2026-09-24 step 1 took a lone entry for any version word.* That is not
+> ROOT's rule, and it hid a misreading: in the two g4tools files of
+> `gen/foreign/`, a `TH1D` record opens with two bare version words, `TH1D` 1 and
+> `TH1` 3. Read one level too shallow, `TH1` takes version 1 and `TNamed` version
+> 3, each borrows its class's only entry, and the read lands exactly on the byte
+> count. With the rule above that reading fails at `TNamed` 3 and the correct one
+> is taken ([Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count)). Erratum 7.
 
 ## 5. Codes that cannot appear in a file
 
@@ -464,6 +476,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 4 | The `fType` table lists neither the `kSkip`/`kConv`/`kCache`/`kArtificial` families nor the fact that they cannot occur | Much reverse-engineering time goes into codes that cannot occur in a file (§5) |
 | 5 | — | Nothing says a file may hold several infos for one class with the same `fClassVersion`, which is routine for foreign classes and is why checksums exist (§4) |
 | 6 | — | Nothing distinguishes a class that declares version 0 from a foreign class, though the two produce different bytes after the same version word (§2) |
+| 7 | This document, until 2026-09-24: §4 step 1 took the class's only entry for any version word | Only for version 1, as ROOT does (`root/io/io/src/TBufferFile.cxx:3505`); any other unmatched version is skipped by its byte count. The shortcut let two g4tools `TH1D` records read one frame off at every level and still end on their byte counts (§4) |
 
 ## 11. Reference files
 

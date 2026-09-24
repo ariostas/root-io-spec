@@ -585,7 +585,7 @@ class Checker:
                 o, total = o + n, total + n
             # A TKey subclass may append its own fields inside the key, so the
             # strings give a lower bound rather than the length. TBasket adds 19
-            # bytes; Record.md 3.7.
+            # bytes; Record.md 3.11.
             if rec.class_name == "TBasket":
                 # 19 bytes, or 20 when the basket has fIOBits.
                 if rec.key_len not in (total + 19, total + 20):
@@ -1048,9 +1048,14 @@ class Checker:
                 # scalar-looking exception is an object pointer, which declares a
                 # fixed array with fArrayLength and no kOffsetL
                 # (ElementTypes.md 7).
-                if 20 <= e.ftype <= 39 and e.array_length <= 0:
+                if ((20 <= e.ftype <= 39 or e.ftype in (81, 82, 85, 86, 87, 521))
+                        and e.array_length <= 0):
                     self.bad("ElementTypes 11.4",
                              f"{where}: kOffsetL fType {e.ftype} with fArrayLength "
+                             f"{e.array_length}")
+                elif e.ftype == 501 and e.array_length != 0:
+                    self.bad("ElementTypes 11.4",
+                             f"{where}: kStreamLoop carries fArrayLength "
                              f"{e.array_length}")
                 elif 40 <= e.ftype <= 59 and e.array_length != 0:
                     self.bad("ElementTypes 11.4",
@@ -2759,9 +2764,12 @@ class Checker:
             self.bad("FreeSegments 8.2", f"last entry fLast {last} does not exceed fEND")
         if last < KSTART_BIG_FILE:
             self.bad("FreeSegments 8.2", f"last entry fLast {last} below {KSTART_BIG_FILE}")
-        if last > KSTART_BIG_FILE and last % 1000000000 != 0:
+        # TFile::Recover sets fEND + 1e9 rather than a multiple (TFile.cxx:2190).
+        if (last > KSTART_BIG_FILE and last % 1000000000 != 0
+                and last != self.header.end + 1000000000):
             self.bad("FreeSegments 8.2",
-                     f"last entry fLast {last} is not a multiple of 1e9 above {KSTART_BIG_FILE}")
+                     f"last entry fLast {last} is neither a multiple of 1e9 nor "
+                     f"fEND + 1e9 above {KSTART_BIG_FILE}")
 
         previous_last = None
         for f, l in segments:

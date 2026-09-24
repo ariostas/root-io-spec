@@ -200,55 +200,55 @@ TBasket 9.1.
 
 [invariant."WritingFiles 14.1"]
 by = "write-gate"
-reason = "§14: checked by check_invariants.py as FreeSegments 8.7, the header/free-list agreement."
+reason = "§14: checked by check_invariants.py as FreeSegments 8.1 (fEND is the last entry's fFirst) and 8.9 (fEND within the file)."
 
 [invariant."WritingFiles 14.2"]
 by = "write-gate"
-reason = "§14: the record walk, checked as Record 8.8 on every written file through gate 2."
+reason = "§14, as FreeSegments 8.2: the last entry's fLast exceeds fEND."
 
 [invariant."WritingFiles 14.3"]
 by = "write-gate"
-reason = "§14, as Directories 9.3 -- a subdirectory's fNbytesName is its own fKeylen."
+reason = "§14, as Directories 9.3: the root directory's fNbytesName is its fKeylen plus the two strings."
 
 [invariant."WritingFiles 14.4"]
 by = "write-gate"
-reason = "§14, as Directories 9.11: every key image agrees with the key of the record it points at."
+reason = "§14, as Directories 9.5: fSeekKeys names a record of exactly fNbytesKeys bytes."
 
 [invariant."WritingFiles 14.5"]
 by = "write-gate"
-reason = "§14, as Directories 9.13: an image occupies exactly its own fKeylen."
+reason = "§14, as Directories 9.11: every key image agrees with the key of the record it points at."
 
 [invariant."WritingFiles 14.6"]
 by = "write-gate"
-reason = "§14, as Directories 9.8: each subdirectory appears in exactly one parent's list."
+reason = "§14, through the Compression checks, each of which reads a payload by the fObjlen rule; a wrong fObjlen fails 9.2, 9.3 or 9.7."
 
 [invariant."WritingFiles 14.7"]
 by = "write-gate"
-reason = "§14, as Directories 9.12: a key-list record's key carries the owning directory's fSeekDir."
+reason = "§14: the record walk, checked as Record 8.8."
 
 [invariant."WritingFiles 14.8"]
 by = "write-gate"
-reason = "§14, as Directories 9.14: cycles within a name are distinct and descending."
+reason = "§14, in part as Record 8.6, which requires fSeekPdir to name a directory record but not the right one."
 
 [invariant."WritingFiles 14.9"]
 by = "write-gate"
-reason = "§14, as FreeSegments 8.6: a record placed in a larger span leaves a marker."
+reason = "§14, as Directories 9.3 -- a subdirectory's fNbytesName is its own fKeylen."
 
 [invariant."WritingFiles 14.10"]
 by = "write-gate"
-reason = "§14, as FreeSegments 8.7."
+reason = "§14, as Record 8.3 and Directories 9.13: the key's fKeylen matches the strings it holds. The TDirectory spelling itself is not checked."
 
 [invariant."WritingFiles 14.11"]
 by = "write-gate"
-reason = "§14, as FreeSegments 8.10: no free segment is 1, 2 or 3 bytes long."
+reason = "§14, as Directories 9.8: each subdirectory appears in exactly one parent's list."
 
 [invariant."WritingFiles 14.12"]
 by = "write-gate"
-reason = "§14, as Directories 9.12."
+reason = "§14, as Directories 9.12: a key-list record's key carries the owning directory's fSeekDir."
 
 [invariant."WritingFiles 14.13"]
 by = "write-gate"
-reason = "§14, as FreeSegments 8.6; WriterInvariants.md pairs the two explicitly."
+reason = "§14, as FreeSegments 8.6 and 8.7; WriterInvariants.md pairs them explicitly."
 
 [invariant."WritingFiles 14.14"]
 by = "write-gate"

@@ -286,6 +286,21 @@ This works because a foreign class is recorded with `fClassVersion` 1 even
 though it is written with a version word of 0; the two fixtures above show both
 halves of that.
 
+> **One case the file cannot distinguish: a foreign class whose
+> `Class_Version()` returns 0.** `TBufferFile::WriteVersion` writes 0 and a
+> checksum for every foreign class of version 0 or 1
+> (`root/io/io/src/TBufferFile.cxx:3162-3165`), and `ReadVersion` has a branch for
+> exactly this class (`:2973-2974`). Its info records `fClassVersion` 0, so the
+> rule above reads no checksum. `TStreamerInfo::Build` records no data members
+> at version 0 but does record the bases, which are written
+> ([Schema evolution §2](SchemaEvolution.md#2-class-version-0-and-foreign-classes)),
+> so the rule reads the bases four bytes early. A reader that finds an info with
+> `fClassVersion` 0 and at least one base SHOULD try both readings and keep the
+> one that ends on the byte count, as for an object with no byte count
+> ([Streamer-driven reading §7.1](StreamerDriven.md#71-an-object-with-no-byte-count));
+> with no bases there is nothing to read and the byte count resynchronises. No
+> file available here has such a class.
+
 ### 4.1 ROOT's byte-count heuristic is not a substitute
 
 When the version word is 0, ROOT reads a checksum only if the byte count is at

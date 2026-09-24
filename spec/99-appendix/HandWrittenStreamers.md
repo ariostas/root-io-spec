@@ -112,7 +112,7 @@ fails on one that is not. `gap` is the worklist.
 | `TCanvas` | `root/graf2d/gpad/src/TCanvas.cxx:2221` | specified | [TCanvas](../03-classes/Canvas.md) |
 | `TClassTree` | `root/graf2d/gpad/src/TClassTree.cxx:1102` | gap | graf2d/gpad |
 | `TClonesArray` | `root/core/cont/src/TClonesArray.cxx:744` | specified | [Collections §12](../02-serialization/Collections.md#12-tclonesarray) |
-| `TCollection` | `root/core/cont/src/TCollection.cxx:637` | specified | [Streamer-driven reading §7](../02-serialization/StreamerDriven.md) — reachable only through `TList`'s fictional streamer info, which no reader should follow |
+| `TCollection` | `root/core/cont/src/TCollection.cxx:637` | specified | [TMap, TExMap and TBtree §3.2](../03-classes/Containers.md#32-the-elements-come-from-tcollection-through-a-class-that-adds-nothing) — one frame at version 3: `TObject`, `fName`, a count and the objects. `TBtree` writes it through `TSeqCollection`; `TList`'s streamer info names `TCollection` as a base, and that info is not to be followed |
 | `TCollectionStreamer` | `root/io/io/src/TCollectionProxyFactory.cxx:160` | not-persisted | [Collections](../02-serialization/Collections.md) — the STL streaming machinery, never an object in a file |
 | `TDatime` | `root/core/base/src/TDatime.cxx:415` | specified | [Records and keys §3.7](../01-container/Record.md#37-fdatime) |
 | `TDirectory` | `root/core/base/src/TDirectory.cxx:1466` | specified | [Directory records](../01-container/Directory.md) |
