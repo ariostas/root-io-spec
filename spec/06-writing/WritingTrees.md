@@ -402,8 +402,8 @@ count:i32 = fNevBuf + 1   then   fNevBuf + 1 values of i32
 
 The first `fNevBuf` values are each entry's offset **from the start of the
 record**, so the first is `fKeylen`. The extra element is never read; it is
-whatever ROOT's array happened to hold, which is 0
-(`root/tree/tree/src/TBasket.cxx:95`, written at `:1269`).
+whatever ROOT's array happened to hold, which for a basket a writer fills and
+flushes once is 0 (`root/tree/tree/src/TBasket.cxx:95`, written at `:1269`).
 
 > An **embedded** basket, one streamed inside the tree record, writes the array
 > differently: a count of `fNevBuf` and no extra element, and a flag byte of 1 or

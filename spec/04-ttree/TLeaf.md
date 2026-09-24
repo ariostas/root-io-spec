@@ -360,8 +360,8 @@ when there is no annotation**:
 |---|---|---|
 | none, `f` | truncated mantissa, `nbits` = 12 | **3** |
 | none, `d` | a plain `Float_t` | **4** |
-| `[xmin,xmax]`, `xmin < xmax` | scaled `UInt_t`, factor `0xffffffff / (xmax − xmin)` | 4 |
-| `[xmin,xmax,nbits]`, `xmin < xmax`, `2 ≤ nbits ≤ 31` | scaled `UInt_t`, factor `(1 << nbits) / (xmax − xmin)` | 4 |
+| `[xmin,xmax]`, `xmin < xmax`, or `[xmin,xmax,nbits]` with `nbits` 32 or outside `[2, 32]` (ROOT resets it to 32) | scaled `UInt_t`, factor `0xffffffff / (xmax − xmin)` | 4 |
+| `[xmin,xmax,nbits]`, `xmin < xmax`, `2 ≤ nbits ≤ 31` | scaled `UInt_t`, factor `(1 << nbits) / (xmax − xmin)` (`root/core/meta/src/TStreamerElement.cxx:180-183`) | 4 |
 | `[0,0,nbits]`, `nbits < 15` | truncated mantissa, that `nbits` | **3** |
 | `[0,0,nbits]`, `nbits ≥ 15` | as the "none" row for that class | 3 or 4 |
 

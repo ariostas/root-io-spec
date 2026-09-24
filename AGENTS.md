@@ -33,9 +33,9 @@ reproduced here separate from one a survey merely reported, because five of the
 survey's claims did not survive re-measurement.
 
 One sub-plan is open: `PLAN-review.md`, the second consistency review
-(2026-09-24), whose items are V1–V44. Phases A to D and V41 are done; `PLAN.md`
-§8.1 criterion 1 does not hold again until the false statements in its V42 are
-corrected. A sub-plan is deleted once
+(2026-09-24), whose items are V1–V44. Phases A to D, V41 and V42's false
+statements are done, so `PLAN.md` §8.1 criterion 1 holds again; what is left is
+tooling, citation drift and wording. A sub-plan is deleted once
 discharged, with anything durable moved into `PLAN.md` or `spec/` first.
 
 `spec/00-conventions.md` holds the conventions every specification document depends

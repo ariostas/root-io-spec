@@ -96,11 +96,14 @@ what they include:
 | 1 | `kNoEnum` | since 3.3 |
 | 2 | `kReflexNoComment` | up to 5.34.18 |
 | 3 | `kNoRange` | up to 5.17 |
-| 4 | `kWithTypeDef` | up to 5.34.18 |
+| 4 | `kWithTypeDef` | up to 5.34.18, and 5.99/06 |
 | 5 | `kReflex` | up to 5.34.18 |
-| 6 | `kNoRangeCheck` | up to 5.34.18 |
-| 7 | `kNoBaseCheckSum` | up to 5.34.18 |
+| 6 | `kNoRangeCheck` | up to 5.34.18, and 5.99/06 |
+| 7 | `kNoBaseCheckSum` | up to 5.34.18, and 5.99/06 |
 | 8 | `kLatestCheckSum` | current |
+
+The eras are ROOT's own comments (`root/core/meta/inc/TClass.h:113-120`); 5.99 was
+the development series that became 6.00.
 
 **`TStreamerInfo::fCheckSum` on disk is always variant 8** as computed by the
 writing ROOT (`root/io/io/src/TStreamerInfo.cxx:447`,

@@ -2607,7 +2607,10 @@ class Checker:
                 self.bad("Directory 9.3",
                          f"subdirectory {rec.name!r}: fNbytesName {d.nbytes_name} "
                          f"!= fKeylen {rec.key_len}")
-            if not 10 <= d.nbytes_name <= 10000:
+            # TFile::Init range-checks the top directory's only
+            # (TFile.cxx:841); a subdirectory's is its fKeylen (9.3), which a
+            # long title can take past 10000.
+            if rec.offset == self.header.begin and not 10 <= d.nbytes_name <= 10000:
                 self.bad("Directory 9.4", f"fNbytesName {d.nbytes_name} outside [10, 10000]")
             if rec.offset == self.header.begin:
                 # FileHeader 10.3, which is ROOT's own open-time check

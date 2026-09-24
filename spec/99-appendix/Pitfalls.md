@@ -133,9 +133,10 @@ records the resolved type of a typedef. All of 4, 14, 16 and 17 are eight bytes.
 class other than the one you are decoding.
 [Element types §4](../02-serialization/ElementTypes.md#4-koffsetp-t-40-t-counted-pointer)
 
-**A `TStreamerSTL` element's `fType` is 500, not 300**, in everything ROOT 5 and
-later wrote. The code says `kStreamer`, but the layout is an STL collection
-anyway. [Streamer information §10](../02-serialization/StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
+**A `TStreamerSTL` element's `fType` is 500, not 300**, in everything ROOT wrote
+from 4.00/01 on, and usually before: every ROOT-written file available, back to
+3.04/02, has 500. Only third-party writers such as g4tools store 300. The code
+says `kStreamer`, but the layout is an STL collection anyway. [Streamer information §10](../02-serialization/StreamerInfo.md#10-tstreamerstl-stores-a-type-code-it-does-not-mean)
 
 **The version word inside a 500/501 frame is not the constant 10.** It is
 `TStreamerInfo`'s own class version in the writing ROOT: 8 or less before 5.27/02,

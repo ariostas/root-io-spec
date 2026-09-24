@@ -3,8 +3,11 @@
 Every layer of this specification ends with an `Invariants` section stating what
 a conforming file satisfies, whatever wrote it. There are 267 entries across 33
 documents, counting the numbered items in every section titled `Invariants`.
-Those sections are organised for a reader, by layer. This page organises the same
-material for a writer, in the order in which a file is produced, and adds the
+Those sections are organised for a reader, by layer. This page takes the ones a
+writer of the classes in [Writing](../06-writing/index.md) has to satisfy (the
+container, objects, histograms, graphs and flat trees) and orders them as a file
+is produced; split branches, references and the other standard classes are left
+out, because the writing layer does not produce them. It adds the
 column that matters most on the write side: **who notices when you get it
 wrong.**
 

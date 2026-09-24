@@ -233,8 +233,10 @@ What it points at:
 | A directory's key-list record | that directory's record offset |
 
 Zero is valid **only** for the top-level record, because the file's `fSeekDir` is
-still unset when that key is created. Everywhere else ROOT rejects a value below 64
-or beyond the file size (`root/io/io/src/TDirectoryFile.cxx:1460-1465`).
+still unset when that key is created. ROOT checks the field in one place only:
+reading a directory's key list, it stops at the first image whose `fSeekPdir` is
+below 64 or beyond the file size (`root/io/io/src/TDirectoryFile.cxx:1460-1465`).
+A record's own key is never checked, and ROOT never reads it for this field.
 
 > Demonstrated by `container/directories`: the root key has `fSeekPdir = 0`;
 > top-level keys have 100; keys inside `alpha` have 401, which is `alpha`'s own

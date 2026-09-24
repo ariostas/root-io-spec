@@ -345,7 +345,7 @@ and UUIDs.
 | **Streamer info** | A `TStreamerInfo`: the recorded member list of one version of one class. Files carry their own. |
 | **Class version** | The small integer in a class's `ClassDef`, identifying which member layout was written. Not a ROOT version. |
 | **Bootstrap class** | A class a reader MUST hardcode, because its streamer info does not describe what is actually written, or because streamer infos are themselves made of it. Listed in [Bootstrap classes](99-appendix/Bootstrap.md). |
-| **Free segment** | A byte range in the file not occupied by any record. |
+| **Free segment** | A byte range in the file occupied by no **live** record. A freed span still begins with a key-shaped header; see [Free segments](01-container/FreeSegments.md). |
 
 See [Glossary](99-appendix/Glossary.md) for the full list. RNTuple's own
 vocabulary is defined in ROOT's specification for that format and is not repeated

@@ -56,7 +56,7 @@ byteCount   version   RooAbsRealLValue base   _error  _asymErrLo  _asymErrHi
 
 _binning                     _sharedProp
 ┌──────────────────────────┬────────────────────────────────────────────────┐
-│ an object slot (§2.3)    │ a RooRealVarSharedProperties, in place (§2.2)  │
+│ object slot (Buffer §6)  │ a RooRealVarSharedProperties, in place (§2.2)  │
 └──────────────────────────┴────────────────────────────────────────────────┘
 ```
 

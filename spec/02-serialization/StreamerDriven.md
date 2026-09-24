@@ -65,8 +65,12 @@ notion of an element being suppressed. ROOT skips elements carrying the `kWrite`
 bit (`root/io/io/src/TStreamerInfoReadBuffer.cxx:791`) and elements redirected to
 a schema-evolution cache (`root/io/io/src/TStreamerInfoReadBuffer.cxx:794-806`),
 but both bits are set by `BuildOld` at read time on an in-memory copy and neither
-occurs in a file. No element of any streamer info in the reference corpus has
-`fBits` other than `0x00000000` or `0x00000040` (`kHasRange`).
+occurs in a file. No element of any streamer info in `data/` has `fBits` other
+than `0x00000000` or `0x00000040` (`kHasRange`). A file written before ROOT 6.30
+also has `kIsOnHeap` and `kNotDeleted`, `0x03000000`, on every element, because
+`fBits` was not masked then
+([Buffer framing §7](Buffer.md#7-the-tobject-base)); those two bits mean
+nothing to a reader either.
 
 **An element with `fType` of -1 consumes nothing** (§4.2).
 

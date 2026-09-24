@@ -103,9 +103,10 @@ so a reader can obtain it without decompressing anything.
 
 `TFile::WriteProcessID` appends the record the first time a reference is written
 (`root/io/io/src/TFile.cxx:3468-3482`), so `ProcessID0` is placed before the
-object whose `pidf` names it. A reader MUST NOT assume references are resolvable
-in one forward pass of the record chain; resolve them against the key list
-instead.
+object whose `pidf` names it. The object a reference *points at* has no such
+guarantee: it may be written after the `TRef` that names it, so a reader MUST NOT
+assume references are resolvable in one forward pass of the record chain; resolve
+them against the key list instead.
 
 There is no count of process ids in the file header. ROOT recovers it by walking
 the key list and counting keys whose class name is `TProcessID`

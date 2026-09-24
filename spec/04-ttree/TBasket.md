@@ -382,11 +382,13 @@ ROOT enforces two preconditions, and both are worth checking:
 > 3477, flag 80, `fIOBits` 1, and no array. The 200 counts in branch `nJet` sum to
 > 850, and `77 + 4 × 850` is 3477.
 
-> **`kGenerateOffsetMap` never applies to a `TBranchElement`.** Every
-> `TBranchElement` constructor delegates to the default `TBranch()` constructor,
-> which does not copy the tree's IO features
+> **`kGenerateOffsetMap` never applies to a `TBranchElement`.** The top-level
+> constructors delegate to the default `TBranch()` constructor, which does not
+> copy the tree's IO features
 > (`root/tree/tree/src/TBranchElement.cxx:168`,
-> `root/tree/tree/src/TBranchElement.cxx:213`). In 6.40.04 only leaflist
+> `root/tree/tree/src/TBranchElement.cxx:213`), and a sub-branch copies its
+> parent's (`root/tree/tree/src/TBranchElement.cxx:294-295`), so every branch
+> below a top-level one inherits the empty set. In 6.40.04 only leaflist
 > branches therefore have a non-zero `fIOBits`, and a reader will meet the
 > feature only on those; `ttree/basket-iofeatures` is leaflist-only for this
 > reason. `PLAN.md` §7.1 records this as a probable defect.

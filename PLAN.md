@@ -23,10 +23,9 @@ files and three large Open Data files. Two gaps closed with new specification:
 read-only reviewers went over every document, the front matter and `tools/` at
 `385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
 literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
-same day, and its stale figures (V27–V30) with a check that keeps them current.
-§8.1 release criterion 1 does **not** hold until the false statements among its
-V42 items are corrected (V41's were on 2026-09-24, and V25, the other open doubt,
-was settled with a ROOT run and was not an error); about thirty more statements are contradictory, stale or narrower
+same day, and its stale figures (V27–V30) with a check that keeps them current;
+then the arithmetic slips (V41) and the false statements among its V42 items,
+so §8.1 release criterion 1 **holds again** as of 2026-09-24; about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three
@@ -40,7 +39,7 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 89 / 2319, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1823, 0 failures |
+| Source citations checked | 1827, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 101 files, 0 failures |
@@ -714,6 +713,17 @@ what satisfied it:
    ROOT-written file: a free span's marker can be missing (6.34's RNTuple writer),
    and a member-wise base is one column per member, not one read per element.
    Both were fixed the same day, with the ROOT commit and line that explain them.
+
+   The second consistency review (`PLAN-review.md`) broke it again on 2026-09-24,
+   and this time no failing check was involved: nine claims that produce wrong
+   bytes when followed (its V1–V9), eleven procedures and invariants that
+   contradicted their own documents (V10–V20), about fifteen stale figures
+   (V27–V28), five arithmetic slips (V41) and ten more false statements among
+   what it had filed as wording (V42). All were corrected the same day, and the
+   criterion holds again as of 2026-09-24. Three checks were added so the
+   patterns behind them cannot recur silently: `check_figures.py` for the
+   figures, the unit tests run with the submodule, and failures that used to
+   pass silently in `generate.py`, `inventory.py` and `--ignore`.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.

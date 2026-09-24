@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phases A to D (V1–V30), V31, V32 and V41 done 2026-09-24.** V6 turned out
+**Status: open. Phases A to D (V1–V30), V31, V32, V41 and V42's false statements done 2026-09-24; §8.1 criterion 1 holds again.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -793,7 +793,7 @@ statements rather than wording: `TLeaf.md`'s `nbits ≤ 31`, `StreamerDriven.md`
 "ROOT 5 and later" for `fType` 500, `RooFit.md`'s diagram pointing at §2.3, and
 `SchemaEvolution.md`'s "up to 5.34.18". Criterion 1 waits on those as well.
 
-### V42. Wording a reader would misread ☐
+### V42. Wording a reader would misread ◐
 
 `TLeaf.md:364` `nbits ≤ 31` excludes the legal 32 (`TStreamerElement.cxx:141-148`;
 `ElementTypes.md` §5 has it right); `TBranchElement.md:45` a column headed
@@ -839,6 +839,24 @@ right); `05-rntuple/index.md:53` "the three errata in between"; `WritingHistogra
 that covers five of the layers' invariant sections; `Formula.md:21` `TFormula`
 v6 lived between `v3-10-02` (5) and `v4-00-08` (7), so the "—" release column
 may understate.
+
+**Factual subset done.** Ten were false statements, each checked before it was
+changed: `TLeaf.md` `nbits` 32; `StreamerDriven.md` `fBits` (true of `data/`, not
+of pre-6.30 files); `Buffer.md` "cannot be written" (written, then an error);
+`StreamerInfo.md` §6.1's "strict" row; `Record.md` §3.6 `fSeekPdir` (checked
+only on key-list images); `Directory.md` invariant 4 (the top directory only,
+and the check now matches); `FileHeader.md`'s "only to detect truncation";
+`SchemaEvolution.md`'s variant eras; `Pitfalls.md`'s `fType` 500 (every ROOT file
+available has it back to 3.04/02, not only ROOT 5); `RooFit.md`'s diagram
+reference; `TBasket.md`'s constructor sentence; the Conventions free-segment
+definition; the "extra offset slot is 0" in two documents; `References.md`'s two
+sentences; `WriterInvariants.md`'s scope. `Formula.md`'s "—" for `TFormula` v6
+was right: that version lived three days in 2004 and no tag has it, now said.
+Left, as wording or missing detail: `TBranchElement.md`'s `hasCustomStreamer`
+note, `FileHeader.md` §9's "100 bytes", the Directory walk wording, the RNTuple
+index's "three errata", the `WritingHistograms` kind label, the `StreamerInfo`
+key's `fTitle`, the Extra column's order, `streamers.toml`'s headers, and the
+`Compression 9.5` check strength.
 
 ### V43. Whether `TBranchElement` invariant 5 is an invariant ☐
 

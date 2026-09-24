@@ -18,7 +18,7 @@ document records.
 |---|---|---|---|
 | `TFormula` | 1 – 3 | ≤ 3.10 | hand-decoded by `ROOT::v5::TFormula::Streamer`; §4 |
 | `TFormula` | 4, 5, 7, 8 | 3.10 – 6.02 | streamer-info driven, read into `ROOT::v5::TFormula` |
-| `TFormula` | **6** | — | **ROOT 6 refuses it**: the dispatch is `v <= 8 && v > 3 && v != 6`, and 6 falls through to `Error("Streamer","Reading version %d is not supported")` (`root/hist/hist/src/TFormula.cxx:3806`, `root/hist/hist/src/TFormula.cxx:3922-3924`) |
+| `TFormula` | **6** | none: it lived three days in January 2004 (root commits `2b412e44cbd` to `ad78b5a6708`), and no release tag has it | **ROOT 6 refuses it**: the dispatch is `v <= 8 && v > 3 && v != 6`, and 6 falls through to `Error("Streamer","Reading version %d is not supported")` (`root/hist/hist/src/TFormula.cxx:3806`, `root/hist/hist/src/TFormula.cxx:3922-3924`) |
 | `TFormula` | 9 | **6.03/04 only** | the new class's first shipped version |
 | `TFormula` | 10 – 14 | 6.04/00 – current | the new class; 14 is current |
 | `TF1` | 1 – 4 | ≤ 3.10 | hand-decoded by `ROOT::v5::TF1Data::Streamer`; §4 |

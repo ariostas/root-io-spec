@@ -449,7 +449,9 @@ Do not use `fSeekParent` in step 3 (§4.3).
 2. The directory fields begin at `fSeekDir + fNbytesName`.
 3. `fNbytesName` equals `fKeylen` for a subdirectory, and `fKeylen` plus the
    name and title counted strings for the root directory.
-4. `10 <= fNbytesName <= 10000` (`root/io/io/src/TFile.cxx:841`).
+4. For the top directory, `10 <= fNbytesName <= 10000`
+   (`root/io/io/src/TFile.cxx:841`). ROOT checks no other directory's, which is
+   its `fKeylen` (invariant 3) and can pass 10000 with a long title.
 5. `fSeekKeys` is either 0, or the offset of a record whose `fNbytes` equals
    `fNbytesKeys`.
 6. That record's payload begins with a count, and holds exactly that many key

@@ -73,9 +73,11 @@ definition of where an object ends. This allows a class with an unknown layout t
 be skipped, and it is how ROOT recovers from a `Streamer` that is out of sync
 with the data.
 
-A byte count larger than `kMaxMapCount` cannot be written
-(`root/io/io/src/TBufferFile.cxx:351-354`), which caps a single serialized
-object at just under 1 GiB.
+A byte count of `kMaxMapCount` or more cannot be represented: ROOT writes it
+anyway, OR-ed with `kByteCountMask` into a word it no longer fits, and only then
+reports an error (`root/io/io/src/TBufferFile.cxx:348-354`). The result is a
+corrupt count, so a single serialized object is capped in practice at just under
+1 GiB.
 
 ### 2.2 Two code paths, one encoding
 

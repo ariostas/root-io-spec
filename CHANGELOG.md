@@ -11,6 +11,32 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Ten more false statements corrected**, which the second review had filed as
+  wording.
+  - [`TLeaf.md`](spec/04-ttree/TLeaf.md) §7: `nbits` 32 is legal and uses the
+    `0xffffffff` factor; a value outside `[2, 32]` is reset to 32.
+  - [`Directory.md`](spec/01-container/Directory.md) invariant 4: only the top
+    directory's `fNbytesName` is range-checked; a subdirectory's is its
+    `fKeylen`, and a long title can take it past 10000.
+  - [`Record.md`](spec/01-container/Record.md) §3.6: ROOT checks `fSeekPdir`
+    only on key-list images, never on a record's own key.
+  - [`Pitfalls.md`](spec/99-appendix/Pitfalls.md): `fType` 500 on a
+    `TStreamerSTL` is in every ROOT-written file available, back to 3.04/02; 300
+    comes from third-party writers.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §1: files
+    before ROOT 6.30 have `0x03000000` in every element's `fBits`.
+  - [`Buffer.md`](spec/02-serialization/Buffer.md) §2.1: an oversized byte count
+    is written corrupt, and only then reported.
+  - [`SchemaEvolution.md`](spec/02-serialization/SchemaEvolution.md) §3:
+    checksum variants 4, 6 and 7 also cover 5.99/06.
+  - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §1: the unused last
+    offset slot is not always 0.
+  - [`References.md`](spec/02-serialization/References.md) §2.2: the process-id
+    record comes first; the referenced object may not.
+  - Smaller: `StreamerInfo.md` §6.1's version-1 row, `FileHeader.md`'s
+    `fEND` comparison, `TBasket.md`'s constructor sentence, the Conventions
+    definition of a free segment, and `RooFit.md`'s diagram reference.
+
 - **Arithmetic and count slips corrected.**
   - [`ElementLists.md`](spec/06-writing/ElementLists.md) §4 and §8: a file of
     one `TObjString` carries that one info; §4's nine classes are needed by the

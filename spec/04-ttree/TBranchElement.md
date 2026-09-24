@@ -42,7 +42,7 @@ The eleven members follow the `TBranch` base in declaration order
 (`root/tree/tree/inc/TBranchElement.h:60-84`). The class version is 10
 (`root/tree/tree/inc/TBranchElement.h:255`).
 
-| # | Member | `fType` | C++ | Meaning |
+| # | Member | Element code | C++ | Meaning |
 |---|---|---|---|---|
 | 0 | `TBranch` | 0 | base | everything in [TBranch §2](TBranch.md#2-layout) |
 | 1 | `fClassName` | 65 | `TString` | the class whose element list `fID` indexes (§5) |

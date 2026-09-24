@@ -48,9 +48,10 @@ consumes is exactly the width of that range
 more than there are entries, and that extra slot is never written: `TBasket::Update`
 stores `fEntryOffset[fNevBuf] = offset` and *then* increments `fNevBuf`
 (`root/tree/tree/src/TBasket.cxx:1190-1203`), so after the final entry the slot at
-`fNevBuf` still holds whatever it held before, which is 0 in a fresh buffer. A
-reader taking `fEntryOffset[j+1]` for the last entry gets an end of 0 and a
-negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and
+`fNevBuf` still holds whatever it held before: 0 in a fresh buffer, but any
+value in one whose entries a circular tree moved (−14 and −9 in
+`ttree/basket-displacement`). A reader taking `fEntryOffset[j+1]` for the last
+entry gets an end that is not one, and a negative width. [TBasket §5.1](TBasket.md#51-three-things-to-get-right) and
 step 8 of [TBasket §8](TBasket.md#8-reading) say the same.
 
 Which of the two cases applies is decided when the branch is created. For a

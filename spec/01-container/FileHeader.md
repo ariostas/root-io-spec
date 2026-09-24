@@ -161,8 +161,10 @@ there. It is **not** necessarily the file size.
 and refuses to open the file unless recovery was requested
 (`root/io/io/src/TFile.cxx:881-889`).
 
-`fEND < filesize` is not an error, nor a sign of one. ROOT compares the two only to
-detect truncation; trailing bytes past `fEND` are outside the format. There are two
+`fEND < filesize` is not an error, nor a sign of one. ROOT compares the two to
+detect truncation, and once more to tell a file another process has just created
+from one that needs recovery (`root/io/io/src/TFile.cxx:875`); neither treats
+bytes past `fEND` as an error, and they are outside the format. There are two
 causes:
 
 - **A file that was never closed.** The value on disk is whatever the last
