@@ -19,6 +19,16 @@ files and three large Open Data files. Two gaps closed with new specification:
 `StreamerDriven.md` §7.1, for an object with no byte count, and
 `Collections.md` §11.2, for a class that is itself a collection.
 
+**The second consistency review, 2026-09-24 — open; `PLAN-review.md`.** Seven
+read-only reviewers went over every document, the front matter and `tools/` at
+`385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
+literally (its V1–V9), so §8.1 release criterion 1 does **not** hold until that
+phase lands; about thirty more statements are contradictory, stale or narrower
+than the format, and none of it is caught by a check. The sub-plan orders the
+response and adds the checks (a figures check, `check_versions.py` validating
+the cited line, the unit tests run with the submodule in CI) so the three
+patterns behind it cannot recur. §8.17 will be what it leaves behind.
+
 Measured, 2026-09-23, by the checks in `tools/`; the fixture, citation, invariant
 and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 

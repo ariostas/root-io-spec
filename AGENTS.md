@@ -32,8 +32,11 @@ text still cite its item numbers (C1–C19). Its lasting rule: keep a claim
 reproduced here separate from one a survey merely reported, because five of the
 survey's claims did not survive re-measurement.
 
-There is no open sub-plan. A sub-plan is deleted once discharged, with anything
-durable moved into `PLAN.md` or `spec/` first.
+One sub-plan is open: `PLAN-review.md`, the second consistency review
+(2026-09-24), whose items are V1–V44. Its Phase A lists nine published claims
+that are wrong, so `PLAN.md` §8.1 criterion 1 does not hold until that phase
+lands. A sub-plan is deleted once discharged, with anything durable moved into
+`PLAN.md` or `spec/` first.
 
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read it before writing spec text; this file covers how to work here, not

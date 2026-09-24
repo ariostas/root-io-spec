@@ -205,8 +205,10 @@ reproduces it.
 how the work proceeded and `§9` lists every known gap. If you are looking for
 something to do, those gaps are ranked by how much of the corpora they block.
 
-There is no open sub-plan. A sub-plan is deleted when it is discharged, as
-`PLAN-ttree.md`, `PLAN-writing.md`, `PLAN-review.md` and `PLAN-corpus.md` were.
-Anything worth keeping moves into `PLAN.md` or `spec/` first, and the git log
-keeps the rest. The last two answered the first outside review and a survey of
-six external corpora; what remains of them is `PLAN.md` §8.13 and §8.14.
+One sub-plan is open, `PLAN-review.md`, which orders the response to the second
+consistency review of 2026-09-24 (items V1–V44). A sub-plan is deleted when it
+is discharged, as `PLAN-ttree.md`, `PLAN-writing.md`, the first `PLAN-review.md`
+and `PLAN-corpus.md` were. Anything worth keeping moves into `PLAN.md` or
+`spec/` first, and the git log keeps the rest. The last two answered the first
+outside review and a survey of six external corpora; what remains of them is
+`PLAN.md` §8.13 and §8.14.
