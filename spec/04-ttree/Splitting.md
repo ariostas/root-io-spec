@@ -392,7 +392,10 @@ does with the result:
    with baskets is the empty base class of §1.1 and is read.
 3. A branch with `fBranches` non-empty *and* baskets of its own is a count
    branch (`fType` 3 or 4) or a `TBranchSTL`. Read its entries as well as
-   descending.
+   descending. A split parent from a 5.1x fast clone also keeps a basket, an
+   embedded one of 0 entries ([TBranch §7](TBranch.md#7-the-entry-counters)),
+   and holds no data
+   ([Reading entries §2](ReadingEntries.md#2-which-branches-hold-data-at-all)).
 4. For a member of a split container, resolve `fBranchCount` to find how many
    values this entry holds (§3.3).
 5. Reassembling the columns into an object is left to the reader, and this

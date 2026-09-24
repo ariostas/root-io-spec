@@ -121,8 +121,9 @@ keeps only the low four when it is 4 (`root/core/base/inc/Bytes.h:324-350`). A
 32-bit reader silently truncated the values, but the bytes did not move.
 
 Versions 2 and 3 therefore have the same layout and differ only in the value
-range. Version 1 has a different layout (no slot index, and the table is rebuilt
-by `Add`) and needs an old file to test (§9).
+range. Version 1 has a different layout (one count where 2 and 3 have `fSize` and
+`fTally`, no slot index, and the table rebuilt by `Add`;
+`root/core/cont/src/TExMap.cxx:355-365`) and needs an old file to test (§9).
 
 ## 3. `TBtree`
 
@@ -197,17 +198,22 @@ reaches files in the same way.
 2. `TMap` and `TCollection` (and so `TBtree`'s tail): read a bare `TObject`
    (10 bytes, no frame), then `fName` as a counted string, then the count.
    **Both are version-guarded** (§1): the `TObject` base is present only above
-   version 2 and `fName` only above version 1, so a `TMap` at version 1 or 2 has
-   neither or only the base. A reader that reads them unconditionally
+   version 2 and `fName` only above version 1, so version 2 has `fName` and no
+   `TObject` base, and version 1 has neither
+   (`root/core/cont/src/TMap.cxx:371-374`). A reader that reads them unconditionally
    desynchronises on such a record; refuse a version below 3 or follow the guards.
    `TExMap` version 1 likewise has no slot index per entry (§2.2).
 3. For each of the count (twice that for a `TMap`), read one object reference by
    [Buffer framing §6](../02-serialization/Buffer.md). Resolve a class reference
    and an object reference against the same buffer, whose origin is the start of
    the **record**, with `kMapOffset` 2 added.
-4. `TExMap`: read `fSize` and `fTally`, then exactly `fTally` records of
-   4 + 8 + 8 + 8 bytes. Mask bit 0 out of the hash if the original is wanted; it
-   is not recoverable.
+4. `TExMap`: read a bare `TObject` (10 bytes, no frame), present at every
+   version (`root/core/cont/src/TExMap.cxx:312`). From version 2, read `fSize` and
+   `fTally`, then exactly `fTally` records of 4 + 8 + 8 + 8 bytes: slot, hash,
+   key, value. At version 1 there is a single count instead, then that many
+   records of 8 + 8 + 8, with no slot (`root/core/cont/src/TExMap.cxx:355-365`).
+   A stored hash has bit 0 set (§2.1): the caller's hash was that value or one
+   less, and which cannot be told.
 5. `TBtree`: read six `i32`, then go to step 1 for the `TCollection` frame.
 6. Check the byte count.
 
@@ -299,8 +305,8 @@ corpora.
 
 | Gap | Needs |
 |---|---|
-| `TMap` versions 1 and 2 — no `TObject`, no `fName` | a pre-4.00 file (`PLAN.md` §9.1) |
-| `TExMap` version 1 — no slot index | the same |
+| `TMap` versions 1 and 2 — no `TObject`, and at version 1 no `fName` either | a pre-4.00 file (`PLAN.md` §9.1) |
+| `TExMap` version 1 — one count, no slot index | the same |
 | A `TMap` with a null key | reachable now; not written |
 | A `TBtree` whose elements are not all one class, so the class tag alternates | reachable now; not written |
 

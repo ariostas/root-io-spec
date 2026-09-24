@@ -305,24 +305,30 @@ halves of that.
 
 ### 4.1 ROOT's byte-count heuristic is not a substitute
 
-When the version word is 0, ROOT reads a checksum only if the byte count is at
-least 6. The reasoning is that a version-0 class has nothing to write, so its
-whole block is 6 bytes and the count is 2.
+When the version word is 0 or less, `ReadVersion` guards the checksum with
+`v.cnt >= 6`, in both branches: with a compiled class, together with the class's
+current version being non-zero (`root/io/io/src/TBufferFile.cxx:2970-2972`), and
+with no class at all as the whole test (`root/io/io/src/TBufferFile.cxx:3001-3006`).
+The comments beside it state the intent, a byte count of at least 6: a version-0
+class has nothing to write, so its whole block is 6 bytes and the count is 2.
 
-The guard is in both branches, not only the fallback: with a compiled class at
-`root/io/io/src/TBufferFile.cxx:2970-2972`, and with no class at all at
-`root/io/io/src/TBufferFile.cxx:3001-3006`. It is part of the normal path, not a
-last resort for when ROOT knows nothing about the class.
+**The code does not do what the comments say.** `v.cnt` is the raw word with
+`kByteCountMask` still set; only the copy returned through `bcnt` is masked
+(`root/io/io/src/TBufferFile.cxx:2959-2963`), and `v.cnt` is zeroed only when
+there is no byte count. So any byte count passes, and the guard means "a byte
+count precedes the version word".
 
-**That reasoning does not hold, and a reader MUST NOT adopt the heuristic.** The
+**Neither reading is a rule a reader can use, and a reader MUST NOT adopt
+either.** The intended one rests on reasoning that does not hold. The
 version-0 skip in `TStreamerInfo::Build` is in the loop over data members
 (`root/io/io/src/TStreamerInfo.cxx:550-553`); base classes are collected by a
 separate earlier loop (`root/io/io/src/TStreamerInfo.cxx:469`) and are not
 skipped. A version-0 class with base classes therefore writes a full payload.
 
 > `serialization/version-zero` is such a case. `TH1L` declares version 0 and has
-> two base classes, so its byte count is 554, far above 6. The heuristic would
-> read four bytes of the `TH1` base as a checksum.
+> two base classes, so its byte count is 554, far above 6, and it has a byte
+> count at all. Under either reading, a guard that let a checksum through would
+> take four bytes of the `TH1` base as one.
 
 The streamer-info rule above does not have this problem, because it takes the
 `fClassVersion` the class was written with from the file instead of guessing from
@@ -331,13 +337,15 @@ a length.
 ### 4.2 `SkipVersion` disagrees with `ReadVersion`
 
 `SkipVersion` reads a checksum whenever the class version is non-zero and the
-version word is ≤ 0, without `ReadVersion`'s additional "byte count ≥ 6" guard
+version word is ≤ 0, without `ReadVersion`'s additional guard
 (`root/io/io/src/TBufferFile.cxx:2875-2879` versus
-`root/io/io/src/TBufferFile.cxx:2970-2975`).
+`root/io/io/src/TBufferFile.cxx:2970-2975`), which in effect tests that a byte
+count is present (§4.1).
 
-The two therefore disagree for a version-0 word with a byte count below 6. This
-is recorded as an apparent inconsistency: no such object has been constructed
-here, and it may be unreachable. See §9, erratum 8.
+The two therefore disagree for a version word ≤ 0 with no byte count before it:
+`SkipVersion` reads a checksum and `ReadVersion` does not. This is recorded as an
+apparent inconsistency: no such object has been constructed here, and it may be
+unreachable.
 
 ## 5. Class records
 
@@ -573,14 +581,19 @@ To read one object slot at the current position:
    `here` is the position of *w*, and read the next `u32` as the tag. Otherwise
    *w* is the tag and there is no byte count.
 4. If the tag has neither `kClassMask` set nor equals `kNewClassTag`, it is an
-   object reference: return the object already recorded at map position *tag*.
+   object reference: return the object recorded at map position *tag*. Position
+   1 is the record's top-level object (§6.2). A position the read has not
+   recorded names an object in a part of the buffer that was skipped, which ROOT
+   seeks to; a reader MAY treat it as null (§6.1).
 5. If the tag is `kNewClassTag`, read a null-terminated class name and record the
    class at `(position of the tag) + 2`. Otherwise the tag is
    `kClassMask | p`; the class is the one recorded at map position *p*.
 6. Record the object at `(position of w) + 2` before reading its content, so that
    a reference from inside the object itself resolves.
-7. Read the object: a version word (§3), then the class's content as specified by
-   [Streamer-driven reading](StreamerDriven.md).
+7. Read the object as its class's `Streamer` writes it: for most classes a
+   version word (§3) and then the content as specified by
+   [Streamer-driven reading](StreamerDriven.md), but the classes of §2.3 write no
+   version word, and the class decides what the first word means.
 8. If there was a byte count, seek to the remembered end position regardless of
    how many bytes step 7 consumed.
 
@@ -589,7 +602,7 @@ To read a version word at the current position:
 1. Read a `u32`. If `kByteCountMask` is set, it is a byte count; otherwise rewind
    4 bytes and treat the byte count as absent.
 2. Read an `i16`.
-3. If it is 0, apply §4 to decide whether a `u32` checksum follows.
+3. If it is 0 or less, apply §4 to decide whether a `u32` checksum follows.
 4. Mask off `kStreamedMemberWise` (`0x4000`) before comparing with a class
    version, and treat it as specified in [Collections](Collections.md).
 

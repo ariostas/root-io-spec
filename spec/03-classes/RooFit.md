@@ -273,7 +273,9 @@ At both versions the tail is inside the byte count and in no streamer info.
 ## 6. Reading
 
 1. Read the object's class as usual. If it is one of the five in §1 with a
-   `Streamer` of its own, do not look for a streamer info for it.
+   `Streamer` of its own, do not look for a streamer info for it, except for a
+   `RooCategory` above version 2, whose `Streamer` hands the read to its info
+   (step 6).
 2. `RooRealVar`: take the byte count and version word, read the
    `RooAbsRealLValue` base through its own info, then the members §2.1 gives for
    that version. The object ends where the byte count says, tail included.

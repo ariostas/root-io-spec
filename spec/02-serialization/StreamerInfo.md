@@ -491,21 +491,28 @@ unsigned. `TObject`'s checksum, `0x901bc02d`, is one such value.
 > `tools/check_invariants.py` asserts it. The corresponding claim about
 > `fBaseVersion` does **not** hold (§9.2).
 
-### 9.1 It is 0 on a file written by ROOT 5
+### 9.1 It is 0 on a file written before 5.34/19
 
-**`fBaseCheckSum` did not exist before ROOT 6.** It was added by
+**`fBaseCheckSum` did not exist before 5.34/19 and 6.00/00.** It was added by
 `185b44f3d96`, "Add checksum value to TStreamerBase", on 2014-04-21, first
-released in 6.00/00. Before that the slot was never filled, so every
-`TStreamerBase` in a ROOT 5 file has `fMaxIndex[1] == 0`, at the same
-`TStreamerBase` class version 3 and with no other difference. A reader MUST accept
+released in 6.00/00, and backported the same day as `6a41fa086cb`, first tagged
+`v5-34-19`. Before that the slot was never filled, so every `TStreamerBase` in a
+file from an earlier ROOT 5 release, or from the 5.99 development series before
+5.99/07, has `fMaxIndex[1] == 0`, at the same `TStreamerBase` class version 3 and
+with no other difference. ROOT's own reader encodes the same boundary: it fills
+the checksum in only when the file's version is below 53419 or between 59900 and
+59907 (`root/io/io/src/TFile.cxx:3322`), taking it from the first info of that
+name in the file (`:3322-3345`). A reader MUST accept
 0 and fall back to `fBaseVersion`, and must be prepared for that to fail too;
 §9.2 shows it failing on four ROOT-published files.
 
 > Measured across the version sweep in the foreign corpus of `PLAN.md` §9.8, which
 > brackets the change: `uproot-sample-5.23.02` through `5.30.00` have 23
 > `TStreamerBase` elements each and all 23 are 0; `6.08.04` through `6.20.04`
-> have 22 each and none is. The boundary lies between 5.30 and 6.08, where the
-> commit puts it.
+> have 22 each and none is. Files from 5.34/23 to 5.34/38 in roottest and the
+> foreign corpus (`v5formula_clones.root`, `geodemo.root`, `uproot-issue431.root`
+> and others) have the checksum, and 5.99/01 to 5.99/06 files do not, as the
+> backport and `TFile.cxx:3322` predict.
 
 > The slot can also be 0 for a reason unrelated to the ROOT version.
 > `fBaseCheckSum` is set in the constructor from `fBaseClass->GetCheckSum()`
@@ -791,7 +798,8 @@ element list it is about to emit. See
 1. If `fSeekInfo` is 0 or not greater than `fBEGIN`, the file records no streamer
    information.
 2. Read the record at `fSeekInfo`, of `fNbytesInfo` bytes, and decompress its
-   payload if `fNbytes - fKeylen != fObjlen`.
+   payload if `fObjlen > fNbytes - fKeylen`, as for any record
+   ([Records §3.2](../01-container/Record.md#32-fobjlen)).
 3. Parse the payload as a `TList` (§4). Buffer positions count from the start of
    the **key** ([Buffer framing §1](Buffer.md#1-what-a-buffer-is)).
 4. For each entry, resolve its class from the class tag or class back-reference.
@@ -861,7 +869,7 @@ Against `root/io/doc/TFile/streamerinfo.md`, which documents release 3.02.06:
 | 4 | — | An empty list is written deliberately and means "no classes described" (§3.2) |
 | 5 | `fMaxIndex` is "five integers" at a fixed offset | True from `TStreamerElement` version 2. Version 1 wrote a counted array (§7.1) |
 | 6 | `TStreamerElement` ends after `fTypeName` | True for versions 2 and 4, wrong for version **3**, which appends `fXmin`, `fXmax` and `fFactor` (§7.1) |
-| 7 | `fMaxIndex` holds array dimensions, 0 if not applicable | For a `TStreamerBase`, `fMaxIndex[1]` is the base class's **checksum** (§9), or 0 on a file written by ROOT 5 (§9.1) |
+| 7 | `fMaxIndex` holds array dimensions, 0 if not applicable | For a `TStreamerBase`, `fMaxIndex[1]` is the base class's **checksum** (§9), or 0 on a file written before 5.34/19 (§9.1) |
 | 8 | "For TStreamerInfoBase: fBaseVersion" | The class is `TStreamerBase`, and `fBaseVersion` is present only for version > 2 (§8) |
 | 9 | — | `fBits` of both `TStreamerInfo` and `TStreamerElement` is persisted and needed for reading: `kIgnoreTObjectStreamer` removes the `TObject` base from every object of the class, and `kHasRange` is required to decode a `Double32_t`. A `FIXME` in ROOT asserting the info's bits are never saved (`root/io/io/src/TStreamerInfo.cxx:1400-1405`) is wrong: `serialization/streamer-info` has `fBits` `0x00010000` on disk |
 | 10 | `TStreamerBasicPointer`'s third member is `fCountName` (listed twice) | The third member is `fCountClass` (§8) |

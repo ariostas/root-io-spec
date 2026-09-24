@@ -62,7 +62,7 @@ chain of §1 recovers them; ROOT's own `TFile::Recover` does this walk
    and a zero aborts the scan.
 3. At each record, read the key (§2). If the class-name length is outside
    `1..100`, stop. ROOT treats that as the end of usable data
-   (`root/io/io/src/TFile.cxx:2163`); this check keeps a scan from running on
+   (`root/io/io/src/TFile.cxx:2164`); this check keeps a scan from running on
    through arbitrary bytes.
 4. Accept the key as an object of *this* directory only when `fSeekPdir` equals the
    directory's own `fSeekDir`, and skip any key whose class name is `TBasket` or
@@ -436,23 +436,32 @@ raw byte payloads and are not subject to the byte-count limit.
 
 ## 6. Reading
 
-1. At the current offset, read `fNbytes` as `i32`. If negative, advance by its
-   magnitude and repeat. If zero, stop. If an interior entry of the free list
-   begins here, this is a free span regardless of the value: ROOT 6.34's RNTuple
-   writer left some without their marker
-   ([Free segments §4.2](FreeSegments.md#42-the-marker-may-be-missing)).
-2. Read `fVersion`. If `> 1000`, use the large offsets from §2.
-3. Read the remaining fixed fields; mask `fSeekPdir` per §3.6; take
+Start at `fBEGIN`, and stop when the current offset reaches `fEND`
+(`root/io/io/src/TFile.cxx:1657`), not the end of the file: bytes past `fEND` may
+hold a stale record with a positive `fNbytes`
+([Free segments §6](FreeSegments.md#6-deleting-the-last-record-shrinks-the-file)). The free list is read
+first, from the header.
+
+1. If an interior entry of the free list begins at the current offset, this is a
+   free span whatever the four bytes hold: advance past its `fLast` and repeat.
+   ROOT 6.34's RNTuple writer left some spans without their marker, and a span
+   over 2000000000 bytes has a clamped one
+   ([Free segments §4.2](FreeSegments.md#42-the-marker-may-be-missing)), so this
+   test comes before the value is read.
+2. Read `fNbytes` as `i32`. If zero, the file is corrupt; stop. If negative,
+   advance by its magnitude and repeat.
+3. Read `fVersion`. If `> 1000`, use the large offsets from §2.
+4. Read the remaining fixed fields; mask `fSeekPdir` per §3.6; take
    `abs(fCycle)`.
-4. Read the three counted strings. Map `fClassName == "TDirectory"` to
+5. Read the three counted strings. Map `fClassName == "TDirectory"` to
    `TDirectoryFile`.
-5. The payload is `fNbytes - fKeylen` bytes at `fSeekKey + fKeylen`. It is
+6. The payload is `fNbytes - fKeylen` bytes at `fSeekKey + fKeylen`. It is
    compressed if and only if `fObjlen > fNbytes - fKeylen` (§3.2); decompress it
    per [Compression](Compression.md) then, and otherwise take it as it is,
    ignoring any bytes past `fObjlen`. Testing `!=` instead rejects every RNTuple
    page whose payload exceeds `fObjlen`
    ([Compression §1.1](Compression.md#11-why-the-test-is-an-inequality)).
-6. Advance by `fNbytes`.
+7. Advance by `fNbytes`.
 
 ## 7. Version history
 

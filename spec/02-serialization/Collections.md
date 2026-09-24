@@ -901,11 +901,14 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
    5.1 is read once, before the first.** One frame holds `fArrayLength` complete
    collections when the member is declared `std::vector<T> m[N]`, and only
    `fArrayLength` records this (§11.1). A reader that does this once stops short
-   of the byte count. A pointer to a collection, `fSTLtype` above 40, is read the
-   same way, as the collection it points to (§11.3).
+   of the byte count. A pointer to a collection, whose `fTypeName` ends in `*`
+   (`fSTLtype` above 40), is read the same way, as the collection it points to
+   (§11.3).
 4. If bit 14 of the version word is clear:
     1. Read `count:i32`.
-    2. Read `count` elements as §3, dispatching on `fTypeName`, not on `fCtype`.
+    2. Read `count` elements as §3, dispatching on `fTypeName`, not on `fCtype`,
+       except for a collection of an enum or of a type the file does not
+       describe, where `fCtype` is what decides (§7.1).
 5. If bit 14 is set:
     1. If the version word of step 1, with bit 14 masked off, is at least 8 (at
        least 9 for a pointer to a collection, §11.3), read a bare `Version_t`
@@ -916,16 +919,21 @@ At a `TStreamerSTL` or `TStreamerSTLstring` element:
        `fClassVersion` 0, and otherwise a `u32` checksum that selects the value
        class's streamer info (`root/io/io/src/TBufferFile.cxx:3093-3097`).
     2. Read `count:i32`.
-    3. For each member of the value class, in order, read `count` values as a
-       column, framed per §4.1.
+    3. If `count` is 0, the collection ends here, with no columns at all, unless
+       the version word is 6 or less (§4.3). Otherwise, for each member of the
+       value class, in order, read `count` values as a column, framed per §4.1.
 6. Seek to the end the byte count implies, whatever was consumed.
 
-The value class is `fTypeName`'s first template argument for a sequence, and
-`pair<K,V>` for an associative container. The exception is an element named
-`This`, where it is the bracketed type in the title, read as a `vector` (§11.2).
-If the value class is a `pair` and the file has no info for it, synthesise one
-from the two arguments (§8). If it is anything else and the file has no info for
-it, the collection is not readable (§9).
+The value class is `fTypeName`'s first template argument for a sequence or a
+set, and `pair<K,V>` for a map, multimap or their unordered forms
+(`root/io/io/src/TGenCollectionProxy.cxx:888-896`, `:939-940`). The exception is
+an element named `This` whose `fTypeName` is not a container name: its value
+class is the bracketed type in the title, read as a `vector` (§11.2). If the
+value class is a `pair` and the file has no info for it, synthesise one from the
+two arguments (§8). A `std::string` or a nested collection needs no info (§3,
+§10.1), and a type that is neither a class nor described is read as the basic
+type `fCtype` names (§7.1). Only a class, `fCtype` 61 or 63, with no info in the
+file makes the collection unreadable (§9).
 
 ## 14. Invariants
 

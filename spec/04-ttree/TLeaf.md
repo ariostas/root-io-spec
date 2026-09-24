@@ -212,7 +212,8 @@ data member rather than a leaf and the count is kept in the `TBranchElement`
 ## 5. Reading one entry
 
 A basket holds no type information and no per-leaf framing. Given the byte range
-of entry *e* from [TBranch §10](TBranch.md#10-reading):
+of entry *e* of a plain `TBranch` from [TBranch §10](TBranch.md#10-reading) (a
+`TLeafElement` or a `TLeafObject` is not read this way, §8):
 
 1. Set the cursor to the start of the range.
 2. For each leaf of the branch **in `fLeaves` order**
@@ -220,6 +221,8 @@ of entry *e* from [TBranch §10](TBranch.md#10-reading):
    1. Determine `n`, the element count for this entry (§5.2).
    2. Read `n` values of this leaf's on-disk width (§4.1), big-endian,
       consecutively, with no byte count, version word, separator or padding.
+      A `TLeafC` is the exception: its `fLen` is not a count, and the entry is
+      one counted string, or nothing at all when the string is empty (§9).
    3. Advance the cursor by what was read.
 3. The cursor is now at the end of the entry.
 

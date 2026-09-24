@@ -338,9 +338,15 @@ In the second case the relationship is recorded twice. In
 `uproot-small-evnt-tree-fullsplit.root` the branch `SliceI16` has
 `fStreamerType` 42 (`kOffsetP + 2`), a title `SliceI16[N]`, an `fBranchCount`
 pointing at the *branch* `N`, and a leaf whose `fLeafCount` points at the *leaf*
-`N`. A reader may follow either chain. The leaf chain, described in
-[TLeaf §3.1](TLeaf.md#31-fleafcount-is-a-buffer-object-reference), is enough on
-its own.
+`N`. Both chains name the same counter, because `SetBranchCount` points the
+leaf's `fLeafCount` at the counter branch's leaf
+(`root/tree/tree/src/TBranchElement.cxx:5590-5599`), and both can therefore be
+wrong together: ROOT finds that counter by name over the whole tree
+(`root/tree/tree/src/TBranchElement.cxx:438`, `:454`), which picks the first
+object's counter when a tree holds two split objects of one class.
+[Reading entries §4.1](ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
+gives the rule that works: resolve the counter by name among the branch's own
+siblings.
 
 `fBranchCount2` is null in all 6736. It exists for the second dimension of a
 two-dimensional variable-size array. None of the 178 files uses it, and this
@@ -405,7 +411,9 @@ A branch record is read as a [`TBranch`](TBranch.md#10-reading) is. The steps
 below add what to do with the eleven fields.
 
 1. Read the branch with the streamer-driven algorithm. The class is
-   `TBranchElement`, or `TBranchObject` (see §12).
+   `TBranchElement`. A `TBranchObject` (§12) has none of the eleven members, so
+   the steps below do not apply to it; how its entries are read is not yet
+   specified (`PLAN.md` §9.11).
 2. Read `fType` and `fID`. If `fType` is 0, use §3.2 to decide which of the three
    cases it is.
 3. If `fType` is 1 or 2, the branch holds nothing. Descend into `fBranches`.
@@ -415,11 +423,14 @@ below add what to do with the eleven fields.
 4. Otherwise resolve `fClassName` to a streamer info, matching by
    `fClassVersion` when it is non-zero and by `fCheckSum` when it is 0.
    If `fID ≥ 0`, element `fID` of that info is the member this branch holds.
-5. If `fBranchCount` is non-zero, resolve it as a buffer back-reference (§6) to
-   find the count branch. The number of values in this branch's entry comes from
-   that branch's entry, not from this one
-   (`root/tree/tree/src/TBranchElement.cxx:4566`,
-   `root/tree/tree/src/TBranchElement.cxx:4493`).
+5. If `fBranchCount` is non-zero, the number of values in this branch's entry
+   comes from a count branch's entry, not from this one. For `fType` 31 and 41
+   that branch is the one `fBranchCount` names, resolved as a buffer
+   back-reference (§6): the parent sets it directly
+   (`root/tree/tree/src/TBranchElement.cxx:1209`, read at `:4566` and `:4493`).
+   For `fType` ≤ 2 resolve the counter by name among the branch's siblings
+   instead, because `fBranchCount` can name another object's counter
+   ([Reading entries §4.1](ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)).
 6. Select the read procedure with the table of §8.
 7. For `fType` 3 and 4, the entry is a single `Int_t` count, and no leaf
    describes it. For `fType` −1 the entry is the whole object, read with the

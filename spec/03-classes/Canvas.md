@@ -148,7 +148,11 @@ members under one byte count and cannot be localised.
 
 1. Read the frame. Refuse a version below 4 or use §1.1.
 2. Read the `TPad` base as an ordinary framed object through the streamer info in
-   the file, with the `TQObject` rule of §3. Without that rule the read
+   the file, with the `TQObject` rule of §3. This holds for a `TPad` above class
+   version 5 (§1); at 5 or below `TPad::Streamer` is hand-written
+   (`root/graf2d/gpad/src/TPad.cxx:6665` onwards) and not specified here, so
+   refuse it. ROOT 2.25 paired `TCanvas` version 4 with `TPad` version 5
+   (`v2-25-03:gpad/inc/TPad.h`), so a version-4 canvas is not enough to go on. Without that rule the read
    desynchronises inside `TVirtualPad` and never recovers.
 3. Read `fDISPLAY` as a counted string, then the twelve fixed-width fields of §1
    in order.
@@ -180,5 +184,5 @@ raised by the reader.
 | File | What it pins |
 |---|---|
 | `classes/canvas` | §1 in full at version 8, §2.1's eight trailing bytes, and §3: `TQObject` at zero bytes and `TAttBBox2D` at six, six bytes apart. 49 KB of the record is the `TPad`'s primitives and the 800-entry list of colours a canvas holds, all of it read through streamer infos |
-| `H1display.root` (`gen/cern/`) | a ROOT 3.05 canvas, whose `TQObject` info is present and empty. Not decodable here: its `TPad` is below class version 6 |
+| `H1display.root` (`gen/cern/`) | not a canvas: a ROOT 3.05 file whose one object is a `TPad` at class version 7, with a `TQObject` info present and empty (§3). It does not decode here: `coverage_probe.py` stops on a class reference to a position the read has not seen, which is not yet diagnosed |
 | — | `TCanvas` versions 1 to 3: needs a pre-ROOT-4 file (`PLAN.md` §9.1) |

@@ -1789,8 +1789,11 @@ class Decoder:
         if counters is None:
             counters = {}
         for el in info.elements:
-            if el.ftype not in (0, 66):
-                continue        # a member the forwarding streamer never writes
+            if el.cls != "TStreamerBase":
+                # A member the forwarding streamer never writes. Bases are
+                # picked by element class: a TObject base is 66 and a TNamed
+                # base 67, not 0 (ForwardingStreamers.md 3).
+                continue
             value = self.read_element_value(el, pos, counters)
             members.append(value)
             pos = value.end

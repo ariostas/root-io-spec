@@ -155,6 +155,12 @@ consume it.
    the streamer info **recorded in the file for that class at that version**. This
    is the ordinary path and needs nothing from this document. A `TFormula` at
    version 6 is readable by this rule even though ROOT itself refuses it (§1).
+   The bytes need nothing more, but ROOT changes two things after the read, so a
+   reader that wants ROOT's values does too: for a `TF1` at version 5 with
+   `fNsave > 0` it rewrites the last three `fSave` values, repairing a 3.00/06
+   bug (`root/hist/hist/src/TF1Data_v5.cxx:83-89`), and a `TFormula` at version
+   4 or 5 is converted with `Convert(v)`
+   (`root/hist/hist/src/TFormula_v5.cxx:3533-3535`).
 4. Below them, use §4 and a ROOT 3-era reference file that this project does not
    have.
 

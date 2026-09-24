@@ -798,7 +798,7 @@ ROOT's fixtures. All eight agree now; a second test re-creates V3's swapped row
 and shows it caught. The tables of `WritingFiles.md` describe records rather than
 streamer infos and have no writer order to compare against.
 
-### V39. Reconcile every Reading procedure step against the field it names ☐
+### V39. Reconcile every Reading procedure step against the field it names ✅
 
 Not a tool: a reading pass, one document at a time, taking each numbered step in
 every *Reading* section and finding the sentence in the same document's field
@@ -807,6 +807,73 @@ what this pass finds; the reviewers covered every procedure once, so the pass
 is a second reading with the specific question "does this step say what the
 table says". Record in the commit which steps were re-read and found right, so
 the pass is not repeated.
+
+**Done.** Five read-only agents took the 26 procedures (about 190 steps, plus
+`Directory.md` §8's walk and `Compression.md` §7's block walk), each step against
+its document's field text and the source; every finding below was then checked
+here before it was changed. The pattern held: about fifty steps and sentences
+changed, most of them a procedure step that a literal reader would follow into
+wrong bytes while the text around it was right, and eight of them field text
+that was itself false (the key list's compression, `ReadVersion`'s guard,
+`fBaseCheckSum`'s release, `kWrite`, `H1display.root`, `TMap`'s version-2 gap row, `TArrayL`'s width before 3.00/06, and `ElementTypes.md` §8's "object references").
+
+- *Container*: `Record.md` §6 walked past `fEND` and tested the sign before the
+  free list; `FreeSegments.md`'s list walk had no payload bound; `Compression.md`
+  §8 said the key list and free list are compressed, and neither ever is
+  (`uproot-issue64.root`: `fCompress` 1, a 544-byte key list stored raw).
+- *Serialization*: `Buffer.md` §8 prescribed a version word for every object,
+  tested `== 0` where §4 says `<= 0`, and ignored references to position 1 or to
+  skipped regions; §4.1 misread ROOT's own guard, which compares a count that
+  still has `kByteCountMask` set and so means only "a byte count is present".
+  `StreamerDriven.md` §9 had no path for code 65 or 66 without an info (73 and 77
+  files have none), no step for the out-of-file class lists, fixed widths for
+  variable codes, and a 521 frame that read as repeated. `ElementTypes.md` §10
+  told a reader to skip `kWrite` elements, where `StreamerDriven.md` said none
+  reach a file; `Build` does add one a file could carry, and it would be the
+  member's only element. `Collections.md` §13 dispatched enums on `fTypeName`,
+  read columns for an empty member-wise collection, gave sets a `pair`, dropped
+  the `This` condition and called too much unreadable. `References.md` §7 read 12
+  bytes for 10, ignored `kHasUUID`, and added `fPidOffset` twice.
+  `StreamerInfo.md` §12 used `!=` for compression, and §9.1 dated
+  `fBaseCheckSum` to ROOT 6 when it was backported to 5.34/19 (`6a41fa086cb`),
+  the boundary `TFile.cxx:3322` encodes. `ForwardingStreamers.md` selected bases
+  by `fType` 0, which drops a 66 or 67 base; so did `rootfile.py`, now by class.
+- *Classes*: `Containers.md` §5 had `TMap` version 2 backwards, left out
+  `TExMap`'s `TObject`, "masked" hashes that are stored `h | 1`, and read
+  `fSize`/`fTally` at version 1; `Canvas.md` assumed a `TPad` above version 5 and
+  described `H1display.root` as a canvas (it is a `TPad` at version 7);
+  `RooFit.md` steps 1 and 6 disagreed; `Formula.md` omitted two post-read value
+  fix-ups; `TArray.md` omitted the pre-3.00/06 `Long_t` width.
+- *TTree*: `TBranchElement.md` §9 followed `fBranchCount` where
+  `ReadingEntries.md` §4.1 says it can name the wrong counter, and routed
+  `TBranchObject` into steps it has no fields for; `ReadingEntries.md` §7 lacked
+  the per-object count, treated a `kStreamLoop` as a flag-byte array, and its §1
+  had no bound for the embedded last basket or for a flag-80 basket; `TLeaf.md`
+  §5 read a `TLeafC` as `fLen` values; `TBranch.md` §10 sent `TBranchElement`s to
+  the leaves and did not mention the tie in ROOT's search; `TTree.md` §10 said
+  "negative" for `<= 0`; `Splitting.md` §7 missed the fast-cloned parent.
+
+Re-read and found right, so the pass need not be repeated: `FileHeader.md` §9
+(all six), `Record.md` §6 steps 2 to 5, `FreeSegments.md` chain walk,
+`LargeFiles.md` §7, `Directory.md` §8, `Compression.md` §7; `Buffer.md` §8
+steps 1 to 3, 5, 6 and 8 and version-word steps 1, 2 and 4;
+`StreamerDriven.md` §9 steps 2, 3.1, 3.4, 3.5 and 4 to 8; `ElementTypes.md` §10
+steps 1, 3 and 5; `Collections.md` §13 steps 1, 2, 4.1, 5.1, 5.2 and 6;
+`References.md` `TObject` steps and `pidf` steps 2 and 3; `StreamerInfo.md` §12
+steps 1 and 3 to 8; `SchemaEvolution.md` §8; `ForwardingStreamers.md` §3 steps
+1, 3, 4 and 5; `TArray.md` §4 step 1; `Matrix.md` §4; `Containers.md` §5 steps
+1, 3, 5 and 6; `Canvas.md` §4 steps 1 and 3 to 6; `Formula.md` §5 steps 1, 2
+and 4; `RooFit.md` §6 steps 2 to 6; `TTree.md` §10 steps 1 to 4; `TBranch.md`
+§10 steps 1 and 3 to 5; `TBranchElement.md` §9 steps 2 to 4, 6 and 7;
+`TBasket.md` §8 (all eight); `ReadingEntries.md` §7 steps 1, 3 to 6 apart from
+the one bullet; `Splitting.md` §7 steps 1, 2, 4 and 5.
+
+Left as reported and unsure, none with a witness file: `ReadVersion` mapping a
+`kNewClassTag` with no byte count at 2 rather than at the tag (ROOT never writes
+that form); the legacy `TStreamerInfo` < 3 collection and `kStreamer` framings;
+whether a forwarding class can list a base that has no `Streamer`; and ROOT
+taking a pre-5.34/19 base checksum from the first same-named info in the file,
+where `StreamerInfo.md` §9.2 falls back to `fBaseVersion`.
 
 ## 7. Phase F — the LOW items, one sweep
 

@@ -369,11 +369,16 @@ member, or as a record of its own) and `X` is on the list above:
 
 1. **Do not read a version word or a byte count.** The first byte of `X` is the
    first byte of its first base class.
-2. Take `X`'s streamer info from the file and keep only its `kBase` elements, in
-   order. Any other element is a member the streamer does not write (§1.2).
+2. Take `X`'s streamer info from the file and keep only its base elements, the
+   `TStreamerBase`s, in order. Select them by element class, not by `fType` 0: a
+   `TObject` base is stored as 66 and a `TNamed` base as 67
+   ([Streamer info §9](../02-serialization/StreamerInfo.md#9-tstreamerbase-and-a-checksum-hidden-in-fmaxindex)),
+   and `aod_flushed.root`'s `TVirtualPerfStats` has one element, a `TObject`
+   base at 66. Any other element is a member the streamer does not write
+   (§1.2).
 3. Read each base in turn at the running offset, by the ordinary rules. A base
    may itself be on this list, in which case apply this procedure to it.
-4. `X` ends where its last base ends. If `X` has no `kBase` elements it occupies
+4. `X` ends where its last base ends. If `X` has no base elements it occupies
    zero bytes, and ROOT could not have written it at all (§1).
 5. If the file has no streamer info for `X`, it cannot be read: nothing else
    names its base classes.

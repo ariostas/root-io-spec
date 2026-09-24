@@ -209,7 +209,10 @@ To read the list:
 2. Read the record at `fSeekFree`, of `fNbytesFree` bytes.
 3. From the payload start, read entries: a version word, then two bounds of 4 or 8
    bytes according to whether the version exceeds 1000.
-4. Stop after the first entry whose `fLast > fEND`.
+4. Stop after the first entry whose `fLast > fEND`, or when the payload has no
+   room for another entry (§3). ROOT has only the first test
+   (`root/io/io/src/TFile.cxx:1989-1995`), so a list with no entry past `fEND`
+   would run it off the payload.
 
 ## 8. Invariants
 

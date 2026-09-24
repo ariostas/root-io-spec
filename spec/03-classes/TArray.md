@@ -33,8 +33,11 @@ The total size is `4 + fN × width` in every context.
 
 > `TArrayL` is 8 bytes per element whatever `sizeof(long)` was on the writing
 > machine (`root/io/io/src/TBufferFile.cxx:2132-2146`), like every other `Long_t`
-> on disk ([Conventions §4](../00-conventions.md#4-primitive-types)). `TArrayL`
-> and `TArrayL64` cannot be told apart from their bytes.
+> on disk ([Conventions §4](../00-conventions.md#4-primitive-types)), in a file
+> from ROOT 3.00/06 or later. An older file stored it at the writing host's
+> `sizeof(long)`, and ROOT reads it that way when the file's version is below
+> 30006 (`root/io/io/src/TBufferFile.cxx:1379-1383`). `TArrayL` and `TArrayL64`
+> cannot be told apart from their bytes.
 
 > Demonstrated by `classes/tarray`, which writes all seven as standalone records:
 > their `fObjlen` values are 6, 8, 12, 20, 20, 12 and 20 for two elements each.

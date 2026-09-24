@@ -570,7 +570,7 @@ opaque, and the only correct action is to seek past it using the byte count.
 
 ```
 bc  ver
-for each of fArrayLength blocks:  c objects, or c object references if
+for each of fArrayLength blocks:  c objects, or c object slots if
                                   fTypeName contains "**"
 ```
 
@@ -732,14 +732,18 @@ members.
 Given a streamer info and a buffer positioned at an object's first content byte:
 
 1. Iterate the elements in order.
-2. Skip any element whose `kWrite` bit is set
-   (`root/io/io/src/TStreamerInfoReadBuffer.cxx:791`).
+2. Do not skip an element because of its `fBits`. ROOT's read loop skips
+   `kWrite` elements (`root/io/io/src/TStreamerInfoReadBuffer.cxx:791`), but that
+   bit marks an in-memory copy, and one in a file would be the member's only
+   element ([Streamer-driven reading §3](StreamerDriven.md#3-the-element-loop)).
 3. For each element, consume the bytes its code specifies, per §2 to §9. Retain
    the value of every member of code 3, 6 or 13 for later `kOffsetP` and
    `kStreamLoop` members: a counter is not always marked `kCounter` (§2.1).
 4. For a code the reader does not implement, seek to the end of the enclosing byte
-   count. Because every nested object has one, each is a resynchronisation
-   point ([Buffer framing §2.1](Buffer.md#21-a-byte-count-is-authoritative)).
+   count ([Buffer framing §2.1](Buffer.md#21-a-byte-count-is-authoritative)).
+   Most nested objects have one, and each is a resynchronisation point; 65, 66
+   and 70 do not (§7), nor does an object of a class whose `Streamer` writes
+   none (§6), so the reader must implement those.
 5. At the end, seek to the object's own byte-count end regardless of how much was
    consumed.
 

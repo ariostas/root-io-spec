@@ -563,7 +563,11 @@ To read entry *e* of a branch:
 2. Find the largest `i` in `[0, fWriteBasket]` with `fBasketEntry[i] <= e`. ROOT
    binary-searches `fWriteBasket + 1` elements
    (`root/tree/tree/src/TBranch.cxx:1371`); the array is non-decreasing over that
-   range, so any equivalent search is conforming.
+   range, so any equivalent search is conforming. The one difference is a tie,
+   which only an empty basket below `fWriteBasket` could make: ROOT's search
+   returns the *first* of equal values (`std::lower_bound`,
+   `root/core/base/inc/TMathBase.h:331-335`), an empty basket, where the largest
+   index is the one that holds the entry. No writer is known to produce a tie.
 3. `first = fBasketEntry[i]`. The basket's last entry is `fBasketEntry[i+1] - 1`,
    except when `i == fWriteBasket`, where it is `fEntryNumber - 1`
    (`root/tree/tree/src/TBranch.cxx:1377-1383`).
@@ -576,8 +580,11 @@ To read entry *e* of a branch:
    `fFileName` or the tree's own, and decode it per
    [TBasket §8](TBasket.md#8-reading).
 5. Entry *e* is the basket's entry `e - first`.
-6. Hand the resulting byte range to the leaves, in `fLeaves` order, per
-   [TLeaf §5](TLeaf.md#5-reading-one-entry).
+6. For a plain `TBranch`, hand the resulting byte range to the leaves, in
+   `fLeaves` order, per [TLeaf §5](TLeaf.md#5-reading-one-entry). A
+   `TBranchElement` is not read through its leaf: its entry is decoded as
+   [Reading entries §7](ReadingEntries.md#7-reading) says, including the
+   leafless branch of §9.2 that holds data.
 
 Step 2 lands on `i == fWriteBasket` exactly when that basket is **embedded**. On a
 branch whose baskets are all on disk, `fBasketEntry[fWriteBasket] == fEntryNumber`,

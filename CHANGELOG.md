@@ -11,6 +11,36 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Every numbered reading procedure re-read against its own text and the
+  source**; about fifty steps corrected. The ones a reader is most likely to act
+  on:
+  - [`Record.md`](spec/01-container/Record.md) §6: stop at `fEND`, and test for
+    an unmarked free span before reading the word.
+  - [`Compression.md`](spec/01-container/Compression.md) §8: the key list, the
+    free list and directory records are **never** compressed.
+  - [`Buffer.md`](spec/02-serialization/Buffer.md) §4.1: ROOT's "byte count at
+    least 6" checksum guard in fact tests only that a byte count is present.
+  - [`StreamerDriven.md`](spec/02-serialization/StreamerDriven.md) §9: codes 65
+    and 66 are read by fixed rules, with no info; a class with a hand-written,
+    forwarding or extending `Streamer` is read from its list, not its info.
+  - [`Collections.md`](spec/02-serialization/Collections.md) §13: an empty
+    member-wise collection has no columns; a set's value class is not a `pair`;
+    an enum collection dispatches on `fCtype`.
+  - [`References.md`](spec/02-serialization/References.md) §7: a `TRef` is 10
+    bytes plus a `pidf` or a UUID string, and `fPidOffset` is added once.
+  - [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) §9.1: a base's
+    checksum is in files from 5.34/19 on, not only ROOT 6.
+  - [`ForwardingStreamers.md`](spec/99-appendix/ForwardingStreamers.md) §3:
+    select bases by element class; a `TObject` base is code 66.
+  - [`Containers.md`](spec/03-classes/Containers.md) §5: a `TExMap` has a bare
+    `TObject` first, and a `TMap` at version 2 has `fName` but no `TObject`.
+  - [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) §9 and
+    [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §7: find an `fType`
+    ≤ 2 counter by name, not through `fBranchCount`; a counted member of a split
+    container needs a second count per object.
+  - [`TLeaf.md`](spec/04-ttree/TLeaf.md) §5: a `TLeafC` entry is one counted
+    string, or nothing.
+
 - **A split collection's leaf can be written in place.**
   [`TBranchElement.md`](spec/04-ttree/TBranchElement.md) invariant 5 said the leaf
   of an `fType` 3 or 4 branch is always a back-reference. It is one only because

@@ -426,8 +426,11 @@ To read a tree:
 4. The tree's entry count is `fEntries`, but the entry range of any individual
    branch is that branch's own (§3). Read an entry with
    [TBranch §10](TBranch.md#10-reading).
-5. If cluster boundaries are wanted, derive them per §6.2. A tree with a
-   negative `fAutoFlush` does not record them.
+5. If cluster boundaries are wanted, derive them per §6.2. Where the size that
+   applies is 0 or negative, the file does not record them
+   (`root/tree/tree/src/TTree.cxx:613`, `:617`): that is the whole tree when
+   `fNClusterRange` is 0 and `fAutoFlush` ≤ 0, and only the last, open-ended
+   range when there are recorded ranges (§6.1).
 
 ## 11. Invariants
 

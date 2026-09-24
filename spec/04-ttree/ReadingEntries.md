@@ -16,7 +16,11 @@ element the branch only points at.
 This is the procedure of [TBranch §10](TBranch.md#10-reading), restated because
 the rest of this document assumes it. Given a branch and an entry number:
 
-1. Find the basket index *i* with `fBasketEntry[i] <= entry < fBasketEntry[i+1]`.
+1. Check `fFirstEntry <= entry < fEntryNumber`, and find the basket index *i*
+   with `fBasketEntry[i] <= entry < fBasketEntry[i+1]`; for *i* = `fWriteBasket`,
+   the embedded last basket, the upper bound is `fEntryNumber` instead, because
+   `fBasketEntry[fWriteBasket + 1]` is padding
+   ([TBranch §10](TBranch.md#10-reading) steps 1 to 3).
 2. Read that basket ([TBasket](TBasket.md)). **It need not be a record**: when
    slot *i* of `fBaskets` holds a basket, that basket is embedded in the `TTree`
    record itself
@@ -37,7 +41,8 @@ the rest of this document assumes it. Given a branch and an entry number:
 |---|---|---|
 | the basket has an entry-offset array, and *j* is not the last entry | `fEntryOffset[j]` | `fEntryOffset[j+1]` |
 | the basket has an entry-offset array, and *j* = `fNevBuf - 1` | `fEntryOffset[j]` | **`fLast`** |
-| it does not | `fKeylen + j × fNevBufSize` | start + `fNevBufSize` |
+| it does not, and its flag is not 80 | `fKeylen + j × fNevBufSize` | start + `fNevBufSize` |
+| its flag is 80: the offsets are generated, not stored | from the offsets [TBasket §5.2.1](TBasket.md#521-regenerating-the-offsets) regenerates | |
 
 where *j* = `entry − fBasketEntry[i]`
 (`root/tree/tree/src/TBranch.cxx:1738-1748`). The number of bytes the read then
@@ -496,7 +501,10 @@ Normative, for one entry of one branch.
 1. If the branch has sub-branches, is not a `TBranchSTL`, and `fType` is not 3
    or 4, it holds nothing: read its children and stop (§2).
 2. If `fBranchCount` is set, or the element is a `kStreamLoop`, read the
-   counter's branch's entry first and keep its value as *n* (§4).
+   counter's branch's entry first and keep its value as *n*, finding the counter
+   by name among the branch's siblings (§4.1). A counted-array member of a split
+   container needs a second count, one per object, from the sibling branch that
+   holds the count member (§4.2).
 3. Locate this entry's byte range (§1).
 4. Select the read shape from `fType`, `fID`, `fSplitLevel` and `fStreamerType`
    ([TBranchElement §8](TBranchElement.md#8-the-read-procedure-is-selected-by-four-fields-not-one)).
@@ -506,7 +514,9 @@ Normative, for one entry of one branch.
      For `fType` 41 with *n* 0 the byte range may be empty even where the
      column has a header, if the writer predates 5.32/00; then there is
      nothing to read (§3.2).
-   - `fType` ≤ 2 with `fBranchCount`: a flag byte then *n* values (§3.4).
+   - `fType` ≤ 2 with `fBranchCount`: a flag byte then *n* values (§3.4),
+     unless the element is a `kStreamLoop`, whose array has a byte count and a
+     version word instead (§5.3).
    - `fType` 0 with `fID` −1: every element of `fClassName`'s streamer info, in
      order, with no class-level framing (§3.3).
    - `fType` < 0: the class's own streamer (§3.5).

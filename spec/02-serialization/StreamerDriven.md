@@ -64,8 +64,14 @@ Three rules govern which elements participate.
 notion of an element being suppressed. ROOT skips elements carrying the `kWrite`
 bit (`root/io/io/src/TStreamerInfoReadBuffer.cxx:791`) and elements redirected to
 a schema-evolution cache (`root/io/io/src/TStreamerInfoReadBuffer.cxx:794-806`),
-but both bits are set by `BuildOld` at read time on an in-memory copy and neither
-occurs in a file. No element of any streamer info in `data/` has `fBits` other
+but neither is a property of the bytes. `kCache` marks an in-memory element and
+is never written: the info writer drops it (`root/io/io/src/TStreamerInfo.cxx:5701`).
+`kWrite` marks the copy `TStreamerInfo::Build` adds of a member that a read rule
+takes as its source, which exists so that the member is still written
+(`root/io/io/src/TStreamerInfo.cxx:813-821`). The writer keeps that copy, so the
+bit could reach a file, and there it would be the member's only element with the
+member's bytes present: a file reader MUST NOT skip it. No file available has
+either bit: 39 288 elements in the 352 files of `data/` and both corpora. No element of any streamer info in `data/` has `fBits` other
 than `0x00000000` or `0x00000040` (`kHasRange`). A file written before ROOT 6.30
 also has `kIsOnHeap` and `kNotDeleted`, `0x03000000`, on every element, because
 `fBits` was not masked then
@@ -610,20 +616,37 @@ and then reads past.
 
 To read an object whose class, version and byte range are known:
 
-1. Obtain the streamer info for that class and that class version from the
-   file's `StreamerInfo` record. If there is none, go to step 8.
+1. If the class is one whose bytes its streamer info does not describe, read it
+   as the document for that class says and stop here: a hand-written `Streamer`
+   ([Hand-written streamers](../99-appendix/HandWrittenStreamers.md), §7), a
+   generated one that writes only the bases
+   ([Forwarding streamers](../99-appendix/ForwardingStreamers.md), §4.5), or an
+   `extending` class, whose info describes only a prefix (§7). None of these can
+   be recognised from the file (§4.4); a reader needs the lists.
+   Otherwise obtain the streamer info for that class and that class version from
+   the file's `StreamerInfo` record. If there is none, go to step 8.
 2. Let `elements` be that info's `fElements`, in array order.
 3. For each element in turn:
     1. If `fType` is -1, consume nothing and continue.
-    2. If `fType` is 0, 66 or 67, read the base class: consume the framing of
+    2. If `fType` is 66, read a `TObject` by its fixed layout
+       ([Buffer framing §7](Buffer.md#7-the-tobject-base)), which needs no info:
+       a file often has none for `TObject` (§6.1). If `fType` is 0 or 67, read
+       the base class: consume the framing of
        [Element types §6](ElementTypes.md#6-kbase-0-and-knotype-1), then apply
        this procedure recursively with the base class and the version just read.
-    3. If `fType` names an object-valued code (61 to 71), consume the framing of
+       A base whose `Streamer` writes nothing (`TQObject`, §4.4) or only its own
+       bases (§4.5) has no framing and no version word of its own.
+    3. If `fType` is 65, read a bare counted string: a `TString` writes no
+       version word and no byte count
+       ([Element types §7.1](ElementTypes.md#71-the-three-fast-paths)). If it
+       names any other object-valued code (61 to 71), consume the framing of
        [Element types §7](ElementTypes.md#7-object-valued-codes-61-to-71),
        determine the class from the class record where one is present and from
        `fTypeName` otherwise, and apply this procedure recursively. If the
        object has no byte count and its class derives from `TObject`, choose
-       between its two readings as §7.1 says.
+       between its two readings as §7.1 says. The fixed arrays of objects, 81,
+       82, 85, 86 and 87, are that many objects in the forms of
+       [Element types §7.2](ElementTypes.md#72-the-array-forms-are-not-uniform).
     4. If `fType` is 500 on a `TStreamerSTL` or `TStreamerSTLstring`, read a
        collection as specified in [Collections](Collections.md). No
        `TStreamerSTL` carries 501
@@ -632,15 +655,20 @@ To read an object whose class, version and byte range are known:
        end of its byte count.
     6. If `fType` is 501 or 521 on a `TStreamerLoop`, read the counted array of
        objects of [Element types §8](ElementTypes.md#8-kstreamer-500-and-kstreamloop-501),
-       taking the count from the element named in `fCountName`; 521 repeats it
-       `fArrayLength` times
-       ([§8.2](ElementTypes.md#82-a-fixed-array-of-loops-is-521)).
-    7. Otherwise consume the fixed number of bytes
-       [Element types](ElementTypes.md) specifies, taking any count from the
-       element named in `fCountName`.
+       taking the count from the element named in `fCountName`. For 521 the
+       `fArrayLength` blocks share that one frame
+       ([§8.2](ElementTypes.md#82-a-fixed-array-of-loops-is-521)); the frame is
+       not repeated.
+    7. Otherwise read the scalar, array or counted pointer that
+       [Element types](ElementTypes.md) specifies for the code, taking any count
+       from the element named in `fCountName`. The width is fixed for a scalar
+       and a `kOffsetL` array; it depends on the data for 7 and 15 and for a
+       counted pointer (40 + T), and on the title for 9 and 19.
     8. Record the value. If the element's code is 3, 6 or 13, retain it for
        later elements: any of the three can be a counter
-       ([Element types §2.1](ElementTypes.md#21-kcounter-6)).
+       ([Element types §2.1](ElementTypes.md#21-kcounter-6)). Retained values
+       survive the return from a base class, because a counter may be declared
+       in a base and used in the derived class (§3.2).
 4. Compare the position reached with the end implied by the object's byte count.
 5. If they differ, the file and the description disagree; report it.
 6. Seek to the end implied by the byte count regardless.

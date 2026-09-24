@@ -283,19 +283,24 @@ At an object's `TObject` base:
 1. Read the version word, `fUniqueID` and `fBits`.
 2. If `fBits & 0x10`, read a further `u16` `pidf`. Otherwise the base is over.
 3. The object's reference identity is
-   `(process(pidf + fPidOffset), fUniqueID & 0x00FFFFFF)`.
+   `(process(pidf), fUniqueID & 0x00FFFFFF)`, with `process` as below.
 
 At a `TRef` member (type code 61, class `TRef`):
 
-1. Read 12 bytes as `version:i16 fUniqueID:u32 fBits:u32`, then either a `u16`
-   `pidf` or, if `fBits & 0x20`, a counted string.
+1. Read 10 bytes as `version:i16 fUniqueID:u32 fBits:u32`, then either a `u16`
+   `pidf`, for 12 bytes in all, or, if `fBits & 0x20` (`kHasUUID`), a counted
+   string and no `pidf` (§3.1).
 2. There is no byte count to resynchronise on. An error here cannot be
    recovered from until the enclosing object ends.
-3. The reference is `(process(pidf + fPidOffset), fUniqueID & 0x00FFFFFF)`.
+3. With a `pidf`, the reference is `(process(pidf), fUniqueID & 0x00FFFFFF)`.
+   With `kHasUUID`, the process is the one named by the UUID string, and
+   `fUniqueID` indexes ROOT's in-memory table of such processes rather than an
+   object (§3.1; `root/core/base/src/TRef.cxx:490-497`).
 
-To turn `pidf` into a process:
+To turn `pidf` into a process (`process` above), once:
 
-1. Add the enclosing record's key `fPidOffset`.
+1. Add the enclosing record's key `fPidOffset`
+   (`root/core/base/src/TRef.cxx:502`).
 2. Look up the key named `ProcessID<that>` in the file's top-level directory.
 3. The process UUID is that key's title.
 

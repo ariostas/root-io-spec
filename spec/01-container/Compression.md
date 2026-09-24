@@ -285,12 +285,21 @@ Never compressed:
 
 - The file header.
 - The key portion of any record. `fKeylen` bytes are always plain.
+- The key list, the free-segment list and directory records, whatever their
+  size. Their writers fill the key's buffer directly and write it with
+  `WriteFile`, which has no compression path
+  (`root/io/io/src/TDirectoryFile.cxx:2215-2229`,
+  `root/io/io/src/TFile.cxx:2623-2663`, and `WriteDirHeader` at
+  `root/io/io/src/TDirectoryFile.cxx:2161-2181`), and their readers do not
+  decompress (`root/io/io/src/TDirectoryFile.cxx:1446-1450`,
+  `root/io/io/src/TFile.cxx:1988`). `uproot-issue64.root` has `fCompress` 1 and a
+  544-byte key list stored raw.
 
 Compressed according to the usual rules, `fObjlen > 256` and a compressor that
 helps:
 
-- Application data records, the keys list, the free-segment list and the
-  StreamerInfo record — everything written through `TKey::WriteBuffer`.
+- Application data records and the StreamerInfo record: everything written
+  through `TKey`'s object constructor and `TKey::WriteBuffer`.
 
 **A `TBasket` is the exception, and it is the common case.** `TBasket::WriteBuffer`
 has its own compression path, whose only test is on the level, `if (cxlevel > 0)`
