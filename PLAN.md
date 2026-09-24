@@ -22,8 +22,9 @@ files and three large Open Data files. Two gaps closed with new specification:
 **The second consistency review, 2026-09-24 — open; `PLAN-review.md`.** Seven
 read-only reviewers went over every document, the front matter and `tools/` at
 `385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
-literally (its V1–V9), so §8.1 release criterion 1 does **not** hold until that
-phase lands; about thirty more statements are contradictory, stale or narrower
+literally (its V1–V9, fixed the same day), and several of its Phase B items are
+false statements too, so §8.1 release criterion 1 does **not** hold until Phase B
+lands; about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three
@@ -43,7 +44,7 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Invariants over the fixtures and the written files | 101 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 635 |
+| Unit tests | 636 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -962,7 +963,8 @@ out to be half specification and half an overstated coverage number.*
 version 8) and `stock.root` (4.00/07, version 9). That is 116 legacy branches, each parse ending
 exactly on its byte count, and 17 tree records that had been `PARTIAL` since the
 corpora were added. `coverage_probe.py` no longer names `TBranch` anywhere, which
-leaves **`TASImage` as the only specification gap either corpus hits**.
+leaves **`TASImage` as the only specification gap either corpus hits**, with
+`RooWorkspace::CodeRepo` beside it once RooFit was specified on 2026-09-22.
 
 The legacy layout differs from what the version table suggested: `fEntries`,
 `fTotBytes` and `fZipBytes` are `Stat_t`, a double; `fEntryNumber` and every

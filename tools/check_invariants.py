@@ -1212,6 +1212,18 @@ class Checker:
                     self.bad("References 8.5",
                              f"TRefArray at {rec.offset} ends at {arr.end}, payload "
                              f"ends at {end}")
+                else:
+                    # The published arithmetic itself, not only consumption:
+                    # until 2026-09-24 the formula omitted the byte count and
+                    # version word, and nothing evaluated it.
+                    name = len(arr.name.encode("latin-1"))
+                    expected = (4 + 2 + (12 if arr.tobject.referenced else 10)
+                                + (1 if name < 255 else 5) + name
+                                + 4 + 4 + 2 + 4 * arr.nobjects)
+                    if expected != end - start:
+                        self.bad("References 8.5",
+                                 f"TRefArray at {rec.offset} has a {end - start}-byte "
+                                 f"payload, and the formula gives {expected}")
                 if not process_exists(arr.pidf, rec):
                     self.bad("References 8.2",
                              f"TRefArray at {rec.offset} names pidf {arr.pidf}, and "

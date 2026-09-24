@@ -180,10 +180,15 @@ values written are 4 and 1004.
 
 | Value | ROOT | Meaning |
 |---|---|---|
-| 1 | 1.x – 2.x | No object-map registration for the payload; see §7 |
-| 2 | 3.x | |
-| 3 | 4.00+ | 64-bit offsets in memory |
+| 1 | before 2.24 | No object-map registration for the payload; see §7 |
+| 2 | 2.24 – 3.10 | |
+| 3 | 4.00 – 5.06 | 64-bit offsets in memory |
 | 4 | 5.08+ | `fPidOffset` packed into `fSeekPdir`; see §3.6 |
+
+The boundaries are read from `ClassDef(TKey,…)` at the release tags. Version 2
+is already in `base/inc/TKey.h` at `v2-24-05`, the oldest tag in the submodule,
+so where version 1 ended is not known from the source; version 3 arrives at
+`v4-00-02` (commit `9cbf72a24c4`) and version 4 at `v5-08-00` (`b2040d67807`).
 | 1002, 1003, 1004 | | the same, large layout |
 
 ### 3.5 `fSeekKey`
@@ -373,9 +378,10 @@ the same strings would be 46. See [TBasket](../04-ttree/TBasket.md).
 > Demonstrated by `ttree/basket`: both basket keys have `fKeylen` 65 and three
 > strings totalling 12 bytes after a 34-byte fixed part.
 
-**Baskets always use the large key layout.** Both fixture keys have `fVersion`
-1004 and 8-byte `fSeekKey` and `fSeekPdir` in an 18 kB file, so the large form is
-not due to file size here (§7).
+**Baskets written by ROOT 4.02 or later always use the large key layout.** Both
+fixture keys have `fVersion` 1004 and 8-byte `fSeekKey` and `fSeekPdir` in an
+18 kB file, so the large form is not due to file size here. Before 4.02 a basket
+key follows the file's size like any other (§7).
 
 ## 4. Cycles
 
@@ -437,8 +443,12 @@ raw byte payloads and are not subject to the byte-count limit.
    `abs(fCycle)`.
 4. Read the three counted strings. Map `fClassName == "TDirectory"` to
    `TDirectoryFile`.
-5. The payload is `fNbytes - fKeylen` bytes at `fSeekKey + fKeylen`. Decompress
-   per [Compression](Compression.md) if it differs from `fObjlen`.
+5. The payload is `fNbytes - fKeylen` bytes at `fSeekKey + fKeylen`. It is
+   compressed if and only if `fObjlen > fNbytes - fKeylen` (§3.2); decompress it
+   per [Compression](Compression.md) then, and otherwise take it as it is,
+   ignoring any bytes past `fObjlen`. Testing `!=` instead rejects every RNTuple
+   page whose payload exceeds `fObjlen`
+   ([Compression §1.1](Compression.md#11-why-the-test-is-an-inequality)).
 6. Advance by `fNbytes`.
 
 ## 7. Version history
@@ -447,17 +457,22 @@ raw byte payloads and are not subject to the byte-count limit.
 |---|---|
 | 3.05 | The `fVersion > 1000` large layout exists at all |
 | 4.00 | Key version 3 |
+| 4.02 | `TBasket` keys always large, whatever the file's size |
 | 5.08 | Key version 4: `fPidOffset` packed into `fSeekPdir` (§3.6) |
 
-For a key with `fVersion == 1` (ROOT 1.x and 2.x), the payload was written
+For a key with `fVersion == 1` (before ROOT 2.24), the payload was written
 without object-map registration, so back-references and class tags behave
 differently (`root/io/io/src/TKey.cxx:868`, `:1174`). See
 [Buffer framing](../02-serialization/Buffer.md).
 
-`TBasket` keys are always written in the large layout
-(`root/tree/tree/src/TBasket.cxx:71`), regardless of file size. Baskets are the
-most numerous keys in a typical file, so a reader that implements only the small
-layout fails on nearly every `TTree`.
+From ROOT 4.02, `TBasket` keys are always written in the large layout
+(`root/tree/tree/src/TBasket.cxx:71`), regardless of file size. Up to 4.00 the
+constructor added 1000 only when the file had already passed `kStartBigFile`
+(`tree/src/TBasket.cxx:69` at `v4-00-08`); the unconditional form is commit
+`3970c0bead` (2004-09-10), first tagged `v4-01-02`. Baskets are the most
+numerous keys in a typical file, so a reader that implements only the small
+layout fails on nearly every `TTree` written since. A reader MUST take the width
+from each key's own `fVersion` rather than from the class name.
 
 Apart from the large layout, the fixed part of the key has not changed since
 3.02.06.

@@ -179,12 +179,12 @@ known cause, and `tools/coverage_probe.py` prints it per record:
 | Cause | Reads | What it is |
 |---|---|---|
 | No streamer infos in the file | 468 | the version floor above |
-| RooFit's own classes | 190 | **being specified**; in scope from 2026-09-21, below |
 | An LZ4 payload, when the `lz4` package is not installed | 0 here, 137 without it | the checker's environment, not the format |
-| `TASImage` | 8 | **the only gap** — one of ten in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
+| `TASImage` | 8 | **a gap** — one of twelve in [Hand-written streamers](99-appendix/HandWrittenStreamers.md) |
+| `RooWorkspace::CodeRepo` | 2 | **a gap**, one partial `RooWorkspace` in each `stressRooFit` file. The five RooFit classes [RooFit](03-classes/RooFit.md) specifies decode |
 
-`TASImage` is the only **specification** gap that a file in either corpus
-reaches. The rest are single records of three kinds, none of them a gap in this
+`TASImage` and `RooWorkspace::CodeRepo` are the only **specification** gaps that
+a file in either corpus reaches. The rest are single records of three kinds, none of them a gap in this
 document: a class whose streamer info the file does not contain, so no reader
 could decode it; entry offsets that the probe does not regenerate from the leaf,
 which [TBasket §5.2.1](04-ttree/TBasket.md#521-regenerating-the-offsets)
@@ -214,10 +214,10 @@ change unnoticed:
     > **RooFit was on that list until 2026-09-21 and is now in scope**, because a
     > second independent reader asked for it rather than reverse-engineer it
     > ([issue #1](https://github.com/ariostas/root-io-spec/issues/1)). Its
-    > workspaces are common in published files. The classes are not written yet,
-    > so `HandWrittenStreamers.md` still records each as `out-of-scope` until it
-    > is specified; that file is checked in CI, so the change cannot go
-    > unrecorded.
+    > workspaces are common in published files. [RooFit](03-classes/RooFit.md)
+    > specifies the five classes a workspace needs; `RooWorkspace::CodeRepo` and
+    > the four `RooCFunctionNRef` classes are recorded as gaps in
+    > `HandWrittenStreamers.md`.
 - **What `TGeo*` fields mean.** Its 88 persistable classes are streamer-info
   driven and decode by the generic algorithm like any other class. A hand-written
   account of the geometry they describe is out of scope.

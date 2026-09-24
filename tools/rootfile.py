@@ -1612,8 +1612,8 @@ class Decoder:
             # As a *member* rather than a record payload. Its Streamer is
             # hand-written and no info describes it, but the layout is the same
             # one read_ref_array implements. References.md section 4. Reached
-            # through RooAbsArg::_proxyList, which was declared TRefArray until
-            # ROOT 6.26 and RooRefArray after it.
+            # through RooAbsArg::_proxyList at RooAbsArg version 5 (ROOT 5.32 to
+            # 5.34/05); from version 6 it is a RooRefArray (RooFit.md 4.2).
             array = read_ref_array(self.buf, offset)
             return Value(name="TRefArray", ftype=61, start=offset,
                          end=array.end, type_name="TRefArray")

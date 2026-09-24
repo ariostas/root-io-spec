@@ -11,6 +11,36 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Nine wrong claims corrected, from the second consistency review.** Each is
+  a statement a reader or writer following the text would act on.
+  - [`Record.md`](spec/01-container/Record.md) §6 step 5: a payload is
+    compressed if and only if `fObjlen > fNbytes - fKeylen`. The step said
+    "if it differs", which rejects every RNTuple page longer than `fObjlen`.
+  - [`Record.md`](spec/01-container/Record.md) §3.4 and §7: key version 2 is
+    already in ROOT 2.24, version 3 runs from 4.00 to 5.06, and version 4 from
+    5.08. Read the width from the key's own `fVersion`, not the release.
+  - [`Record.md`](spec/01-container/Record.md) §3.11 and §7: a basket key is
+    always in the large layout only from ROOT 4.02. Before, it follows the
+    file's size like any other key.
+  - [`WritingFiles.md`](spec/06-writing/WritingFiles.md) §5: a subdirectory
+    key's `fKeylen` is `39 + len(name) + len(title)`, not 43.
+  - [`WritingTrees.md`](spec/06-writing/WritingTrees.md) §3: the `TTree` members
+    after `fWeight` are `fTimerInterval`, `fScanField`, `fUpdate`, in that
+    order; the table had `fUpdate` before `fScanField`.
+  - [`TBranch.md`](spec/04-ttree/TBranch.md) §2: the layout table had an
+    erratum pasted in as a second row 16. There is no such member; it is
+    erratum 17.
+  - [`References.md`](spec/02-serialization/References.md) invariant 5: a
+    `TRefArray` payload includes its byte count and version word, 6 bytes the
+    formula left out.
+  - [`RooFit.md`](spec/03-classes/RooFit.md) §4.2, erratum 6: `_proxyList` is a
+    `TList` up to ROOT 5.30, a `TRefArray` in 5.32 – 5.34/05 and a `RooRefArray`
+    from 5.34/06, not from 6.26; the `RooRefArray` form has one more frame. Key
+    on the element's type name.
+  - [`spec/index.md`](spec/index.md): RooFit is specified, and
+    `RooWorkspace::CodeRepo` is the second specification gap a corpus file
+    reaches, beside `TASImage`.
+
 - **RNTuple linked attribute sets, audited.** The last section of the tracked
   RNTuple specification apart from the collection-proxy form, checked against a
   new fixture, `rntuple/attributes`, whose footer links two attribute sets.

@@ -77,8 +77,9 @@ values a three-entry tree needs:
 | `fSavedBytes` | `i64` | 0 unless the writer imitates `AutoSave`; §7.5 | free |
 | `fFlushedBytes` | `i64` | 0 when every basket was flushed at the end, and `fZipBytes` as of the last *automatic* flush otherwise. **A reader uses the difference**: 0 means no cluster boundary was ever recorded ([TTree §6.1](../04-ttree/TTree.md#61-the-two-arrays)) | free, and §7.5 |
 | `fWeight` | `f64` | **1.0**, unless a weight is meant: `Draw` multiplies every entry by it (`root/tree/treeplayer/src/TSelectorDraw.cxx:929`) | **fixed in practice** |
-| `fTimerInterval`, `fUpdate` | `i32` | 0 | free |
+| `fTimerInterval` | `i32` | 0 | free |
 | `fScanField` | `i32` | 25 — rows before `Scan` prompts | free |
+| `fUpdate` | `i32` | 0 | free |
 | `fDefaultEntryOffsetLen` | `i32` | 1000; only affects branches created later | free |
 | `fNClusterRange` | `i32` | the number of **closed** cluster ranges, 0 when the cluster size never changed; the two counted arrays below have exactly this many elements each (§7.4) | derived |
 | `fMaxEntries`, `fMaxEntryLoop` | `i64` | 1000000000000 | free |

@@ -47,7 +47,6 @@ Class version 13 (`root/tree/tree/inc/TBranch.h:304`). In streamer-info order:
 | 13 | `fFirstEntry` | 16 | `Long64_t` | entry number of this branch's first entry |
 | 14 | `fTotBytes` | 16 | `Long64_t` | uncompressed size of all baskets, keys included |
 | 15 | `fZipBytes` | 16 | `Long64_t` | on-disk size of all baskets |
-| 16 | *This document, until 2026-09-23*: `fBasketSeek[i]` is 0 exactly when slot *i* holds a basket, and outside §13.4 no slot pairs a basket with a non-zero `fBasketSeek` | Before 6.11/02 a basket read back from its record could be streamed as a second copy, below `fWriteBasket` and with the record's `fSeekKey` (§5.1, invariants 5 and 9) |
 | 16 | `fBranches` | 61 | `TObjArray` | sub-branches, empty unless split |
 | 17 | `fLeaves` | 61 | `TObjArray` | the leaves, at least one |
 | 18 | `fBaskets` | 61 | `TObjArray` | **all null** after `TTree::Write`; may hold an embedded basket (§5) |
@@ -674,6 +673,7 @@ Against `root/io/doc/TFile/ttree.md`, which documents release 3.02.06:
 | 14 | *This document, until 2026-09-23*: the three arrays are 0 above `fWriteBasket`, an embedded slot has `fBasketSeek` 0, and Reading step 4 chose between record and embedded basket by `fBasketSeek` | Two `TBranchElement` constructors left the arrays unzeroed, before 3.10/02 and 5.21/02 (§13.4). The `fBaskets` slot decides, as in ROOT (§10 step 4) |
 | 15 | *This document, until 2026-09-23*: a branch with no leaves and no sub-branches does not occur | Before 6.02/00 and 5.34/20 an empty base class of a top-level split object got one, and its baskets hold one framed base-class object per entry (§9.2) |
 | 16 | *This document, until 2026-09-23*: an embedded basket sits only at index `fWriteBasket`, and a split parent's `fEntryNumber` is 0 so that §10 step 1 rejects every entry for it (invariant 3) | A tree with no file embeds every basket (§5), and fast cloning sets a split parent's `fEntryNumber` to `fEntries` and, before 6.22/08, its `fBasketEntry[0]` to the last input's first entry (§7) |
+| 17 | *This document, until 2026-09-23*: `fBasketSeek[i]` is 0 exactly when slot *i* holds a basket, and outside §13.4 no slot pairs a basket with a non-zero `fBasketSeek` | Before 6.11/02 a basket read back from its record could be streamed as a second copy, below `fWriteBasket` and with the record's `fSeekKey` (§5.1, invariants 5 and 9) |
 
 The `TLeaf::fOffset` comment, "Offset in ClonesArray object (if one)"
 (`root/tree/tree/inc/TLeaf.h:77`), is misleading in the same way from the other

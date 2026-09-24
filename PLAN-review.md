@@ -1,6 +1,8 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open.** Nothing in this plan is worked yet. Items are numbered V1–V44
+**Status: open. Phase A (V1–V9) and V26 done 2026-09-24.** V6 turned out
+larger than reported: `_proxyList` has three forms, not two, and the corpus files
+match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
 prefix is new because R1–R8 belong to the first outside review (`PLAN.md` §8.13)
 and M1–M9 to the MVP.
@@ -66,11 +68,13 @@ LOW items are summarised in §7 with enough of a locator to find each one.
 
 ## 2. Phase A — nine published claims to fix first
 
-These are one commit, `fix(spec): nine wrong claims from the second review`, and
-they restore §8.1 criterion 1. Each is a small edit; the value is in the commit
-body, which records what was wrong and how it was shown.
+These are one commit, `fix(spec): nine wrong claims from the second review`.
+They are the claims that produce wrong bytes or a wrong reader; §8.1 criterion 1
+also needs Phase B, because V18 and V19 are false statements too, only smaller
+ones. Each is a small edit; the value is in the commit body, which records what
+was wrong and how it was shown.
 
-### V1. `Record.md` §6 step 5 states the compression test as "differs" ☐
+### V1. `Record.md` §6 step 5 states the compression test as "differs" ✅
 
 `spec/01-container/Record.md:440-441`: "Decompress per Compression if it differs
 from `fObjlen`." The rule everywhere else in the document (§3, lines 154–159),
@@ -83,7 +87,7 @@ payload exceeds `fObjlen` (the `RBlob` at 586 in `RNTuple.root`, `fObjlen` 723,
 payload 755). **Fix:** restate step 5 with the inequality. **Confirmed here**
 by reading the step and the eight `TKey.cxx` sites.
 
-### V2. `WritingFiles.md` §5 gives the subdirectory key length as 43 + … ☐
+### V2. `WritingFiles.md` §5 gives the subdirectory key length as 43 + … ✅
 
 `spec/06-writing/WritingFiles.md:333`: "`26 + sizeof("TDirectory") +
 sizeof(fName) + sizeof(fTitle)`, so `43 + len(name) + len(title)`". The
@@ -93,7 +97,7 @@ has `fKeylen` 49 at record 401 (`alpha`/`alpha`, 39+5+5) and 47 at 610;
 the shortcut is four bytes off on every subdirectory key and its `fNbytesName`.
 **Confirmed here** from the fixture bytes.
 
-### V3. `WritingTrees.md` §3's `TTree` table is not in streamed order ☐
+### V3. `WritingTrees.md` §3's `TTree` table is not in streamed order ✅
 
 `spec/06-writing/WritingTrees.md:80-82`: the table is headed "in streamed order"
 and lists `fTimerInterval, fUpdate` as one row before `fScanField`. The disk
@@ -104,7 +108,7 @@ literally the table emits `0, 0, 25, 1000` where ROOT writes `0, 25, 0, 1000`.
 mechanical comparison between a procedure's order and the writer's would catch.
 **Confirmed here** against `rootwrite.py`.
 
-### V4. `TBranch.md` §2 has an erratum pasted into the layout table ☐
+### V4. `TBranch.md` §2 has an erratum pasted into the layout table ✅
 
 `spec/04-ttree/TBranch.md:50`: a second row numbered 16, reading "*This
 document, until 2026-09-23*: `fBasketSeek[i]` is 0 exactly when slot *i* holds
@@ -113,7 +117,7 @@ style of §12, which stops at 16 and does not contain it. A reader parsing the
 table gets a phantom member. **Fix:** move it to §12 as erratum 17.
 **Confirmed here** by reading the table.
 
-### V5. `References.md` invariant 5 gives the wrong `TRefArray` length ☐
+### V5. `References.md` invariant 5 gives the wrong `TRefArray` length ✅
 
 `spec/02-serialization/References.md:312-314`: "payload length is `10 or 12 +
 |fName| + 1 + 4 + 4 + 2 + 4 × nobjects`". The formula omits the version word (2)
@@ -127,7 +131,7 @@ and the §4 sentence; consider a unit test that evaluates the published formula
 on the fixture, since consumption alone did not. **Confirmed here** from the
 bytes.
 
-### V6. `RooFit.md` §4.2 dates `RooRefArray` to 6.26 ☐
+### V6. `RooFit.md` §4.2 dates `RooRefArray` to 6.26 ✅
 
 `spec/03-classes/RooFit.md:225-228`: "declared `TRefArray` until ROOT 6.26 and
 `RooRefArray` after it". At the tags:
@@ -148,7 +152,13 @@ info, restate the boundary as 5.34/xx by tag, and keep the useful part (same
 bytes under two element type names). **Confirmed here** at the tags; the
 re-measurement needs `build/foreign/` and is the one corpus step in Phase A.
 
-### V7. `Record.md` §3.4 and §7 date key version 2 to "3.x" ☐
+**Done.** The survey at the tags found three forms: `TList _proxyList` up to
+`v5-30-00` (`RooAbsArg` 3, 4), `TRefArray` from `v5-32-00` to `v5-34-05` (5),
+`RooRefArray` from `v5-34-06` (6 and later). The two forms also differ by a
+frame, so "the same bytes" was wrong too. `RooFit.md` §4.2 has the table and
+erratum 6; the reader's comment is corrected.
+
+### V7. `Record.md` §3.4 and §7 date key version 2 to "3.x" ✅
 
 `spec/01-container/Record.md:181-187` and `:446-450`: `1 | 1.x – 2.x`,
 `2 | 3.x`, and §7 "5.08 | Key version 4" (correct) beside no row for 2.
@@ -159,7 +169,7 @@ repository's history and should be stated as unknown rather than "2.x".
 `check_versions.py` does not cover `TKey`, so the table is unchecked; V35 adds
 it. **Confirmed here** at the tags.
 
-### V8. `Record.md` §3.11 and §7 say a basket key is *always* large ☐
+### V8. `Record.md` §3.11 and §7 say a basket key is *always* large ✅
 
 `spec/01-container/Record.md:376-378` and `:457-460`: "`TBasket` keys are always
 written in the large layout … regardless of file size". At `v3-10-02` and
@@ -170,7 +180,7 @@ first appears at `v4-01-02`, so the production boundary is 4.02. `Pitfalls.md`
 document and its version-history table were not updated with it. **Fix:** add
 the qualifier and the 4.02 row. **Confirmed here** at the tags.
 
-### V9. `spec/index.md` says RooFit is unwritten and `TASImage` the only gap ☐
+### V9. `spec/index.md` says RooFit is unwritten and `TASImage` the only gap ✅
 
 `spec/index.md:182`: RooFit's own classes "**being specified**"; `:214-220`:
 "The classes are not written yet, so `HandWrittenStreamers.md` still records
@@ -434,7 +444,7 @@ generator run**; ROOT is not on PATH in the session that wrote this. If it
 reproduces, it is a fixture, a narrowed invariant with the ROOT line, and a
 `PLAN.md` §7.1 bug candidate. **Confirmed here** at the source level only.
 
-### V26. Re-measure `RooAbsArg` in the two files V6 relied on ☐
+### V26. Re-measure `RooAbsArg` in the two files V6 relied on ✅
 
 The corpus half of V6: read the `RooAbsArg` streamer info's `fClassVersion` and
 `_proxyList` type name in `uproot-issue-350.root` and `stressRooFit_v522_ref.root`
@@ -442,6 +452,11 @@ The corpus half of V6: read the `RooAbsArg` streamer info's `fClassVersion` and
 `TRefArray` in both, which makes the 6.24 file a carrier of a 5.2x-era info and
 the sentence in `RooFit.md` a statement about infos rather than releases.
 Record the result in the erratum.
+
+**Done.** Not what V6 expected: `stressRooFit_v522_ref.root` (5.21/07) has
+`RooAbsArg` 4 with a `TList`, `stressRooFit_v534_ref.root` (5.34/04) 5 with a
+`TRefArray`, and `uproot-issue-350.root` (6.24/00) 7 with a `RooRefArray`. Each
+file matches its writer; the published sentence had simply misread the third.
 
 ## 5. Phase D — the project's description of itself
 
@@ -468,6 +483,7 @@ holds 76 small files … plus the 9 in `data/written/`" → 87 and 14. Also `:14
 | `spec/index.md:81` | Pitfalls "forty-five facts" | 48 bold-led entries |
 | `spec/index.md:184`, `PLAN.md:866` | "ten" hand-written `gap` classes | 12 `gap` rows (`PLAN.md` §2.4 itself lists twelve) |
 | `spec/index.md:183` vs `PLAN.md:2469` | "137 without LZ4" / "132 records" | never reconciled; re-measure or delete one |
+| `spec/index.md` §"What is missing" | every non-decoding record has a row | the probe of 2026-09-24 also reports ~165 RNTuple records through the classic-object path (95 `no streamer info for RBlob`, 34 multi-page `RBlob`s, 29 `ROOT::RNTuple: consumed 70 of 78 bytes`, …); give them a row or exclude RNTuple from the count, and say whether the anchor's 8 unconsumed bytes are a probe gap |
 | `spec/99-appendix/ReaderChecklist.md:195`, `Bibliography.md:14` | "ten" RNTuple errata | thirteen |
 | `spec/06-writing/index.md:160` | "99.8% of branch-baskets" | 99.5% (48278 of 48501) |
 | `spec/06-writing/WritingObjects.md:291-292` | "614 of the 653 streamer infos" | 698 of 743 (`StreamerInfo.md` §11.2) |

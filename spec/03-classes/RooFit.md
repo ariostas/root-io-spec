@@ -222,13 +222,24 @@ byteCount   version=1   a whole TRefArray, framed (References §4)
 treats `RooRefArray` as a `TObjArray` reads the `TRefArray`'s frame as
 `TObjArray`'s and desynchronises.
 
-> The member was declared `TRefArray` until ROOT 6.26 and `RooRefArray` after
-> it, so the same bytes appear under two element type names across the corpora:
-> `_proxyList` is a `TRefArray` in `stressRooFit_v522_ref.root` (5.21/07) through
-> `uproot-issue-350.root` (6.24/00), and a `RooRefArray` in files written by
-> 6.26 and later. Both need the same knowledge from outside the file
-> (`TRefArray`'s own `Streamer` is hand-written too), and neither is described
-> by any info.
+> The member's type has changed twice, with `RooAbsArg`'s class version, so a
+> reader keys on the element's type name and never on the release:
+>
+> | `RooAbsArg` | Releases | `_proxyList` | Bytes |
+> |---|---|---|---|
+> | 3, 4 | up to 5.30 | `TList` | an ordinary `TList` ([Containers](Containers.md)) |
+> | 5 | 5.32 – 5.34/05 | `TRefArray` | a framed `TRefArray` ([References §4](../02-serialization/References.md#4-trefarray)) |
+> | 6 and later | 5.34/06 on, and every 6.x | `RooRefArray` | one more frame around that `TRefArray` |
+>
+> The boundaries are read from `roofit/roofitcore/inc/RooAbsArg.h` at the tags;
+> the `RooRefArray` change reached the 5.34 patch series at `v5-34-06` and master
+> in commit `132f5917f47` (2013-09-20). The corpora agree:
+> `stressRooFit_v522_ref.root` (5.21/07) has `RooAbsArg` 4 with a `TList`,
+> `stressRooFit_v534_ref.root` (5.34/04) version 5 with a `TRefArray`, and
+> `uproot-issue-350.root` (6.24/00) version 7 with a `RooRefArray`. *Until
+> 2026-09-24 this note dated the `RooRefArray` change to 6.26 and said the last
+> two forms were the same bytes; erratum 6.* Neither `TRefArray` nor
+> `RooRefArray` is described by any info.
 
 ## 5. `RooCategory` below class version 3
 
@@ -303,6 +314,7 @@ byte count catches it.
 | 3 | Issue #1 item 9: the extra frame is around `RooAbsCategory`'s members | It is `RooCategory`'s, one level up, and only below class version 3 (§5) |
 | 4 | Issue #1 item 7: `RooLinkedList` v3 is `TObject`, `Short_t _hashThresh`, `Int_t fSize`, then slots | The same bytes, three fields misnamed: the first two bytes are the version word, `_hashThresh` is never written, and a `TString` follows the slots (§3.2) |
 | 5 | Issue #1 item 10: `RooVectorDataStore::RealVector::_vec` is preceded by two collection frames | One collection frame and one class frame; `RooVectorDataStore` is streamer-info driven throughout. [Collections §3.1](../02-serialization/Collections.md#31-pointer-content-puts-two-frames-in-a-row) |
+| 6 | This document, until 2026-09-24: `_proxyList` was declared `TRefArray` until ROOT 6.26 and `RooRefArray` after, and the two forms are the same bytes | `TList` up to 5.30, `TRefArray` in 5.32 – 5.34/05, `RooRefArray` from 5.34/06, read at the tags; the `RooRefArray` form has one more frame than the `TRefArray` one (§4.2). The 6.24 corpus file it cited has a `RooRefArray` |
 
 ## 9. Reference files
 

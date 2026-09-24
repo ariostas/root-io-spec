@@ -1333,5 +1333,29 @@ class UnpromotedCounter(unittest.TestCase):
         self.assertEqual(decoder.read_elements(self.tbits(13), 0), len(self.BODY))
 
 
+class RefArrayLength(unittest.TestCase):
+    """References.md invariant 5, evaluated as published.
+
+    Until 2026-09-24 the formula omitted the byte count and the version word,
+    and the checker verified the record only by consumption, so the arithmetic
+    was never exercised. The fixture's array has an empty fName, one entry and
+    an unreferenced TObject.
+    """
+
+    PATH = Path(__file__).resolve().parent.parent / "data/serialization/references.root"
+
+    def test_the_formula_gives_the_payload_length(self):
+        buf = self.PATH.read_bytes()
+        rec = next(r for r in rootfile.read_records(buf, rootfile.read_header(buf))
+                   if r.class_name == "TRefArray")
+        start, end = rootfile.payload_range(rec)
+        arr = rootfile.read_ref_array(buf, start)
+        self.assertEqual((arr.name, arr.nobjects, arr.tobject.referenced),
+                         ("", 1, False))
+        formula = 4 + 2 + 10 + (1 + 0) + 4 + 4 + 2 + 4 * 1
+        self.assertEqual(end - start, formula)
+        self.assertEqual(end - start, 31)
+
+
 if __name__ == "__main__":
     unittest.main()

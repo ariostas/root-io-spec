@@ -330,7 +330,7 @@ this project's writer follows it (5.6).
 | key `fTitle` | the directory's title. `mkdir` defaults it to the name (`root/io/io/src/TDirectoryFile.cxx:1275`), which is why a ROOT-written subdirectory almost always has `fName == fTitle` | free |
 | key `fSeekPdir` | the mother's `fSeekDir`; `fBEGIN` for a directory at the top level | derived |
 | key `fObjlen` | 60 | fixed |
-| key `fKeylen` | `26 + sizeof("TDirectory") + sizeof(fName) + sizeof(fTitle)`, so `43 + len(name) + len(title)` for names under 255 bytes | derived |
+| key `fKeylen` | 26 plus the three counted strings `"TDirectory"` (11 bytes), the name and the title, so `39 + len(name) + len(title)` when both are under 255 bytes; `alpha`/`alpha` in `nested-subdir.root` gives 49 | derived |
 | payload | the 60 bytes below, and **nothing before them** | — |
 
 The payload is `Directory.md` §2's field sequence, with no `TNamed` before it:

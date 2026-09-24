@@ -217,8 +217,8 @@ so a `TRefArray` cannot span processes.
 > masked when it assigns a fresh id (`root/core/cont/src/TRefArray.cxx:237`). A
 > reader MUST apply `& 0x00FFFFFF` to every entry.
 
-> Demonstrated by `serialization/references`: 27 payload bytes at 658, with an
-> empty `fName` at 674, `nobjects` 1, and a single `pidf` at 683 ahead of the one
+> Demonstrated by `serialization/references`: a 31-byte payload at 658 whose byte
+> count is 27, with an empty `fName` at 674, `nobjects` 1, and a single `pidf` at 683 ahead of the one
 > `fUIDs` entry.
 
 ## 5. What `fUniqueID` means
@@ -310,8 +310,10 @@ To turn `pidf` into a process:
    characters, and that `fTitle` equals the key's title.
 4. No two `TProcessID` records in one file have the same `fTitle`.
 5. A `TRefArray`'s payload length is
-   `10 or 12 + |fName| + 1 + 4 + 4 + 2 + 4 × nobjects`, and `nobjects` is not
-   negative.
+   `4 + 2 + (10 or 12) + (1 + |fName|) + 4 + 4 + 2 + 4 × nobjects` (byte count,
+   version, `TObject`, `fName` under 255 bytes, `nobjects`, `fLowerBound`, `pidf`,
+   `fUIDs`), and `nobjects` is not negative. `serialization/references` has
+   4 + 2 + 10 + 1 + 4 + 4 + 2 + 4 = 31.
 6. The `fUniqueID` of an object whose `fBits & 0x10` is set has a zero top byte.
 7. A `TRef` payload is exactly 12 bytes when its `fBits` does not have
    `kHasUUID` set. When it does, the payload is 10 bytes plus a counted string
