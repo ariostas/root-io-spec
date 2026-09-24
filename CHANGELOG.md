@@ -11,6 +11,18 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **An STL array's `fArrayDim` of 0 does not mean a scalar.**
+  [`StreamerInfo.md`](spec/02-serialization/StreamerInfo.md) §13 said invariant
+  11 legitimately fails on files before ROOT 6.24/02. It does not: those files
+  store `fArrayDim` 0 with a positive `fArrayLength`, which invariant 11 never
+  tests. A reader must check `fArrayLength` too. The fix reached master only at
+  6.25/02, so 6.25/01 files have the old form (§10).
+- [`TBranch.md`](spec/04-ttree/TBranch.md) §13.1 is the layout of versions 6 to
+  9, not of every version below 10; below 6 the order differs again.
+- [`Record.md`](spec/01-container/Record.md) §3.4: the large-layout row of the
+  key-version table (1002 to 1004) had been cut off from the table and did not
+  render.
+
 - **Ten more false statements corrected**, which the second review had filed as
   wording.
   - [`TLeaf.md`](spec/04-ttree/TLeaf.md) §7: `nbits` 32 is legal and uses the

@@ -19,6 +19,15 @@ Two shapes of table are understood, told apart by the header row:
 A row whose text says "current" must give that highest version, so the prose
 and the table cannot disagree.
 
+A row that cites a header line, as `root/hist/hist/inc/TGraph.h:202`, must cite
+the line holding that class's `ClassDef`. `check_citations.py` only proves the
+line exists, and two rows cited a blank line and an unrelated method for two
+months (PLAN-review.md V35).
+
+A version table outside a `Class versions` section is read when `ELSEWHERE`
+names it: `TKey`'s is the `fVersion` table of `Record.md` §3.4, where values
+above 1000 are the same versions in the large layout.
+
 Deliberately **not** checked: `## N. Version history` sections in
 `spec/01-container/`. Those tabulate ROOT *release* numbers and on-disk record
 versions, which are not `ClassDef` versions and have no macro to compare against.
@@ -54,6 +63,16 @@ ELLIPSIS = re.compile(r"\u2026|\.\.\.")
 #: mistaken for a version. A cell like "<= 5" contributes 5, which is harmless
 #: because the comparison uses the highest version in the table.
 VERSIONS = re.compile(r"(?<![\w.])(\d+)(?![\w.])")
+
+#: A citation of a header line or range, in a table row.
+HEADER_CITE = re.compile(r"`root/([^`:]+\.h):(\d+)(?:-(\d+))?`")
+
+#: Version tables outside a `Class versions` section: (document, the heading
+#: the table follows, class). The first column holds the versions; a value
+#: above 1000 is a large-layout key version and is not a class version.
+ELSEWHERE = [
+    ("spec/01-container/Record.md", "### 3.4 `fVersion`", "TKey"),
+]
 
 
 def class_versions() -> dict[str, set[int]]:
@@ -164,6 +183,69 @@ def claims(path: Path,
     return out
 
 
+def section_rows(lines: list[str], start: int):
+    """`(names, cells)` for every row of every version table in the section
+    whose heading is at `start`, as `claims` reads them."""
+    for header, rows in tables(lines[start + 1:]):
+        if not rows or not header:
+            continue
+        first = header[0].lower()
+        class_per_row = first.startswith("class") and "version" not in first
+        for cells in rows:
+            yield (BACKTICKED.findall(cells[0]) if class_per_row else None,
+                   cells)
+
+
+def bad_citations(path: Path) -> list[str]:
+    """Rows of a class-version table whose header citation is not the class's
+    `ClassDef` line."""
+    lines = path.read_text().splitlines()
+    out = []
+    for start, line in enumerate(lines):
+        if not SECTION.match(line):
+            continue
+        for names, cells in section_rows(lines, start):
+            names = names if names is not None else [path.stem]
+            for m in HEADER_CITE.finditer(" ".join(cells)):
+                header = SUBMODULE / m.group(1)
+                lo = int(m.group(2))
+                hi = int(m.group(3) or lo)
+                try:
+                    text = header.read_text(errors="ignore").splitlines()
+                except OSError:
+                    continue            # check_citations.py reports it
+                cited = "\n".join(text[lo - 1:hi])
+                declared = {d.group(1).split("::")[-1]
+                            for d in CLASSDEF.finditer(cited)}
+                if not declared & {n.split("::")[-1] for n in names}:
+                    out.append(
+                        f"{path.relative_to(REPO)}:{start + 1}: the row for "
+                        f"{', '.join(names)} cites {m.group(0)}, which holds "
+                        f"no ClassDef for it")
+    return out
+
+
+def elsewhere(narrowed: list[str]) -> list[tuple[Path, str, list[int], int]]:
+    """`(document, class, versions, line)` for each table ELSEWHERE names."""
+    out = []
+    for doc, heading, name in ELSEWHERE:
+        path = REPO / doc
+        lines = path.read_text().splitlines()
+        if heading not in lines:
+            narrowed.append(f"{doc}: no heading {heading!r}, so {name}'s "
+                            f"versions are not checked")
+            continue
+        start = lines.index(heading)
+        for header, rows in tables(lines[start + 1:]):
+            versions = [int(v) for cells in rows
+                        for v in VERSIONS.findall(
+                            re.sub(r"`[^`]*`", " ", cells[0]))
+                        if int(v) < 1000]
+            out.append((path, name, versions, start + 1))
+            break
+    return out
+
+
 def main(argv: list[str]) -> int:
     known = class_versions()
     if not known:
@@ -176,13 +258,19 @@ def main(argv: list[str]) -> int:
     checked: dict[str, tuple[int, int]] = {}   # class -> (claimed, actual)
     documents: set[str] = set()
 
+    extra: dict[Path, list] = {}
+    for path, name, versions, line in elsewhere(narrowed):
+        extra.setdefault(path, []).append((name, versions, False, line))
+
     for path in sorted(SPEC.rglob("*.md")):
+        failures.extend(bad_citations(path))
         # Per class: every version the table gives it, and separately the
         # versions on rows that say "current". Merging the two made the
         # "current" check vacuous, because the actual version is in the table
         # whichever row claims to be current.
         by_class: dict[str, tuple[list[int], list[int], int]] = {}
-        for name, versions, current, line in claims(path, narrowed):
+        for name, versions, current, line in (claims(path, narrowed)
+                                              + extra.get(path, [])):
             seen, marked, first = by_class.get(name, ([], [], line))
             by_class[name] = (seen + versions,
                               marked + (versions if current else []), first)

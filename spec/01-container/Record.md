@@ -184,12 +184,13 @@ values written are 4 and 1004.
 | 2 | 2.24 – 3.10 | |
 | 3 | 4.00 – 5.06 | 64-bit offsets in memory |
 | 4 | 5.08+ | `fPidOffset` packed into `fSeekPdir`; see §3.6 |
+| 1002, 1003, 1004 | | the same, large layout |
 
 The boundaries are read from `ClassDef(TKey,…)` at the release tags. Version 2
 is already in `base/inc/TKey.h` at `v2-24-05`, the oldest tag in the submodule,
 so where version 1 ended is not known from the source; version 3 arrives at
 `v4-00-02` (commit `9cbf72a24c4`) and version 4 at `v5-08-00` (`b2040d67807`).
-| 1002, 1003, 1004 | | the same, large layout |
+`tools/check_versions.py` checks the highest version against `ClassDef`.
 
 ### 3.5 `fSeekKey`
 

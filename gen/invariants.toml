@@ -28,15 +28,6 @@
 
 # ---------------------------------------------------------------- container --
 
-[invariant."Compression 9.1"]
-by = "structural"
-reason = """
-The compressed/raw decision itself: `fObjlen > fNbytes - fKeylen` and nothing
-else. Every reader path takes the branch from it, so there is no separate value to
-compare. Its compressed half is checked as Compression 9.2 to 9.6 and its raw half
-by the new 9.7.
-"""
-
 [invariant."Directory 9.1"]
 by = "structural"
 reason = """
@@ -108,6 +99,12 @@ compares magnitudes as this entry asks.
 """
 
 # ------------------------------------------------------------ serialization --
+
+# Buffer 9.3 (byte counts nest) is matched to a label, so it has no entry here,
+# but the label is not an independent check: check_invariants.py raises it only
+# when read_tlist fails on a TList record. Nesting follows from Buffer 9.2 (no
+# byte count extends past its enclosing one) and a sequential read, and
+# decode_record enforces it for every object under StreamerDriven 10.1.
 
 [invariant."Collections 14.5"]
 by = "structural"

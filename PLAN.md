@@ -40,12 +40,12 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Reference files / byte assertions | 89 / 2319, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
 | Source citations checked | 1827, 0 failures |
-| Class versions checked against `ClassDef` | 63 |
+| Class versions checked against `ClassDef` | 64 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 101 files, 0 failures |
+| Invariants over the fixtures and the written files | 103 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 651 |
+| Unit tests | 662 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,

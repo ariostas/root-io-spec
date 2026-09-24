@@ -32,8 +32,15 @@ Requirements:
 `[[bytes]]` entries are the most important part. They are written from the same
 reading of the format as the tables in `spec/`, so a mistake in either shows up as
 a failing assertion. Types are `i8`/`u8`/`i16`/`u16`/`i32`/`u32`/`i64`/`u64`/
-`f32`/`f64` (all big-endian), `bytes` (a literal), and `string` (a counted string as
-defined in `spec/00-conventions.md` §5.1).
+`f32`/`f64` (all big-endian), the same with an `le` suffix (`i32le`, `f64le`, …)
+for RNTuple's little-endian envelopes and pages, `bytes` (a literal), and `string`
+(a counted string as defined in `spec/00-conventions.md` §5.1).
 
 Offsets are absolute within the file. Cite the specification section each group of
 assertions corresponds to, so that a change to one prompts a look at the other.
+
+`[[records]]` entries describe records of the file's chain: `offset`, `nbytes`
+(negative for a free segment, as stored), and optionally the key's `class`,
+`name`, `cycle` and `seek_pdir`. `role` is prose. A table may list only the
+records it is about. `tools/check_bytes.py` walks the chain with the standard
+library and checks each listed field, so these are assertions too.

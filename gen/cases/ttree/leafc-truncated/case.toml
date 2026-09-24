@@ -39,7 +39,7 @@ offset = 282
 nbytes = 98
 class  = "TBasket"
 name   = "s"
-cycle  = 1
+cycle  = 0
 seek_pdir = 100
 
 [[records]]
@@ -55,7 +55,7 @@ offset = 1230
 nbytes = 121
 class  = "TBasket"
 name   = "s"
-cycle  = 1
+cycle  = 0
 seek_pdir = 100
 
 [[records]]
@@ -71,7 +71,7 @@ offset = 2199
 nbytes = 98
 class  = "TBasket"
 name   = "s"
-cycle  = 1
+cycle  = 0
 seek_pdir = 100
 
 [[records]]
@@ -79,7 +79,7 @@ offset = 2297
 nbytes = 121
 class  = "TBasket"
 name   = "s"
-cycle  = 1
+cycle  = 0
 seek_pdir = 100
 
 [[records]]

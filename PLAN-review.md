@@ -643,7 +643,7 @@ existing class already was, so five older tests stopped running with nothing
 reported (the count went from 640 to 638). `tools/test_hygiene.py` now fails on
 any name defined twice at the top level of a test module or within a test class.
 
-### V33. `rootfile.py` paths that swallow a failure into "absent" ☐
+### V33. `rootfile.py` paths that swallow a failure into "absent" ✅
 
 - `:3835-3838` (`_embedded_baskets`): `FormatError`, `struct.error`,
   `IndexError` and `ValueError` all make the slot silently absent;
@@ -661,6 +661,16 @@ Each becomes a named skip or a failure; then re-run both corpora once and record
 whether `48278 of 48501` moves, because that number is quoted in five places.
 **Reported**, each with a line.
 
+**Done.** An object in an `fBaskets` slot that does not parse as a basket is
+now kept in `Branch.embedded_errors`: `TreeReader.basket_for` raises on it
+rather than falling through to `fBasketSeek`, `check_invariants.py` reports it
+as `TBasket 9.1` and counts the slot as a named skip. An `fBranchRef` that does
+not parse fails the tree (`TBranch 11.1`) instead of vanishing. Both corpora
+re-run: `48278 of 48501`, 0 failures, unchanged, so neither path had fired on a
+real file. `decode_record` parses the same embedded baskets first and would fail
+on most corruptions before the second parse, which is why the test injects the
+failure into the second parse alone.
+
 ### V34. Corruption tests for the invariants that have none ☐
 
 About 150 of the 199 checked labels have no test that corrupts a fixture and
@@ -671,7 +681,7 @@ been wrong before (the §8.13, §8.14 and §8.16 lists, and V5, V15) and a
 one-line note in `gen/invariants.toml` on which labels still have none, so the
 worklist is visible rather than implied.
 
-### V35. `check_versions.py` should validate the cited line, and cover `TKey` ☐
+### V35. `check_versions.py` should validate the cited line, and cover `TKey` ✅
 
 `spec/06-writing/WritingGraphs.md:352-353` cites `TList.h:80` (a blank line) and
 `TH1.h:672` (`Smooth(...)`) for `ClassDef`s that are at `:115` and `:902`;
@@ -682,7 +692,15 @@ gap between the two tools for the one kind of citation where it can be closed
 completely. Add `TKey` (V7) to the classes it reads. **Confirmed here** for the
 two wrong lines.
 
-### V36. Smaller tool items ☐
+**Done.** A row citing a header line must cite that class's `ClassDef` (a range
+containing it passes). It found four, not two: `TGraph.h:172` and
+`TBranchRef.h:59` as well as the two above. `TKey` is read from `Record.md`
+§3.4's `fVersion` table through a short `ELSEWHERE` list, ignoring the +1000
+values. Writing that test showed the table's large-layout row had been cut off
+below a paragraph in Phase A and rendered as text; `test_hygiene.py` now fails
+on a table row glued to the prose above it, which the strict build accepts.
+
+### V36. Smaller tool items ✅
 
 - `tools/rootwrite.py:265-267, 874-878`: `Key.parse` and `reopen` read counted
   strings with a single length byte and no 255 escape; a reopen of a file whose
@@ -719,6 +737,28 @@ two wrong lines.
   say so in a comment or add the floor.
 - `check_coverage.py` reads only the first `Invariants` heading per document; a
   second would be ignored silently. A guard costs one line.
+
+**Done**, each item: `read_counted_string` with the 255 escape in `Key.parse`
+and `reopen`; `reopen` says why it declines `fBEGIN` below 75 and, separately,
+that it reopens only 100; the `Graph` docstring and `kClipFrame` citation
+(`CtorAllocate`, `:838`). The `TStreamerSTL` exemption from `StreamerInfo 13.11`
+is gone rather than scoped: a survey of the fixtures, both corpora and roottest
+found no STL element with `fArrayDim > 0` failing it, because the files ROOT got
+wrong store `fArrayDim` 0, which the invariant does not test. So the document's
+"invariant 11 is the one that legitimately fails" was false, and is corrected
+(`stringarray.old.root`, 6.25/01, is the witness; the fix reached master only at
+6.25/02). `TMap`, `TExMap` and `TBtree` count as described by hand, so their
+records get the framing check instead of a `NOT CHECKED` (a corrupted byte count
+now fails `Buffer 9.9` as well as `Containers 7.2`). The generic decompression
+failure is `Compression 9.1`, and its `structural` entry in
+`gen/invariants.toml` is gone. `Buffer 9.3` has a comment there. `check_bytes.py`
+now walks the record chain with the standard library and checks every
+`[[records]]` field; that found six basket keys listed with `fCycle` 1 where the
+file, and `TBasket.md`, have the basket number 0. `gen/README.md` documents the
+tables and the `le` types. `read_members` refuses a `TBranch` below version 6.
+`check_coverage.py` refuses a second `Invariants` section. And
+`check_figures.py` now pins the unit-test count, the `ClassDef` count and the
+fixture-file count, which `PLAN.md` had at 651, 63 and 101.
 
 ### V37. `fetch_cern.py --headers` runs nowhere in CI ☐
 

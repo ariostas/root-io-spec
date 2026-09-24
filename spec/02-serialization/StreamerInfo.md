@@ -600,7 +600,9 @@ The read path also reconstructs two fields:
 - If `fArrayDim == 0` and `fArrayLength > 0`, recover the rank by counting
   non-zero `fMaxIndex` entries
   (`root/core/meta/src/TStreamerElement.cxx:2106-2111`). ROOT before 6.24/02
-  did not copy `fArrayDim` into the temporary.
+  did not copy `fArrayDim` into the temporary. On master the fix (commits
+  `c7feb0e9cf7` and `43c17b87fe4`, 2021-05-05) was first tagged `v6-25-02`, so
+  the development release 6.25/01 still has the old behaviour.
 - `fSTLtype` values 5 and 6 are ambiguous across ROOT versions and must be
   re-derived from `fTypeName` (`root/core/meta/src/TStreamerElement.cxx:2112-2122`).
   Current numbering has **5 = multimap, 6 = set**
@@ -839,8 +841,13 @@ There is deliberately no invariant on `fBaseVersion`. As §9.2 shows, it may
 legitimately name a version the file has no info for, which invariant 7's
 `fBaseCheckSum` never does.
 
-Invariant 11 is the one that legitimately fails: an STL element's `fArrayDim` was
-not written at all before ROOT 6.24/02 (§10).
+Invariant 11 does not test the one field known to be written wrong. Before the
+fix of ROOT 6.24/02, an array of STL containers or strings was stored with
+`fArrayDim` 0 and a positive `fArrayLength` (§10), and invariant 11 constrains
+`fMaxIndex` only when `fArrayDim` is non-zero, so such an element passes it. A
+reader MUST NOT take `fArrayDim` 0 to mean a scalar without also checking
+`fArrayLength`. `root/roottest/root/io/evolution/issue-8083/stringarray.old.root`,
+written by 6.25/01, has one: `mystrarray::fOutputNames`, `fArrayLength` 4.
 
 ## 14. Errata
 

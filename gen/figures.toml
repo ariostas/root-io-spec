@@ -32,6 +32,18 @@ text = "| Reference files / byte assertions | {cases} / {bytes}, 0 failures |"
 file = "PLAN.md"
 text = "| Files this project wrote / assertions | {written} / {written_bytes}, 0 failures |"
 [[at]]
+file = "PLAN.md"
+text = "| Class versions checked against `ClassDef` | {versions} |"
+[[at]]
+file = "PLAN.md"
+text = "| Invariants over the fixtures and the written files | {data_files} files, 0 failures |"
+[[at]]
+file = "PLAN.md"
+text = "| Unit tests | {tests} |"
+[[at]]
+file = "AGENTS.md"
+text = "{versions} are checked, across"
+[[at]]
 file = "spec/99-appendix/Bibliography.md"
 text = "`data/` holds {cases} small files ROOT wrote, plus the {written} in `data/written/`"
 

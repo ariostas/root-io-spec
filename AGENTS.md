@@ -416,7 +416,7 @@ labels the tools report, and requires anything left over to be accounted for in
 `write-gate`, `not-checkable` or `unchecked`. It was written because the one
 invariant this project published that was outright false was also one nobody had
 wired up (`PLAN.md` §8.13); wiring up the rest found two more wrong
-(`ElementTypes` 11.3 and 11.4) within the hour. There are 267 entries, 199 with a
+(`ElementTypes` 11.3 and 11.4) within the hour. There are 267 entries, 200 with a
 check. The `unchecked` reason is a worklist, not an excuse, and it should stay
 short.
 
@@ -461,9 +461,11 @@ the direction of "a reader needs nothing".
 cited line exists but cannot prove the line still says what the citing sentence
 claims, as `spec/00-conventions.md` §7 admits. For a class version that gap can
 be closed completely, because the answer is an integer in a `ClassDef` macro.
-63 are checked, across 12 documents. It prints `NARROWED` for a table row that names classes it
-does not spell, a row it can only partly check, so a silent narrowing is as
-visible as a `SKIPPED`.
+64 are checked, across 13 documents, `TKey` among them from the `fVersion` table of
+`Record.md` §3.4. A row that cites a header line must cite the `ClassDef` line
+itself; four rows cited a blank line or an unrelated method until 2026-09-24. It
+prints `NARROWED` for a table row that names classes it does not spell, a row it
+can only partly check, so a silent narrowing is as visible as a `SKIPPED`.
 
 ## Repository-specific gotchas
 

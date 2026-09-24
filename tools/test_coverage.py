@@ -39,6 +39,21 @@ class Parsing(unittest.TestCase):
         self.assertIn("WritingFiles 14.1", self.labels)
         self.assertIn("WritingFiles 14.17", self.labels)
 
+    def test_a_second_invariants_section_is_refused(self):
+        """Only one section per document is read (PLAN-review.md V36)."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "X.md").write_text(
+                "# X\n\n## 3. Invariants\n\n1. a\n\n"
+                "## 7. Invariants of the writer\n\n1. b\n")
+            saved = check_coverage.SPEC
+            check_coverage.SPEC = Path(d)
+            try:
+                with self.assertRaisesRegex(ValueError, "2 Invariants sections"):
+                    check_coverage.published()
+            finally:
+                check_coverage.SPEC = saved
+
     def test_the_rntuple_copy_is_not_ours(self):
         self.assertFalse([label for label in self.labels
                           if label.startswith("BinaryFormatSpecification")])

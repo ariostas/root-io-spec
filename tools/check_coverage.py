@@ -52,6 +52,12 @@ def published() -> list[tuple[str, str, str]]:
         if path in NOT_OURS:
             continue
         text = path.read_text()
+        headings = HEADING.findall(text)
+        if len(headings) > 1:
+            # Only one section is read, so a second would go unchecked with
+            # nothing said. Merge them, or teach this function about both.
+            raise ValueError(f"{path.relative_to(SPEC)} has {len(headings)} "
+                             f"Invariants sections, and only one is read")
         match = HEADING.search(text)
         if match is None:
             continue

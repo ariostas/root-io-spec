@@ -704,9 +704,10 @@ not express. §13.1 gives the layout for 6 to 9.
 
 ### 13.1 The layout below version 10
 
-`TBranch::Streamer` hand-codes the read for every version at or below 9
-(`root/tree/tree/src/TBranch.cxx:3035-3108`). In order, with no framing of its
-own beyond the branch's byte count and version word:
+`TBranch::Streamer` hand-codes the read for every version at or below 9. For
+versions 6 to 9 (`root/tree/tree/src/TBranch.cxx:3035-3108`) the order is the one
+below, with no framing of its own beyond the branch's byte count and version
+word; below 6 it is another order again (§13, and `:3109-3176`):
 
 | Member | On disk | Present |
 |---|---|---|

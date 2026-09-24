@@ -417,8 +417,8 @@ class Checker:
             if rec.class_name == RBLOB_CLASS:
                 self.rblob_unchecked(rec)
             else:
-                self.bad("Compression 9", str(exc))
-            self._undecoded[rec.offset] = "it does not decompress (Compression 9)"
+                self.bad("Compression 9.1", str(exc))
+            self._undecoded[rec.offset] = "it does not decompress (Compression 9.1)"
             out = None
         # An uncompressed record shares self.buf, so caching it costs nothing; a
         # compressed one is a file-sized copy, so keep only a handful.
@@ -747,7 +747,10 @@ class Checker:
         if (name in rootfile.CUSTOM_STREAMER or template in rootfile.CUSTOM_STREAMER
                 or name in self.UNFRAMED
                 or name in rootfile.Decoder.SEQUENCES
-                or name in ("TClonesArray", "TDatime")):
+                or name in ("TClonesArray", "TDatime")
+                # Containers.md 4: none of the three ever writes an info, and
+                # the document describes each byte (check_containers).
+                or name in ("TMap", "TExMap", "TBtree")):
             return True         # described by hand, not by a streamer info
         _, _, infos = self.streamer_infos()
         if infos is None:
@@ -824,6 +827,8 @@ class Checker:
         try:
             slots = rootfile.read_tlist(data, rec)
         except rootfile.FormatError as exc:
+            # Not an independent check of nesting, which Buffer 9.2 and the
+            # sequential read imply; see gen/invariants.toml.
             self.bad("Buffer 9.3", f"TList at {rec.offset}: {exc}")
             return
 
@@ -1011,7 +1016,10 @@ class Checker:
                 # 13.11
                 if not 0 <= e.array_dim <= 5:
                     self.bad("StreamerInfo 13.11", f"{where}: fArrayDim {e.array_dim}")
-                elif e.array_dim > 0 and e.cls != "TStreamerSTL":
+                elif e.array_dim > 0:
+                    # No exemption for STL elements: the ones ROOT stored
+                    # wrongly before 6.24/02 have fArrayDim 0, which this
+                    # clause does not test (StreamerInfo.md 13).
                     extents = e.max_index[:e.array_dim]
                     product = 1
                     for x in extents:
@@ -2907,6 +2915,12 @@ class Checker:
         not, is not a basket anything could check and is not yielded.
         """
         for i in range(min(br.write_basket + 1, len(br.basket_seek))):
+            if i in br.embedded_errors:
+                # A failure too (TBasket 9.1, check_branch); skipped here
+                # so that it stays in the ENTRIES denominator.
+                yield i, None, None, None, ("an fBaskets slot holds an object "
+                                            "that does not parse as a basket")
+                continue
             emb = br.embedded.get(i)
             if emb is not None:
                 if not emb.basket.nev_buf:
@@ -3733,6 +3747,10 @@ class Checker:
             self.bad("TBranch 11.9",
                      f"{name}: fBaskets has {br.basket_slots} slots, more than "
                      f"fMaxBaskets = {br.max_baskets}")
+        # Every object in fBaskets is a basket, and an embedded one satisfies
+        # TBasket.md invariant 1 as a record does.
+        for index, why in sorted(br.embedded_errors.items()):
+            self.bad("TBasket 9.1", f"{name}: {why}")
         for index, emb in sorted(br.embedded.items()):
             if unassigned_garbage:
                 break           # never assigned: TBranch.md 11.9

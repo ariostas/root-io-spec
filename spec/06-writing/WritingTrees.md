@@ -711,7 +711,7 @@ Every class a flat tree writes, with the version a writer emits. Checked against
 | `TLeafC` | 1 | `root/tree/tree/inc/TLeafC.h:57` |
 | `TBasket` | 3 | `root/tree/tree/inc/TBasket.h:156` |
 | `TObjArray` | 3 | `root/core/cont/inc/TObjArray.h:105` |
-| `TBranchRef` | 1 | `root/tree/tree/inc/TBranchRef.h:59` |
+| `TBranchRef` | 1 | `root/tree/tree/inc/TBranchRef.h:60` |
 | `TRefTable` | 3 | `root/core/cont/inc/TRefTable.h:93` |
 
 `ROOT::TIOFeatures` is not in the table: it has no `ClassDef`, which is why its

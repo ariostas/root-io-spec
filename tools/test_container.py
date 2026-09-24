@@ -69,6 +69,40 @@ def free_record(entries: list[tuple[int, int]]) -> tuple[bytes, int, int]:
     return b"\x00" * key_len + body, key_len, len(body)
 
 
+class RecordTables(unittest.TestCase):
+    """check_bytes.py reads a case's [[records]] table with the standard
+    library. Until 2026-09-24 nothing read the tables of gen/cases, and six
+    entries gave a basket key fCycle 1 where TBasket.md 1 says, and the
+    bytes show, the basket number (PLAN-review.md V36)."""
+
+    GAP = Path(__file__).resolve().parents[1] / "data/container/gap.root"
+
+    def test_the_walk_finds_the_free_segment(self):
+        import check_bytes
+        records = check_bytes.walk_records(self.GAP.read_bytes())
+        self.assertIn({"offset": 718, "nbytes": -187}, records)
+        self.assertEqual(records[0]["class"], "TFile")
+
+    def test_a_wrong_field_fails(self):
+        import check_bytes
+        buf = self.GAP.read_bytes()
+        self.assertEqual(check_bytes.check_records(
+            buf, [{"offset": 286, "nbytes": 106, "class": "TObjString",
+                   "cycle": 1, "role": "prose is ignored"}], "gap"), [])
+        (bad,) = check_bytes.check_records(
+            buf, [{"offset": 286, "nbytes": 106, "cycle": 2}], "gap")
+        self.assertIn("cycle 1, case.toml says 2", bad)
+        (bad,) = check_bytes.check_records(buf, [{"offset": 287}], "gap")
+        self.assertIn("no record starts at 287", bad)
+
+    def test_a_long_counted_string_is_read_past_its_escape(self):
+        import check_bytes
+        import rootwrite
+        raw = rootwrite.counted_string("x" * 300)
+        self.assertEqual(check_bytes.counted_string(raw, 0), ("x" * 300, 305))
+        self.assertEqual(rootwrite.read_counted_string(raw, 0),
+                         ("x" * 300, 305))
+
 class FreeList(unittest.TestCase):
     """FreeSegments.md 2 and 2.1."""
 

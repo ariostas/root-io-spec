@@ -348,10 +348,10 @@ count is the only thing that has to add up, and it is checked by
 
 | Class | Version | Cite |
 |---|---|---|
-| `TGraph` | 5 | `root/hist/hist/inc/TGraph.h:172` |
+| `TGraph` | 5 | `root/hist/hist/inc/TGraph.h:202` |
 | `TGraphErrors` | 3 | `root/hist/hist/inc/TGraphErrors.h:78` |
-| `TList` | 5 | `root/core/cont/inc/TList.h:80` |
-| `TH1F` | 3 | `root/hist/hist/inc/TH1.h:672` |
+| `TList` | 5 | `root/core/cont/inc/TList.h:115` |
+| `TH1F` | 3 | `root/hist/hist/inc/TH1.h:902` |
 
 The `TH1F` row is here because a graph file describes the class without containing
 one (§5); [Writing histograms §11](WritingHistograms.md#11-class-versions) has the

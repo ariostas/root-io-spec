@@ -95,12 +95,51 @@ def compute() -> dict[str, int | None]:
         "corpus": foreign + cern,
         "large": sum(len(v) for v in large.values() if isinstance(v, list)),
         "roottest": None,
+        "data_files": sum(1 for _ in (REPO / "data").rglob("*.root")),
+        "tests": _tests(),
+        "versions": None,
     }
     values["infos"], values["infos_recomputed"] = _checksums()
     if ROOTTEST.is_dir():
         values["roottest"] = sum(1 for p in ROOTTEST.rglob("*.root")
                                  if p.is_file())
+        values["versions"] = _versions()
     return values
+
+
+def _tests() -> int | None:
+    """The unit tests discovery finds, counted without running them.
+
+    None when a test module fails to import (test_rootcite.py needs markdown,
+    from requirements-docs.txt): unittest then counts the module as one test,
+    and the page would look stale when it is not.
+    """
+    import unittest
+
+    def cases(suite):
+        for item in suite:
+            if isinstance(item, unittest.TestSuite):
+                yield from cases(item)
+            else:
+                yield item
+    suite = unittest.TestLoader().discover(str(REPO / "tools"),
+                                           pattern="test_*.py")
+    found = list(cases(suite))
+    if any(type(t).__name__ == "_FailedTest" for t in found):
+        return None
+    return len(found)
+
+
+def _versions() -> int:
+    """The class versions check_versions.py compares with ClassDef."""
+    import contextlib
+    import io
+    import check_versions
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+        check_versions.main([])
+    return sum(1 for line in out.getvalue().splitlines()
+               if line.startswith(("  ok ", "  BAD ")))
 
 
 def _checksums() -> tuple[int | None, int | None]:
@@ -199,7 +238,8 @@ def main(argv: list[str]) -> int:
         print(f"FAIL {problem}", file=sys.stderr)
     if skipped:
         print(f"SKIPPED {skipped} figure(s): root/roottest is not checked out, "
-              f"or a codec is missing (requirements-codecs.txt)", file=sys.stderr)
+              f"a codec is missing (requirements-codecs.txt), or a test module "
+              f"does not import (requirements-docs.txt)", file=sys.stderr)
     print(f"{checked} stated figure(s) checked, {len(problems)} failure(s)")
     return 1 if problems else 0
 

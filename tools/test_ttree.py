@@ -242,6 +242,54 @@ class EmbeddedBasketFlag(unittest.TestCase):
             rootfile.read_embedded_basket(bytes(buf), 0)
 
 
+class ReaderFailuresAreNamed(unittest.TestCase):
+    """PLAN-review.md V33. Two parse failures used to become absence: an
+    object in an fBaskets slot that did not parse as a basket left the slot
+    looking empty, so TreeReader fell through to fBasketSeek (a seek of 0 read
+    as "basket unavailable", a stale one as another basket's bytes), and an
+    fBranchRef that did not parse vanished from the tree and from the ENTRIES
+    denominator with nothing printed."""
+
+    PATH = Path(__file__).resolve().parents[1] / "data/ttree/basket-embedded.root"
+
+    def test_an_embedded_basket_that_does_not_parse_is_recorded(self):
+        # decode_record reads the same basket and would fail first on a real
+        # corruption, so only the second parse, _embedded_baskets', is made
+        # to fail.
+        original = rootfile.read_embedded_basket
+
+        def broken(buf, offset):
+            if sys._getframe(1).f_code.co_name == "_embedded_baskets":
+                raise rootfile.FormatError("injected")
+            return original(buf, offset)
+        rootfile.read_embedded_basket = broken
+        try:
+            c = check_invariants.Checker(self.PATH)
+            trees = list(c.trees())
+        finally:
+            rootfile.read_embedded_basket = original
+        (_, _, t), = trees
+        n = next(b for b in t.branches if b.name == "n")
+        self.assertEqual(n.embedded, {})
+        self.assertIn("slot 0 does not parse: injected", n.embedded_errors[0])
+        with self.assertRaises(rootfile.FormatError):
+            rootfile.TreeReader(b"", t, []).basket_for(n, 0)
+
+        c = stub_checker()
+        c.check_branch(None, n)
+        self.assertEqual(len(labelled(c, "TBasket 9.1")), 1, c.failures)
+        (_, _, _, _, why), = c.branch_baskets(n, None)
+        self.assertIn("does not parse as a basket", why)
+
+    def test_an_fbranchref_that_does_not_parse_fails_the_tree(self):
+        ref = rootfile.Value(name="fBranchRef", ftype=64, start=0, end=0,
+                             type_name="TBranchRef", members=[
+                                 rootfile.Value(name="fRefTable", ftype=64,
+                                                start=0, end=0)])
+        with self.assertRaises(rootfile.FormatError):
+            rootfile._read_branch_ref(b"", {"fBranchRef": ref}, 0)
+
+
 def tree(**kw) -> rootfile.Tree:
     fields = dict(
         name="t", title="", version=20, entries=0, tot_bytes=0, zip_bytes=0,
@@ -683,7 +731,8 @@ class MaxBasketsByClassVersion(unittest.TestCase):
             name="b", cls="TBranch", write_basket=0, max_baskets=max_baskets,
             basket_bytes=[0] * max_baskets, basket_entry=[0] * max_baskets,
             basket_seek=[0] * max_baskets, basket_slots=1, branches=[],
-            embedded={}, entries=0, entry_number=0, first_entry=0,
+            embedded={}, embedded_errors={}, entries=0, entry_number=0,
+            first_entry=0,
             entry_offset_len=0, file_name="", leaves=[], tot_bytes=0,
             zip_bytes=0)
         c.check_branch(None, br)

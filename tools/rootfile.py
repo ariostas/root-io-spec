@@ -2132,7 +2132,7 @@ class Decoder:
 
     def read_legacy_branch(self, version: int, offset: int,
                            limit: int | None) -> list[Value]:
-        """A TBranch below class version 10. TBranch.md 13.1.
+        """A TBranch at class version 6 to 9. TBranch.md 13.1.
 
         The member order is taken from TBranch::Streamer rather than from the
         file's streamer info. The two agree element for element on every legacy
@@ -2275,6 +2275,13 @@ class Decoder:
             base = read_tobject(self.buf, offset)
             return [Value(name="TObject", ftype=66, start=offset, end=base.end,
                           tobject=base)]
+        if cls == "TBranch" and version < 6:
+            # A third order again (root/tree/tree/src/TBranch.cxx:3109-3176),
+            # which no file available has: the one ROOT 2.23/12 file in
+            # roottest carries no streamer info at all. TBranch.md 13.
+            raise UnsupportedClass(
+                f"TBranch class version {version}: the layout below 6 is not "
+                f"specified, TBranch.md 13")
         if cls == "TBranch" and version < 10:
             return self.read_legacy_branch(version, offset, limit)
         info = self.info_for(cls, version)
@@ -3705,6 +3712,10 @@ class Branch:
     maximum: int = 0
     count_slot: int = -1                # fBranchCount, resolved; -1 when null
     count_slot2: int = -1               # fBranchCount2, likewise
+    #: fBaskets slots holding an object that does not parse as a basket, with
+    #: why. Kept apart from `embedded` so that a reader failure is not taken
+    #: for an empty slot and resolved through fBasketSeek instead.
+    embedded_errors: dict = field(default_factory=dict)
 
 
 def truncated_width(cls: str, title: str) -> int:
@@ -3841,13 +3852,18 @@ def _read_leaf(buf: bytes, entry: Value, base: int) -> Leaf:
         ((base + tag - MAP_OFFSET) if tag else -1))
 
 
-def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
+def _embedded_baskets(buf: bytes, baskets: Value,
+                      base: int) -> tuple[dict, dict]:
     """The embedded baskets of one fBaskets array, by slot index.
 
     read_sequence records only the non-null slots, so the index has to be
-    recovered by walking the array again.
+    recovered by walking the array again. The second dict holds, by slot
+    index, why an object in a slot did not parse as a basket: every object in
+    fBaskets is one, so that is a reader or file failure, and a caller must
+    not fall through to fBasketSeek, which may name another basket or none.
     """
     out: dict = {}
+    errors: dict = {}
     frame = read_frame(buf, baskets.start)
     pos = frame.body
     if frame.version > 2:
@@ -3868,12 +3884,19 @@ def _embedded_baskets(buf: bytes, baskets: Value, base: int) -> dict:
                 body += len(slot.class_name) + 1
             try:
                 emb = read_embedded_basket(buf, body)
-            except (FormatError, struct.error, IndexError, ValueError):
-                emb = None
-            if emb is not None and emb.end == slot.end:
-                out[index] = emb
+            except (FormatError, struct.error, IndexError, ValueError) as exc:
+                errors[index] = (f"the embedded basket in slot {index} does "
+                                 f"not parse: {exc}")
+            else:
+                if emb.end == slot.end:
+                    out[index] = emb
+                else:
+                    errors[index] = (
+                        f"the embedded basket in slot {index} parses to "
+                        f"{emb.end - slot.offset} bytes of a "
+                        f"{slot.end - slot.offset}-byte slot")
         pos = slot.end
-    return out
+    return out, errors
 
 
 def _branch_list(buf: bytes, entries: list[Value], base: int) -> list[Branch]:
@@ -3924,6 +3947,7 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
     # those the field does not exist and its value is 0 by definition (a branch
     # with no fFirstEntry starts at entry 0). TBranch.md 13.1.
     n = _i32(buf, m["fMaxBaskets"].start)
+    embedded, embedded_errors = _embedded_baskets(buf, m["fBaskets"], base)
     return Branch(
         slot=entry.start,
         name=_string_at(buf, m["fName"]), title=_string_at(buf, m["fTitle"]),
@@ -3944,7 +3968,8 @@ def _read_branch(buf: bytes, entry: Value, base: int) -> Branch:
         zip_bytes=_int_member(buf, m["fZipBytes"]),
         basket_slots=_sequence_count(buf, m["fBaskets"]),
         basket_objects=len(m["fBaskets"].members or []),
-        embedded=_embedded_baskets(buf, m["fBaskets"], base),
+        embedded=embedded,
+        embedded_errors=embedded_errors,
         # Widths from the bytes rather than from the declared type: below
         # version 10 fBasketEntry is Int_t and fBasketSeek's width is in its
         # flag byte. TBranch.md 13.1, 13.3.
@@ -4200,15 +4225,17 @@ def _read_branch_ref(buf: bytes, m: dict, base: int) -> "Branch | None":
     """fBranchRef, when the tree has one. TTree.md section 4.
 
     It is a TBranch and it holds data, but it is not in fBranches, so a walk
-    over a tree's branches misses it unless it is asked for by name.
+    over a tree's branches misses it unless it is asked for by name. A failure
+    to read it is the tree's failure, not an absent fBranchRef: returning None
+    would take its baskets out of every count with nothing reported.
     """
     slot = m.get("fBranchRef")
     if slot is None or not slot.members:
         return None
     try:
         return _read_branch(buf, slot, base)
-    except (FormatError, KeyError, struct.error, IndexError, ValueError):
-        return None
+    except KeyError as exc:
+        raise FormatError(f"fBranchRef: no member {exc}") from None
 
 
 def read_branches(buf: bytes, tree: Value, base: int) -> list[Branch]:
@@ -4492,6 +4519,8 @@ class TreeReader:
             raise FormatError(
                 f"branch {br.name!r}: basket {i} holds entry {entry} but "
                 f"fBasketSeek has {len(br.basket_seek)} entries")
+        if i in br.embedded_errors:
+            raise FormatError(f"branch {br.name!r}: {br.embedded_errors[i]}")
         if i in br.embedded:
             # The slot is consulted before fBasketSeek, as ROOT does
             # (root/tree/tree/src/TBranch.cxx:1234-1236): a legacy writer can

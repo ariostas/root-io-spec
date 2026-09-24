@@ -129,9 +129,8 @@ class SectionBoundaries(unittest.TestCase):
         self.assertEqual(claims("# x\n\n## 1. Layout\n\ntext\n"), [])
 
 
-#: The docs workflow checks out without submodules and still runs every test
-#: here, so a test that reads the pinned ROOT source skips rather than fails.
-#: unittest reports the skip.
+#: A test that reads the pinned ROOT source skips without it. CI's tests job
+#: checks the submodule out and fails on a skip that names it.
 HAVE_SUBMODULE = (check_versions.SUBMODULE / "io" / "io" / "src").is_dir()
 
 
@@ -155,6 +154,51 @@ class SubmoduleExtraction(unittest.TestCase):
         # lookup by bare name is unsafe and the tool must refuse rather than
         # pick. This asserts only that the ambiguity is visible.
         self.assertGreater(len(self.known.get("Event", set())), 1)
+
+
+@unittest.skipUnless(HAVE_SUBMODULE, "the pinned submodule is not checked out")
+class CitedLines(unittest.TestCase):
+    """PLAN-review.md V35: a row's header citation must be its ClassDef line.
+    WritingGraphs.md cited a blank line of TList.h and TH1.h's Smooth()."""
+
+    TEXT = """# x
+
+## 7. Class versions
+
+| Class | Version | Cite |
+|---|---|---|
+| `TGraph` | 5 | `root/hist/hist/inc/TGraph.h:{line}` |
+"""
+
+    def bad(self, line):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = check_versions.REPO / "spec" / Path(d).name / "WritingX.md"
+            path.parent.mkdir()
+            try:
+                path.write_text(self.TEXT.format(line=line))
+                return check_versions.bad_citations(path)
+            finally:
+                path.unlink()
+                path.parent.rmdir()
+
+    def test_the_classdef_line_passes(self):
+        self.assertEqual(self.bad(202), [])
+
+    def test_a_range_containing_it_passes(self):
+        self.assertEqual(self.bad("200-203"), [])
+
+    def test_another_line_fails(self):
+        (message,) = self.bad(172)
+        self.assertIn("holds no ClassDef for it", message)
+
+    def test_tkey_is_read_from_record_md(self):
+        narrowed = []
+        (path, name, versions, _), = check_versions.elsewhere(narrowed)
+        self.assertEqual((path.name, name), ("Record.md", "TKey"))
+        # 1002 to 1004 are the large layout, not class versions.
+        self.assertEqual(max(versions), 4)
+        self.assertEqual(narrowed, [])
 
 
 if __name__ == "__main__":

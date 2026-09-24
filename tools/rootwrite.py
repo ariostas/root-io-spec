@@ -96,6 +96,17 @@ def counted_string(s: str) -> bytes:
     return b"\xff" + i32(len(raw)) + raw
 
 
+def read_counted_string(data: bytes, pos: int) -> tuple[str, int]:
+    """The counted string at `pos` and the position after it. The inverse of
+    counted_string, including the 255 escape (conventions 5.1)."""
+    n = data[pos]
+    pos += 1
+    if n == 255:
+        n = struct.unpack(">i", data[pos:pos + 4])[0]
+        pos += 4
+    return data[pos:pos + n].decode("latin-1"), pos + n
+
+
 def string_len(s: str) -> int:
     n = len(s.encode("utf-8"))
     return n + (1 if n < 255 else 5)
@@ -263,9 +274,8 @@ class Key:
         pos = off + 26
         strings = []
         for _ in range(3):
-            n = data[pos]
-            strings.append(data[pos + 1:pos + 1 + n].decode("latin-1"))
-            pos += 1 + n
+            text, pos = read_counted_string(data, pos)
+            strings.append(text)
         key = cls(class_name=strings[0], name=strings[1], title=strings[2],
                   obj_len=obj_len, nbytes=nbytes, seek_key=seek_key,
                   seek_pdir=seek_pdir, datime=datime, cycle=cycle,
@@ -862,20 +872,21 @@ class FileWriter:
                 "this writer updates small-layout files only; this one is "
                 f"fVersion {version}, fUnits {units} "
                 "(see spec/01-container/LargeFiles.md)")
+        if begin < 75:
+            raise WriteError(
+                f"fBEGIN is {begin}: the large header is 75 bytes, so this "
+                "file cannot safely be pushed past 2 GB, and a writer should "
+                "decline it (spec/06-writing/WritingFiles.md 13.8)")
         if begin != BEGIN:
             raise WriteError(
-                f"fBEGIN is {begin}, not {BEGIN}; a file whose header is "
-                "shorter than 75 bytes cannot be pushed past 2 GB at all "
-                "(spec/06-writing/WritingFiles.md 13.8)")
+                f"fBEGIN is {begin}; this writer reopens only files whose "
+                f"fBEGIN is {BEGIN}, the value it and ROOT write")
         uuid = data[47:63]
 
         dir_key = Key.parse(data, begin)
         pos = begin + dir_key.key_len
-        n = data[pos]
-        recorded_name = data[pos + 1:pos + 1 + n].decode("latin-1")
-        pos += 1 + n
-        n = data[pos]
-        title = data[pos + 1:pos + 1 + n].decode("latin-1")
+        recorded_name, pos = read_counted_string(data, pos)
+        title, pos = read_counted_string(data, pos)
 
         head = begin + nbytes_name
         (_dver, datime_c, _datime_m, nbytes_keys, dir_nbytes_name,
@@ -2520,8 +2531,8 @@ GRAPH_UNSET = NO_LIMIT
 GRAPH_LINE_DEFAULTS = (1, 1, 1)
 GRAPH_FILL_DEFAULTS = (0, 1000)
 GRAPH_MARKER_DEFAULTS = (1, 1, 1.0)
-#: TGraph::kClipFrame, set by every constructor through TGraph::Build
-#: (`root/hist/hist/src/TGraph.cxx:174`). A graph does *not* have
+#: TGraph::kClipFrame, set by TGraph::CtorAllocate, which the constructors
+#: call (`root/hist/hist/src/TGraph.cxx:838`). A graph does *not* have
 #: TObject::kMustCleanup set, which a histogram in the same directory does
 #: (`WritingGraphs.md` 3.1).
 GRAPH_BITS = 0x400
@@ -2548,8 +2559,8 @@ class Graph:
 
     `fHistogram` is left null, as in a graph ROOT has never drawn, and a writer
     should emit it that way: ROOT rebuilds the histogram on demand, and letting
-    it build one before `Write()` multiplies the record's size by six
-    (`WritingGraphs.md` 3.4).
+    it build one before `Write()` multiplies the record's size by five, 245
+    bytes to 1213 (`WritingGraphs.md` 3.4).
     """
 
     name: str
