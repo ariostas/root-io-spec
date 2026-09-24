@@ -26,17 +26,21 @@ worth knowing:
 - **§8.16** is a consistency review of every document. It also resolves the
   failures on ROOT-written pre-5 files in `root/roottest/`, all of them legacy
   layouts or reader gaps, and lists what a sweep of all of roottest still fails.
+- **§8.17** is the second consistency review, 2026-09-24. Nine claims produced
+  wrong bytes and about fifty procedure steps disagreed with the text around
+  them, with every check passing. Read its list of checks before adding one, and
+  its lesson before writing a procedure: a *Reading* step is the most-copied and
+  least-checked text here.
 
 The sub-plan that drove the survey, `PLAN-corpus.md`, is deleted, but code and
 text still cite its item numbers (C1–C19). Its lasting rule: keep a claim
 reproduced here separate from one a survey merely reported, because five of the
 survey's claims did not survive re-measurement.
 
-One sub-plan is open: `PLAN-review.md`, the second consistency review
-(2026-09-24), whose items are V1–V44. Phases A to D, V41 and V42's false
-statements are done, so `PLAN.md` §8.1 criterion 1 holds again; what is left is
-tooling, citation drift and wording. A sub-plan is deleted once
-discharged, with anything durable moved into `PLAN.md` or `spec/` first.
+No sub-plan is open. The second review's, `PLAN-review.md`, is deleted too, and
+code, tests and fixtures cite its items as V1–V44; `PLAN.md` §8.17 is what it
+left, and §9.12 what it set aside. A sub-plan is deleted once discharged, with
+anything durable moved into `PLAN.md` or `spec/` first.
 
 `spec/00-conventions.md` holds the conventions every specification document depends
 on. Read it before writing spec text; this file covers how to work here, not

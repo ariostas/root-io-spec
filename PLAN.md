@@ -19,27 +19,24 @@ files and three large Open Data files. Two gaps closed with new specification:
 `StreamerDriven.md` §7.1, for an object with no byte count, and
 `Collections.md` §11.2, for a class that is itself a collection.
 
-**The second consistency review, 2026-09-24 — open; `PLAN-review.md`.** Seven
-read-only reviewers went over every document, the front matter and `tools/` at
-`385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
-literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
-same day, and its stale figures (V27–V30) with a check that keeps them current;
-then the arithmetic slips (V41) and the false statements among its V42 items,
-so §8.1 release criterion 1 **holds again** as of 2026-09-24; about thirty more statements are contradictory, stale or narrower
-than the format, and none of it is caught by a check. The sub-plan orders the
-response and adds the checks (a figures check, `check_versions.py` validating
-the cited line, the unit tests run with the submodule in CI) so the three
-patterns behind it cannot recur. §8.17 will be what it leaves behind.
+**The second consistency review, 2026-09-24 — done; §8.17.** Seven read-only
+reviewers went over every document, the front matter and `tools/` at `385a3e2`
+and found nine published claims that produce wrong bytes when followed, eleven
+procedures that contradicted their own documents, and about fifteen stale
+figures, none of it caught by a check. `PLAN-review.md` worked through all of it
+the same day and was deleted; a second reading of every procedure then changed
+about fifty steps more. §8.1 release criterion 1 holds again, and §8.17 lists the
+checks added so the patterns cannot recur silently; §9.12 is what was set aside.
 
 Measured, 2026-09-23, by the checks in `tools/`; the fixture, citation, invariant
-and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
+and unit-test rows again on 2026-09-24, after `ttree/split-empty-collection`:
 
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 90 / 2330, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1836, 0 failures |
+| Source citations checked | 1861, 0 failures |
 | Class versions checked against `ClassDef` | 64 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 104 files, 0 failures |
@@ -714,16 +711,18 @@ what satisfied it:
    and a member-wise base is one column per member, not one read per element.
    Both were fixed the same day, with the ROOT commit and line that explain them.
 
-   The second consistency review (`PLAN-review.md`) broke it again on 2026-09-24,
-   and this time no failing check was involved: nine claims that produce wrong
-   bytes when followed (its V1–V9), eleven procedures and invariants that
-   contradicted their own documents (V10–V20), about fifteen stale figures
-   (V27–V28), five arithmetic slips (V41) and ten more false statements among
-   what it had filed as wording (V42). All were corrected the same day, and the
-   criterion holds again as of 2026-09-24. Three checks were added so the
-   patterns behind them cannot recur silently: `check_figures.py` for the
-   figures, the unit tests run with the submodule, and failures that used to
-   pass silently in `generate.py`, `inventory.py` and `--ignore`.
+   The second consistency review (`PLAN-review.md`, §8.17) broke it again on
+   2026-09-24, and this time no failing check was involved: nine claims that
+   produce wrong bytes when followed (its V1–V9), eleven procedures and
+   invariants that contradicted their own documents (V10–V20), about fifteen
+   stale figures (V27–V28), five arithmetic slips (V41) and ten more false
+   statements among what it had filed as wording (V42). Working the plan found
+   more: a false sentence about `StreamerInfo` invariant 11 (V36), a false
+   invariant that ROOT itself contradicts (V43), and in a second reading of
+   every procedure about fifty steps and eight field-text statements (V39). All
+   were corrected the same day, and the criterion held again when the plan was
+   discharged, on 2026-09-24. The checks added so the patterns behind them
+   cannot recur silently are listed in §8.17.
 2. **Scope is stated**: which ROOT releases the spec covers for reading, and what
    is deliberately out of scope (decisions 7 and 8). ✅ M4, as `spec/index.md`
    §Scope.
@@ -2383,6 +2382,96 @@ and none is being worked on; pick one up only if a real file or reader needs it.
   counter in the published lists is; a `UInt_t` counter keeps 13.
   `WriterInvariants.md` cited it, and two neighbours, by stale numbers.
 
+### 8.17 The second consistency review (2026-09-24)
+
+Seven read-only reviewers, one per layer, went over every document, the front
+matter and `tools/` at `385a3e2`, with §8.16's brief: correctness against the
+pinned submodule, byte tables against the fixtures, self-consistency, the
+completeness of the reading and writing procedures, and clarity. The full CI
+suite passed at that commit, and none of what they found was caught by a check,
+which was the finding. `PLAN-review.md` ordered the response as items V1–V44,
+kept apart from the first outside review's R1–R8 (§8.13); it was worked through
+and deleted the same day, and code, tests and fixtures still cite its item
+numbers. A HIGH item was confirmed before the plan was written, and a reported
+one was reproduced before it was changed, the rule of §8.14.
+
+**What was wrong, and where it stood.**
+
+- *Nine claims that produced wrong bytes when followed* (V1–V9), among them a
+  `TTree` writing table out of streamed order, a `RooFit` `_proxyList` with three
+  forms where the document had two, and three release boundaries (V6–V8)
+  settled in minutes at the tags. Criterion 1 of §8.1 was down until they
+  landed.
+- *Eleven procedures and invariants that contradicted their own documents*
+  (V10–V20). Two of them, the lone-info rule and a bare version word, were
+  reader behaviour too: the reader used a class's only streamer info for any
+  version word, where ROOT does so only for version 1, and so decoded g4tools'
+  `TH1D` records one frame off at every level.
+- *What the code knew and the prose did not* (V21–V26): back-references in a
+  circular tree's moved entries (`ReadingEntries.md` §3.7), whose fixture found
+  a ROOT bug (§7.1 item 16); the trailing dot a split collection's name loses;
+  `WriteFree`'s zero padding; one cluster per range under a negative watermark.
+- *Stale figures* (V27–V30): of about fifteen counts the project quoted about
+  itself without a check, roughly half were wrong.
+- *Silences in the tools* (V31–V33): the unit tests never ran with the
+  submodule, so every test of it skipped, including the check that no LGPL
+  roottest file is committed; and several paths in `generate.py`,
+  `inventory.py`, `check_invariants.py` and `rootfile.py` turned a failure into
+  "absent" or "passed".
+- *Found while fixing the rest*: four version-table citations to the wrong line
+  (V35); `StreamerInfo.md`'s "invariant 11 legitimately fails", which a survey
+  of every streamer info showed it never does (V36); six `[[records]]` entries
+  nothing read, with a wrong `fCycle` (V36); `TBranchElement` invariant 5, which
+  ROOT itself contradicts for a collection with no sub-branches
+  (`ttree/split-empty-collection`, V43); five arithmetic slips (V41); and ten
+  false statements among what the review had filed as wording (V42).
+- *The second reading of every procedure* (V39) changed about fifty steps and
+  sentences across 26 procedures, eight of them field text that was false: the
+  key list and free list are never compressed, `ReadVersion`'s "byte count at
+  least 6" guard tests only that a byte count exists, and `fBaseCheckSum` was
+  backported to 5.34/19 rather than new in ROOT 6.
+
+The three patterns the plan was organised around all held. **Procedures diverge
+from the text around them**: the reviewers found five, and a pass asking only
+that question found about fifty more in material they had already covered.
+**Hand-maintained self-description goes stale**, as above. **Release boundaries written before the tag survey are the
+shakiest claims**: three in the review and two more during the work
+(`fBaseCheckSum`, and `TArrayL`'s width before 3.00/06), each settled by
+`git show <tag>:<file>`.
+
+**The checks added, so the same class of error is caught next time.**
+
+- `tools/check_figures.py` recomputes 47 quoted figures, now including the unit
+  tests, the `ClassDef` count and the fixture files, per `gen/figures.toml`.
+- CI's `tests` job runs the unit tests with the submodule and fails on a skip
+  that names it; `docs.yml` no longer runs them without it.
+- `generate.py` fails on a case with no manifest line and on a line no case
+  produces; `inventory.py` fails on a doubt; `check_invariants.py --ignore`
+  reports every entry and fails on one that suppressed nothing.
+- `check_versions.py` requires a version table's header citation to be the
+  `ClassDef` line, and checks `TKey`.
+- `check_bytes.py` walks the record chain with the standard library and checks
+  every `[[records]]` entry.
+- `check_coverage.py --untested` lists the checked labels no test names (139 of
+  200), and `tools/test_corruption.py` corrupts a fixture for each label that
+  has been wrong before.
+- `test_write.StreamedOrder` compares each writing table with the writer's
+  element order; `test_hygiene.py` fails on a test name defined twice and on a
+  table row glued to prose, both of which were silent.
+- `.github/workflows/large-files.yml` runs `fetch_cern.py --headers` weekly, the
+  only check of the large-file layout.
+- The reader reports an unparseable embedded basket or `fBranchRef` instead of
+  dropping it, and `Compression 9.5` checks each block rather than the count.
+
+The entry figure did not move through any of the reader changes: 48278 of 48501
+branch-baskets, 0 failed, re-run after each.
+
+**The lesson.** Nothing checks a reading procedure against its field text; V38
+covers the writing tables, whose order the writer pins, but a reading step has
+no executable counterpart except the reader, and the reader was right in
+several places where the step was not. A second reading with one narrow question
+was worth more than the first broad one. What was set aside is §9.12.
+
 ## 9. Known gaps
 
 Every gap the written documents record. None is a hole in the prose: in every
@@ -2393,8 +2482,8 @@ twice.
 **⏸ Everything still open in this section is set aside (2026-09-24):** the
 legacy layouts no available file has (§9.1), the dictionary cases not yet
 written (§9.3), the cases that need two sessions or two files (§9.4), semantic
-assertions (§9.6), and the decoder residue and small questions of §9.11. Each is
-narrow. The one open item outside it is reporting upstream (§8.3, M10).
+assertions (§9.6), the decoder residue and small questions of §9.11, and what the
+second review left (§9.12). Each is narrow. The one open item outside it is reporting upstream (§8.3, M10).
 
 ### 9.1 Legacy layouts
 
@@ -2763,3 +2852,21 @@ than a file:
   file as almost fully covered while none of its values is decoded.
   `check_invariants.py`'s `ENTRIES` line is the accurate figure; moving it into
   the probe would make it per file rather than per run.
+
+### 9.12 The second review's residue ⏸
+
+What `PLAN-review.md` (§8.17) did not do or could not settle, by its item
+number. None is known to make a published claim wrong.
+
+| Item | What | Why set aside |
+|---|---|---|
+| plan scope | Re-measure every corpus-derived count the documents state | The reviewers could not check them and nothing suggests they are wrong beyond the ones V28 fixed; the `ENTRIES` figure is re-measured on every reader change |
+| plan scope | Re-verify gate 3 (`check_write.py --root`) and the ROOT-session behaviours the writing documents report | Needs ROOT and a session per case; gate 3 last passed when each case was written |
+| plan scope | Re-derive the release columns of the `TTree`, `TBranchElement` and `TLeaf` version tables at the tags | V7 and V8 suggest it is worth doing; the right form is a `check_versions.py --tags` mode rather than a hand pass |
+| V34 | Corruption tests for the other checked labels | `check_coverage.py --untested` lists them, 139 of 200; `test_corruption.py` covers every label that has been wrong before |
+| V39 | `ReadVersion` maps a `kNewClassTag` with no byte count at 2, not at the tag (`root/io/io/src/TBufferFile.cxx:2749`, `:2776-2778`) | ROOT never writes that form, so `Buffer.md` §5.1 describes every file that exists |
+| V39 | The `TStreamerInfo` < 3 framings: a collection with no byte count and a `kStreamer` element that may be absent (`root/io/io/src/TStreamerInfoReadBuffer.cxx:1338-1346`, `:1441-1449`) | No available file has either |
+| V39 | A forwarding class that lists a base with no `Streamer`, which `rootcling` does not call (`root/core/dictgen/src/rootcling_impl.cxx:1342`) | None of the 534 classes is known to have one |
+| V39 | ROOT fills a pre-5.34/19 base checksum from the first same-named info in the file (`root/io/io/src/TFile.cxx:3322-3345`), where `StreamerInfo.md` §9.2 falls back to `fBaseVersion` | The two differ only when a file holds several infos for the base |
+| V39 | `H1display.root`'s `TPad` does not decode: a class reference to a position the read has not seen | Not yet diagnosed; `Canvas.md` §7 says so |
+| V39 | How a `TBranchObject`'s entries are read | §9.11 item 6; `TBranchElement.md` §9 now says it is not specified |

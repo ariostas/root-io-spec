@@ -28,7 +28,7 @@
 #
 # A label being checked does not mean a test has seen the check fire. The
 # labels no unit test names are the corrupted-fixture worklist:
-# `tools/check_coverage.py --untested`, 142 of 200 on 2026-09-24.
+# `tools/check_coverage.py --untested`, 139 of 200 on 2026-09-24.
 # `tools/test_corruption.py` covers the ones that have been wrong before.
 
 # ---------------------------------------------------------------- container --
