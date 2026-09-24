@@ -4304,9 +4304,11 @@ def load_ignores(path: Path) -> tuple[dict[str, list[str]], dict[str, list[str]]
 def main(argv: list[str]) -> int:
     ignores: dict[str, list[str]] = {}
     customs: dict[str, list[str]] = {}
+    ignore_path = None
     if "--ignore" in argv:
         at = argv.index("--ignore")
-        ignores, customs = load_ignores(Path(argv[at + 1]))
+        ignore_path = argv[at + 1]
+        ignores, customs = load_ignores(Path(ignore_path))
         argv = argv[:at] + argv[at + 2:]
     all_entries = "--all-entries" in argv
     argv = [a for a in argv if a != "--all-entries"]
@@ -4339,9 +4341,21 @@ def main(argv: list[str]) -> int:
         else:
             kept.append(f)
     failures = kept
-    for (name, rule), n in sorted(suppressed.items()):
-        print(f"IGNORED {n:4} x {rule} in {name} (gen/foreign/IGNORE.toml)",
-              file=sys.stderr)
+    # Every entry for a file that was checked is reported, including one that
+    # suppressed nothing. Such an entry is stale -- the file was fixed, or the
+    # specification was -- or the check it names could not run, and either way
+    # it must not sit there unseen. Until 2026-09-24 it printed nothing
+    # (PLAN-review.md V32).
+    checked = {p.name for p in paths}
+    for name in sorted(set(ignores) & checked):
+        for rule in ignores[name]:
+            n = suppressed.get((name, rule), 0)
+            print(f"IGNORED {n:4} x {rule} in {name} ({ignore_path})",
+                  file=sys.stderr)
+            if n == 0:
+                failures.append(
+                    f"{name}: {rule}: the {ignore_path} entry suppressed "
+                    f"nothing; remove it, or find out why its check did not run")
 
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)

@@ -64,6 +64,37 @@ jobs:
       - name: Cited files and line numbers exist in the submodule
         run: tools/check_citations.py
 
+  # The unit tests, with the submodule. Until 2026-09-24 they ran only in
+  # docs.yml, which does not check the submodule out, so every test that reads
+  # root/ -- including test_provenance.py's check that no committed file is a
+  # copy of an LGPL roottest file -- skipped silently (PLAN-review.md V31).
+  tests:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # requirements-docs.txt for markdown, which test_rootcite.py imports;
+      # the codecs so that no fixture record is NOT CHECKED.
+      - name: Install test dependencies
+        run: pip install -r requirements-docs.txt -r requirements-codecs.txt
+      - name: Unit tests
+        run: PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py" -v 2>&1 | tee tests.log
+      # A test may skip because a corpus file under build/ is not fetched, which
+      # this job never does. It must not skip for want of root/, which it has:
+      # that would mean the checkout changed and the tests stopped testing.
+      - name: No test skipped for want of the submodule
+        run: |
+          if grep -E "\.\.\. skipped '[^']*(submodule|roottest|git checkout)" tests.log; then
+            echo "::error::these tests need root/ or .git, which this job checks out"
+            exit 1
+          fi
+
   # Regeneration needs ROOT, so it is a separate job.
   regenerate:
     name: regenerate fixtures with ROOT

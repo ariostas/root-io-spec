@@ -9,8 +9,8 @@
 #
 # A `skip` entry requires that the failure has been diagnosed and that the FILE,
 # not the specification, is wrong. `tools/check_invariants.py --ignore` reports
-# how many failures each entry suppressed, so an entry that stops mattering shows
-# up as suppressing nothing.
+# how many failures each entry suppressed, and fails on an entry for a checked
+# file that suppressed nothing, so an entry that stops mattering cannot stay.
 #
 # A `custom_streamer` entry is not a suppression. It names classes in that file
 # whose Streamer is hand-written, so that their recorded streamer info does not

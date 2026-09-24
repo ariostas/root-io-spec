@@ -99,6 +99,7 @@ def main(argv: list[str]) -> int:
                 known[p.strip()] = d
 
     lines, drift, undigested = [], [], []
+    produced: set[str] = set()
     for case_dir in dirs:
         case = tomllib.loads((case_dir / "case.toml").read_text())
         rel = case["file"]
@@ -115,11 +116,24 @@ def main(argv: list[str]) -> int:
             continue
         d = normalize.digest(REPO / rel)
         lines.append(f"{d}  {rel}")
-        if rel in known and known[rel] != d:
+        if rel not in known:
+            # A case whose digest was never recorded is as unverified as one
+            # that drifted. Until 2026-09-24 it passed --check, and the
+            # regenerate job merged it in silently (PLAN-review.md V32).
+            drift.append(f"{rel}: no line in data/MANIFEST.sha256\n  now {d}")
+        elif known[rel] != d:
             drift.append(f"{rel}: normalized digest changed\n  was {known[rel]}\n  now {d}")
+        produced.add(rel)
 
     for message in undigested:
         print(f"NO DIGEST {message}", file=sys.stderr)
+
+    # A manifest line no case produces is a digest nothing checks. Only
+    # decidable when every case ran.
+    stale = [] if selected else sorted(set(known) - produced)
+    for rel in stale:
+        print(f"STALE {rel}: in data/MANIFEST.sha256, but no case produces it",
+              file=sys.stderr)
 
     for message in drift:
         label = "ACCEPTED" if accept else "DRIFT"
@@ -156,7 +170,7 @@ def main(argv: list[str]) -> int:
         )
 
     rc = check_bytes.main([str(d) for d in dirs])
-    return 1 if ((drift and not accept) or rc) else 0
+    return 1 if ((drift and not accept) or stale or rc) else 0
 
 
 if __name__ == "__main__":

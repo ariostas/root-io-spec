@@ -65,6 +65,10 @@ PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
 
 Chain them with `&&`, not `set -e` (see the gotchas below for why).
 
+CI runs the unit tests in `ci.yml`'s `tests` job, with the submodule, and fails
+if any test skipped because `root/` or `.git` was missing. A test may still skip
+for a corpus file under `build/`, which CI never fetches; run those locally.
+
 Regenerating fixtures needs ROOT on PATH, matching the pinned submodule:
 
 ```sh
@@ -74,8 +78,10 @@ tools/generate.py --accept <case-dir>                  # after editing a case on
 ```
 
 A digest differing from `data/MANIFEST.sha256` is an error: either the format
-changed or a fixture stopped being reproducible. `--accept` re-records it, and is
-the right move only when you changed the case yourself.
+changed or a fixture stopped being reproducible. So is a case with no line in the
+manifest, and, when every case runs, a line no case produces. `--accept`
+re-records the digests, and is the right move only when you changed or added the
+case yourself.
 
 `tools/coverage_probe.py <file.root>` is not a CI check. It measures how much of a
 file the specification currently covers, and prints what blocked each record;

@@ -1385,5 +1385,36 @@ class ChoosingAnInfo(unittest.TestCase):
             self.decoder(1).info_for("C", 3)
 
 
+class ThisElement(unittest.TestCase):
+    """Collections.md invariant 11, which no file in data/ exercises.
+
+    A class that is itself a collection gets a single `This` element whose type
+    name is the class (TStreamerInfo.cxx:421-435). The only witness is a corpus
+    file, uproot-physlite-rntuple_v1-0-0-0.root, which CI does not fetch, so
+    these are what show the check can fail at all.
+    """
+
+    @staticmethod
+    def this(type_name):
+        return replace(element("This", cls="TStreamerSTL", ftype=500,
+                               type_name=type_name),
+                       tail={"fSTLtype": 1, "fCtype": 61})
+
+    def failures(self, si):
+        return [w for w, _ in check_invariants.this_element_failures(si)]
+
+    def test_the_only_element_naming_its_class_passes(self):
+        si = info(self.this("DataVector<xAOD::Jet>"), name="DataVector<xAOD::Jet>")
+        self.assertEqual(self.failures(si), [])
+
+    def test_a_this_element_beside_another_fails(self):
+        si = info(self.this("C"), element("fX"), name="C")
+        self.assertEqual(self.failures(si), ["Collections 14.11"])
+
+    def test_a_this_element_naming_another_class_fails(self):
+        si = info(self.this("vector<int>"), name="C")
+        self.assertEqual(self.failures(si), ["Collections 14.11"])
+
+
 if __name__ == "__main__":
     unittest.main()

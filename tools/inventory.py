@@ -697,7 +697,10 @@ def main(argv: list[str]) -> int:
         for document in stale:
             print(f"STALE {document.relative_to(REPO)} does not match the "
                   f"submodule; run tools/inventory.py", file=sys.stderr)
-        if problems or stale:
+        # A doubt is a class the forwarding list could not classify, so the
+        # published list may be missing it. Until 2026-09-24 it was printed and
+        # passed (PLAN-review.md V32).
+        if problems or doubts or stale:
             return 1
     else:
         for document, wanted in documents:
@@ -710,7 +713,7 @@ def main(argv: list[str]) -> int:
           + ", ".join(f"{counts[k]} {k}" for k in KINDS))
     print(f"{len(rows)} class(es) whose generated Streamer writes only their "
           f"bases")
-    return 1 if problems else 0
+    return 1 if (problems or doubts) else 0
 
 
 if __name__ == "__main__":

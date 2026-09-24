@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phases A and B (V1–V20) and V26 done 2026-09-24.** V6 turned out
+**Status: open. Phases A and B (V1–V20), V26, V31 and V32 done 2026-09-24.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -563,7 +563,7 @@ beside it. `CONTRIBUTING.md:32-39`'s check list also omits `check_coverage.py`,
 
 ## 6. Phase E — the tools
 
-### V31. The unit tests never run with the submodule in CI ☐
+### V31. The unit tests never run with the submodule in CI ✅
 
 `.github/workflows/docs.yml:30` runs `python -m unittest discover -s tools`
 without `submodules: true`; `ci.yml:51` checks out the submodule and never runs
@@ -580,7 +580,7 @@ floor (or make the submodule tests error rather than skip when `root/` is
 absent). `AGENTS.md` lists the tests in "the full check suite, in the order CI
 runs it"; make that true. **Confirmed here** by reading both workflows.
 
-### V32. Four places where a failure becomes silence ☐
+### V32. Four places where a failure becomes silence ✅
 
 - `tools/generate.py:118`: `DRIFT` is raised only `if rel in known`. A case with
   no line in `data/MANIFEST.sha256` passes `--check`; the non-check path merges
@@ -601,6 +601,16 @@ runs it"; make that true. **Confirmed here** by reading both workflows.
   `std::vector`, ACLiC) or a unit test built on a synthetic info.
 
 **Confirmed here** for the first three by reading the lines.
+
+**Done.** V31: a `tests` job in `ci.yml` with the submodule, the docs and codec
+requirements, and a step that fails on any skip whose reason names the
+submodule, roottest or the git checkout. Simulated in a worktree without the
+submodule: 19 such skips, all caught; 0 with it. The 8 remaining skips are
+`build/` corpus files, which CI does not fetch. V32: `generate.py` fails on a
+case with no manifest line and on a line no case produces (both mutation-tested);
+`inventory.py` fails on a doubt; `check_invariants.py --ignore` reports every
+entry and fails on one that suppressed nothing (none does over the corpus; a
+bogus one fails); `Collections 14.11` has three unit tests.
 
 ### V33. `rootfile.py` paths that swallow a failure into "absent" ☐
 

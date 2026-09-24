@@ -24,10 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-docs.txt -r requirements-codecs.txt
-
-      - name: Citation extension tests
-        run: PYTHONPATH=tools python -m unittest discover -s tools -p "test_*.py"
+      # The unit tests run in ci.yml's `tests` job, which has the submodule.
+      - run: pip install -r requirements-docs.txt
 
       # --strict turns warnings into failures, including links to pages that do
       # not exist. This is what enforces the cross-reference convention in
