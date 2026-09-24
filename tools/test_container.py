@@ -95,6 +95,16 @@ class RecordTables(unittest.TestCase):
         (bad,) = check_bytes.check_records(buf, [{"offset": 287}], "gap")
         self.assertIn("no record starts at 287", bad)
 
+    def test_a_platform_dependent_case_stops_at_its_streamer_info(self):
+        # serialization/pairs on Linux: the StreamerInfo record is 2601 bytes
+        # where macOS writes 2568, and the two records after it move.
+        import check_bytes
+        table = [{"offset": 100, "nbytes": 200, "class": "TFile"},
+                 {"offset": 572, "nbytes": 2568, "class": "TList"},
+                 {"offset": 3140, "nbytes": 130, "class": "TFile"}]
+        self.assertEqual(check_bytes.portable_records(table),
+                         [table[0], {"offset": 572, "class": "TList"}])
+
     def test_a_long_counted_string_is_read_past_its_escape(self):
         import check_bytes
         import rootwrite

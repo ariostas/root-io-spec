@@ -84,6 +84,24 @@ def walk_records(buf: bytes) -> list[dict]:
     return out
 
 
+def portable_records(expected: list[dict]) -> list[dict]:
+    """The entries of a `digest = false` case that hold on every platform.
+
+    Such a case's StreamerInfo record differs in length between libc++ and
+    libstdc++ (its case.toml says why), so that record's fNbytes and every
+    offset after it move. The records before it do not; the StreamerInfo
+    record is still checked to start where it does, which is its last
+    portable fact.
+    """
+    out = []
+    for want in expected:
+        if want.get("class") == "TList":
+            out.append({"offset": want["offset"], "class": "TList"})
+            break
+        out.append(want)
+    return out
+
+
 def check_records(buf: bytes, expected: list[dict], label: str) -> list[str]:
     try:
         records = walk_records(buf)
@@ -133,7 +151,7 @@ def check(buf: bytes, assertions: list[dict], label: str) -> list[str]:
 
 def main(case_dirs: list[str]) -> int:
     repo = Path(__file__).resolve().parent.parent
-    failures, checked, records = [], 0, 0
+    failures, checked, records, unportable = [], 0, 0, 0
     for case_dir in case_dirs:
         case = tomllib.loads((Path(case_dir) / "case.toml").read_text())
         path = repo / case["file"]
@@ -150,10 +168,18 @@ def main(case_dirs: list[str]) -> int:
         failures += check(buf, assertions, case["id"])
         checked += len(assertions)
         if case.get("records"):
-            failures += check_records(buf, case["records"], case["id"])
-            records += len(case["records"])
+            want = case["records"]
+            if case.get("digest", True) is False:
+                want = portable_records(want)
+                unportable += len(case["records"]) - len(want)
+            failures += check_records(buf, want, case["id"])
+            records += len(want)
     for f in failures:
         print(f"FAIL {f}", file=sys.stderr)
+    if unportable:
+        print(f"NOT CHECKED {unportable} record(s) at or after a StreamerInfo "
+              f"record whose length depends on the standard library "
+              f"(digest = false)", file=sys.stderr)
     print(f"{checked} byte assertions and {records} records checked across "
           f"{len(case_dirs)} case(s), {len(failures)} failure(s)")
     return 1 if failures else 0

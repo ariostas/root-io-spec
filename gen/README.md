@@ -43,4 +43,6 @@ assertions corresponds to, so that a change to one prompts a look at the other.
 (negative for a free segment, as stored), and optionally the key's `class`,
 `name`, `cycle` and `seek_pdir`. `role` is prose. A table may list only the
 records it is about. `tools/check_bytes.py` walks the chain with the standard
-library and checks each listed field, so these are assertions too.
+library and checks each listed field, so these are assertions too. In a case with
+`digest = false`, whose `StreamerInfo` record differs in length between standard
+libraries, only the records before it and its offset are checked.
