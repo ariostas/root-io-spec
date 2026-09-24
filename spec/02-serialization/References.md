@@ -128,7 +128,7 @@ version:i16   fUniqueID:u32   fBits:u32   pidf:u16
 ```
 
 Twelve bytes, fixed. The version word is `TObject`'s, written by the embedded
-`TObject::Streamer` call (`root/core/base/src/TRef.cxx:489`), even though `TRef`
+`TObject::Streamer` call (`root/core/base/src/TRef.cxx:515`, read back at `:489`), even though `TRef`
 itself has a `ClassDef` version of 1 (`root/core/base/inc/TRef.h:64`). There is
 no byte count, and the version word is not `TRef`'s.
 

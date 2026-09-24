@@ -679,7 +679,10 @@ is one byte (`root/io/io/src/TBufferFile.cxx:1985-1997`). `fCtype` is
 
 **`std::bitset<N>`** is a real collection with `fSTLtype` 8 and `fCtype` 0. Its
 count is the **number of bits**, and each bit is one byte, least significant
-first (`root/io/io/src/TGenCollectionStreamer.cxx:1400-1402`). `fSize` is
+first: the writer hands the bits to `WriteFastArray` as `Bool_t`s
+(`root/io/io/src/TGenCollectionStreamer.cxx:910-911`,
+`root/io/io/src/TBufferFile.cxx:1985`), and the reader takes them back as
+primitives (`root/io/io/src/TGenCollectionStreamer.cxx:1400-1401`). `fSize` is
 `sizeof(std::bitset<N>)` and has nothing to do with the payload.
 
 **`std::array<T,N>` is not a collection at all.** ROOT maps it to a fixed C

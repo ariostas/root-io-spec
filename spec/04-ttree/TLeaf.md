@@ -50,7 +50,8 @@ of its own element type, except `TLeafObject`, which adds `fVirtual`, and
 Three transient members are reconstructed and are not on disk: `fNdata`,
 `fBranch` and `fLeafCountValues` (`root/tree/tree/inc/TLeaf.h:74`,
 `root/tree/tree/inc/TLeaf.h:81-82`). `TLeaf::Streamer` rebuilds `fNdata` after the
-read as `(fLeafCount->GetMaximum() + 1) × fLen`, or `fLen`
+read by calling `SetAddress` (`root/tree/tree/src/TLeaf.cxx:504`), which sets it to
+`(fLeafCount->GetMaximum() + 1) × fLen`, or `fLen`
 (`root/tree/tree/src/TLeaf.cxx:444-449`).
 
 > **A stored `fLen` of 0 means 1.** `TLeaf::Streamer` normalises it after reading,

@@ -343,7 +343,7 @@ here, and it may be unreachable. See §9, erratum 8.
 
 Where a pointer is serialized, the class must be named, because a pointer may
 refer to a class derived from the declared one. `ReadClass`
-(`root/io/io/src/TBufferFile.cxx:2740`) reads:
+(`root/io/io/src/TBufferFile.cxx:2738`) reads:
 
 1. A `u32`. If it has `kByteCountMask` set **and** is not `kNewClassTag`, it is a
    byte count and the tag is the next `u32`; otherwise it *is* the tag and there

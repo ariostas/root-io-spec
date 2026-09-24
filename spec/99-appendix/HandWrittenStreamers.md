@@ -386,7 +386,7 @@ to specify two classes that need nothing.
 
 The extraction does not see a class whose bytes come from an adopted streamer
 (`TClass::AdoptStreamer`, the `extstrm` branch at
-`root/core/meta/src/TStreamerElement.cxx:826`) rather than from a `Streamer`
+`root/core/meta/src/TStreamerElement.cxx:836-839`) rather than from a `Streamer`
 member function. The STL collection proxies in §2 reach files that way, and they
 are in the table because they also define `Streamer`; a class that used only the
 adopted path would not be. No such class is known here, and the gap is recorded

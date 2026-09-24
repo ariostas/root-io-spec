@@ -41,7 +41,7 @@ consumed first.
 |---|---|---|
 | A record's top-level object | key, then possibly a class record | `root/io/io/src/TKey.cxx:255-258` |
 | An object slot reached through a pointer | byte count, class record, version word | `root/io/io/src/TBufferFile.cxx:3548-3570` |
-| An embedded object member (61, 62, 63, 67, 68) | byte count, version word | `root/io/io/src/TStreamerInfoReadBuffer.cxx:1362-1379` |
+| An embedded object member (61, 62, 63, 67, 68) | byte count, version word | `root/io/io/src/TStreamerInfoReadBuffer.cxx:1362-1379` for 61 and 62, `:1084-1096` for 63 and 68, `:1072` for 67 |
 | A base class element (0) | byte count, version word | `root/io/io/src/TStreamerInfoReadBuffer.cxx:1400-1412` |
 
 In every case the version word has already been read, because the version is what
@@ -225,7 +225,7 @@ as a member reads it correctly. It affects element *ordering*, not decoding: §4
 the base class's own `Streamer`, taken from `TClass::GetStreamerFunc()` at
 `root/core/meta/src/TStreamerElement.cxx:760` and called at
 `root/core/meta/src/TStreamerElement.cxx:820`; then an adopted `TClassStreamer`
-if the class has one (`root/core/meta/src/TStreamerElement.cxx:826`); and only
+if the class has one (`root/core/meta/src/TStreamerElement.cxx:836-839`); and only
 then `ReadClassBuffer` with the version word §4 describes.
 
 A `kBase` element therefore contributes whatever the base class's `Streamer`
@@ -267,7 +267,7 @@ emits a body that calls each base class's `Streamer` and nothing else: no versio
 word, no byte count, and none of the class's own members
 (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`; the choice is
 `cl.RequestStreamerInfo()` at
-`root/core/clingutils/src/TClingUtils.cxx:3016`).
+`root/core/clingutils/src/TClingUtils.cxx:3017`).
 
 Such a class is transparent on disk: its `kBase` element occupies the same bytes
 as its own bases. `TSeqCollection` is one, and a `TBtree` shows it in bytes; see

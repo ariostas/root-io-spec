@@ -586,7 +586,7 @@ its own class: a `TString*` loop is *c* bare counted strings, because
 `TString::Streamer` writes no version word and no byte count (§7.1).
 
 **A count of zero writes the frame and nothing else.** ROOT's writer guards the
-whole loop with `if (vlen)` (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:730`),
+whole loop with `if (vlen)` (`root/io/io/src/TStreamerInfoWriteBuffer.cxx:732`),
 so the byte count is 2, covering only the version word.
 
 > Demonstrated by `serialization/element-types`, which has all three forms:

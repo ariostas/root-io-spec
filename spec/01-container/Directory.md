@@ -263,7 +263,7 @@ Present: object keys, and each subdirectory's key.
 Absent: the directory's own record key, the key-list record's own key, the
 free-segment record's key — none of which are ever appended — and the
 `StreamerInfo` record, which is explicitly removed
-(`root/io/io/src/TFile.cxx:3522`).
+(`root/io/io/src/TFile.cxx:3555`).
 
 ### 6.4 Empty and unsaved directories
 

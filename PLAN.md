@@ -39,7 +39,7 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | Specification documents | 49, plus the tracked RNTuple copy |
 | Reference files / byte assertions | 89 / 2319, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1827, 0 failures |
+| Source citations checked | 1830, 0 failures |
 | Class versions checked against `ClassDef` | 64 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 103 files, 0 failures |

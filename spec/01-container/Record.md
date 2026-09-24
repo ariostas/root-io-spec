@@ -365,7 +365,7 @@ truncation is reflected in `fKeylen`. No truncation is applied on read.
 states the consequence for readers.
 
 `fKeylen` is measured *after* the key has been written
-(`root/io/io/src/TKey.cxx:254`), so it is not defined as "the fixed part plus the
+(`root/io/io/src/TKey.cxx:255-256`), so it is not defined as "the fixed part plus the
 three strings"; that is only its value for a class that adds nothing. A `TKey`
 subclass whose `Streamer` writes more lengthens the key, not the payload.
 

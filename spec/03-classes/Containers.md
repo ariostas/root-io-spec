@@ -222,7 +222,7 @@ rather than `X+`, it emits a body that calls each base class's `Streamer` **and
 nothing else**: no version word, no byte count, no members
 (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`). The choice between that
 generator and the schema-evolution one is `cl.RequestStreamerInfo()`, which is the
-`+` suffix (`root/core/clingutils/src/TClingUtils.cxx:3016`).
+`+` suffix (`root/core/clingutils/src/TClingUtils.cxx:3017`).
 
 `TSeqCollection` is such a class: version 0
 (`root/core/cont/inc/TSeqCollection.h:73`), selected plainly

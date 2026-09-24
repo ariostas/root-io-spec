@@ -42,7 +42,7 @@ The same pass writes `spec/99-appendix/ForwardingStreamers.md`, the classes that
 `ClassDef` version `<= 0` selected with a plain `#pragma link C++ class X;` (no
 `+`, no `-`), `rootcling` emits a body that calls each base's `Streamer` and
 returns (`root/core/dictgen/src/rootcling_impl.cxx:1332-1367`), chosen at
-`root/core/clingutils/src/TClingUtils.cxx:3016`. Such a class writes no version
+`root/core/clingutils/src/TClingUtils.cxx:3017`. Such a class writes no version
 word, no byte count and none of its members, while still recording a streamer
 info that lists them. Nothing in a file distinguishes it from a version-0 class
 read through `ReadClassBuffer`, so the list has to be published.

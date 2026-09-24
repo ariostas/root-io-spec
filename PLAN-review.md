@@ -813,7 +813,7 @@ the pass is not repeated.
 Fix in one commit per document, no changelog entries unless a reader would act
 differently. Locators are as the reviewers gave them.
 
-### V40. Citations that land a few lines from the claim ☐
+### V40. Citations that land a few lines from the claim ✅
 
 `check_citations.py` cannot see these (the line exists); each was opened and the
 supporting line is a few away. `Directory.md:266` `TFile.cxx:3522` → `:3555`
@@ -829,6 +829,19 @@ up; `ElementTypes.md:576-578` `:730` → `:732`; `StreamerInfo.md:762-763`
 `TGenCollectionStreamer.cxx:1400-1402` is the read dispatch, the write is
 `:910-911` → `TBufferFile.cxx:1985`; `Collections.md` §6 row 1 (see V12);
 `WritingGraphs.md:352-353` (see V35).
+
+**Done**, each opened at the cited and the corrected line. Two were right as
+cited and stay: `StreamerInfo.md`'s first `TClass.cxx:6604-6609` cites
+`MatchLegacyCheckSum` for "try the older variants", which is what it does; only
+the second use, for "computed from the class definition", moves to
+`:6650-6653`. `TKey.cxx:254` becomes `:255-256` (the write and the `fKeylen`
+assignment) rather than `:255`, and the adopted-streamer branch is `:836-839`.
+The embedded-member row of `StreamerDriven.md` now cites all three read paths,
+including 67 (`kTNamed`, `:1072`), which the review did not mention.
+`TClingUtils.cxx:3016` was cited in three documents and in `inventory.py`'s
+template; all four move to `:3017`. `Collections.md` §6 row 1 and
+`ElementTypes.md`'s thresholds were fixed under V12, and `WritingGraphs.md`
+under V35.
 
 ### V41. Unit and arithmetic slips ✅
 

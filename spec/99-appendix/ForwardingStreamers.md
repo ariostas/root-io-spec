@@ -15,7 +15,7 @@ that line. The list therefore has to be published, and this page publishes it.
 ## 1. The rule
 
 `rootcling` picks between two generators
-(`root/core/clingutils/src/TClingUtils.cxx:3016`):
+(`root/core/clingutils/src/TClingUtils.cxx:3017`):
 
 | Selection in `LinkDef.h` | Generator | What the class writes |
 |---|---|---|
