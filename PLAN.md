@@ -34,7 +34,9 @@ Measured, 2026-09-23, by the checks in `tools/`:
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
 | Unit tests | 610 |
 
-Throughout: **✅ done**, **◐ partly done**, **☐ not started**. §9 is the gap
+Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
+narrow enough that it is not being worked on, recorded so it is not rediscovered,
+and picked up only if a real file or reader needs it (2026-09-24). §9 is the gap
 register: every gap the written documents record, so that each can be picked up
 rather than rediscovered. How each was found is in the git log, not here; this
 document keeps only what is still live, plus the measurements the scope decisions
@@ -148,7 +150,7 @@ The core of the repo, and the answer to "how do we handle custom classes".
 | ✅ `SchemaEvolution.md` | Class version 0, checksums, `TSchemaRuleSet`, conversion/artificial/cache/skip elements, emulated classes |
 | ✅ `References.md` | `TProcessID`, `TRef`, `TRefArray`, `kIsReferenced` and the extra `fPID` word |
 
-### 2.4 `spec/03-classes/` — per-class layouts ◐
+### 2.4 `spec/03-classes/` — per-class layouts ✅
 
 **Decision (settled, and now backed by measurement): specify only the classes
 whose recorded streamer info does not describe their bytes.**
@@ -192,6 +194,7 @@ record in each `stressRooFit_*` file partly decoded, and the four
 `RooCFunctionNRef`, which
 nothing in either corpus reaches. All are of narrow reach. Only `CodeRepo` is
 something a physics file is likely to hold, and none of them is in the MVP (§8).
+**⏸ The twelve are set aside.**
 
 Written so far: ✅ `TArray.md`, ✅ `Containers.md` (`TMap`, `TExMap`, `TBtree`),
 ✅ `Formula.md` (`ROOT::v5::TFormula`/`TF1Data` against the ROOT 6 classes),
@@ -221,7 +224,7 @@ The sub-plan that ordered this layer is discharged and deleted. §9.11 keeps wha
 is left of it: the corpus census it was written against, what the decoder still
 cannot reach, and the questions it left open.
 
-### 2.6 `spec/05-rntuple/` ◐
+### 2.6 `spec/05-rntuple/` ✅
 
 RNTuple already has a real specification and we do not fork it.
 
@@ -235,11 +238,12 @@ RNTuple already has a real specification and we do not fork it.
   (`rntuple/anchor`, `rntuple/fundamental-types`), plus an independent reader in
   `tools/rootfile.py`.
 - ✅ The type mapping (which columns a given C++ type produces), audited one
-  fixture at a time across eight of them, with four errata (§8 item M9). One form
-  remains: a class with an associated collection proxy, which needs a compiled
-  `TCollectionProxyInfo` rather than a runtime attribute, and whose associative
-  half ROOT does not implement at all. `NOTES.md` §4 records it as the only
-  unaudited form.
+  fixture at a time across eight of them, with four errata (§8 item M9).
+- ⏸ Two forms are left unaudited on purpose (2026-09-24): a class with an
+  associated collection proxy, which needs a compiled `TCollectionProxyInfo` that
+  is not ready for this use, and whose associative half ROOT does not implement
+  at all; and *Linked Attribute Sets* beyond their footer record frame.
+  `NOTES.md` §4 records both.
 
 ### 2.7 `spec/99-appendix/` ✅
 
@@ -453,11 +457,11 @@ Dropped from the original plan: `dump_streamerinfo.C`, `gen_tables.py` and
 | Conventions | ✅ |
 | Container | ✅ all six documents |
 | Serialization | ✅ all seven documents |
-| Standard classes | ✅ the divergent set, except twelve narrow classes (§2.4) |
+| Standard classes | ✅ the divergent set; twelve narrow classes ⏸ set aside (§2.4) |
 | `TTree` | ✅ records, branches, leaves, baskets, splitting, reading an entry — unsplit and split |
-| RNTuple | ◐ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; one form left (collection proxy) |
+| RNTuple | ✅ upstream tracked, envelopes and the type mapping audited over eight fixtures, ten errata; the collection-proxy form and linked attribute sets ⏸ set aside (§2.6) |
 | Appendix | ✅ all eight, `WriterInvariants.md` included (§2.7) |
-| Legacy reading (pre-ROOT 6) | ◐ `TBranch` 6–9 specified and read (M6); the rest specified where cited, unchecked where no file was available — §9.1, §9.10 |
+| Legacy reading (pre-ROOT 6) | ✅ `TBranch` 6–9 specified and read (M6), and every ROOT-written file in `root/roottest/` diagnosed (§8.16); the layouts no available file has ⏸ set aside (§9.1) |
 | Release plumbing (licence, citation, changelog, releases) | ✅ §8 item M7; CalVer at milestones since 2026-09-22, decision 9 |
 | Writing (`spec/06-writing/`) | ✅ container and subdirectories, object, histograms and profiles, graphs, flat `TTree` with many baskets and with a `TLeafC`, plus the element lists — every object-bearing record in `data/written/` byte-identical to ROOT's (§8.4) |
 
@@ -489,10 +493,10 @@ phase.
    are against a document the ROOT team owns and maintains, which makes them a
    friendlier first contact than §7.1's bug candidates, and they can bring those
    along. Deliberately deferred until the MVP is out (§8 item M10).
-2. **`TGeo*` hand-review** — 88 persistable classes, self-contained, present in
+2. ⏸ **`TGeo*` hand-review** — 88 persistable classes, self-contained, present in
    real files. Out of scope by decision 8 unless a blocked record demands it;
    nothing in either corpus does.
-3. **Markup format if upstreaming happens.** `root/io/doc/` is doxygen with
+3. ⏸ **Markup format if upstreaming happens.** `root/io/doc/` is doxygen with
    `\page`/`\ref`; our tables and bit diagrams are better in plain Markdown.
 4. **Reference reader.** Resolved by accident: `tools/rootfile.py` grew into one,
    and it is the strongest completeness check the project has. It stays a
@@ -517,10 +521,12 @@ reported** (§8 item M10).
    collection, and there is no warning on the write side; reopening gives
    `CheckByteCount ... read too few bytes`. The direct-member path does warn,
    so this is a bug rather than a limitation. `Collections.md` §9.
-2. **The two collection readers disagree on the `kSTLp` version threshold.**
-   `TStreamerInfoActions.cxx:845` uses `>= 8` where
-   `TStreamerInfoReadBuffer.cxx:1167` uses `>= 9`. No such file has been
-   constructed here; verify before reporting. `Collections.md` §6.
+2. ~~**The two collection readers disagree on the `kSTLp` version threshold.**~~
+   **Withdrawn 2026-09-23.** Only one reader ever sees `kSTLp`: the action-based
+   reader has no case for it and hands it to `TStreamerInfo::ReadBuffer`, which
+   uses `>= 9`; the `>= 8` belongs to a fixed array of `kSTL`
+   (`Collections.md` §6, commit `d187a26`). Numbered in place so the other items
+   keep their numbers.
 3. **`kGenerateOffsetMap` cannot reach a `TBranchElement`.** Every constructor
    delegates to the default `TBranch()`, which does not copy the tree's
    `fIOFeatures` (`root/tree/tree/src/TBranchElement.cxx:168`), so
@@ -562,7 +568,7 @@ reported** (§8 item M10).
    class whose sub-branches carry no parent prefix therefore records the *first*
    object's counter on both, and the read path uses it as it stands (`:4649`).
    Byte-verified, and the strongest candidate on this list. In `alice_ESDs.root`
-   (ROOT 5.34, published by the ROOT team) `PrimaryVertex`'s `fIndices` points at
+   (ROOT 5.16/00, published by the ROOT team) `PrimaryVertex`'s `fIndices` points at
    `SPDVertex`'s `fNIndices`, which is 0 for all 20 entries, while its own entries
    are 37, 45, 13 and 27 bytes: `1 + n × 2` for counts of 18, 22, 6 and 13. ROOT
    reads no indices at all and reports nothing. The bytes are intact; only the
@@ -950,7 +956,7 @@ case the invariant was at fault, not the files:
 | `TLeaf` 10.6 | a branch whose leaves are all fixed-size has no entry-offset array | only when its `fEntryOffsetLen` is 0. `uproot-issue-250.root` (g4tools) leaves it at the default 1000 on a `TLeafD` branch and its baskets have offsets 8 bytes apart |
 
 **The coverage number.** The four invariants above were reachable only because
-refusing version 10 had also refused `alice_ESDs.root`, a ROOT 5.34 file whose
+refusing version 10 had also refused `alice_ESDs.root`, a ROOT 5.16/00 file whose
 baskets are all embedded. Chasing that turned up a larger problem: neither entry
 check had ever looked at an embedded basket. The leaf-driven check iterated the
 baskets *below* `fWriteBasket` and an embedded one sits *at* it, so 1266
@@ -1116,7 +1122,7 @@ made the streamed and SoA fixtures possible. `NOTES.md` §4 records it as the on
 unaudited form.
 
 **M10 — report upstream.** Ten RNTuple errata against a document the ROOT team
-owns, plus §7.1's thirteen bug candidates. Lead with §7.1 items 9 and 12:
+owns, plus §7.1's twelve bug candidates. Lead with §7.1 items 9 and 12:
 `fBranchCount` naming another object's counter branch, byte-witnessed in a file
 the ROOT team published, and data loss. Also lead with erratum 6, a column type
 the document specifies, ROOT does not implement and JSROOT does, so two readers in
@@ -2285,6 +2291,12 @@ case the behaviour is specified and cited against the submodule, and what is
 missing is a fixture demonstrating it, so the claim is verified once rather than
 twice.
 
+**⏸ Everything still open in this section is set aside (2026-09-24):** the
+legacy layouts no available file has (§9.1), the dictionary cases not yet
+written (§9.3), the cases that need two sessions or two files (§9.4), semantic
+assertions (§9.6), and the decoder residue and small questions of §9.11. Each is
+narrow. The one open item outside it is reporting upstream (§8.3, M10).
+
 ### 9.1 Legacy layouts
 
 Reframed by §9.10: most of these are not blocked on `gen/legacy/` after all.
@@ -2298,11 +2310,11 @@ Reframed by §9.10: most of these are not blocked on `gen/legacy/` after all.
 | `TStreamerElement` at base version 2 | `StreamerInfo.md` | ✅ 979 elements, §9.10 — M6 |
 | Collection layouts below `TStreamerInfo` version 8 | `Collections.md` | ✅ info versions 2, 4, 5, 6 present — M6 |
 | The version-3 `TStreamerElement` form with `fXmin`/`fXmax`/`fFactor` | `StreamerInfo.md` | ✅ `root/roottest/root/io/evolution/skim.root`, ROOT 4.03/05: 223 elements, 24 bytes each, all of them available. **No release wrote this version**; it lived three days on the 4.03/05 trunk (C8) |
-| A buffer written with no byte counts | `Buffer.md` | ◐ checked, and "no byte counts" was never all or nothing: `pippa.root` (2.24/00) and roottest's `MC_uds_reco-1.root` (2.23/12) byte-count their outer objects and write their `TNamed`/`TObject`/`TAtt*` bases as bare version words. §6.4's sequential map needs a class tag with no byte count before it, and no available file has one — the 2.23/12 file's 11 all do (C10) |
+| A buffer written with no byte counts | `Buffer.md` | ◐, the rest ⏸: checked, and "no byte counts" was never all or nothing: `pippa.root` (2.24/00) and roottest's `MC_uds_reco-1.root` (2.23/12) byte-count their outer objects and write their `TNamed`/`TObject`/`TAtt*` bases as bare version words. §6.4's sequential map needs a class tag with no byte count before it, and no available file has one — the 2.23/12 file's 11 all do (C10) |
 | A file old enough to take the `BuildEmulated` path | `SchemaEvolution.md` | ✅ `pippa.root`, ROOT 2.24/00, zero streamer infos — out of scope for objects by decision 7 |
-| `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `Collections.md` | ☐ only version 4 occurs |
-| `ROOT::v5::TFormula` 1–3 and `ROOT::v5::TF1Data` 1–4 | `Formula.md` §4 | ◐ v8/v7 in `uproot-issue-181.root` (ROOT 5.34/36); versions 1–4 in neither |
-| A leaf class at a legacy version | `TLeaf.md` | ◐ `TLeaf` v1 in roottest's `MC_uds_reco-1.root`, byte-verified: version 2's field order ends on its byte count. `TLeafF16`/`TLeafD32` v1 in go-hep's `leaves.root` and in `uproot-double32-float16.root`, which had been in `gen/foreign/` all along and which the census missed by looking at `TLeaf` and `TLeafObject` only. `TLeafObject` 1–3 in no available file (C9) |
+| `TClonesArray` class version 3, where `kBypassStreamer` is `BIT(14)` | `Collections.md` | ⏸ only version 4 occurs |
+| `ROOT::v5::TFormula` 1–3 and `ROOT::v5::TF1Data` 1–4 | `Formula.md` §4 | ◐, the rest ⏸: v8/v7 in `uproot-issue-181.root` (ROOT 5.34/36); versions 1–4 in neither |
+| A leaf class at a legacy version | `TLeaf.md` | ◐, the rest ⏸: `TLeaf` v1 in roottest's `MC_uds_reco-1.root`, byte-verified: version 2's field order ends on its byte count. `TLeafF16`/`TLeafD32` v1 in go-hep's `leaves.root` and in `uproot-double32-float16.root`, which had been in `gen/foreign/` all along and which the census missed by looking at `TLeaf` and `TLeafObject` only. `TLeafObject` 1–3 in no available file (C9) |
 
 ### 9.2 Needs a file over 2 GB
 
@@ -2329,14 +2341,14 @@ Still not asserted by a committed fixture, and never will be: 2 GB cannot be
 committed. `spec/01-container/LargeFiles.md` is the write-up (M5) and
 `tools/fetch_cern.py --headers` is its check.
 
-### 9.3 Needs a compiled dictionary — ✅ unblocked
+### 9.3 Needs a compiled dictionary — ✅ unblocked, the rest ⏸
 
 `gen/common/aclic.C` compiles a case's optional `classes.h` into a dictionary
 before the macro loads, so a generator can use a class with a real `ClassDef`.
 Remaining: a member-wise collection whose value class has a `ClassDef`
 (mechanism exists, case not written) and a `type=readraw` rule (same).
 
-### 9.4 Needs two ROOT sessions or two files
+### 9.4 Needs two ROOT sessions or two files ⏸
 
 | Gap | Document |
 |---|---|
@@ -2372,10 +2384,10 @@ version in the writing ROOT (9 in practice, 10 only from 6.36.00), and a
 |---|---|
 | No checker decompresses | ✅ zlib, lzma and the legacy `CS` codec from the standard library; zstd on Python 3.14; LZ4 needs the `lz4` package, and a record whose codec is missing is reported as `NOT CHECKED` rather than passed |
 | `rootfile.py` has no `TTree` support | ✅ tree, branches, leaves, baskets, entry spans, and the split decoder |
-| Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ☐ worth adding as a complement; not MVP |
+| Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ⏸ worth adding as a complement; set aside |
 | Four fixtures were not digest-portable between macOS and Linux | ✅ three fixed by masks, one exempted with a reason; the causes are in §3.3 |
 | `classes/roofit` was pushed without the container loop of §3.3 and CI caught it | ✅ 2026-09-21. `generate.py --check` cannot see a cross-platform drift, because it does not regenerate; only the ROOT-having job can, so a green local suite is not evidence about a **new** case |
-| Thirteen upstream bug candidates banked, not reported | ☐ §7.1, M10 |
+| Twelve upstream bug candidates banked, not reported | ☐ §7.1, M10 |
 
 ### 9.7 What the coverage probe measures
 
@@ -2569,7 +2581,7 @@ legacy layouts, and they are M6 and §9.1.
 element anywhere in the corpora: `TSeqCollection` (348) and `TVirtualPerfStats`
 (1). 117 distinct base-class names occur in total.
 
-### 9.11 The `TTree` sub-plan's residue
+### 9.11 The `TTree` sub-plan's residue ⏸
 
 `PLAN-ttree.md` ordered this layer and was deleted on 2026-09-17, its work done:
 all four documents written, `rootfile.TreeReader` decoding the split path, and

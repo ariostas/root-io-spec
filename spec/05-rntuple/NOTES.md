@@ -161,9 +161,11 @@ and the header envelope including its field and column records.
 | Defaults | audited against `RNTupleWriteOptions`; the table omits same-page merging, which changes what is on disk — §7 |
 | Notes on Backward and Forward Compatibility | audited: ROOT's reader implements the one MUST, §6 |
 
-**Not yet audited:** *Linked Attribute Sets* beyond its footer record frame, and
-classes with an associated collection proxy, the only type-mapping form with no
-fixture. The document says the associative half of it "are supported in the
+**Not audited, on purpose:** *Linked Attribute Sets* beyond its footer record
+frame, and classes with an associated collection proxy, the only type-mapping
+form with no fixture. Both are set aside (2026-09-24): the audit is otherwise
+complete, and the second needs `TCollectionProxyInfo`, which is not ready for this
+use. The document says the associative half of it "are supported in the
 RNTuple binary format, but currently are not implemented in ROOT's RNTuple reader
 and writer". The sequential half needs `TClass::SetCollectionProxy` with a
 `TCollectionProxyInfo`, which is a compiled template instantiation rather than a

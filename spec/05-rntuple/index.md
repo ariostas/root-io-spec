@@ -70,7 +70,8 @@ schema extension, cluster groups and attribute sets, the page list's cluster
 summaries and page locations, the stdlib types, user-defined classes and enums,
 projected fields and alias columns, `RNTupleCardinality`, untyped collections and
 records, ROOT streamed types, the SoA layout, and the limits, naming and
-compatibility notes. Not yet audited are *Linked Attribute Sets* beyond its footer
-record frame, and classes with an associated collection proxy.
+compatibility notes. Two forms are left out on purpose: *Linked Attribute Sets*
+beyond its footer record frame, and classes with an associated collection proxy,
+which needs a compiled `TCollectionProxyInfo` that is not ready for this use.
 [NOTES §4](NOTES.md#4-what-has-not-been-audited-yet) has the per-section table,
 including which claims rest on the source alone rather than on bytes.

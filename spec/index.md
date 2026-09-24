@@ -41,7 +41,7 @@ every known gap.
 | `TTree` — records, branches, leaves, baskets, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating a file, schema evolution | [written](06-writing/index.md) |
 | Appendix — the reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — upstream specification tracked, every envelope and all but one type-mapping form audited | [partly](05-rntuple/index.md) |
+| RNTuple — upstream specification tracked, every envelope and the type mapping audited | [audited](05-rntuple/index.md) |
 
 The checks: **86 reference files with 2203 byte-level assertions, 1764 source
 citations checked against the pinned ROOT tree across 49 documents**, and the

@@ -86,7 +86,7 @@ name and the UUIDs.
 | `TTree` — the tree record, `TBranch`, `TLeaf`, `TBasket`, splitting, reading an entry | written |
 | Writing — the container, an object, `TH1`/`TH2`/`TProfile`, `TGraph`, a flat `TTree`, updating an existing file, writing for a reader at another class version | written |
 | Appendix — reader's checklist, pitfalls, bootstrap, the two class lists, glossary, bibliography | written |
-| RNTuple — ROOT's own specification tracked verbatim, plus ten errata from auditing it | partly |
+| RNTuple — ROOT's own specification tracked verbatim and audited, plus ten errata | audited |
 
 **86 reference files, 2203 byte-level assertions, and 1764 source citations
 checked against the pinned submodule across 49 documents**, plus 14 files this
