@@ -348,11 +348,12 @@ byteCount:u32   version:i16 = 0   checksum:u32   fElems:u32   flag:u8   fElems ร
 and is absent when `fElems` is 0.
 
 > Demonstrated by `ttree/split-ptr-collection`, whose `fHits` basket at offset 328
-> has a 68-byte payload holding three entries and then the offset array: at 397 a
-> byte count of 13, version `00 00`, checksum `0xbe3836fa`, `fElems` 2, flag `01`
-> and two index bytes; at 414 the same with `fElems` 0 and flag `00`, 11 bytes; at
-> 429 `fElems` 1, 12 bytes. The offset array at 445 is `4, 69, 86, 101, 0`; the
-> first element is `fKeylen` and the fourth is the never-written extra slot of
+> has a 68-byte payload holding three entries and then the offset array: at 397,
+> 17 bytes: a byte count of 13, version `00 00`, checksum `0xbe3836fa`, `fElems` 2,
+> flag `01` and two index bytes; at 414, 15 bytes (byte count 11), the same with
+> `fElems` 0 and flag `00`; at 429, 16 bytes (byte count 12), `fElems` 1. The
+> offset array at 445 is a count of 4 and then `69, 86, 101, 0`; the first value
+> is `fKeylen` and the fourth is the never-written extra slot of
 > [TBasket ยง5.1](TBasket.md#51-three-things-to-get-right).
 
 `tools/check_invariants.py` reports these baskets as `SKIPPED` rather than

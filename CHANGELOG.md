@@ -11,6 +11,21 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **Arithmetic and count slips corrected.**
+  - [`ElementLists.md`](spec/06-writing/ElementLists.md) §4 and §8: a file of
+    one `TObjString` carries that one info; §4's nine classes are needed by the
+    histogram, tree and graph files, not by every file.
+  - [`WritingObjects.md`](spec/06-writing/WritingObjects.md) §7.1: a
+    `TStreamerInfo`'s `fTitle` is empty, not the class's comment.
+  - [`WritingGraphs.md`](spec/06-writing/WritingGraphs.md): an empty
+    `fFunctions` slot is 4 + 10 + 4 + 2 + 15 = 35 bytes (the class record is
+    10); and the one-graph `StreamerInfo` record is 11708 bytes of payload,
+    11772 with its key.
+  - [`TTree.md`](spec/04-ttree/TTree.md) §1: in a `TNtuple`, `TTree`'s frame
+    starts six bytes in, not four.
+  - [`Splitting.md`](spec/04-ttree/Splitting.md) §5.1: the three `TIndArray`
+    entries are 17, 15 and 16 bytes (byte counts 13, 11 and 12).
+
 - **What the reader and writer code knew and the text did not**, from the second
   consistency review.
   - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §3.7, new:

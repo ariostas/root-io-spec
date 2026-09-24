@@ -66,8 +66,9 @@ jobs:
       # Every count the project states about itself (reference files, errata,
       # invariant entries, corpus sizes) against the repository. Here because
       # the roottest count needs the submodule. PLAN-review.md V30.
+      # The codecs, because the streamer-info count reads compressed fixtures.
       - name: The figures the pages quote match the repository
-        run: tools/check_figures.py
+        run: pip install -r requirements-codecs.txt && tools/check_figures.py
 
   # The unit tests, with the submodule. Until 2026-09-24 they ran only in
   # docs.yml, which does not check the submodule out, so every test that reads

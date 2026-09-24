@@ -148,3 +148,15 @@ text = "inside the pinned submodule: {roottest} ROOT-written files"
 [[at]]
 file = "gen/cern/README.md"
 text = "so the pinned submodule ships it: {roottest} `.root` files"
+
+# -- streamer infos in data/ and their checksums ----------------------------
+
+[[at]]
+file = "spec/02-serialization/StreamerInfo.md"
+text = "This repository's reference files hold {infos} streamer infos, and `tools/test_write.py` reproduces {infos_recomputed} of them"
+[[at]]
+file = "spec/06-writing/WritingObjects.md"
+text = "For {infos_recomputed} of the {infos} streamer infos in this repository's reference files"
+[[at]]
+file = "spec/06-writing/ElementLists.md"
+text = "and in all **{infos}** streamer infos in this repository's reference files"

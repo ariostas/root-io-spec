@@ -96,10 +96,46 @@ def compute() -> dict[str, int | None]:
         "large": sum(len(v) for v in large.values() if isinstance(v, list)),
         "roottest": None,
     }
+    values["infos"], values["infos_recomputed"] = _checksums()
     if ROOTTEST.is_dir():
         values["roottest"] = sum(1 for p in ROOTTEST.rglob("*.root")
                                  if p.is_file())
     return values
+
+
+def _checksums() -> tuple[int | None, int | None]:
+    """Streamer infos in data/, and how many checksums StreamerInfo.md 11 recomputes.
+
+    The same count tools/test_write.py's Checksums test makes. Both are None when
+    a codec is missing, since the count would then be short and the check would
+    report a stale page that is not stale.
+    """
+    import rootfile
+    import rootwrite as rw
+
+    total = recomputed = 0
+    for path in sorted((REPO / "data").rglob("*.root")):
+        buf, header, records = rootfile.load(path)
+        at = [r for r in records if r.offset == header.seek_info]
+        if header.seek_info <= header.begin or not at:
+            continue
+        try:
+            data = rootfile.object_data(buf, at[0])
+        except rootfile.MissingCodec:
+            return None, None
+        for info in rootfile.read_streamer_infos(data, at[0]):
+            elements = [rw.Element(
+                cls=e.cls, name=e.name, title=e.title, ftype=e.ftype,
+                size=e.fsize, type_name=e.type_name,
+                array_length=e.array_length, array_dim=e.array_dim,
+                max_index=tuple(e.max_index),
+                base_checksum=e.max_index[1] & 0xFFFFFFFF,
+                is_enum=rw.looks_like_enum(e.ftype, e.type_name))
+                for e in info.elements]
+            total += 1
+            recomputed += rw.checksum(rw.Info(info.name, info.class_version,
+                                              elements)) == info.checksum
+    return total, recomputed
 
 
 PLACEHOLDER = re.compile(r"\{(\w+)(?::(word|Word))?\}")
@@ -162,8 +198,8 @@ def main(argv: list[str]) -> int:
     for problem in problems:
         print(f"FAIL {problem}", file=sys.stderr)
     if skipped:
-        print(f"SKIPPED {skipped} figure(s): root/roottest is not checked out",
-              file=sys.stderr)
+        print(f"SKIPPED {skipped} figure(s): root/roottest is not checked out, "
+              f"or a codec is missing (requirements-codecs.txt)", file=sys.stderr)
     print(f"{checked} stated figure(s) checked, {len(problems)} failure(s)")
     return 1 if problems else 0
 

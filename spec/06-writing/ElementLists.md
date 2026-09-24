@@ -66,10 +66,11 @@ by example. A primitive or an enum is a `TStreamerBasicType`, a `TString` a
 `TStreamerBasicPointer`, an embedded `TObject`-derived class a `TStreamerObject`,
 an embedded class that is not a `TObject` a `TStreamerObjectAny`, a pointer to a
 `TObject`-derived class a `TStreamerObjectPointer`, an STL container a
-`TStreamerSTL`, and a base a `TStreamerBase`. Two of the eleven subclasses have no
-example here: `TStreamerObjectAnyPointer`, for a pointer to a class that is not a
-`TObject`, and `TStreamerLoop`, for a counted array of objects
-([Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501)). The subclass and
+`TStreamerSTL`, and a base a `TStreamerBase`. Three of the eleven subclasses have
+no example here: `TStreamerObjectAnyPointer`, for a pointer to a class that is not
+a `TObject`; `TStreamerLoop`, for a counted array of objects
+([Element types §8](../02-serialization/ElementTypes.md#8-kstreamer-500-and-kstreamloop-501));
+and `TStreamerSTLstring`, for a `std::string` member. The subclass and
 the `fType` agree in every row, and a reader uses the `fType`
 ([StreamerInfo §8](../02-serialization/StreamerInfo.md#8-the-element-subclasses)
 lists what each subclass adds to the record).
@@ -82,10 +83,10 @@ there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all thirty-five, and in all **743** streamer
-infos in this repository's reference files.
-[Writing an object §7.1](WritingObjects.md#71-the-nesting) describes it as the
-class's comment, but the value to write there is an empty string.
+The info's own `fTitle` is empty in all thirty-five, and in all **1000** streamer
+infos in this repository's reference files. It is not the class's comment, which
+[Writing an object §7.1](WritingObjects.md#71-the-nesting) said until
+2026-09-24; the value to write there is an empty string.
 
 ## 2. What the tables do not, and cannot, give you
 
@@ -148,10 +149,12 @@ among them is
 `TRefTable::fProcessGUIDs`, a `vector<string>`, and `sizeof(std::vector<T>)` is
 24 with both.
 
-## 4. The nine classes every set needs
+## 4. The nine classes every set but one needs
 
-Every file needs these, whichever of the procedures produced it. They are in
-bases-first order, which is the order a writer has to compute the checksums in.
+The histogram, tree and graph files of §5, §6, §7 and §9 all carry these, whichever
+procedure produced them; the file of one `TObjString` (§8) is the exception. They
+are in bases-first order, which is the order a writer has to compute the checksums
+in.
 
 <!-- BEGIN GENERATED: shared -->
 ### `TObject`
@@ -571,8 +574,11 @@ Class version **20**, `fCheckSum` **`0x7264e07f`**. 33 elements.
 
 ## 8. A file of one object: `TObjString`
 
-The smallest file that needs a `StreamerInfo` record at all. `TObjString` is a
-`TObject` and a `TString`, so with §4's first three tables this is a complete set.
+The smallest file that needs a `StreamerInfo` record at all, and the one set that
+does not include §4's: ROOT writes `TObjString`'s info alone, and
+`container/file-minimal` carries exactly one info (§11). `TObject` and `TString`,
+the base and the member it names, are among the classes every reader already has
+to know ([Bootstrap](../99-appendix/Bootstrap.md)), so nothing is missing.
 It is the set this project's `StreamerInfo` record is compared against byte for
 byte ([Writing an object §7.4](WritingObjects.md#74-the-check-that-this-procedure-passes)).
 

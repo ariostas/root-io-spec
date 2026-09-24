@@ -24,9 +24,9 @@ read-only reviewers went over every document, the front matter and `tools/` at
 `385a3e2`. Nine published claims are wrong or produce wrong bytes when followed
 literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
 same day, and its stale figures (V27–V30) with a check that keeps them current.
-§8.1 release criterion 1 does **not** hold until the few false statements left
-in its V41 are corrected (V25, the other open doubt, was settled with a ROOT run
-and was not an error); about thirty more statements are contradictory, stale or narrower
+§8.1 release criterion 1 does **not** hold until the false statements among its
+V42 items are corrected (V41's were on 2026-09-24, and V25, the other open doubt,
+was settled with a ROOT run and was not an error); about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three

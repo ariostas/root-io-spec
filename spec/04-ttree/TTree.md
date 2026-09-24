@@ -20,8 +20,9 @@ a record is a tree when `TTree` appears, transitively, among the `TStreamerBase`
 elements of its class.
 
 > Demonstrated by `ttree/ntuple`. The key at 477 names the class `TNtuple`; the
-> object data opens with `TNtuple`'s byte count and class version **2**, and
-> `TTree`'s own byte count and version 20 begin four bytes later. A reader that
+> object data opens with `TNtuple`'s byte count and class version **2**
+> (`40 00 06 ca 00 02`), and `TTree`'s own byte count and version 20 follow
+> directly, six bytes in (`40 00 06 c0 00 14`). A reader that
 > dispatched on the key's name and then applied `TTree`'s streamer info directly
 > would be six bytes off.
 

@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phases A to D (V1–V30), V31 and V32 done 2026-09-24.** V6 turned out
+**Status: open. Phases A to D (V1–V30), V31, V32 and V41 done 2026-09-24.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -769,7 +769,7 @@ up; `ElementTypes.md:576-578` `:730` → `:732`; `StreamerInfo.md:762-763`
 `:910-911` → `TBufferFile.cxx:1985`; `Collections.md` §6 row 1 (see V12);
 `WritingGraphs.md:352-353` (see V35).
 
-### V41. Unit and arithmetic slips ☐
+### V41. Unit and arithmetic slips ✅
 
 `TTree.md:22-26` "four bytes later" → six (a 4-byte count and a 2-byte version);
 `Splitting.md:341-347` describes three entries as "byte count of 13", "11 bytes",
@@ -782,6 +782,16 @@ includes the 64-byte key; every other figure is payload); `ElementLists.md:69-72
 fixtures (one); `WritingObjects.md:223` info `fTitle` "= its comment" → empty,
 as `ElementLists.md` §1 already says; `ReaderChecklist.md:41-43` "all four
 documents above" under a five-row table.
+
+**Done.** Every item verified against the bytes first. Two more stale figures
+turned up on the way: the "743 infos, 698 recomputed" of three pages is now 1000
+and 937 with the fixtures added since, and it had gone stale once before, so
+`gen/figures.toml` now pins it too (skipped, with a message, when a codec is
+missing). Re-reading V42 for this showed that several of its items are false
+statements rather than wording: `TLeaf.md`'s `nbits ≤ 31`, `StreamerDriven.md`'s
+`fBits` claim about the corpus, `Buffer.md`'s "cannot be written", `Pitfalls.md`'s
+"ROOT 5 and later" for `fType` 500, `RooFit.md`'s diagram pointing at §2.3, and
+`SchemaEvolution.md`'s "up to 5.34.18". Criterion 1 waits on those as well.
 
 ### V42. Wording a reader would misread ☐
 

@@ -61,7 +61,7 @@ and title.
 | … | 4 | `fNpoints` |
 | … | 1 + 8·`fNpoints` | `fX`: a flag byte, then the values (§3.2) |
 | … | 1 + 8·`fNpoints` | `fY`, the same |
-| … | 4 + 11 + 4 + 2 + 15 | `fFunctions`: a pointer slot holding an empty `TList` (§3.5) |
+| … | 4 + 10 + 4 + 2 + 15 | `fFunctions`: a pointer slot holding an empty `TList` (§3.5): the slot's byte count, the class record (`kNewClassTag` and `TList\0`), the list's byte count and version, then its `TObject`, empty name and count of 0 |
 | … | 4 | `fHistogram`: a null pointer (§3.4) |
 | … | 8 + 8 | `fMinimum`, `fMaximum` (§3.3) |
 | … | `sizeof(fOption)` | `fOption`, a counted string — empty in every graph ROOT writes |
@@ -250,7 +250,8 @@ says how to obtain.
 ## 5. Nineteen streamer infos for a 198-byte object
 
 A file holding **one** `TGraph` and nothing else has **eighteen** streamer infos
-and an 11708-byte `StreamerInfo` record. The cause is one null pointer:
+and a `StreamerInfo` record of 11708 bytes of payload, 11772 with its key. The
+cause is one null pointer:
 
 ```
 TGraph  TNamed  TObject  TAttLine  TAttFill  TAttMarker
@@ -282,7 +283,7 @@ It is the same rule as for `TBranchRef` and `TRefTable` in a tree file
 > not.** Measured on two files holding the same four points, written by the same
 > ROOT in the same run:
 >
-> | | `TGraph` record | `StreamerInfo` record | `TArrayF`, `TArray`, `TArrayD` |
+> | | `TGraph` record, key included | `StreamerInfo` record, key included | `TArrayF`, `TArray`, `TArrayD` |
 > |---|---|---|---|
 > | never drawn, `fHistogram` null | 233 bytes | 11772 | **present** |
 > | after `Fit("pol1")` | 2387 bytes | 16021 | **absent** |

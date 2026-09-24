@@ -220,7 +220,7 @@ into.
 TList (version 5)
 └── object slot per info, each followed by one option byte of 0x00
     └── TStreamerInfo (version 10)
-        ├── TNamed base      fName = the described class, fTitle = its comment
+        ├── TNamed base      fName = the described class, fTitle empty
         ├── fCheckSum:u32
         ├── fClassVersion:i32            written as |fClassVersion|
         └── object slot: TObjArray (version 3)
@@ -288,8 +288,8 @@ easy to miss:
   `Double_t` as `double`, and `fTypeName` in the record uses the resolved spelling
   too, so the two agree.
 
-If ROOT has the class compiled in, the value must be **ROOT's**. For 698 of
-the 743 streamer infos in this repository's reference files it can be
+If ROOT has the class compiled in, the value must be **ROOT's**. For 937 of
+the 1000 streamer infos in this repository's reference files it can be
 recomputed from the info's own elements; the exceptions, and the reasons for them,
 are in [StreamerInfo §11.2](../02-serialization/StreamerInfo.md#112-what-cannot-be-recomputed).
 
