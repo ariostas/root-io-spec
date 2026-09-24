@@ -1,6 +1,6 @@
 # PLAN-review — the second consistency review, 2026-09-24
 
-**Status: open. Phases A, B and D (V1–V20, V26–V30), V31 and V32 done 2026-09-24.** V6 turned out
+**Status: open. Phases A to D (V1–V30), V31 and V32 done 2026-09-24.** V6 turned out
 larger than reported: `_proxyList` has three forms, not two, and the corpus files
 match their writers rather than carrying old infos. Items are numbered V1–V44
 so that commits and `PLAN.md` can cite them after this file is deleted; the
@@ -396,7 +396,7 @@ Each of these is a fact `tools/rootfile.py` or `tools/rootwrite.py` implements
 that no document states, or a claim that needs a file to settle. They are the
 completeness items, and three of them need a ROOT session or a corpus run.
 
-### V21. Displacement arrays have no reading semantics anywhere ☐
+### V21. Displacement arrays have no reading semantics anywhere ✅
 
 `spec/04-ttree/TBasket.md` §5.3 says what the array holds and stops. ROOT calls
 `SetBufferDisplacement(displacement[entry-first])` per entry
@@ -413,7 +413,7 @@ back-references so the rule is exercised (a split object with a `TRef` to
 another member is the smallest). Needs ROOT to generate. **Reported**, with
 citations; two reviewers found it independently.
 
-### V22. The update procedure's free-segment record can shrink after it is sized ☐
+### V22. The update procedure's free-segment record can shrink after it is sized ✅
 
 `spec/06-writing/WritingFiles.md` §13: when the free-segment record is placed
 during an update it can take an exact-fit span, which removes an entry, so the
@@ -425,7 +425,7 @@ arithmetic, not a fixed point" is true only for a create. **Reported**; the
 `reopen-reuse` case is where to check whether the padding appears in the
 byte-identical file.
 
-### V23. `fClusterSize` under a negative watermark ☐
+### V23. `fClusterSize` under a negative watermark ✅
 
 `spec/06-writing/WritingTrees.md` §7.4 says `fClusterSize[i]` is "the watermark
 that was in force" and does not say what is recorded when the watermark is
@@ -433,7 +433,7 @@ negative: `MarkEventCluster` writes `fEntries` for the first range and the
 difference of the two ends otherwise (`root/tree/tree/src/TTree.cxx:8492-8497`);
 `rootwrite.Tree.mark_cluster` (`:3378-3384`) implements it. **Reported.**
 
-### V24. Two legacy read branches, and the scope floor they imply ☐
+### V24. Two legacy read branches, and the scope floor they imply ✅
 
 `root/io/io/src/TStreamerInfoReadBuffer.cxx:1380-1387`: for a file with header
 `fVersion < 30208`, code 81 (`kObject+kOffsetL`) is rerouted to the `kStreamer`
@@ -447,7 +447,7 @@ state, in `spec/index.md`'s scope section, that streamer infos written before
 3.02.08 are outside the reading floor. The second is honest and cheaper; decide
 and do one. **Reported.**
 
-### V25. A top-level STL collection's count title may keep its trailing dot ☐
+### V25. A top-level STL collection's count title may keep its trailing dot ✅
 
 `spec/04-ttree/Splitting.md:167-185` (§3.3) and invariants 3/4: "A collection or
 `TClonesArray` count branch's title is the name it was constructed with, a
@@ -476,6 +476,20 @@ Record the result in the erratum.
 `RooAbsArg` 4 with a `TList`, `stressRooFit_v534_ref.root` (5.34/04) 5 with a
 `TRefArray`, and `uproot-issue-350.root` (6.24/00) 7 with a `RooRefArray`. Each
 file matches its writer; the published sentence had simply misread the third.
+
+**Phase C done, V21–V25, with ROOT 6.40.04 from a local conda environment.**
+V25's suspicion did not hold: the collection constructor drops the dot at
+`TBranchElement.cxx:906-909`, before the cited lines, so the claim was right and
+its citation incomplete. What it found instead is that a trailing dot changes
+nothing below a top-level split collection, which §3.1 now says, with a fixture.
+V21 was larger than reported. The reader now applies the displacement, but a
+fixture with back-references showed that ROOT's displacement is right only for
+an entry moved once: `MoveEntries` overwrites it on each move, and ROOT 6.40.04
+reads 13 of 15 twice-moved entries with a pointer silently null. That is
+`PLAN.md` §7.1 item 16; the reader reports such entries as a named skip. V24
+measured both legacy branches as unwitnessed (754 version-2 infos, none with
+85–87; no code 81 below 3.02/08) and documents them rather than only declaring a
+floor. Corpus figures unchanged.
 
 ## 5. Phase D — the project's description of itself
 

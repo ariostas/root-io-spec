@@ -503,6 +503,18 @@ codes omit `kOffsetL` deliberately
 `root/core/meta/src/TStreamerElement.cxx:1681-1684`), while the base class adds it
 for everything else (`root/core/meta/src/TStreamerElement.cxx:510-515`).
 
+**Two legacy branches of this table**, both in ROOT's reader and both
+unwitnessed. In a file whose header `fVersion` is below 30208 (ROOT 3.02/08),
+code 81 is read as 500, `kStreamer`: a `bc ver` frame around the objects
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1380-1387`). And for an info at
+`TStreamerInfo` version below 3, an 85, 86 or 87 element whose byte count is 0,
+or whose version word differs from the info's own version, is taken as not
+written at all: ROOT rewinds to where the frame began and the next element reads
+from there
+(`root/io/io/src/TStreamerInfoReadBuffer.cxx:1420-1425`). Over both corpora and
+`root/roottest/`, no file below 3.02/08 has a code-81 element, and none of the 754
+infos at version 2 has an 85, 86 or 87 element (measured 2026-09-24).
+
 > **A reader MUST take the element count from `fArrayLength`, never from whether
 > the code includes `kOffsetL`.** The last row shows why: the code alone does not
 > say whether the member is an array.

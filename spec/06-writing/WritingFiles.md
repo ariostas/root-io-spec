@@ -198,8 +198,9 @@ step 6.
    each, a count and then a verbatim copy of the key of every record that
    directory owns.
 7. **Place the free list** (§9). Its own length has to be known before its single
-   entry can name `fEND`. It is 10 bytes of payload plus a key, so this is simple
-   arithmetic, not a fixed point.
+   entry can name `fEND`. For a file written once it is 10 bytes of payload plus
+   a key, so this is simple arithmetic, not a fixed point. On an update it is
+   not, and §9.1 says what ROOT does instead.
 8. **Fill in** every directory payload (`fNbytesKeys`, `fSeekKeys`) and the
    header (`fEND`, `fSeekFree`, `fNbytesFree`, `nfree`, `fSeekInfo`,
    `fNbytesInfo`).
@@ -681,6 +682,24 @@ that `fFirst` (`root/io/io/src/TFile.cxx:2671-2672`), truncating the file
 logically. A file can therefore be fully readable and still break on the next
 write.
 
+### 9.1 On an update, placing the record can shorten it
+
+The record's length depends on how many entries the list has, and placing the
+record changes the list. ROOT sizes the payload first, from the entries as they
+are, then places the key, and only then serializes the entries
+(`root/io/io/src/TFile.cxx:2598-2657`). If the key took an interior gap **exactly**,
+that entry is gone, the entries fill fewer bytes than were reserved, and ROOT
+fills the rest with zeros (`root/io/io/src/TFile.cxx:2649-2654`). A key placed in
+a larger gap only shrinks it, and at the tail only moves `fEND`, so the count is
+unchanged in every other case, and always on a create.
+
+A writer that imitates ROOT sizes first and pads, as `tools/rootwrite.py` does. One
+that sizes after placing produces a record with no slack, which ROOT reads the
+same way but whose `fNbytesFree` differs from ROOT's. Either way a reader stops at
+the first entry with `fLast > fEND` and never reaches the zeros
+([Free segments §3](../01-container/FreeSegments.md#3-reading-the-list)). No fixture has the padded
+form; it is stated from the source.
+
 ## 10. The header
 
 Written last. Every field, with the source of its value:
@@ -848,7 +867,9 @@ record first:
 3. **each directory's header**, rewritten **in place**
    ([§13.6](#136-what-an-update-rewrites-in-place));
 4. **the free-segment record**, which also frees its own old span first
-   (`root/io/io/src/TFile.cxx:2599-2600`), and then the header.
+   (`root/io/io/src/TFile.cxx:2599-2600`) and may come out shorter than it was
+   sized ([§9.1](#91-on-an-update-placing-the-record-can-shorten-it)), and then
+   the header.
 
 The order is visible in the bytes, because each step allocates out of what the
 step before it released. In `data/written/reopen-add.root` the free record ends

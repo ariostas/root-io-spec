@@ -1760,5 +1760,41 @@ class LegacyEmptyCollectionColumn(unittest.TestCase):
             [6 + 4 + 78 * 4])
 
 
+class DisplacedBackReferences(unittest.TestCase):
+    """ReadingEntries.md 3.7, against `ttree/basket-displacement-refs`.
+
+    Tree `once`: every entry was moved once, and adding offset - displacement
+    to each class back-reference finds its target. Tree `twice`: entries moved
+    twice have a displacement that no longer names where they were written, so
+    the reader reports them as unreadable rather than guess, where ROOT reads
+    their second pointer as null.
+    """
+
+    PATH = (Path(__file__).resolve().parent.parent
+            / "data/ttree/basket-displacement-refs.root")
+
+    def run_checker(self):
+        checker = check_invariants.Checker(self.PATH)
+        return checker, checker.run()
+
+    def test_once_decodes_and_twice_is_a_named_skip(self):
+        checker, failures = self.run_checker()
+        self.assertEqual(failures, [])
+        self.assertEqual(checker.verified, 1)
+        reasons = [reason for (_, reason, _) in checker.skipped]
+        self.assertTrue(any("moved more than once" in r for r in reasons), reasons)
+
+    def test_without_the_correction_once_fails(self):
+        original = rootfile.resolve_class
+        try:
+            rootfile.resolve_class = (lambda slot, classes, displacement=0:
+                                      original(slot, classes, 0))
+            checker, failures = self.run_checker()
+        finally:
+            rootfile.resolve_class = original
+        self.assertEqual(checker.verified, 0)
+        self.assertTrue(any("ReadingEntries 8.5" in f for f in failures), failures)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -250,7 +250,7 @@ described classes must later be decoded:
 | Version | Consequence |
 |---|---|
 | 1 | strict byte-count check; from 2 on, trailing bytes are tolerated (`root/io/io/src/TStreamerInfo.cxx:5628`) |
-| < 3 | a legacy collection encoding applies to that class's STL members |
+| < 3 | a legacy collection encoding applies to that class's STL members; an 85, 86 or 87 element whose frame does not match is taken as not written ([Element types §7.2](ElementTypes.md#72-the-array-forms-are-not-uniform)) |
 | < 6 | consecutive `Double32_t`/`Float16_t` members were merged regardless of their annotations |
 | < 50000 (*file* version) | `TStreamerBasicType` elements with `fType` 61–65 must be reinterpreted as object elements (`root/io/io/src/TStreamerInfo.cxx:5633-5665`) |
 

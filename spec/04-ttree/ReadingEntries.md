@@ -253,6 +253,55 @@ A reader has to accept both, and **nothing on the branch distinguishes them**:
 `fStreamerType`, `fEntryOffsetLen` and the leaf are identical in the two files.
 Only the entry's own length does.
 
+### 3.7 Back-references inside an entry
+
+An entry that holds objects can hold class and object back-references
+([Buffer framing §5.2](../02-serialization/Buffer.md#52-a-class-back-reference)
+and [§6](../02-serialization/Buffer.md#6-object-slots)). Inside a basket they work as in a record, with two differences.
+
+**The object map starts afresh at every entry.** ROOT resets it before filling an
+entry and before reading one (`root/tree/tree/src/TBranch.cxx:878-879`,
+`root/tree/tree/src/TBranch.cxx:1730-1731`), so a back-reference always names
+something earlier in the same entry, never in another. The reset is skipped only
+on a branch whose `fBits` still has `kDoNotUseBufferMap`, set when the branch is
+created and cleared at the first entry that maps anything
+(`root/tree/tree/src/TBranch.cxx:893-896`); such a branch has no
+back-references to resolve. Positions are measured from the start of the basket's
+key, like every buffer position ([Buffer framing §1](../02-serialization/Buffer.md)),
+so they include `fKeylen`.
+
+**When the basket has a displacement array, correct every tag by it.** A circular
+tree moves its entries down the buffer without rewriting them
+([TBasket §5.3](TBasket.md#53-the-displacement-array-which-the-flag-does-not-announce-in-a-record)),
+so a tag inside a moved entry names the position its target had before the move.
+ROOT sets, for entry *j*,
+
+```
+fDisplacement = entryOffset[j] - displacement[j]
+```
+
+(`root/tree/tree/src/TBranch.cxx:1739-1744`, `root/io/io/inc/TBufferIO.h:83`), and
+adds it to every object and class back-reference it reads in that entry
+(`root/io/io/src/TBufferFile.cxx:2594`, `root/io/io/src/TBufferFile.cxx:2788`). A
+reader MUST do the same.
+
+> Demonstrated by `ttree/basket-displacement-refs`, tree `once`. Entry 0 is at
+> 68 and was written at 257. Its `fA` has its class record at 72, mapped at 74;
+> its `fB`'s class tag is 263, the position `fA`'s record had when written, and
+> 263 + (68 − 257) = 74.
+
+> **This is correct only for an entry moved once, and ROOT loses data otherwise.**
+> `TBasket::MoveEntries` sets each displacement to the entry's offset before
+> *this* move (`root/tree/tree/src/TBasket.cxx:329`), overwriting the earlier
+> one, while the entry's tags still name where it was first written. After a
+> second move no field in the file records that position. In tree `twice` of the
+> same fixture, where fifteen entries were moved twice, ROOT 6.40.04 resolves
+> the tag to the wrong place and reads 13 of the 15 `fB` pointers as null,
+> without a warning. A reader cannot do better from the file alone: it SHOULD
+> report such an entry as unreadable when a corrected tag names no position
+> mapped in the entry, rather than decode it as ROOT does. `PLAN.md` §7.1 records
+> it as an upstream bug candidate.
+
 ## 4. Where the count comes from
 
 The count comes from one of three different places.
@@ -466,6 +515,9 @@ Normative, for one entry of one branch.
      selects as below.
    - a `std::bitset` member whose byte range is empty: nothing (§3.6).
    - otherwise: the single element `fID` selects.
+
+   Throughout, correct every back-reference by the entry's displacement when the
+   basket has a displacement array (§3.7).
 6. The bytes consumed must equal the byte range from step 3. This equality is
    the check to implement; it is
    [TLeaf invariant 7](TLeaf.md#10-invariants) generalised to split branches.
@@ -540,6 +592,7 @@ on a file whose baskets are all embedded.
 | `ttree/split-clones` | The `TClonesArray` form of §3.1 and §3.2 |
 | `ttree/split-tbits` | §3.4 and §4: a counted array whose counter branch has `fStreamerType` 13 rather than 6, and §3.3 on an unsplit `TBits` |
 | `ttree/split-bitset` | §3.6: a `bitset<16>` as twenty-six bytes, and the bit order, which only its third entry fixes |
+| `ttree/basket-displacement-refs` | §3.7: class back-references in entries a circular tree moved once, which the displacement corrects, and moved twice, which ROOT misreads |
 | `ttree/split-stl-pointer` | §5.3 on single members: a pointer to a collection, an array of them and an array of collections, each entry one member-wise frame |
 
 Not covered by a fixture: §3.5, which needs a class with a hand-written

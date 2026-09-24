@@ -1,0 +1,98 @@
+id   = "ttree/basket-displacement-refs"
+file = "data/ttree/basket-displacement-refs.root"
+size = 21219
+
+description = """
+Back-references inside a moved basket entry, in two circular trees, and ROOT's
+defect with them.
+
+Branch `p` holds a DPair unsplit: two TNamed pointers, so the second one's class
+tag is a back-reference to the first one's class record in the same entry. A
+circular tree moves its surviving entries down the basket and records where each
+was in a displacement array; the bytes are moved unchanged, so a tag still names
+the position its target had when the entry was written. ROOT adds
+fDisplacement = offset - displacement to every tag it reads in the entry
+(TBranch.cxx:1739-1744, TBufferFile.cxx:2594 and :2788).
+
+- `once`: 21 fills with SetCircular(20), so one move of three entries. Every
+  surviving entry was moved once, its displacement is where it was written, and
+  the tag resolves. ROOT reads all 18 entries correctly.
+- `twice`: 24 fills, so a second move. MoveEntries overwrites the displacement
+  with the offset before the latest move (TBasket.cxx:329), so for entries 6 to
+  20 of the fill order it no longer names where the entry was written, and
+  nothing in the file does. ROOT 6.40.04 reads 13 of those 15 entries with fB
+  null, silently. PLAN.md 7.1 has it as a bug candidate.
+
+DPair comes from classes.h. PLAN-review.md V21.
+"""
+
+spec = [
+  "spec/04-ttree/ReadingEntries.md",
+  "spec/04-ttree/TBasket.md",
+]
+
+[[bytes]]
+offset = 1566
+type = "i32"
+value = 19
+note = "once: the entry-offset array, fNevBuf + 1 = 19 values, TBasket.md 5.1"
+
+[[bytes]]
+offset = 1570
+type = "i32"
+value = 68
+note = "once: entry 0 now starts at fKeylen 68, record-relative"
+
+[[bytes]]
+offset = 1646
+type = "i32"
+value = 19
+note = "once: the displacement array follows it, with nothing in the flag to say so, TBasket.md 5.3"
+
+[[bytes]]
+offset = 1650
+type = "i32"
+value = 257
+note = "once: entry 0 was written at 257, before the one move"
+
+[[bytes]]
+offset = 410
+type = "u32"
+value = 1073741855
+note = "once, entry 0: fA, a byte count, then kNewClassTag and TNamed; its class tag is at record position 72, map position 74"
+
+[[bytes]]
+offset = 449
+type = "u32"
+value = 2147483911
+note = "once, entry 0: fB class back-reference 263 = 257 + 4 + kMapOffset, where fA was written; 263 + (68 - 257) = 74, ReadingEntries.md 3.7"
+
+[[bytes]]
+offset = 3862
+type = "i32"
+value = 19
+note = "twice: the entry-offset array"
+
+[[bytes]]
+offset = 3866
+type = "i32"
+value = 69
+note = "twice: entry 0 now starts at fKeylen 69"
+
+[[bytes]]
+offset = 3942
+type = "i32"
+value = 19
+note = "twice: the displacement array"
+
+[[bytes]]
+offset = 3946
+type = "i32"
+value = 258
+note = "twice: entry 0 was at 258 before the LATEST move only; MoveEntries overwrote the first (TBasket.cxx:329)"
+
+[[bytes]]
+offset = 2739
+type = "u32"
+value = 2147484101
+note = "twice, entry 0: fB tag 453 names where the entry was first written; 453 + (69 - 258) = 264 is inside fA, and ROOT reads fB as null. ReadingEntries.md 3.7"

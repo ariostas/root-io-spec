@@ -1045,7 +1045,8 @@ def _skip_named(buf: bytes, offset: int) -> tuple[str, str, int, int]:
     return name, title, bits, o
 
 
-def resolve_class(slot: Slot, classes: dict[int, str]) -> tuple[str, int]:
+def resolve_class(slot: Slot, classes: dict[int, str],
+                  displacement: int = 0) -> tuple[str, int]:
     """The slot's class name and the offset its object body starts at.
 
     `classes` maps map positions to class names and is filled as the buffer is
@@ -1058,7 +1059,20 @@ def resolve_class(slot: Slot, classes: dict[int, str]) -> tuple[str, int]:
         classes[slot.class_position] = slot.class_name
         # class name is NUL-terminated, starting 8 bytes into the slot
         return slot.class_name, slot.offset + 8 + len(slot.class_name) + 1
-    ref = slot.class_reference
+    # Inside a basket entry whose bytes were moved (TBasket.md 5.3), a tag names
+    # the position the class record had before the move; ROOT adds the entry's
+    # displacement to it (root/io/io/src/TBufferFile.cxx:2788). 0 elsewhere.
+    ref = slot.class_reference + displacement
+    if ref not in classes and displacement:
+        # MoveEntries keeps only the offset before the latest move
+        # (root/tree/tree/src/TBasket.cxx:329), so an entry moved twice has a
+        # displacement that no longer names where it was written, and nothing in
+        # the file does. ROOT resolves the tag wrongly and reads the member as
+        # null. Not decodable from the file: ReadingEntries.md 3.7.
+        raise UnsupportedClass(
+            "a class back-reference in an entry moved more than once in a "
+            "circular tree, whose original position the file does not record "
+            "(ReadingEntries.md 3.7)")
     if ref not in classes:
         raise FormatError(f"slot at {slot.offset} references class position {ref}, "
                           f"which was not seen earlier in this buffer")
@@ -1436,6 +1450,10 @@ class Decoder:
         # payload may stand in for it.
         self.record_class = ""
         self.classes: dict[int, str] = {}
+        # Added to every class back-reference: the current entry's
+        # offset[j] - displacement[j] when its basket's entries were moved,
+        # ReadingEntries.md 3.7. TreeReader sets it per entry.
+        self.displacement = 0
         # (member name, value class, frame offset, collections in the frame)
         # for each member-wise member or column reached, recorded before it is
         # decoded so that it survives a failure to decode it. A column and a
@@ -1855,7 +1873,7 @@ class Decoder:
         for _ in range(size):
             slot = read_slot(self.buf, pos, self.base)
             if slot.kind == "object":
-                cls, body_at = resolve_class(slot, self.classes)
+                cls, body_at = resolve_class(slot, self.classes, self.displacement)
                 self.read_object(cls, body_at)
             members.append(Value(name="element", ftype=64, start=pos,
                                  end=slot.end, type_name=slot.class_name or ""))
@@ -2013,7 +2031,7 @@ class Decoder:
         nested = None
         cls = slot.class_name or ""
         if slot.kind == "object":
-            cls, body_at = resolve_class(slot, self.classes)
+            cls, body_at = resolve_class(slot, self.classes, self.displacement)
             nested = self.read_in_slot(cls, body_at, slot.end).members
         members.append(Value(name=name, ftype=64, start=offset, end=slot.end,
                              type_name=cls, members=nested,
@@ -2075,7 +2093,7 @@ class Decoder:
             # TLeaf) are referenced by position from the sub-branches in
             # fBranches (Buffer.md 5.2). Skipping the body leaves those
             # references unresolvable; an earlier version made that mistake.
-            name, body = resolve_class(count, self.classes)
+            name, body = resolve_class(count, self.classes, self.displacement)
             nested = self.read_object(name, body)
             if nested.end != count.end:
                 raise FormatError(
@@ -2412,7 +2430,7 @@ class Decoder:
                 if slot.kind == "reference":
                     note = f"reference to {slot.reference}"
                     continue
-                cls, body_at = resolve_class(slot, self.classes)
+                cls, body_at = resolve_class(slot, self.classes, self.displacement)
                 # Go through read_object, not read_members, so that a class with a
                 # hand-written reader here (TList, TObjArray, TClonesArray) gets
                 # it. Reading TList through its streamer info instead produces a
@@ -2451,7 +2469,7 @@ class Decoder:
                     if slots:
                         slot = read_slot(buf, pos, self.base)
                         if slot.kind == "object":
-                            name, body_at = resolve_class(slot, self.classes)
+                            name, body_at = resolve_class(slot, self.classes, self.displacement)
                             self.read_in_slot(name, body_at, slot.end)
                         pos = slot.end
                     else:
@@ -2514,7 +2532,7 @@ class Decoder:
         for _ in range(max(count, 0)):
             slot = read_slot(self.buf, pos, self.base)
             if slot.kind == "object":
-                name, body = resolve_class(slot, self.classes)
+                name, body = resolve_class(slot, self.classes, self.displacement)
                 note, inner_members = "", None
                 try:
                     if name == "TBasket":
@@ -4640,6 +4658,13 @@ class TreeReader:
         rec, payload, basket, index, embedded = self.basket_for(br, entry)
         start, end = basket_entry_range(rec, basket, index)
         decoder = self.decoder_for(rec, payload, embedded)
+        # ROOT's SetBufferDisplacement: Length() - skipped, with Length() the
+        # entry's offset and skipped its pre-move offset
+        # (root/tree/tree/src/TBranch.cxx:1739-1744, root/io/io/inc/TBufferIO.h:83).
+        decoder.displacement = 0
+        if basket.displacements and basket.entry_offsets:
+            decoder.displacement = (basket.entry_offsets[index]
+                                    - basket.displacements[index])
         consumed = decoder.within_extent(
             lambda: self.decode_entry(br, entry, rec, payload, basket, index,
                                       start, end, embedded),

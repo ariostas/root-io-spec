@@ -421,6 +421,10 @@ never gets one.
 Every displacement exceeds its offset by the same constant, the number of bytes
 the surviving entries moved down.
 
+A reader needs it only for back-references inside an entry, which it corrects by
+`offset − displacement`; [Reading entries §3.7](ReadingEntries.md#37-back-references-inside-an-entry)
+says how, and why the correction fails for an entry moved more than once.
+
 > **In a record the flag is 0 and does not indicate the array.** A basket
 > destined for a record is streamed with `fHeaderOnly` set, so its flag is 0 or
 > 80 (§4) whatever `WriteBuffer` appended to the payload. `WriteBuffer` appends

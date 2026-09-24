@@ -1,0 +1,133 @@
+id   = "ttree/split-dotted-collection"
+file = "data/ttree/split-dotted-collection.root"
+size = 20760
+
+description = """
+One split collection under two branch names, `Branch("v.", ...)` and
+`Branch("w", ...)`: a `std::vector<DHit>` at split level 99, one entry.
+
+For a split object a trailing dot changes every name below the branch
+(ttree/split-naming). For a top-level split collection it changes nothing:
+TBranchElement::Init removes the dot before anything is named
+(root/tree/tree/src/TBranchElement.cxx:906-909), so the count branch of the
+first is `v`, not `v.`, and both halves have the same shape: `v` titled `v_`,
+its leaf `v_`, and members `v.fId` titled `fId[v_]`. The string `v.` never
+occurs in the file on its own.
+
+Written for PLAN-review.md V25, which suspected from the source alone that the
+dot survived here, because the lines Splitting.md 3.3 cited append the
+underscore without removing a dot. The dot had already gone, eighty lines
+earlier. DHit and the vector's dictionary come from classes.h.
+"""
+
+spec = [
+  "spec/04-ttree/Splitting.md",
+]
+
+[[bytes]]
+offset = 394
+type = "string"
+value = "v"
+note = "the basket key of the collection branch is named 'v': for Branch(\"v.\") the dot is gone. Splitting.md 3.1"
+
+[[bytes]]
+offset = 652
+type = "string"
+value = "w"
+note = "the basket key of the collection branch is named 'w': for Branch(\"w\") the dot is gone. Splitting.md 3.1"
+
+[[bytes]]
+offset = 1235
+type = "string"
+value = "v"
+note = "the count branch: named v, not v., for Branch(\"v.\"); TBranchElement.cxx:906-909 (fName)"
+
+[[bytes]]
+offset = 1237
+type = "string"
+value = "v_"
+note = "the count branch: named v, not v., for Branch(\"v.\"); TBranchElement.cxx:906-909 (fTitle)"
+
+[[bytes]]
+offset = 2864
+type = "string"
+value = "w"
+note = "the count branch of Branch(\"w\"): the same shape (fName)"
+
+[[bytes]]
+offset = 2866
+type = "string"
+value = "w_"
+note = "the count branch of Branch(\"w\"): the same shape (fTitle)"
+
+[[bytes]]
+offset = 1656
+type = "string"
+value = "v_"
+note = "its leaf: name and title both v_, Splitting.md 3.3 (fName)"
+
+[[bytes]]
+offset = 1659
+type = "string"
+value = "v_"
+note = "its leaf: name and title both v_, Splitting.md 3.3 (fTitle)"
+
+[[bytes]]
+offset = 3272
+type = "string"
+value = "w_"
+note = "its leaf (fName)"
+
+[[bytes]]
+offset = 3275
+type = "string"
+value = "w_"
+note = "its leaf (fTitle)"
+
+[[bytes]]
+offset = 1390
+type = "string"
+value = "v.fId"
+note = "a member branch: prefix v., title fId[v_] (fName)"
+
+[[bytes]]
+offset = 1396
+type = "string"
+value = "fId[v_]"
+note = "a member branch: prefix v., title fId[v_] (fTitle)"
+
+[[bytes]]
+offset = 2010
+type = "string"
+value = "v.fE"
+note = "a member branch (fName)"
+
+[[bytes]]
+offset = 2015
+type = "string"
+value = "fE[v_]"
+note = "a member branch (fTitle)"
+
+[[bytes]]
+offset = 3019
+type = "string"
+value = "w.fId"
+note = "the same member without the dot: prefix w., title fId[w_] (fName)"
+
+[[bytes]]
+offset = 3025
+type = "string"
+value = "fId[w_]"
+note = "the same member without the dot: prefix w., title fId[w_] (fTitle)"
+
+[[bytes]]
+offset = 3626
+type = "string"
+value = "w.fE"
+note = "a member branch (fName)"
+
+[[bytes]]
+offset = 3631
+type = "string"
+value = "fE[w_]"
+note = "a member branch (fTitle)"

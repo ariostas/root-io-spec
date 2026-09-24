@@ -112,7 +112,7 @@ The names of the branches inside a split object do not describe the class. They
 depend on the string the user passed to `TTree::Branch`, and the same class
 produces two different sets of names depending on that string's last character.
 
-### 3.1 A trailing dot changes every name below
+### 3.1 A trailing dot changes every name below a split object
 
 `ttree/split-naming` writes the same class twice into the same tree, once as
 `Branch("plain", ...)` and once as `Branch("dotted.", ...)`. The two halves have
@@ -134,6 +134,14 @@ class in the other. ROOT's source notes both differences in a comment above the
 code that causes them (`root/tree/tree/src/TBranchElement.cxx:476-480`): *"this is very
 annoying. It is also very annoying that the naming conventions for the
 sub-branch names are different as well."*
+
+**Not below a top-level split collection.** There the dot never reaches a name:
+`TBranchElement::Init` removes it before anything is named
+(`root/tree/tree/src/TBranchElement.cxx:906-909`). `ttree/split-dotted-collection`
+writes one `std::vector` of a split class as `Branch("v.", ...)` and as
+`Branch("w", ...)`, and the two come out in the same shape: a count branch named
+`v`, not `v.`, titled `v_`, and members `v.fId` titled `fId[v_]`, exactly as for
+`w`. The members keep the dot as a separator either way.
 
 **A writer that chooses the name should add the trailing dot.** This is a
 recommendation, not a format rule; it is here because readers of this section
@@ -181,7 +189,8 @@ fDet.fHits.fE       title  fE[fDet.fHits_]
 The constructor sets the count branch's title, and its leaf's name and title,
 to that one string (`root/tree/tree/src/TBranchElement.cxx:818-825` for a
 `TClonesArray`, `root/tree/tree/src/TBranchElement.cxx:985-989` for a
-collection, and `root/tree/tree/src/TBranchElement.cxx:579-585` and
+collection, whose name has already lost its dot at
+`root/tree/tree/src/TBranchElement.cxx:906-909`, and `root/tree/tree/src/TBranchElement.cxx:579-585` and
 `root/tree/tree/src/TBranchElement.cxx:633-639` for the same as a member).
 `BuildTitle` derives the same string again from the same name
 (`root/tree/tree/src/TBranchElement.cxx:1185-1189`) and gives each member the
@@ -426,6 +435,7 @@ does with the result:
 | `ttree/split-nested` | Three levels, `fType` 2, an `fType` 4 count branch with `fType` 41 members, the `name_`/`[name_]` convention, and the `fSplitLevel` table of §4.2 |
 | `ttree/split-unsplit` | §6 in one file: the same class split and unsplit side by side, with `fID` −2 against −1 as the only field that separates them |
 | `ttree/split-clones` | The `TClonesArray` half of the same shapes: `fType` 3 and 31, and a `TObject` base flattened into columns rather than becoming an `fType` 1 node |
+| `ttree/split-dotted-collection` | §3.1's exception: a top-level split collection under `v.` and under `w` has names of the same shape, and the dot survives nowhere |
 | `ttree/split-stl-toplevel` | A collection as the branch itself: three branches, no split node above them, and the shortest arrangement ROOT produces |
 | `ttree/split-ptr-collection` | All of §5: `fSplitLevel` above 100, a `TBranchSTL`, and an `fType` 4 branch with `fID` −1 |
 

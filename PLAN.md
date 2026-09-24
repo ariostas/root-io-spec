@@ -25,7 +25,8 @@ read-only reviewers went over every document, the front matter and `tools/` at
 literally (its V1–V9), and Phase B's contradictions (V10–V20) were fixed the
 same day, and its stale figures (V27–V30) with a check that keeps them current.
 §8.1 release criterion 1 does **not** hold until the few false statements left
-in its V41 are corrected, and V25 is settled with a ROOT run; about thirty more statements are contradictory, stale or narrower
+in its V41 are corrected (V25, the other open doubt, was settled with a ROOT run
+and was not an error); about thirty more statements are contradictory, stale or narrower
 than the format, and none of it is caught by a check. The sub-plan orders the
 response and adds the checks (a figures check, `check_versions.py` validating
 the cited line, the unit tests run with the submodule in CI) so the three
@@ -37,15 +38,15 @@ and unit-test rows again on 2026-09-24, after `rntuple/attributes`:
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 87 / 2290, 0 failures |
+| Reference files / byte assertions | 89 / 2319, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
-| Source citations checked | 1808, 0 failures |
+| Source citations checked | 1823, 0 failures |
 | Class versions checked against `ClassDef` | 63 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
 | Invariants over the fixtures and the written files | 101 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 649 |
+| Unit tests | 651 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -664,6 +665,16 @@ reported** (§8 item M10).
     (`root/tree/ntuple/src/RNTupleAttrReading.cxx:51`), which refuses the empty
     type name: "no type name specified for field". Reproduced on 6.40.04. The
     writer should refuse it, or the reader rebuild it from the descriptor.
+16. **A circular tree loses back-referenced objects in entries moved twice.**
+    *Reproduced 2026-09-24, with data loss.* `TBasket::MoveEntries` sets each
+    displacement to the entry's offset before the latest move
+    (`root/tree/tree/src/TBasket.cxx:329`), overwriting the earlier value, while
+    the entry's bytes, and so its back-reference tags, still hold the positions
+    of the first write. `ttree/basket-displacement-refs`, tree `twice`: ROOT
+    6.40.04 reads 13 of the 15 twice-moved entries with the second `TNamed*`
+    null and no warning; tree `once` reads correctly. The fix is to keep the
+    first displacement: `fDisplacement[i] = fDisplacement[i + dentries]` when an
+    array already exists. `ReadingEntries.md` §3.7.
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 
@@ -1199,7 +1210,7 @@ of `AGENTS.md`, where the file is 28 bytes longer and all 87 assertions pass.
 None of the 24 RNTuple files of `gen/foreign/` has an attribute set.
 
 **M10 — report upstream.** Thirteen RNTuple errata against a document the ROOT team
-owns, plus §7.1's fifteen bug candidates. Lead with §7.1 items 9 and 12:
+owns, plus §7.1's sixteen bug candidates. Lead with §7.1 items 9 and 12:
 `fBranchCount` naming another object's counter branch, byte-witnessed in a file
 the ROOT team published, and data loss. Also lead with erratum 6, a column type
 the document specifies, ROOT does not implement and JSROOT does, so two readers in
@@ -2465,7 +2476,7 @@ version in the writing ROOT (9 in practice, 10 only from 6.36.00), and a
 | Semantic (`path`/`value`) assertions were dropped in favour of byte offsets | ⏸ worth adding as a complement; set aside |
 | Four fixtures were not digest-portable between macOS and Linux | ✅ three fixed by masks, one exempted with a reason; the causes are in §3.3 |
 | `classes/roofit` was pushed without the container loop of §3.3 and CI caught it | ✅ 2026-09-21. `generate.py --check` cannot see a cross-platform drift, because it does not regenerate; only the ROOT-having job can, so a green local suite is not evidence about a **new** case |
-| Fifteen upstream bug candidates banked, not reported | ☐ §7.1, M10 |
+| Sixteen upstream bug candidates banked, not reported | ☐ §7.1, M10 |
 
 ### 9.7 What the coverage probe measures
 

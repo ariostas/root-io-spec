@@ -11,6 +11,29 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+- **What the reader and writer code knew and the text did not**, from the second
+  consistency review.
+  - [`ReadingEntries.md`](spec/04-ttree/ReadingEntries.md) §3.7, new:
+    back-references inside a basket entry. The object map starts afresh at every
+    entry, and when a basket has a displacement array a reader MUST add the
+    entry's `offset − displacement` to every class and object tag. ROOT does
+    this correctly only for an entry a circular tree moved once; for one moved
+    twice the file no longer records where it was written, and ROOT 6.40.04
+    silently reads such an entry's object pointer as null. Report those entries
+    as unreadable. New fixture `ttree/basket-displacement-refs`.
+  - [`Splitting.md`](spec/04-ttree/Splitting.md) §3.1: a trailing dot changes
+    the names below a split *object* but not below a top-level split
+    *collection*, whose constructor drops it first: `Branch("v.", ...)` gives a
+    count branch named `v`. New fixture `ttree/split-dotted-collection`.
+  - [`WritingFiles.md`](spec/06-writing/WritingFiles.md) §9.1: on an update the
+    free-segment record can come out shorter than it was sized, and ROOT pads
+    it with zeros.
+  - [`WritingTrees.md`](spec/06-writing/WritingTrees.md) §7.4: with a negative
+    flush watermark, `fClusterSize` records one cluster per range.
+  - [`ElementTypes.md`](spec/02-serialization/ElementTypes.md) §7.2: two
+    legacy branches of ROOT's reader, code 81 before 3.02/08 and 85–87 in an
+    info below version 3; no available file reaches either.
+
 - **What the front pages and the appendix say about scope, corrected.**
   - [`ReaderChecklist.md`](spec/99-appendix/ReaderChecklist.md) §10: RooFit is
     in scope for anyone reading workspaces, plots or fit results, and `TBranch`

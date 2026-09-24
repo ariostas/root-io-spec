@@ -507,7 +507,7 @@ records a boundary only where that size **changes**:
 | Field | Value |
 |---|---|
 | `fClusterRangeEnd[i]` | the **last** entry of range *i*, inclusive — `fEntries - 1` at the moment the range closed |
-| `fClusterSize[i]` | the number of entries per cluster *within* range *i*, which is the watermark that was in force |
+| `fClusterSize[i]` | the number of entries per cluster *within* range *i*: the watermark that was in force when it was a positive entry count. When it was **negative**, a byte threshold, there is no entry count to record, and ROOT records one cluster per range instead: `fEntries` for range 0, and `fClusterRangeEnd[i] - fClusterRangeEnd[i-1]` for the others (`root/tree/tree/src/TTree.cxx:8488-8497`) |
 | `fAutoFlush` | the size of the final, **open-ended** range, which is in neither array |
 | `fNClusterRange` | how many ranges closed |
 

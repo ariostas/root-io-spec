@@ -184,7 +184,7 @@ original class versions. A reader must not infer a class version from the file's
   split less deeply than ROOT would, but it may not invent names, because the
   offsets are reconstructed from the names. And **a trailing dot on every
   top-level branch name is strictly better than ROOT's default**; see
-  [Splitting §3.1](../04-ttree/Splitting.md#31-a-trailing-dot-changes-every-name-below).
+  [Splitting §3.1](../04-ttree/Splitting.md#31-a-trailing-dot-changes-every-name-below-a-split-object).
 - **RNTuple.** ROOT's own specification is tracked here
   ([RNTuple](../05-rntuple/index.md)), and it covers both directions.
 - **Policy.** Basket sizes, when to flush, how many entries per cluster, which
