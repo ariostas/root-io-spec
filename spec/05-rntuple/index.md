@@ -58,7 +58,7 @@ meet: NOTES [1](NOTES.md#1-an-rblob-keys-fobjlen-is-decorative),
 
 ## Status
 
-There are thirteen errata, each verified against the pinned submodule and, where
+There are fourteen errata, each verified against the pinned submodule and, where
 there are bytes to check, against a fixture:
 
 - three in the anchor and the ROOT file embedding;
@@ -72,7 +72,9 @@ there are bytes to check, against a fixture:
 - three in the footer and its linked attribute sets: the attribute set list does
   not exist before format 1.0.1.0, the anchor size in its records counts six bytes
   the document does not show, and ROOT's reader refuses a field that the document
-  says a newer minor version may add.
+  says a newer minor version may add;
+- one in the page list: a cluster committed before a model extension lists only
+  the columns that existed then, not every column.
 
 The audit covers every envelope and, with one exception, all of the type mapping:
 the header's field, column, alias column and extra-type-info records, the footer's

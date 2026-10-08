@@ -5694,14 +5694,23 @@ def read_column_values(buf: bytes, page_lists: list[RNPageList],
     bit-packed or variable-width column raises. A page is stored as it is when
     its size is its element count times the element width, and otherwise holds
     compression blocks (NOTES.md 2).
+
+    A cluster committed before a model extension lists only the columns that
+    existed then (ERRATA 14), so a later column has no range there and no
+    values. A deferred column would have zeros instead, in those clusters and
+    ahead of its first page, and raises rather than losing them.
     """
     fmt = RN_COLUMN_FORMAT.get(column.type_code)
     if fmt is None:
         raise FormatError(f"column type {column.type_name} is not read here")
+    if column.first_element:
+        raise FormatError(f"deferred column {column.column_id} is not read here")
     width = struct.calcsize(fmt)
     values: list = []
     for page_list in page_lists:
         for per_column in page_list.columns:
+            if column.column_id >= len(per_column):
+                continue
             for page in per_column[column.column_id].pages:
                 loc, size = page.locator, page.n_elements * width
                 if loc.nbytes == size:

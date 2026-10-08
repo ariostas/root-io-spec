@@ -1207,3 +1207,88 @@ class AttributeSetChecks(unittest.TestCase):
         body = flags_bytes + s(b"f") + s(b"") + s(b"R" * room) + lists + alias + empty
         self.assertEqual(len(body), env.body_end - env.body)
         return self.src[:env.body] + body + self.src[env.body_end:]
+
+
+class ModelExtensionPageList(unittest.TestCase):
+    """ERRATA 14 against `rntuple/extension`: a cluster's column list is a prefix.
+
+    The document says each cluster's outer list frame has "one item for each
+    column in this RNTuple". A cluster committed before a model extension lists
+    only the columns that existed then, and the reader makes up the rest.
+    """
+
+    FIXTURE = REPO / "data/rntuple/extension.root"
+    TEXT = TRACKED.read_text()
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import check_invariants
+        import rootfile
+        cls.check_invariants = check_invariants
+        cls.rootfile = rootfile
+        cls.src = cls.FIXTURE.read_bytes()
+        _, _, recs = rootfile.load(cls.FIXTURE)
+        rec = next(r for r in recs if r.class_name == "ROOT::RNTuple")
+        cls.anchor, cls.schema = rootfile.read_rntuple(cls.src, rec)
+        cls.footer = rootfile.read_rntuple_footer(cls.src, cls.anchor, cls.schema)
+        cls.page_lists = rootfile.read_rntuple_page_lists(cls.src, cls.footer)
+        cls.columns = {c.column_id: c
+                       for c in cls.schema.columns + cls.footer.extension_columns}
+
+    def test_the_document_still_says_every_column(self):
+        self.assertIn("Cluster 1 column list frame (outer list frame, one item for "
+                      "each column in this RNTuple)", self.TEXT)
+
+    def test_the_first_cluster_lists_only_the_header_column(self):
+        self.assertEqual(len(self.schema.columns), 1)
+        self.assertEqual(len(self.footer.extension_columns), 3)
+        counts = [len(c) for pl in self.page_lists for c in pl.columns]
+        self.assertEqual(counts, [1, 4])
+
+    def test_the_extension_columns_are_deferred_except_below_the_collection(self):
+        firsts = {i: c.first_element for i, c in self.columns.items()}
+        self.assertEqual(firsts, {0: None, 1: 2, 2: 2, 3: None})
+
+    def test_values_read_back_without_the_missing_ranges(self):
+        read = self.rootfile.read_column_values
+        self.assertEqual(read(self.src, self.page_lists, self.columns[0]), [1, 2, 3, 4])
+        # fV._0 has no range in cluster 0, which held no items for it.
+        self.assertEqual(read(self.src, self.page_lists, self.columns[3]), [7, 8, 9])
+        # fB's zeros for entries 0 and 1 are in no page; refusing beats
+        # returning [3.5, 4.5] as if they were the first two entries.
+        with self.assertRaises(self.rootfile.FormatError):
+            read(self.src, self.page_lists, self.columns[1])
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_writes_the_ranges_it_has_and_reads_by_position(self):
+        ser = (REPO / "root/tree/ntuple/src/RNTupleSerialize.cxx").read_text()
+        self.assertIn("for (const auto &columnRange : clusterDesc.GetColumnRangeIterable())\n"
+                      "         onDiskColumnIds.insert(", ser)
+        self.assertIn("pos += SerializeListFramePreamble(onDiskColumnIds.size(), *where);", ser)
+        self.assertIn("pageRange.SetPhysicalColumnId(j);", ser)
+        self.assertIn("builder.AddExtendedColumnRanges(desc);", ser)
+        desc = (REPO / "root/tree/ntuple/src/RNTupleDescriptor.cxx").read_text()
+        self.assertIn("Columns that were created during model\n"
+                      "               // extension won't have on-disk metadata", desc)
+        self.assertIn("columnRange.SetIsSuppressed(c.IsSuppressedDeferredColumn());", desc)
+
+    def failures(self, buf: bytes) -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(buf)
+            checker = self.check_invariants.Checker(path)
+            with contextlib.redirect_stderr(io.StringIO()):
+                return [f.split(": ", 2)[1] for f in checker.run()]
+
+    def test_the_fixture_passes(self):
+        self.assertEqual(self.failures(self.src), [])
+
+    def test_a_cluster_without_the_header_column(self):
+        # Cluster 0's outer list count, at 762, from 1 to 0. Its frame size is
+        # unchanged, so the rest of the page list still parses.
+        import struct
+        b = bytearray(self.src)
+        self.assertEqual(struct.unpack_from("<I", b, 762)[0], 1)
+        struct.pack_into("<I", b, 762, 0)
+        self.assertIn("RNTuple page list, column count", self.failures(bytes(b)))

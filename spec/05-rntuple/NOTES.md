@@ -138,7 +138,7 @@ and the header envelope including its field and column records.
 | Envelopes, the envelope header and checksum | audited — ERRATA 5 |
 | Header Envelope: field, column, alias column, extra type info | audited — ERRATA 6 |
 | Footer Envelope: schema extension, cluster groups, attribute sets | audited — **ERRATA 11**: the attribute set list is new in 1.0.1.0 |
-| Page List Envelope: cluster summaries, page locations, suppressed columns | audited, clean |
+| Page List Envelope: cluster summaries, page locations, suppressed columns | audited against bytes — **ERRATA 14**: a cluster lists only the columns that existed at its commit — `rntuple/extension` |
 | Fundamental Types: the default column per C++ type | audited against bytes, clean |
 | Type Name Normalization: the standard-integer-typedef rule | audited against bytes, clean |
 | `std::string`'s field and columns | audited against bytes, clean |
@@ -255,6 +255,12 @@ Reading the serializer missed one thing that only the deserializer and an older
 file show: the footer's last list, the attribute sets, is absent from every footer
 before format 1.0.1.0. ERRATA 11; it was found when the attribute set audit made
 `tools/rootfile.py` read footers across the corpus, not only the fixtures.
+
+It missed a second, which needs a model extension to show: the page list does not
+have "one item for each column" in every cluster. A cluster committed before the
+model was extended lists only the columns that existed then, and the reader makes
+up the rest. ERRATA 14; it was reported in issue #4, and no fixture had extended a
+model until `rntuple/extension` was written to confirm it.
 
 The one section still unaudited, the collection-proxy form above, is not thereby
 correct. It is not yet checked, which is the same standard the rest of this

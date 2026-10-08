@@ -21,6 +21,13 @@ was established, which is the other half of the story.
   every key-list image's `fDatime` and both directory timestamps, and every
   directory record's UUID is zero, so in such a file the directories' UUIDs are
   not distinct (`Directory.md` §2, §4.5). Reported in issue #3.
+- **A cluster's page locations need not cover every column.** RNTuple
+  [ERRATA 14](spec/05-rntuple/ERRATA.md): the document gives each cluster one
+  item per column, but a cluster committed before a model extension lists only
+  the columns that existed then, a prefix of the column list. Accept the shorter
+  list, and treat each missing column as having no pages in that cluster: zeros
+  for a deferred column, and a suppressed range for a deferred and suppressed
+  one. Reported in issue #4.
 
 ## 2026.09.24
 

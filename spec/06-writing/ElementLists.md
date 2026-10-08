@@ -90,7 +90,7 @@ there for a `Double32_t` or `Float16_t` member with a range in its comment
 ([Element types §5](../02-serialization/ElementTypes.md#5-kdouble32-and-kfloat16)),
 and none of these classes has one.
 
-The info's own `fTitle` is empty in all thirty-five, and in all **1021** streamer
+The info's own `fTitle` is empty in all thirty-five, and in all **1022** streamer
 infos in this repository's reference files. It is not the class's comment, which
 [Writing an object §7.1](WritingObjects.md#71-the-nesting) said until
 2026-09-24; the value to write there is an empty string.

@@ -2529,7 +2529,37 @@ class Checker:
                 self.bad("RNTuple footer, attribute set list",
                          f"{where}: format {anchor.version} has no attribute "
                          f"set list after the cluster groups")
+            self.check_page_list_columns(where, schema, footer)
             self.check_attribute_sets(where, footer.attribute_sets or [], anchors)
+
+    def check_page_list_columns(self, where, schema, footer) -> None:
+        """ERRATA 14: a cluster lists the columns that existed at its commit.
+
+        ROOT's reader gives the k-th item physical column ID k
+        (RNTupleSerialize.cxx:2173), so the list is a prefix of the columns: at
+        least the header's, which exist from the start, at most all of them,
+        and never shorter than an earlier cluster's.
+        """
+        try:
+            page_lists = rootfile.read_rntuple_page_lists(self.buf, footer)
+        except rootfile.MissingCodec as exc:
+            self.no_codec.add(f"some records were not decompressed: {exc}")
+            self.skip("RNTuple page list, column count",
+                      f"its codec is missing: {exc}", unit="RNTuple")
+            return
+        except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
+            self.bad("RNTuple page list, column count", f"{where}: {exc}")
+            return
+        low, high = len(schema.columns), len(schema.columns) + len(footer.extension_columns)
+        previous = low
+        for g, page_list in enumerate(page_lists):
+            for c, per_column in enumerate(page_list.columns):
+                n = len(per_column)
+                if not previous <= n <= high:
+                    self.bad("RNTuple page list, column count",
+                             f"{where}: cluster {c} of group {g} lists {n} columns; "
+                             f"expected {previous} to {high}")
+                previous = max(previous, n)
 
     def check_attribute_sets(self, where, links, anchors) -> None:
         names = [link.name for link in links]

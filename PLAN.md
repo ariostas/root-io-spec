@@ -4,7 +4,7 @@
 and later. The writing side covers the container with subdirectories, an object,
 histograms and profiles, graphs, and a flat `TTree` with many baskets and with a
 `TLeafC`. Everything is cited against the pinned submodule and checked against
-bytes; RNTuple tracks ROOT's own specification plus thirteen errata. §2.9 and §8.4 are
+bytes; RNTuple tracks ROOT's own specification plus fourteen errata. §2.9 and §8.4 are
 the write support, which extends the project past the reading side it was scoped
 to.
 
@@ -34,15 +34,15 @@ and unit-test rows again on 2026-09-24, after `ttree/split-empty-collection`:
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 91 / 2353, 0 failures |
+| Reference files / byte assertions | 92 / 2364, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
 | Source citations checked | 1861, 0 failures |
 | Class versions checked against `ClassDef` | 64 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 105 files, 0 failures |
+| Invariants over the fixtures and the written files | 106 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 684 |
+| Unit tests | 691 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -242,7 +242,7 @@ RNTuple already has a real specification and we do not fork it.
   `root/tree/ntuple/doc/BinaryFormatSpecification.md` at the pinned commit.
   `tools/sync_rntuple.py --check` fails on drift, in CI, on every push, and also
   asserts that the commit `UPSTREAM.md` records is the pin. **Never edit it.**
-- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (thirteen entries);
+- ✅ `UPSTREAM.md` provenance and sync procedure; ✅ `ERRATA.md` (fourteen entries);
   ✅ `NOTES.md` implementation notes, including the audit state table.
 - ✅ The envelope audit, through every envelope, and a fixture of our own
   (`rntuple/anchor`, `rntuple/fundamental-types`), plus an independent reader in
@@ -502,7 +502,7 @@ phase.
 ## 7. Open items
 
 1. **When to approach the ROOT I/O team.** The condition (a concrete artifact
-   rather than an intention) has been met for some time. The thirteen RNTuple errata
+   rather than an intention) has been met for some time. The fourteen RNTuple errata
    are against a document the ROOT team owns and maintains, which makes them a
    friendlier first contact than §7.1's bug candidates, and they can bring those
    along. Deliberately deferred until the MVP is out (§8 item M10).

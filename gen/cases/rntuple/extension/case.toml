@@ -1,0 +1,107 @@
+id   = "rntuple/extension"
+file = "data/rntuple/extension.root"
+
+# No `size`: 3030 bytes when libc++ wrote it, and 28 more under libstdc++, for
+# the reason `digest_reason` below gives. Every offset the assertions use is at
+# or below 1272, well before the StreamerInfo record where the two diverge.
+
+description = """
+Late model extension: an RNTuple whose model grows after a cluster has been
+committed. It pins the bytes of ERRATA 14.
+
+The header has one field, `fA`, an `std::int32_t`. Two entries are written and
+committed as cluster 0. The model is then extended with `fB`, a `float`, and
+`fV`, a `std::vector<std::int32_t>`, which are in the footer's schema
+extension, and two more entries make cluster 1. That gives four columns:
+
+| ID | Field | Type | First element |
+|---|---|---|---|
+| 0 | `fA` | `Int32` | 0, in the header |
+| 1 | `fB` | `Real32` | 2, deferred (flag 0x01) |
+| 2 | `fV` | `Index64` | 2, deferred (flag 0x01) |
+| 3 | `fV._0` | `Int32` | 0: below a collection, which held no items before |
+
+**ERRATUM 14.** The document says each cluster's outer list frame has "one
+item for each column in this RNTuple". Cluster 0's has **one** item and cluster
+1's has four: a cluster lists the columns that existed when it was committed,
+which is a prefix of the column list. ROOT reads `fB` back as 0 and `fV` as
+empty for entries 0 and 1, making up the missing ranges itself.
+
+Compression is off, so the page list envelope at 666 is readable in place.
+"""
+
+# The same standard-library difference as the other RNTuple cases: the
+# ROOT::RNTuple anchor's streamer info is recorded with a different fType and type
+# name under libstdc++. ElementTypes.md 2.4, PLAN.md 9.6.
+digest        = false
+digest_reason = """
+ROOT::RNTuple's seven std::uint64_t members are recorded as fType 17 `ULong64_t`
+with libc++ and fType 14 `unsigned long` with libstdc++: a 28-byte length
+difference a mask cannot undo. The byte assertions still run. ElementTypes.md 2.4
+"""
+
+[[bytes]]
+name = "fB's column record: flags 0x01, deferred"
+offset = 1268
+type = "u16le"
+value = 0x01
+
+[[bytes]]
+name = "fB's column record: first element index 2"
+offset = 1272
+type = "i64le"
+value = 2
+
+[[bytes]]
+name = "the page list envelope preamble: type 3, length 320"
+offset = 666
+type = "u64le"
+value = 0x1400003
+
+[[bytes]]
+name = "page locations: the top-most list frame has two clusters"
+offset = 750
+type = "u32le"
+value = 2
+
+[[bytes]]
+name = "cluster 0's outer list frame: size 52, a list frame"
+offset = 754
+type = "i64le"
+value = -52
+
+[[bytes]]
+name = "cluster 0's outer list frame: ONE column, where the RNTuple has four"
+offset = 762
+type = "u32le"
+value = 1
+
+[[bytes]]
+name = "cluster 0, column 0 (fA): element offset 0"
+offset = 794
+type = "i64le"
+value = 0
+
+[[bytes]]
+name = "cluster 1's outer list frame: size 172, a list frame"
+offset = 806
+type = "i64le"
+value = -172
+
+[[bytes]]
+name = "cluster 1's outer list frame: four columns"
+offset = 814
+type = "u32le"
+value = 4
+
+[[bytes]]
+name = "cluster 1, column 1 (fB): element offset 2, its first element index"
+offset = 886
+type = "i64le"
+value = 2
+
+[[bytes]]
+name = "cluster 1, column 3 (fV._0): element offset 0"
+offset = 966
+type = "i64le"
+value = 0

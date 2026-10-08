@@ -11,7 +11,7 @@ source code, or someone else's reverse engineering.
 maintained with the code, and the model this project follows. It is tracked here
 verbatim as [`05-rntuple/BinaryFormatSpecification.md`](../05-rntuple/BinaryFormatSpecification.md)
 with [errata](../05-rntuple/ERRATA.md) beside it. Read the copy for the format
-and the errata for the thirteen places where it and ROOT's code disagree.
+and the errata for the fourteen places where it and ROOT's code disagree.
 
 **`root/io/doc/TFile/*.md`** — the `TFile` and `TTree` documentation ROOT ships.
 It describes **release 3.02.06**, with four of its pages partially updated to
@@ -78,7 +78,7 @@ Because ROOT wrote them, a failure there is evidence.
 ROOT-written files from 2.23/12 to 6.41/01. The ones this specification cites are
 listed in `gen/cern/README.md`. It is LGPL-2.1, so none of it is copied here.
 
-**The reference files here.** `data/` holds 91 small files ROOT wrote, plus the
+**The reference files here.** `data/` holds 92 small files ROOT wrote, plus the
 14 in `data/written/` that this project wrote. Each has a `case.toml` of
 byte-level assertions that can be checked with only the standard library, so the
 files work as test vectors for an implementation in any language

@@ -24,6 +24,7 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 11 | Footer Envelope | open | — |
 | 12 | Footer Envelope → Linked Attribute Set Record Frame | open | — |
 | 13 | Linked Attribute Sets → Attribute Schema Version | open | — |
+| 14 | Page List Envelope → Page Locations | open | — |
 
 Bytes come from three files.
 
@@ -631,3 +632,67 @@ experimental, and both serializer and deserializer warn that they "are not
 guaranteed to be readable back in the future"
 (`root/tree/ntuple/src/RNTupleSerialize.cxx:1816-1817`). Either way, one of the two
 has to change.
+
+---
+
+## 14. A cluster lists only the columns that existed when it was committed
+
+> **The document**, under *Page List Envelope → Page Locations*, draws each
+> cluster's entry as
+>
+> ```
+> Cluster 1 column list frame (outer list frame, one item for each column in this RNTuple)
+> ```
+>
+> and says that "the order of the outer items must match the order of columns in
+> the header and the extension header (small to large)".
+
+**The count is wrong for a cluster committed before a model extension.** The
+writer gives each cluster one item per column that has a column range in that
+cluster's descriptor (`root/tree/ntuple/src/RNTupleSerialize.cxx:1691-1699`).
+The ranges are the sink's open column ranges at the time the cluster is staged
+(`root/tree/ntuple/src/RPageStorage.cxx:1173`), and a model extension adds
+ranges only for its new columns, from then on
+(`root/tree/ntuple/src/RPageStorage.cxx:923`). A cluster committed earlier has
+none for them, so its list stops after the columns that existed at its commit.
+
+ROOT's reader takes the count from the frame
+(`root/tree/ntuple/src/RNTupleSerialize.cxx:2154`) and gives the k-th item
+physical column ID k (`root/tree/ntuple/src/RNTupleSerialize.cxx:2173`), so the
+list is always a **prefix** of the column list: at least the header's columns,
+at most all of them, and never shorter than an earlier cluster's. The reader then
+makes up the missing ranges (`root/tree/ntuple/src/RNTupleSerialize.cxx:2238`).
+The comment where it does says why: columns "created during model extension
+won't have on-disk metadata for the clusters that were already committed before
+the model was extended" (`root/tree/ntuple/src/RNTupleDescriptor.cxx:949`). A
+missing column gets an empty range, suppressed if the column is deferred and
+suppressed (`root/tree/ntuple/src/RNTupleDescriptor.cxx:955`), and a deferred
+column's range is then widened to the whole cluster
+(`root/tree/ntuple/src/RNTupleDescriptor.cxx:963`) and filled with zero pages
+(`root/tree/ntuple/src/RNTupleDescriptor.cxx:983`).
+
+> **Bytes.** `rntuple/extension`, written by the pinned release, has one column in
+> its header and three in the footer's schema extension: `fB` and `fV`'s index,
+> deferred from element 2, and `fV._0`, which is not deferred because it is below
+> a collection. Its page list at 666 holds two clusters. Cluster 0's outer list
+> frame at 754 has **1** item, and cluster 1's at 806 has 4. ROOT reads `fB` back
+> as 0 and `fV` as empty for entries 0 and 1. `test_extension_columns_rntuple_v1-0-0-0.root`
+> in `gen/foreign/`, format 1.0.0.0 from an older ROOT, has the same shape with
+> its lists at 2, 4, 4 and 4 items: its first extension column starts inside
+> cluster 0, so that cluster lists it, with the leading zeros left out as the
+> document's *Column Description* says. `check_invariants.py` fails a list that
+> is shorter than the header's columns, longer than all of them, or shorter than
+> an earlier cluster's.
+
+**A reader that follows the document** rejects such a page list as malformed. One
+that pairs columns with items without checking the count silently drops the new
+columns from the early clusters, and with them a deferred column's zeros, so its
+first value appears at entry 0.
+
+The fix upstream is a sentence: the outer list holds the columns that existed
+when the cluster was committed, a prefix of the column list, and a reader treats
+each missing column as having no pages in that cluster. For a deferred column
+that means zeros for the whole cluster; for a deferred and suppressed column, a
+suppressed range.
+
+Reported in issue #4.
