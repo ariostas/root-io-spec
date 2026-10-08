@@ -51,10 +51,12 @@ Reading an RNTuple therefore needs
 [records and keys](../01-container/Record.md) and
 [compression](../01-container/Compression.md) from this specification, the anchor
 and everything below it from the tracked copy as corrected by
-[its errata](ERRATA.md), and in between the three notes on where the two layers
+[its errata](ERRATA.md), and in between the notes on where the two layers
 meet: NOTES [1](NOTES.md#1-an-rblob-keys-fobjlen-is-decorative),
-[2](NOTES.md#2-decompression-tests-equality-and-anything-else-is-an-error) and
-[3](NOTES.md#3-big-endian-in-the-anchor-little-endian-everywhere-else).
+[2](NOTES.md#2-decompression-tests-equality-and-anything-else-is-an-error),
+[3](NOTES.md#3-big-endian-in-the-anchor-little-endian-everywhere-else) and, when
+the anchor's `Max Key Size` is smaller than a payload,
+[9](NOTES.md#9-a-payload-over-max-key-size-is-split-and-the-chunk-count-is-computed).
 
 ## Status
 

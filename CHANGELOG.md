@@ -11,6 +11,17 @@ was established, which is the other half of the story.
 
 ## Unreleased
 
+### Added
+
+- **How a payload over `Max Key Size` is split.** RNTuple
+  [NOTES 9](spec/05-rntuple/NOTES.md#9-a-payload-over-max-key-size-is-split-and-the-chunk-count-is-computed):
+  the first chunk is exactly `Max Key Size` bytes, its data followed by one
+  little-endian u64 offset per further chunk, and the chunk count is not stored
+  but computed, so an exact multiple of the limit needs one chunk more than the
+  division gives. A page is split by its size with its checksum, which its
+  locator does not count. The new fixture `rntuple/chunked` splits a header,
+  a footer, a page list and two pages. Requested in issue #6.
+
 ### Corrected
 
 - **The reproducible-mode timestamp is not a 1995 date.** `WritingFiles.md` §11

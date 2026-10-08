@@ -5335,17 +5335,93 @@ def read_rn_header(buf: bytes, envelope: RNEnvelope) -> RNSchema:
                     alias_columns=aliases, type_info=type_info)
 
 
+#: The width of one chunk offset at the end of a split payload's first chunk.
+RN_CHUNK_OFFSET_SIZE = 8
+#: A sealed page's trailing XXH3-64 checksum, which its locator does not count
+#: (root/tree/ntuple/inc/ROOT/RPageStorage.hxx:74).
+RN_PAGE_CHECKSUM = 8
+
+
+def rn_num_chunks(nbytes: int, max_key_size: int) -> int:
+    """How many keys a payload of `nbytes` is split across (NOTES.md 9).
+
+    The count is not stored; writer and reader compute it alike
+    (root/tree/ntuple/src/RMiniFile.cxx:646-671). The first chunk gives up
+    eight bytes per further chunk to their offsets, so a payload of an exact
+    multiple of `max_key_size` needs one chunk more than the division says.
+    """
+    n = -(-nbytes // max_key_size)
+    tail = nbytes % max_key_size
+    spare = max_key_size - tail if tail else 0
+    offsets = (n - 1) * RN_CHUNK_OFFSET_SIZE
+    if offsets > spare:
+        n += 1
+        offsets += RN_CHUNK_OFFSET_SIZE
+    if offsets > max_key_size:
+        raise FormatError(f"{nbytes} bytes need {n} chunks of at most "
+                          f"{max_key_size}, more offsets than the first can hold")
+    return n
+
+
+def rn_chunks(buf: bytes, offset: int, nbytes: int,
+              max_key_size: int) -> list[tuple[int, int]]:
+    """(offset, length) of each chunk of the payload `offset`/`nbytes`, in order.
+
+    A payload longer than the anchor's `Max Key Size` is split
+    (root/tree/ntuple/src/RMiniFile.cxx:1427-1490): the first chunk is exactly
+    `max_key_size` bytes, its data followed by the little-endian u64 offsets of
+    the others, and every other chunk holds `max_key_size` bytes but the last.
+    A locator names the first chunk. `max_key_size` 0 means no split, as for
+    ROOT's reader (root/tree/ntuple/src/RMiniFile.cxx:902).
+    """
+    if not max_key_size or nbytes <= max_key_size:
+        return [(offset, nbytes)]
+    n = rn_num_chunks(nbytes, max_key_size)
+    first = max_key_size - (n - 1) * RN_CHUNK_OFFSET_SIZE
+    if offset + max_key_size > len(buf):
+        raise FormatError(f"split payload at {offset}: its first chunk runs past "
+                          f"the end of the file")
+    chunks = [(offset, first)]
+    remaining = nbytes - first
+    for k in range(n - 1):
+        at = struct.unpack_from("<Q", buf, offset + first + k * RN_CHUNK_OFFSET_SIZE)[0]
+        size = min(max_key_size, remaining)
+        if size <= 0 or at + size > len(buf):
+            raise FormatError(f"split payload at {offset}: chunk {k + 2} of {n} "
+                              f"at {at} for {size} bytes is not in the file")
+        chunks.append((at, size))
+        remaining -= size
+    if remaining:
+        raise FormatError(f"split payload at {offset}: {n} chunks leave "
+                          f"{remaining} of {nbytes} bytes unread")
+    return chunks
+
+
+def read_rn_payload(buf: bytes, offset: int, nbytes: int,
+                    max_key_size: int) -> tuple[bytes, int]:
+    """(buffer, offset) at which `nbytes` stored at `offset` are contiguous.
+
+    The file itself for a payload in one key; the chunks joined for a split one.
+    """
+    chunks = rn_chunks(buf, offset, nbytes, max_key_size)
+    if len(chunks) == 1:
+        return buf, offset
+    return b"".join(buf[at:at + size] for at, size in chunks), 0
+
+
 def _rn_envelope_bytes(buf: bytes, seek: int, nbytes: int, length: int,
-                       what: str) -> tuple[bytes, int]:
+                       what: str, max_key_size: int = 0) -> tuple[bytes, int]:
     """(buffer, offset) at which the envelope `seek`/`nbytes`/`length` sits.
 
     RNTuple tests for compression by equality (`nbytes == len` means stored
     unmodified), where the container layer uses `>` and tolerates a raw payload
-    longer than its length (spec/05-rntuple/NOTES.md 2).
+    longer than its length (spec/05-rntuple/NOTES.md 2). A split envelope is
+    joined first (NOTES.md 9); compression applies to the joined bytes.
     """
+    data, at = read_rn_payload(buf, seek, nbytes, max_key_size)
     if nbytes == length:
-        return buf, seek
-    return decompress_blocks(buf, seek, seek + nbytes, length,
+        return data, at
+    return decompress_blocks(data, at, at + nbytes, length,
                              f"RNTuple {what} envelope at {seek}"), 0
 
 
@@ -5361,7 +5437,7 @@ def read_rntuple(buf: bytes, rec: Record) -> tuple[RNTupleAnchor, RNSchema]:
 def read_rntuple_header(buf: bytes, anchor: RNTupleAnchor) -> RNSchema:
     body, offset = _rn_envelope_bytes(buf, anchor.seek_header,
                                       anchor.nbytes_header, anchor.len_header,
-                                      "header")
+                                      "header", anchor.max_key_size)
     return read_rn_header(body, read_rn_envelope(body, offset))
 
 
@@ -5537,7 +5613,7 @@ def read_rntuple_footer(buf: bytes, anchor: RNTupleAnchor,
                         schema: RNSchema | None = None) -> RNFooter:
     body, offset = _rn_envelope_bytes(buf, anchor.seek_footer,
                                       anchor.nbytes_footer, anchor.len_footer,
-                                      "footer")
+                                      "footer", anchor.max_key_size)
     nfields = len(schema.fields) if schema else 0
     ncolumns = len(schema.columns) if schema else 0
     return read_rn_footer(body, read_rn_envelope(body, offset), nfields, ncolumns)
@@ -5669,13 +5745,18 @@ def read_rn_page_list(buf: bytes, envelope: RNEnvelope) -> RNPageList:
                       columns=columns)
 
 
-def read_rntuple_page_lists(buf: bytes, footer: RNFooter) -> list[RNPageList]:
-    """The page list of every cluster group, in cluster group order."""
+def read_rntuple_page_lists(buf: bytes, footer: RNFooter,
+                            max_key_size: int = 0) -> list[RNPageList]:
+    """The page list of every cluster group, in cluster group order.
+
+    `max_key_size` is the anchor's; the footer does not repeat it.
+    """
     out = []
     for group in footer.cluster_groups:
         loc = group.page_list
         body, offset = _rn_envelope_bytes(buf, loc.offset, loc.nbytes,
-                                          group.page_list_length, "page list")
+                                          group.page_list_length, "page list",
+                                          max_key_size)
         out.append(read_rn_page_list(body, read_rn_envelope(body, offset)))
     return out
 
@@ -5687,13 +5768,14 @@ RN_COLUMN_FORMAT = {0x03: "b", 0x04: "B", 0x05: "h", 0x06: "H", 0x07: "i",
 
 
 def read_column_values(buf: bytes, page_lists: list[RNPageList],
-                       column: RNColumn) -> list:
+                       column: RNColumn, max_key_size: int = 0) -> list:
     """Every value of an unsplit fixed-width `column`, in element order.
 
     Enough to read an attribute set's ranges back without ROOT; a split,
     bit-packed or variable-width column raises. A page is stored as it is when
     its size is its element count times the element width, and otherwise holds
-    compression blocks (NOTES.md 2).
+    compression blocks (NOTES.md 2). A page is split by its size on disk, its
+    checksum included, which its locator does not count (NOTES.md 9).
 
     A cluster committed before a model extension lists only the columns that
     existed then (ERRATA 14), so a later column has no range there and no
@@ -5713,10 +5795,11 @@ def read_column_values(buf: bytes, page_lists: list[RNPageList],
                 continue
             for page in per_column[column.column_id].pages:
                 loc, size = page.locator, page.n_elements * width
-                if loc.nbytes == size:
-                    data, at = buf, loc.offset
-                else:
-                    data = decompress_blocks(buf, loc.offset, loc.offset + loc.nbytes,
+                data, at = read_rn_payload(
+                    buf, loc.offset,
+                    loc.nbytes + RN_PAGE_CHECKSUM * page.has_checksum, max_key_size)
+                if loc.nbytes != size:
+                    data = decompress_blocks(data, at, at + loc.nbytes,
                                              size, f"page at {loc.offset}")
                     at = 0
                 values += struct.unpack_from(f"<{page.n_elements}{fmt}", data, at)

@@ -131,6 +131,7 @@ and the header envelope including its field and column records.
 | Section | State |
 |---|---|
 | ROOT File embedding, Anchor schema | audited — ERRATA 1, 2, 3 |
+| `Max Key Size`: a payload split across several `RBlob`s | audited against bytes, correct but incomplete — §9 — `rntuple/chunked` |
 | Compression Block | audited — §2 above |
 | Basic Types, Feature Flags | audited, clean |
 | Frames | audited, clean |
@@ -475,3 +476,98 @@ later offset would move with it.
 
 The record frame's sentence also lacks a word: "followed a locator" is "followed
 by a locator". The order it gives is right.
+
+## 9. A payload over `Max Key Size` is split, and the chunk count is computed
+
+The anchor schema gives the rule in one sentence: a payload bigger than
+`Max Key Size` "will be written as multiple RBlobs/TKeys, and the offsets of all
+but the first RBlob will be written at the end of the first one". That is
+correct, but a reader cannot implement it from that sentence alone. It does not
+say how many offsets there are, how long the first chunk is, or which size is
+compared with the limit. `RNTupleFileWriter::WriteBlob` answers all three
+(`root/tree/ntuple/src/RMiniFile.cxx:1427-1490`), and
+`RMiniFileReader::ReadBuffer` reads it back (`root/tree/ntuple/src/RMiniFile.cxx:895-946`).
+
+Every payload goes through the same writer, so any of them can be split: the
+header and footer envelopes (`root/tree/ntuple/src/RMiniFile.cxx:1529`, `:1538`),
+a page list (`root/tree/ntuple/src/RPageStorageFile.cxx:278`), and a page
+(`root/tree/ntuple/src/RPageStorageFile.cxx:228-237`). Pages smaller than the
+limit are batched into one key without exceeding it, so a split page is always
+alone in its keys.
+
+**The layout.** For a payload of `nbytes` > `M`, where `M` is the anchor's
+`Max Key Size`, split into `n` chunks:
+
+| Chunk | Length | Holds |
+|---|---|---|
+| 1, named by the locator or the anchor's seek | exactly `M` | the first `M − 8(n − 1)` payload bytes, then `n − 1` little-endian u64 file offsets |
+| 2 … `n` | `M`, except the last | the following payload bytes, in order, at the offsets chunk 1 lists |
+
+Each chunk is the whole payload of one `RBlob` key. The offsets are little-endian
+like the rest of the RNTuple payload
+(`root/tree/ntuple/src/RMiniFile.cxx:1475`), and
+they point at the chunk's bytes, not at its key.
+
+**The count is not stored.** Writer and reader compute it alike, in
+`ComputeNumChunks` (`root/tree/ntuple/src/RMiniFile.cxx:646-671`):
+
+```cpp
+size_t nChunks = (nbytes + maxChunkSize - 1) / maxChunkSize;
+size_t nbytesTail = nbytes % maxChunkSize;
+size_t nbytesExtra = (nbytesTail > 0) * (maxChunkSize - nbytesTail);
+size_t nbytesChunkOffsets = (nChunks - 1) * kChunkOffsetSize;
+if (nbytesChunkOffsets > nbytesExtra) {
+   ++nChunks;
+   nbytesChunkOffsets += kChunkOffsetSize;
+}
+```
+
+It starts from `ceil(nbytes / M)` and adds one chunk when the offsets do not fit
+in the room the last chunk leaves. A payload of an exact multiple of `M` leaves no
+room and always takes one chunk more than the division gives. The writer asserts
+that the offsets fit in one chunk, which for the default of 1 GiB caps a payload
+at 128 PiB, the figure in the document's *Limits* table.
+
+**A page is split by its size with its checksum.** The page's sealed buffer,
+compressed data and then the 8-byte XXH3 checksum, is what the writer compares
+with `M` and splits (`root/tree/ntuple/src/RPageStorageFile.cxx:228`). The page
+locator's size does not count the checksum (§4). A reader must add the eight
+bytes back before deciding whether a page is split, as ROOT's reader does
+(`root/tree/ntuple/src/RPageStorageFile.cxx:592`). Otherwise it reads a page
+whose data fits under the limit but whose sealed buffer does not as one
+contiguous range, and gets key header bytes where the page's tail should be.
+
+**The first chunk is written last.** `WriteBlob` writes chunks 2 to `n` first and
+then chunk 1, which is the only place the offsets are known. So the later chunks
+lie *before* the first in the file. A reader that follows the offsets is
+unaffected, but a tool that walks the record chain meets the chunks out of order.
+
+**A reader never looks at the keys.** As in §1, the offsets and sizes come from
+the payload: the chunk lengths follow from `M`, `nbytes` and the rule above. The
+keys' `fObjLen` and `fNbytes` agree with them in ROOT's files, and
+`tools/check_invariants.py` checks that each chunk is exactly one `RBlob`'s
+payload, but the reader in `root/tree/ntuple/src/RMiniFile.cxx:902-946` does not
+use them.
+
+> Demonstrated by `rntuple/chunked`, written with `M` = 128 and all five payloads
+> split. The header, 247 bytes, takes two chunks: 120 + 8 bytes at 439 and 127
+> at 270, nine bytes of room being just enough for the one offset. Page `x`,
+> 256 bytes with its checksum, takes three: 112 bytes and two offsets at 1061,
+> then 128 at 833 and 16 at 1003. Page `n` is 124 bytes by its locator and 132
+> with its checksum, so it is split, and its last value, 30, is in a 12-byte key
+> at 609, before its first chunk at 663. Each joined payload's checksum
+> verifies.
+
+**ROOT's own reader gets this wrong in one path.** `RNTupleReader::Show` reads
+through a clone of the page source. A clone of an attached source is marked as
+already having its structure (`root/tree/ntuple/src/RPageStorage.cxx:236-245`),
+so it never runs `RPageSourceFile::LoadStructureImpl`. That is the only place
+that tells the file reader the key size
+(`root/tree/ntuple/src/RPageStorageFile.cxx:390`), and `CloneImpl` builds a
+fresh reader without it (`root/tree/ntuple/src/RPageStorageFile.cxx:562-567`).
+The clone then reads a split page as one range. On `rntuple/chunked`, `GetView`
+reads both fields correctly and `Show(0)` throws "page checksum verification
+failed" in 6.40.04. RDataFrame clones a page source for every slot but the last
+(`root/tree/dataframe/src/RNTupleDS.cxx:732`), so a multi-threaded RDataFrame
+over a file with split pages could take the same path. That was found by
+reading the code and has not been probed. `PLAN.md` §7.1 item 17.

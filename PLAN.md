@@ -34,15 +34,15 @@ and unit-test rows again on 2026-09-24, after `ttree/split-empty-collection`:
 | | |
 |---|---|
 | Specification documents | 49, plus the tracked RNTuple copy |
-| Reference files / byte assertions | 92 / 2364, 0 failures |
+| Reference files / byte assertions | 93 / 2392, 0 failures |
 | Files this project wrote / assertions | 14 / 493, 0 failures |
 | Source citations checked | 1861, 0 failures |
 | Class versions checked against `ClassDef` | 64 |
 | Element lists published / elements / sources | 35 / 194 / 7 |
-| Invariants over the fixtures and the written files | 106 files, 0 failures |
+| Invariants over the fixtures and the written files | 107 files, 0 failures |
 | Invariants over both corpora | 252 files, ROOT 2.24/00 – 6.38/00, 0 failures |
 | Entries decoded and checked | 48278 of 48501 branch-baskets, 99.5%, 0 failed |
-| Unit tests | 696 |
+| Unit tests | 704 |
 
 Throughout: **✅ done**, **◐ partly done**, **☐ not started**, **⏸ set aside**:
 narrow enough that it is not being worked on, recorded so it is not rediscovered,
@@ -671,6 +671,21 @@ reported** (§8 item M10).
     null and no warning; tree `once` reads correctly. The fix is to keep the
     first displacement: `fDisplacement[i] = fDisplacement[i + dentries]` when an
     array already exists. `ReadingEntries.md` §3.7.
+17. **A cloned RNTuple page source reads a split payload as one range.**
+    `RPageSource::Clone` marks a clone of an attached source as having its
+    structure (`root/tree/ntuple/src/RPageStorage.cxx:236-245`), so the clone
+    never runs `RPageSourceFile::LoadStructureImpl`, the only caller of
+    `RMiniFileReader::SetMaxKeySize`
+    (`root/tree/ntuple/src/RPageStorageFile.cxx:390`), and `CloneImpl` builds a
+    fresh reader with a key size of 0 (`:562-567`). Reproduced on 6.40.04 with
+    `rntuple/chunked`: `GetView` reads both fields, and `RNTupleReader::Show(0)`
+    throws "page checksum verification failed". With page checksums off it
+    would return wrong values silently. RDataFrame clones a source per slot
+    (`root/tree/dataframe/src/RNTupleDS.cxx:732`) and is likely affected too;
+    not probed. Still present on `master` as of 2026-09-14. Only files written
+    with a reduced key size or holding a payload over 1 GiB can hit it. The fix
+    is to copy `fReader`'s key size in `CloneImpl`. `spec/05-rntuple/NOTES.md`
+    §9.
 
 ## 8. MVP — what "done enough to publish" means, and the work to get there
 

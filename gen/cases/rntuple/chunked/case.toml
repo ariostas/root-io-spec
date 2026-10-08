@@ -1,0 +1,319 @@
+id   = "rntuple/chunked"
+file = "data/rntuple/chunked.root"
+
+# No `size`, for the reason `digest_reason` below gives: the file's length
+# differs between libc++ and libstdc++ in the StreamerInfo record at 1936. Every
+# offset asserted here is below 1829, where the anchor ends.
+
+description = """
+An RNTuple whose payloads are split across several keys. The anchor schema says
+a payload bigger than `Max Key Size` "will be written as multiple RBlobs/TKeys,
+and the offsets of all but the first RBlob will be written at the end of the
+first one". No other file exercises this: every anchor in `data/rntuple/`, in
+both corpora and in scikit-hep-testdata keeps the default of 1 GiB
+(`root/tree/ntuple/inc/ROOT/RNTupleWriteOptions.hxx:191`). Requested in
+issue #6.
+
+`Max Key Size` is 128 here, set with the internal setter ROOT's own
+`MiniFile.MultiKeyBlob` test uses, so all five payloads are split: the header,
+both pages, the page list and the footer. `NOTES.md` §9 has the layout. In
+short:
+
+- The locator, or the anchor's seek, names the **first** chunk, and that chunk
+  is exactly `Max Key Size` bytes: data, then one little-endian u64 offset per
+  further chunk. Every further chunk is `Max Key Size` bytes but the last.
+- The chunk count is **not stored**. It is computed, and it is not
+  `ceil(nbytes / max)`: `x`'s page is 256 bytes, exactly two chunks of 128, but
+  needs three, because the first gives up 16 bytes to the offsets of the other
+  two. Its chunks are 112, 128 and 16 bytes.
+- **The first chunk is written last**, so the other chunks lie before it in the
+  file. The header's second chunk is at 270 and its first at 439.
+- **A page is split by its size with its checksum.** `n`'s page is 124 bytes
+  by its locator, under the limit, but 132 with its XXH3 checksum, so it is
+  split, and the value 30 and the checksum are in a 12-byte key at 609,
+  before the page's first chunk at 663. A reader that compares the locator's
+  size with `Max Key Size` reads 124 contiguous bytes from 663 and gets four
+  bytes of an `RBlob` key header for its last value.
+- The header (247 bytes) needs two chunks, not three, because its 9 spare bytes
+  in the second chunk leave room for the single offset: the tightest case of
+  the count's rule in this file.
+
+Each joined payload's XXH3-64 checksum was confirmed to match (with `xxhash`,
+outside this case), and `rootfile.read_column_values` reads `n` = 0..30 and
+`x` = 1000..1030 back through the chunks.
+
+**ROOT 6.40.04 cannot `Show()` this file.** `RNTupleReader::Open` and
+`GetView` read both fields correctly, but `Show(0)` throws "page checksum
+verification failed". `Show` reads through a cloned page source, and a clone
+of an attached source never runs `LoadStructureImpl`, the only place that tells
+its reader the key size (`root/tree/ntuple/src/RPageStorageFile.cxx:390`,
+`:562-567`, `root/tree/ntuple/src/RPageStorage.cxx:236-245`). The clone reads a
+split page as one range. That is a reader bug in ROOT, not a property of the
+file; `NOTES.md` §9 records it.
+
+Compression is off so that every chunk is readable in place.
+"""
+
+spec = [
+  "spec/05-rntuple/NOTES.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+digest        = false
+digest_reason = """
+`std::uint64_t` resolves to `unsigned long long` with libc++ and `unsigned long`
+with libstdc++, so ROOT::RNTuple's seven 64-bit members are recorded as fType 17
+`ULong64_t` on one and fType 14 `unsigned long` on the other: a length
+difference a mask cannot undo, in the StreamerInfo record at 1936. Every byte
+asserted here is below 1829. ElementTypes.md 2.4, PLAN.md 9.6
+"""
+
+[[records]]
+offset = 100
+nbytes = 128
+class  = "TFile"
+role   = "the root directory record"
+[[records]]
+offset = 228
+nbytes = 169
+class  = "RBlob"
+role   = "header chunk 2 of 2: 127 bytes, written before chunk 1"
+[[records]]
+offset = 397
+nbytes = 170
+class  = "RBlob"
+role   = "header chunk 1 of 2: 120 bytes of envelope and one offset"
+[[records]]
+offset = 567
+nbytes = 54
+class  = "RBlob"
+role   = "page n, chunk 2 of 2: the last value and the checksum"
+[[records]]
+offset = 621
+nbytes = 170
+class  = "RBlob"
+role   = "page n, chunk 1 of 2"
+[[records]]
+offset = 791
+nbytes = 170
+class  = "RBlob"
+role   = "page x, chunk 2 of 3"
+[[records]]
+offset = 961
+nbytes = 58
+class  = "RBlob"
+role   = "page x, chunk 3 of 3"
+[[records]]
+offset = 1019
+nbytes = 170
+class  = "RBlob"
+role   = "page x, chunk 1 of 3: 112 bytes and two offsets"
+[[records]]
+offset = 1189
+nbytes = 86
+class  = "RBlob"
+role   = "page list chunk 2 of 2"
+[[records]]
+offset = 1275
+nbytes = 170
+class  = "RBlob"
+role   = "page list chunk 1 of 2"
+[[records]]
+offset = 1445
+nbytes = 82
+class  = "RBlob"
+role   = "footer chunk 2 of 2"
+[[records]]
+offset = 1527
+nbytes = 170
+class  = "RBlob"
+role   = "footer chunk 1 of 2"
+[[records]]
+offset = 1697
+nbytes = 132
+class  = "ROOT::RNTuple"
+role   = "the anchor, with Max Key Size 128"
+
+# -- The anchor: big-endian, after the six bytes of ERRATA 2 --------------
+
+[[bytes]]
+name = "Seek Header 439: the header's FIRST chunk, which is the later of its two keys"
+offset = 1765
+type = "u64"
+value = 439
+
+[[bytes]]
+name = "Nbytes Header 247, more than Max Key Size, so the header is split"
+offset = 1773
+type = "u64"
+value = 247
+
+[[bytes]]
+name = "Seek Footer 1569, the footer's first chunk"
+offset = 1789
+type = "u64"
+value = 1569
+
+[[bytes]]
+name = "Nbytes Footer 160"
+offset = 1797
+type = "u64"
+value = 160
+
+[[bytes]]
+name = "Max Key Size 128, where every other fixture has 1 GiB"
+offset = 1813
+type = "u64"
+value = 128
+
+# -- Every chunk key holds its chunk and nothing else ---------------------
+
+[[bytes]]
+name = "a first chunk's key: fNbytes 170 = fKeylen 42 + Max Key Size 128"
+offset = 397
+type = "i32"
+value = 170
+
+[[bytes]]
+name = "the artificial class name of a chunk key, the same as any other RBlob"
+offset = 262
+type = "string"
+value = "RBlob"
+
+# -- The header: two chunks, the second written first ---------------------
+
+[[bytes]]
+name = "the header envelope begins in chunk 1: type 0x0001, length 247 (0xf7)"
+offset = 439
+type = "u64le"
+value = 16187393
+
+[[bytes]]
+name = "header chunk 1's one offset, at 439 + 120, little-endian: chunk 2 is at 270, BEFORE chunk 1"
+offset = 559
+type = "u64le"
+value = 270
+
+# -- Page n: 124 bytes by its locator, 132 on disk, so split --------------
+
+[[bytes]]
+name = "page n, element 0, at the locator's offset"
+offset = 663
+type = "i32le"
+value = 0
+
+[[bytes]]
+name = "page n, element 29, the last that fits in chunk 1's 120 bytes"
+offset = 779
+type = "i32le"
+value = 29
+
+[[bytes]]
+name = "page n's one chunk offset: 609"
+offset = 783
+type = "u64le"
+value = 609
+
+[[bytes]]
+name = "THE TRAP: element 30 of n is in the 12-byte chunk at 609, not at 783 where a reader comparing the locator's 124 with Max Key Size looks"
+offset = 609
+type = "i32le"
+value = 30
+
+[[bytes]]
+name = "and page n's XXH3-64 checksum, the 8 bytes that pushed it over the limit"
+offset = 613
+type = "bytes"
+value = [133, 181, 249, 130, 196, 229, 112, 42]
+
+# -- Page x: 256 bytes, an exact multiple, three chunks -------------------
+
+[[bytes]]
+name = "page x, element 0"
+offset = 1061
+type = "i64le"
+value = 1000
+
+[[bytes]]
+name = "page x, element 13, the last of chunk 1's 112 data bytes"
+offset = 1165
+type = "i64le"
+value = 1013
+
+[[bytes]]
+name = "page x's first chunk offset, at 1061 + 112: chunk 2 is at 833"
+offset = 1173
+type = "u64le"
+value = 833
+
+[[bytes]]
+name = "page x's second chunk offset: chunk 3 is at 1003"
+offset = 1181
+type = "u64le"
+value = 1003
+
+[[bytes]]
+name = "page x, element 14, first of chunk 2's 128 bytes"
+offset = 833
+type = "i64le"
+value = 1014
+
+[[bytes]]
+name = "page x, element 30, alone in chunk 3 with the checksum"
+offset = 1003
+type = "i64le"
+value = 1030
+
+# -- The page list: split too, and its locators point at first chunks -----
+
+[[bytes]]
+name = "the page list envelope begins in chunk 1: type 0x0003, length 164 (0xa4)"
+offset = 1317
+type = "u64le"
+value = 10747907
+
+[[bytes]]
+name = "page list chunk 1's one offset: chunk 2 is at 1231"
+offset = 1437
+type = "u64le"
+value = 1231
+
+[[bytes]]
+name = "page n's locator, in chunk 1: 124 bytes, the size WITHOUT the checksum"
+offset = 1409
+type = "i32le"
+value = 124
+
+[[bytes]]
+name = "page n's locator offset: its first chunk at 663"
+offset = 1413
+type = "u64le"
+value = 663
+
+[[bytes]]
+name = "page x's locator, past chunk 1's 120 bytes and so in chunk 2 at 1231 + 12: 248 bytes"
+offset = 1243
+type = "i32le"
+value = 248
+
+[[bytes]]
+name = "page x's locator offset: its first chunk at 1061"
+offset = 1247
+type = "u64le"
+value = 1061
+
+# -- The footer -----------------------------------------------------------
+
+[[bytes]]
+name = "the footer envelope begins in chunk 1: type 0x0002, length 160 (0xa0)"
+offset = 1569
+type = "u64le"
+value = 10485762
+
+[[bytes]]
+name = "footer chunk 1's one offset: chunk 2 is at 1487"
+offset = 1689
+type = "u64le"
+value = 1487

@@ -1350,3 +1350,117 @@ class NegatedLocatorHead(unittest.TestCase):
                       "   head = -head;", ser)
         self.assertIn("if (head < 0) {\n      head = -head;\n"
                       "      const int type = head >> 24;", ser)
+
+
+class SplitPayloads(unittest.TestCase):
+    """NOTES.md 9: a payload over `Max Key Size` is split across RBlobs.
+
+    `rntuple/chunked` is written with a limit of 128, so its header, footer,
+    page list and both pages are each split (issue #6).
+    """
+
+    FIXTURE = REPO / "data/rntuple/chunked.root"
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import check_invariants
+        import rootfile
+        cls.check_invariants = check_invariants
+        cls.rootfile = rootfile
+        cls.src = cls.FIXTURE.read_bytes()
+        _, _, recs = rootfile.load(cls.FIXTURE)
+        rec = next(r for r in recs if r.class_name == "ROOT::RNTuple")
+        cls.anchor, cls.schema = rootfile.read_rntuple(cls.src, rec)
+        cls.footer = rootfile.read_rntuple_footer(cls.src, cls.anchor, cls.schema)
+        cls.page_lists = rootfile.read_rntuple_page_lists(
+            cls.src, cls.footer, cls.anchor.max_key_size)
+        cls.pages = [page for per_column in cls.page_lists[0].columns
+                     for column in per_column for page in column.pages]
+
+    def failures(self, buf: bytes) -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "corrupt.root"
+            path.write_bytes(buf)
+            checker = self.check_invariants.Checker(path)
+            with contextlib.redirect_stderr(io.StringIO()):
+                return [f.split(": ", 2)[1] for f in checker.run()]
+
+    def chunks(self, offset, nbytes):
+        return self.rootfile.rn_chunks(self.src, offset, nbytes,
+                                       self.anchor.max_key_size)
+
+    def test_the_fixture_passes(self):
+        self.assertEqual(self.failures(self.src), [])
+
+    def test_every_payload_is_split(self):
+        a = self.anchor
+        self.assertEqual(a.max_key_size, 128)
+        self.assertEqual(self.chunks(a.seek_header, a.nbytes_header),
+                         [(439, 120), (270, 127)])
+        self.assertEqual(self.chunks(a.seek_footer, a.nbytes_footer),
+                         [(1569, 120), (1487, 40)])
+        loc = self.footer.cluster_groups[0].page_list
+        self.assertEqual(self.chunks(loc.offset, loc.nbytes),
+                         [(1317, 120), (1231, 44)])
+        n, x = self.pages
+        self.assertEqual(self.chunks(n.locator.offset, n.locator.nbytes + 8),
+                         [(663, 120), (609, 12)])
+        self.assertEqual(self.chunks(x.locator.offset, x.locator.nbytes + 8),
+                         [(1061, 112), (833, 128), (1003, 16)])
+
+    def test_the_values_read_back_through_the_chunks(self):
+        read = self.rootfile.read_column_values
+        n, x = self.schema.columns
+        size = self.anchor.max_key_size
+        self.assertEqual(read(self.src, self.page_lists, n, size), list(range(31)))
+        self.assertEqual(read(self.src, self.page_lists, x, size),
+                         list(range(1000, 1031)))
+
+    def test_the_count_is_computed_and_not_the_division(self):
+        count = self.rootfile.rn_num_chunks
+        # An exact multiple leaves no room for the offsets: one chunk more.
+        self.assertEqual(count(256, 128), 3)
+        # 247 leaves 9 spare bytes in the last chunk, room for one offset.
+        self.assertEqual(count(247, 128), 2)
+        self.assertEqual(count(248, 128), 2)
+        self.assertEqual(count(249, 128), 3)
+        self.assertEqual(count(132, 128), 2)
+
+    def test_a_page_is_split_by_its_size_with_its_checksum(self):
+        # The locator says 124 bytes, under the limit. Read as one range, the
+        # last value is the start of the next RBlob's key header, not 30.
+        import struct
+        n = self.pages[0]
+        self.assertEqual(n.locator.nbytes, 124)
+        self.assertTrue(n.has_checksum)
+        self.assertEqual(self.chunks(n.locator.offset, n.locator.nbytes),
+                         [(663, 124)])
+        self.assertNotEqual(struct.unpack_from("<i", self.src, 663 + 120)[0], 30)
+        self.assertEqual(struct.unpack_from("<i", self.src, 609)[0], 30)
+
+    def test_a_chunk_offset_off_its_rblob(self):
+        import struct
+        b = bytearray(self.src)
+        struct.pack_into("<Q", b, 1181, 1004)    # page x, chunk 3 at 1003
+        self.assertIn("RNTuple split payload", self.failures(bytes(b)))
+
+    def test_a_locator_that_misses_its_first_chunk(self):
+        # Page n's locator, one byte into the RBlob that holds its first chunk.
+        import struct
+        b = bytearray(self.src)
+        struct.pack_into("<Q", b, 1413, 664)
+        self.assertIn("RNTuple split payload", self.failures(bytes(b)))
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_computes_the_count_as_rootfile_does(self):
+        src = (REPO / "root/tree/ntuple/src/RMiniFile.cxx").read_text()
+        self.assertIn("   size_t nChunks = (nbytes + maxChunkSize - 1) / maxChunkSize;\n"
+                      "   assert(nChunks > 1);\n"
+                      "   size_t nbytesTail = nbytes % maxChunkSize;\n"
+                      "   size_t nbytesExtra = (nbytesTail > 0) * (maxChunkSize - nbytesTail);\n"
+                      "   size_t nbytesChunkOffsets = (nChunks - 1) * kChunkOffsetSize;\n"
+                      "   if (nbytesChunkOffsets > nbytesExtra) {\n"
+                      "      ++nChunks;", src)
+        pages = (REPO / "root/tree/ntuple/src/RPageStorageFile.cxx").read_text()
+        self.assertIn("if (sealedPageIt->GetBufferSize() > maxKeySize) {", pages)

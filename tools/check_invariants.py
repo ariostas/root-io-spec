@@ -2529,27 +2529,31 @@ class Checker:
                 self.bad("RNTuple footer, attribute set list",
                          f"{where}: format {anchor.version} has no attribute "
                          f"set list after the cluster groups")
-            self.check_page_list_columns(where, schema, footer)
+            page_lists = self.check_page_list_columns(where, schema, footer,
+                                                      anchor.max_key_size)
+            self.check_split_payloads(where, anchor, footer, page_lists)
             self.check_attribute_sets(where, footer.attribute_sets or [], anchors)
 
-    def check_page_list_columns(self, where, schema, footer) -> None:
+    def check_page_list_columns(self, where, schema, footer, max_key_size):
         """ERRATA 14: a cluster lists the columns that existed at its commit.
 
         ROOT's reader gives the k-th item physical column ID k
         (RNTupleSerialize.cxx:2173), so the list is a prefix of the columns: at
         least the header's, which exist from the start, at most all of them,
-        and never shorter than an earlier cluster's.
+        and never shorter than an earlier cluster's. Returns the page lists, or
+        None when they do not read.
         """
         try:
-            page_lists = rootfile.read_rntuple_page_lists(self.buf, footer)
+            page_lists = rootfile.read_rntuple_page_lists(self.buf, footer,
+                                                          max_key_size)
         except rootfile.MissingCodec as exc:
             self.no_codec.add(f"some records were not decompressed: {exc}")
             self.skip("RNTuple page list, column count",
                       f"its codec is missing: {exc}", unit="RNTuple")
-            return
+            return None
         except (rootfile.FormatError, struct.error, IndexError, ValueError) as exc:
             self.bad("RNTuple page list, column count", f"{where}: {exc}")
-            return
+            return None
         low, high = len(schema.columns), len(schema.columns) + len(footer.extension_columns)
         previous = low
         for g, page_list in enumerate(page_lists):
@@ -2560,6 +2564,59 @@ class Checker:
                              f"{where}: cluster {c} of group {g} lists {n} columns; "
                              f"expected {previous} to {high}")
                 previous = max(previous, n)
+        return page_lists
+
+    def check_split_payloads(self, where, anchor, footer, page_lists) -> None:
+        """"Anchor schema": a payload over `Max Key Size` is several RBlobs.
+
+        Each chunk rootfile.rn_chunks finds must be the whole payload of one
+        RBlob, and the first one, which the locator names, exactly `Max Key
+        Size` bytes long: its data, then the offsets (NOTES.md 9). Unsplit
+        payloads are not checked, because several pages share one RBlob.
+        A page is split by its size with its checksum, which the locator
+        does not count (root/tree/ntuple/src/RPageStorageFile.cxx:228).
+        """
+        label = "RNTuple split payload"
+        size = anchor.max_key_size
+        if not size:
+            return
+        payloads = [("header", anchor.seek_header, anchor.nbytes_header),
+                    ("footer", anchor.seek_footer, anchor.nbytes_footer)]
+        for g, group in enumerate(footer.cluster_groups):
+            loc = group.page_list
+            payloads.append((f"page list {g}", loc.offset, loc.nbytes))
+        for page_list in page_lists or []:
+            for per_column in page_list.columns:
+                for column in per_column:
+                    for page in column.pages:
+                        loc = page.locator
+                        if loc.kind in ("file", "large"):
+                            payloads.append((
+                                f"page at {loc.offset}", loc.offset,
+                                loc.nbytes + RN_PAGE_CHECKSUM * page.has_checksum))
+        if not any(nbytes > size for _, _, nbytes in payloads):
+            return
+        blobs = {rootfile.payload_range(r)[0]: r for r in self.records
+                 if not r.free and r.class_name == RBLOB_CLASS}
+        for what, offset, nbytes in payloads:
+            if nbytes <= size:
+                continue
+            try:
+                chunks = rootfile.rn_chunks(self.buf, offset, nbytes, size)
+            except (rootfile.FormatError, struct.error) as exc:
+                self.bad(label, f"{where}, {what}: {exc}")
+                continue
+            # The first chunk's key holds the whole Max Key Size, offsets
+            # included; the others hold their data and nothing else.
+            expect = [size] + [n for _, n in chunks[1:]]
+            for k, ((at, _), want) in enumerate(zip(chunks, expect)):
+                rec = blobs.get(at)
+                if rec is None or rec.payload_nbytes != want:
+                    got = "no RBlob payload" if rec is None else \
+                          f"an RBlob payload of {rec.payload_nbytes} bytes"
+                    self.bad(label, f"{where}, {what}: chunk {k + 1} of "
+                                    f"{len(chunks)} at {at} should be an RBlob "
+                                    f"payload of {want} bytes; there is {got}")
 
     def check_attribute_sets(self, where, links, anchors) -> None:
         names = [link.name for link in links]

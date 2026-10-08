@@ -774,8 +774,8 @@ primitive spelling as an enum.
 
 **The checksum is computed from the class definition, not from the streamer info**
 (`root/core/meta/src/TClass.cxx:6650-6653`), and the two do not always contain the
-same information. This repository's reference files hold 1022 streamer infos,
-and `tools/test_write.py` reproduces 958 of them by applying §11's algorithm to the
+same information. This repository's reference files hold 1023 streamer infos,
+and `tools/test_write.py` reproduces 959 of them by applying §11's algorithm to the
 info's own elements. The rest fall into three groups, each with a known cause:
 
 | Cause | Classes | What the info lacks |
