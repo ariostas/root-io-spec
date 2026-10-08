@@ -9,6 +9,19 @@ has a bug ([spec/index.md](spec/index.md)).
 This file records what changed for a **reader**. The git log records how each fact
 was established, which is the other half of the story.
 
+## Unreleased
+
+### Corrected
+
+- **The reproducible-mode timestamp is not a 1995 date.** `WritingFiles.md` §11
+  said so. ROOT writes `TDatime((UInt_t) 1)`, Unix time 1 packed as the writer's
+  local time, whose year wraps in the 6-bit field: `0x9C420001`, 2034-01-01
+  00:00:01, in UTC, and 2033-12-31 west of Greenwich. `Record.md` §3.7 now
+  tabulates the values and how to recognize them. The sentinel also replaces
+  every key-list image's `fDatime` and both directory timestamps, and every
+  directory record's UUID is zero, so in such a file the directories' UUIDs are
+  not distinct (`Directory.md` §2, §4.5). Reported in issue #3.
+
 ## 2026.09.24
 
 First release. Descriptive of **ROOT 6.40.04**, pinned as the `root/` submodule

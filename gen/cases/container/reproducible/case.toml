@@ -1,0 +1,189 @@
+id   = "container/reproducible"
+file = "data/container/reproducible.root"
+size = 1224
+
+description = """
+A file opened with the `?reproducible` URL option, with one subdirectory and one
+TObjString. Reproducible mode replaces every timestamp with one sentinel and every
+UUID with zeros. The sentinel is not zero and not a 1995 date: it is Unix time 1
+packed as local time, whose year wraps in the 6-bit field (Record.md §3.7). The
+macro fixes TZ to UTC, where the sentinel is 0x9C420001, 2034-01-01 00:00:01.
+It appears twelve times: in the six record keys, in the two key images of the key
+list, and as both `fDatimeC` and `fDatimeM` of both directory records.
+"""
+
+spec = [
+  "spec/01-container/Record.md",
+  "spec/01-container/Directory.md",
+  "spec/01-container/FileHeader.md",
+  "spec/06-writing/WritingFiles.md",
+]
+
+root_version = "6.40.04"
+compression  = { algorithm = "none", setting = 0 }
+
+[[records]]
+offset = 100
+nbytes = 200
+class  = "TFile"
+role   = "the root directory record"
+
+[[records]]
+offset = 300
+nbytes = 105
+class  = "TDirectory"
+role   = "the subdirectory record"
+
+[[records]]
+offset = 405
+nbytes = 88
+class  = "TObjString"
+role   = "application data record"
+
+[[records]]
+offset = 493
+nbytes = 434
+class  = "TList"
+role   = "StreamerInfo; located via fSeekInfo"
+
+[[records]]
+offset = 927
+nbytes = 201
+class  = "TFile"
+role   = "keys list; located via the root directory's fSeekKeys"
+
+[[records]]
+offset = 1128
+nbytes = 96
+class  = "TFile"
+role   = "free segments; located via fSeekFree"
+
+# ---------------------------------------------------------------------------
+# All integers are big-endian. 2621571073 is 0x9C420001: year field 39, month 1,
+# day 1, 00:00:01. (70 - 95) mod 64 = 39, so it reads as 2034-01-01 00:00:01.
+# ---------------------------------------------------------------------------
+
+# --- File header UUID, spec/01-container/FileHeader.md §6 ------------------
+[[bytes]]
+name = "header TUUID version"
+offset = 45
+type = "i16"
+value = 1
+[[bytes]]
+name = "header UUID, all zero"
+offset = 47
+type = "bytes"
+value = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# --- fDatime of every record key, spec/01-container/Record.md §3.7 ---------
+[[bytes]]
+name = "root directory key fDatime"
+offset = 110
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "subdirectory key fDatime"
+offset = 310
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "TObjString key fDatime"
+offset = 415
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "StreamerInfo key fDatime"
+offset = 503
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "keys list key fDatime"
+offset = 937
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "free segments key fDatime"
+offset = 1138
+type = "u32"
+value = 2621571073
+
+# --- Key images in the key list, spec/01-container/Directory.md §6 ---------
+[[bytes]]
+name = "key list count"
+offset = 1013
+type = "i32"
+value = 2
+[[bytes]]
+name = "key image 1 (sub) fDatime"
+offset = 1027
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "key image 2 (str) fDatime"
+offset = 1072
+type = "u32"
+value = 2621571073
+
+# --- Root directory payload, spec/01-container/Directory.md §2 -------------
+[[bytes]]
+name = "root TDirectoryFile class version"
+offset = 240
+type = "i16"
+value = 5
+[[bytes]]
+name = "root fDatimeC"
+offset = 242
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "root fDatimeM"
+offset = 246
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "root TUUID version"
+offset = 270
+type = "i16"
+value = 1
+[[bytes]]
+name = "root directory UUID, all zero"
+offset = 272
+type = "bytes"
+value = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# --- Subdirectory payload, spec/01-container/Directory.md §2 ---------------
+[[bytes]]
+name = "sub TDirectoryFile class version"
+offset = 345
+type = "i16"
+value = 5
+[[bytes]]
+name = "sub fDatimeC"
+offset = 347
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "sub fDatimeM"
+offset = 351
+type = "u32"
+value = 2621571073
+[[bytes]]
+name = "sub fSeekDir"
+offset = 363
+type = "i32"
+value = 300
+[[bytes]]
+name = "sub fSeekParent"
+offset = 367
+type = "i32"
+value = 100
+[[bytes]]
+name = "sub TUUID version"
+offset = 375
+type = "i16"
+value = 1
+[[bytes]]
+name = "subdirectory UUID, all zero, the same as the root directory's"
+offset = 377
+type = "bytes"
+value = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

@@ -343,8 +343,10 @@ Two properties surprise implementers:
   they do, so a reader MUST NOT treat agreement as guaranteed.
 - In **reproducible mode**, requested via the `reproducible` URL option, the UUID
   body is 16 zero bytes while the version word remains `1`
-  (`root/io/io/src/TFile.cxx:2703-2704`). A validator that requires a well-formed
-  RFC 4122 UUID will reject files that are deliberately reproducible.
+  (`root/io/io/src/TFile.cxx:2703-2704`). So is every directory record's
+  ([Directory §4.5](Directory.md#45-uuid)). A validator that requires a well-formed RFC 4122 UUID will
+  reject files that are deliberately reproducible. `container/reproducible`
+  asserts the zeros.
 
 ## 7. Padding
 

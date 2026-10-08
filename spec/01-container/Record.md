@@ -303,9 +303,35 @@ A reader must allow for three properties:
 - **It is local time with no zone information** and is therefore not portable
   between timezones (`root/core/base/src/TDatime.cxx:19-24`).
 
-In reproducible mode the value written is the encoding of local time 1 rather
-than zero (`root/io/io/src/TKey.cxx:654-655`). That encoding depends on the
-timezone, so "reproducible" files are byte-identical only within one timezone.
+In reproducible mode (the `?reproducible` URL option) every key gets
+`TDatime((UInt_t) 1)` instead of its own time. `TKey::FillBuffer`, which writes a
+record's key and its image in a key list, does so
+(`root/io/io/src/TKey.cxx:654-655`), and so does `TKey::Streamer`
+(`root/io/io/src/TKey.cxx:1450-1451`). Directory records get the same value for
+`fDatimeC` and `fDatimeM` ([Directory §2](Directory.md#2-layout)). The
+constructor's argument is a Unix time, not a packed value
+(`root/core/base/inc/TDatime.h:47-48`). `TDatime::Set` converts it with
+`localtime_r` and packs the result without the year check of the calendar
+overload (`root/core/base/src/TDatime.cxx:320-347`). Unix time 1 falls in 1969
+or 1970 local time, before the epoch, so the year field wraps: 1970 packs as 39
+and 1969 as 38. The sentinel is therefore neither zero nor a 1995 date. It reads
+as a plausible date in 2034 or 2033, and its bits depend on the writer's timezone:
+
+| Writer's timezone | Local time of Unix 1 | Packed | Reads as |
+|---|---|---|---|
+| `UTC` | 1970-01-01 00:00:01 | `0x9C420001` | 2034-01-01 00:00:01 |
+| `Europe/Zurich` | 1970-01-01 01:00:01 | `0x9C421001` | 2034-01-01 01:00:01 |
+| `America/New_York` | 1969-12-31 19:00:01 | `0x9B3F3001` | 2033-12-31 19:00:01 |
+| `Africa/Monrovia` | 1969-12-31 23:15:31 | `0x9B3F73DF` | 2033-12-31 23:15:31 |
+
+The offset that counts is the one the zone had in 1970, not today's: Monrovia was
+then UTC−0:44:30, and `Pacific/Kiritimati` was UTC−10:40, not +14. The tz
+database of 2026 gives 44 distinct values, all dated 1969-12-31 or 1970-01-01,
+and all but Monrovia's with second 1. A reader that wants to recognize the
+sentinel can test for year field 39 on 1 January or 38 on 31 December, which a
+real clock does not produce before 2033. "Reproducible" files are byte-identical
+only within one timezone. `container/reproducible` fixes `TZ=UTC` and asserts
+`0x9C420001` at every place it occurs.
 
 > **A `TDatime` *member* of an ordinary class is these same four bytes, bare.**
 > `TDatime::Streamer` is hand-written and writes `fDatime` and nothing else, with
@@ -543,6 +569,7 @@ should follow `TKey`.
 | `container/cycles` | Three cycles of one name |
 | `container/directories` | `fSeekPdir` chains, the `"TDirectory"` class name |
 | `container/gap` | A negative `fNbytes` free span in the chain |
+| `container/reproducible` | The reproducible-mode `fDatime` sentinel in every key and key image, written with `TZ=UTC` (§3.7) |
 | `ttree/basket` | Large keys (`fVersion` 1004) in a small file, and an `fKeylen` longer than its strings (§3.11) |
 
 No fixture covers a non-zero `fPidOffset`.

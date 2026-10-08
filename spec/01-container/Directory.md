@@ -91,7 +91,10 @@ both layouts, which is what the reserved bytes are for (§5).
 The datime fields use the packing given in
 [Records §3.7](Record.md#37-fdatime). `fDatimeC` is the directory's creation
 time, set once; `fDatimeM` is refreshed on every header rewrite
-(`root/io/io/src/TDirectoryFile.cxx:2175`).
+(`root/io/io/src/TDirectoryFile.cxx:2175`). In reproducible mode both are
+replaced by the sentinel of [Records §3.7](Record.md#37-fdatime), the same value as every key's
+`fDatime` (`root/io/io/src/TDirectoryFile.cxx:762-765`). It is not zero and not a
+1995 date: written in UTC it reads as 2034-01-01 00:00:01.
 
 ## 3. Three independent large-file flags
 
@@ -191,7 +194,10 @@ encoding as the file header's UUID
 
 Each directory has its own, distinct UUID. The root directory's matches the file
 header's, because both are written from the same value at creation; each
-subdirectory gets a fresh one.
+subdirectory gets a fresh one. Reproducible mode is the exception: every
+directory record's UUID is 16 zero bytes, with the version word still 1
+(`root/io/io/src/TDirectoryFile.cxx:781-782`), so all of a file's directories
+share it (`container/reproducible`).
 
 Version 2 records are the exception: they store the 16 bytes with no version word
 (§7).
@@ -546,6 +552,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | 13 | — | `fNbytesKeys` counts the whole record, key included (§4.1) |
 | 14 | `keyslist.md` presents each entry as a copy of the record's key, so its length is `fKeylen` | A directory entry written before ROOT 5.34 is 4 bytes longer than the `fKeylen` it reports, and spells its class `TDirectoryFile` where the record spells it `TDirectory` (§6.5). Both spellings occur in one file |
 | 15 | *This document, until 2026-09-22*: §7's table ended version 1 at 3.02 and began version 2 at 3.03/01 | Version 1 runs to 3.03/06 and version 2 is 3.03/07 only, by `ClassDef` at the release tags. `Event.3.2.0.root`, written by 3.03/02, has a version 1 root directory (§7) |
+| 16 | *This document, until 2026-10-08*: every directory has its own, distinct UUID | Not in reproducible mode, where every directory record's UUID is zero (§4.5) |
 
 ## 11. Reference files
 
@@ -554,6 +561,7 @@ Against `root/io/doc/TFile/tdirectory.md` and `keyslist.md`:
 | `container/file-minimal` | The root directory record, its fields at `fBEGIN + fNbytesName` |
 | `container/directories` | Two nesting levels, per-directory key lists, distinct UUIDs, `fSeekParent` |
 | `container/empty-directory` | A saved empty directory versus an unsaved one |
+| `container/reproducible` | Reproducible mode: both directories' `fDatimeC` and `fDatimeM` are the sentinel, and their UUIDs are zero |
 | `container/cycles` | Several entries in one key list sharing a name, newest first (invariant 14) |
 | `container/reopened` | A key list rebuilt by a second session: keys copied verbatim, a new one inserted, and one removed by `WriteDelete` |
 | `written/reopen-add` | The same file written here, and `fDatimeM` refreshed while `fDatimeC` is not |

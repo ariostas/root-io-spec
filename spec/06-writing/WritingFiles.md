@@ -754,16 +754,31 @@ both as inputs. This is why `data/written/` is byte-reproducible and the rest of
 `data/` is not.
 
 ROOT has the same feature: opening a file with the URL option `?reproducible` sets
-`TFile::kReproducible` (`root/io/io/src/TFile.cxx:417-418`), which writes an
-all-zero UUID (`root/io/io/src/TFile.cxx:2703-2704`) and a fixed `TDatime(1)` in
-every key (`root/io/io/src/TKey.cxx:652-655`). A reader must therefore treat both
-fields as carrying no information: a zero UUID and a 1995 timestamp are normal.
+`TFile::kReproducible` (`root/io/io/src/TFile.cxx:417-418`). It writes an
+all-zero UUID in the header and in every directory record
+(`root/io/io/src/TFile.cxx:2703-2704`,
+`root/io/io/src/TDirectoryFile.cxx:781-782`). It also writes one sentinel
+timestamp, `TDatime((UInt_t) 1)`, as every key's `fDatime`, in every key-list
+image, and as every directory's `fDatimeC` and `fDatimeM`
+(`root/io/io/src/TKey.cxx:654-655`, `:1450-1451`,
+`root/io/io/src/TDirectoryFile.cxx:762-765`). A reader must therefore treat all
+of these fields as carrying no information.
+
+The sentinel is not the packed value 1, and it is not a 1995 date. The argument is
+a Unix time, which `TDatime::Set` converts to the writer's **local** time and
+packs; 1970 is before the 1995 epoch, so the year wraps. Written in UTC the
+sentinel is `0x9C420001` and reads as 2034-01-01 00:00:01. West of Greenwich it
+falls on 1969-12-31 and reads as 2033-12-31. Its bits change with the timezone,
+and [Records §3.7](../01-container/Record.md#37-fdatime) tabulates them.
 
 The packed timestamp is six bit fields in one 32-bit word: year biased by 1995,
 then month, day, hour, minute, second
-(`root/core/base/src/TDatime.cxx:392`). Years below 1995 are rejected
-(`root/core/base/src/TDatime.cxx:387-390`), so the earliest representable value is
-in 1995 and the range ends in 2058.
+(`root/core/base/src/TDatime.cxx:392`). The calendar overload of `TDatime::Set`
+rejects years below 1995 (`root/core/base/src/TDatime.cxx:387-390`), so the
+earliest value it can write is in 1995 and the range ends in 2058. The other two
+overloads do not check, and wrap: the Unix-time one the sentinel takes
+(`root/core/base/src/TDatime.cxx:347`), and the clock-reading one that sets an
+ordinary key's time (`root/core/base/src/TDatime.cxx:311`).
 
 ## 12. One file, byte by byte
 
@@ -1147,6 +1162,7 @@ writing. The reading-side errata are in the documents named in each row.
 | 4 | Silent on `fSeekPdir = 0` in the file's own key | An artifact of the order of two statements (§4.1), and it affects `TFile::Recover` |
 | 5 | Silent on write ordering | `TFile::Close` and `TFile::Write` put the `StreamerInfo` record on opposite sides of the key list (§3), and both orders occur in ROOT-written files |
 | 6 | `freesegments.md` does not state the rule a writer needs | The last entry's `fLast` must exceed `fEND`, because that is the parse terminator (`root/io/io/src/TFile.cxx:1990-1995`), not because of any length |
+| 7 | *This document, until 2026-10-08*: §11 said reproducible mode writes "a 1995 timestamp", in keys only | `TDatime((UInt_t) 1)` is Unix time 1 packed as local time, which wraps to 2033-12-31 or 2034-01-01. It is written in key-list images and as both directory timestamps too, and the directory UUIDs are zeroed as well as the header's (§11, Records §3.7; issue #3) |
 
 ## 17. Reference files
 
