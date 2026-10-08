@@ -194,7 +194,7 @@ only know that the values look plausible, not that they are right.
   `tree-branchref` and `tree-ntuple` cover them.
 - [RNTuple](../05-rntuple/index.md) — a different format in the same container.
   Read ROOT's own specification, which this project tracks verbatim, together
-  with [the errata](../05-rntuple/ERRATA.md): fourteen places where it and ROOT's code
+  with [the errata](../05-rntuple/ERRATA.md): fifteen places where it and ROOT's code
   disagree. One of them has already made two readers in the same repository
   diverge.
 

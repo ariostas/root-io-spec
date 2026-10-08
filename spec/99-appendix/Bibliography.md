@@ -11,7 +11,7 @@ source code, or someone else's reverse engineering.
 maintained with the code, and the model this project follows. It is tracked here
 verbatim as [`05-rntuple/BinaryFormatSpecification.md`](../05-rntuple/BinaryFormatSpecification.md)
 with [errata](../05-rntuple/ERRATA.md) beside it. Read the copy for the format
-and the errata for the fourteen places where it and ROOT's code disagree.
+and the errata for the fifteen places where it and ROOT's code disagree.
 
 **`root/io/doc/TFile/*.md`** — the `TFile` and `TTree` documentation ROOT ships.
 It describes **release 3.02.06**, with four of its pages partially updated to

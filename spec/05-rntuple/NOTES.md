@@ -134,7 +134,7 @@ and the header envelope including its field and column records.
 | Compression Block | audited — §2 above |
 | Basic Types, Feature Flags | audited, clean |
 | Frames | audited, clean |
-| Locators and Envelope Links | audited — ERRATA 4 |
+| Locators and Envelope Links | audited, and against bytes by probing ROOT's serializer — ERRATA 4, **15**: a non-standard locator's first word is negated |
 | Envelopes, the envelope header and checksum | audited — ERRATA 5 |
 | Header Envelope: field, column, alias column, extra type info | audited — ERRATA 6 |
 | Footer Envelope: schema extension, cluster groups, attribute sets | audited — **ERRATA 11**: the attribute set list is new in 1.0.1.0 |

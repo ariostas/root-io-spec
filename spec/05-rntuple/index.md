@@ -58,11 +58,13 @@ meet: NOTES [1](NOTES.md#1-an-rblob-keys-fobjlen-is-decorative),
 
 ## Status
 
-There are fourteen errata, each verified against the pinned submodule and, where
+There are fifteen errata, each verified against the pinned submodule and, where
 there are bytes to check, against a fixture:
 
 - three in the anchor and the ROOT file embedding;
-- one in the locator type table;
+- two in the locators: type `0x02` is assigned, not reserved, and a non-standard
+  locator's first word is stored negated, so the document's rule for its type
+  reads one more than the type;
 - one in the envelope header;
 - one in the column type table, which lists a column encoding, `0x17
   SplitReal16`, that ROOT's C++ implementation does not have but **ROOT's own

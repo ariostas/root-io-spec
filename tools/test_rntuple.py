@@ -1292,3 +1292,61 @@ class ModelExtensionPageList(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<I", b, 762)[0], 1)
         struct.pack_into("<I", b, 762, 0)
         self.assertIn("RNTuple page list, column count", self.failures(bytes(b)))
+
+
+class NegatedLocatorHead(unittest.TestCase):
+    """ERRATA 15: a non-standard locator's first word is stored negated.
+
+    No corpus file holds one, so the bytes are what ROOT 6.40.04's
+    `RNTupleSerializer::SerializeLocator` returned on 2026-10-08.
+    """
+
+    # A file locator of 2**31 bytes at 0x1234, then the same with the reserved
+    # bit set, then a DAOS locator of 100 bytes at object 0x77.
+    LARGE = bytes.fromhex("ecfffffe" "0000008000000000" "3412000000000000")
+    LARGE_RESERVED = bytes.fromhex("ecfffefe" "0000008000000000" "3412000000000000")
+    DAOS = bytes.fromhex("f0fffffd" "64000000" "7700000000000000")
+    TEXT = TRACKED.read_text()
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+        import rootfile
+        cls.rootfile = rootfile
+
+    def test_the_document_still_takes_the_absolute_value_of_the_type_byte(self):
+        self.assertIn("To determine the locator type, the absolute value of the "
+                      "8bit integer should be taken.", self.TEXT)
+
+    def test_the_documents_rule_reads_type_plus_one(self):
+        import struct
+        for buf, real in ((self.LARGE, 1), (self.LARGE_RESERVED, 1), (self.DAOS, 2)):
+            with self.subTest(real=real):
+                self.assertEqual(abs(struct.unpack_from("<b", buf, 3)[0]), real + 1)
+
+    def test_the_fields_are_those_of_the_negated_word(self):
+        import struct
+        for buf, size, reserved, kind in ((self.LARGE, 20, 0, 1),
+                                          (self.LARGE_RESERVED, 20, 1, 1),
+                                          (self.DAOS, 16, 0, 2)):
+            with self.subTest(kind=kind, reserved=reserved):
+                head = -struct.unpack_from("<i", buf)[0]
+                self.assertEqual(head, size | reserved << 16 | kind << 24)
+                self.assertEqual(len(buf), size)
+
+    def test_rootfile_reads_them_as_root_does(self):
+        read = self.rootfile.read_rn_locator
+        for buf in (self.LARGE, self.LARGE_RESERVED):
+            loc = read(buf, 0)
+            self.assertEqual((loc.kind, loc.nbytes, loc.offset, loc.end),
+                             ("large", 2**31, 0x1234, 20))
+        loc = read(self.DAOS, 0)
+        self.assertEqual((loc.kind, loc.end), ("unknown(0x2)", 16))
+
+    @unittest.skipUnless(HAVE_SUBMODULE, "root/ submodule is not checked out")
+    def test_root_negates_after_assembling_and_before_reading(self):
+        ser = (REPO / "root/tree/ntuple/src/RNTupleSerialize.cxx").read_text()
+        self.assertIn("head |= static_cast<int>(locatorType & 0x7F) << 24;\n"
+                      "   head = -head;", ser)
+        self.assertIn("if (head < 0) {\n      head = -head;\n"
+                      "      const int type = head >> 24;", ser)

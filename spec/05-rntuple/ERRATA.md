@@ -25,6 +25,7 @@ corrected in the copy itself — see [UPSTREAM.md](UPSTREAM.md).
 | 12 | Footer Envelope → Linked Attribute Set Record Frame | open | — |
 | 13 | Linked Attribute Sets → Attribute Schema Version | open | — |
 | 14 | Page List Envelope → Page Locations | open | — |
+| 15 | Locators and Envelope Links | open | — |
 
 Bytes come from three files.
 
@@ -696,3 +697,71 @@ that means zeros for the whole cluster; for a deferred and suppressed column, a
 suppressed range.
 
 Reported in issue #4.
+
+---
+
+## 15. A non-standard locator's first word is negated, so the type rule reads type + 1
+
+> **The document**, under *Locators and Envelope Links*, draws the first word of
+> a non-standard locator as four fields:
+>
+> ```
+> |              Size             |   Reserved    |     Type    |T|
+> ```
+>
+> and says how to read the type: "the last 8 bits of the size should be
+> interpreted as a locator type. To determine the locator type, the absolute
+> value of the 8bit integer should be taken."
+
+**The fields are those of the word's negation, not of the word.** The writer
+assembles them and then negates the whole 32-bit word:
+
+```cpp
+std::int32_t head = sizeof(std::int32_t) + size;
+head |= locator.GetReserved() << 16;
+head |= static_cast<int>(locatorType & 0x7F) << 24;
+head = -head;
+```
+
+`root/tree/ntuple/src/RNTupleSerialize.cxx:1104-1107`, where `size` is the
+payload's and the 4 is the word itself, so _Size_ counts the whole locator. The
+reader tests `head < 0`, negates, and only then takes the type as `head >> 24`,
+the payload size as `(head & 0xFFFF) - 4` and the reserved byte as
+`(head >> 16) & 0xFF` (`root/tree/ntuple/src/RNTupleSerialize.cxx:1124-1131`).
+
+Negation is not setting the sign bit: it changes every field. Since _Size_ is at
+least 4, the low 24 bits of the assembled word are never zero, so the top byte of
+the stored word is the bitwise complement of the type, which as a signed 8-bit
+integer is −(type + 1). Its absolute value, the document's rule, is **type + 1**
+for every locator ROOT writes: a large locator reads as 2, which is DAOS
+(erratum 4), and a DAOS locator as 3. Read in place, _Size_ is 65 536 minus the
+real size and _Reserved_ is its complement.
+
+> **Bytes**, by probing ROOT 6.40.04 on 2026-10-08, since no file in any of the
+> corpora holds a non-standard locator: ROOT writes one only for a file locator
+> of more than `INT32_MAX` bytes (`root/tree/ntuple/src/RNTupleSerialize.cxx:1075`)
+> or for an object store. `RNTupleSerializer::SerializeLocator` on a file locator
+> of 2³¹ bytes at offset `0x1234` gives the 20 bytes
+> `ec ff ff fe 00 00 00 80 00 00 00 00 34 12 00 00 00 00 00 00`. The first word is
+> `0xfeffffec`, the negation of `0x01000014`: type 1, reserved 0, size 20. Read as
+> drawn, it is size 65 516, reserved `0xff` and a top byte of −2. The same locator
+> with the reserved bit set begins `ec ff fe fe`, and a DAOS locator of 100 bytes
+> at object `0x77` gives `f0 ff ff fd 64 00 00 00 77 00 00 00 00 00 00 00`, whose
+> top byte is −3. `DeserializeLocator` reads all three back as written.
+> `tools/test_rntuple.py` holds these bytes and checks `tools/rootfile.py` against
+> them, which already negated first.
+
+**A reader that follows the document** reads a large locator as a DAOS one with
+a payload of 65 512 bytes. One that implements only type 1 refuses every large
+locator, and one that reads the top byte without the absolute value finds type
+`0xfe` and raises, as [nsmith-/rootfilespec#149](https://github.com/nsmith-/rootfilespec/issues/149)
+reports.
+
+The document already says the right thing about frames, whose size is negated
+for a list frame: "The absolute value gives the (uncompressed) size". The fix
+upstream is to say the same here: a non-standard locator's first word is the
+negation of `size | reserved << 16 | type << 24`, and a reader takes the absolute
+value of the 32-bit word, not of the 8-bit type, before reading the fields as
+drawn.
+
+Reported in issue #5.

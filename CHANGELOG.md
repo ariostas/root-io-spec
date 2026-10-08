@@ -28,6 +28,12 @@ was established, which is the other half of the story.
   list, and treat each missing column as having no pages in that cluster: zeros
   for a deferred column, and a suppressed range for a deferred and suppressed
   one. Reported in issue #4.
+- **A non-standard locator's type is not the absolute value of its top byte.**
+  RNTuple [ERRATA 15](spec/05-rntuple/ERRATA.md): ROOT assembles the first word
+  as `size | reserved << 16 | type << 24` and stores its negation, so the
+  document's rule reads type + 1, and a large locator as DAOS. Negate the whole
+  32-bit word first, then read size, reserved byte and type from it as drawn.
+  Reported in issue #5.
 
 ## 2026.09.24
 
