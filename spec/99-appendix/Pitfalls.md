@@ -259,9 +259,10 @@ well as at read time.
 objects of one class share the first object's counter.** `fBranchCount` is set from
 a name looked up across every branch (`root/tree/tree/src/TBranchElement.cxx:438`),
 and when the sub-branches have no parent prefix both objects' counted members point
-at the same counter. In `alice_ESDs.root`, a file ROOT itself published, ROOT
-silently reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22,
-6 and 13. A reader must resolve the counter **among the branch's siblings** instead
+at the same counter. In `alice_ESDs.root`, a file ROOT itself published, ROOT's
+`Scan` and `TTreeReaderArray` silently give 0 elements for
+`PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13; only a read of the
+whole object gets them right. A reader must resolve the counter **among the branch's siblings** instead
 of following the recorded `fBranchCount`.
 [Reading entries §4.1](../04-ttree/ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
 

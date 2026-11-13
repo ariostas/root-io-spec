@@ -24,6 +24,14 @@ was established, which is the other half of the story.
 
 ### Corrected
 
+- **ROOT's shared-counter bug does not affect every read.**
+  [Reading entries §4.1](spec/04-ttree/ReadingEntries.md#41-resolve-the-counter-by-name-not-by-fbranchcount)
+  and erratum 6 said ROOT reads 0 indices for `alice_ESDs.root`'s
+  `PrimaryVertex.fIndices` without naming a read path. Only the member-wise
+  paths do: `TTree::Draw`/`Scan`, `TTreeReaderArray` and so RDataFrame, and a
+  MakeClass-style read. `SetBranchAddress` on the whole object uses the object's
+  own count and is right. The reader's rule is unchanged: resolve the counter
+  among the branch's siblings.
 - **The reproducible-mode timestamp is not a 1995 date.** `WritingFiles.md` §11
   said so. ROOT writes `TDatime((UInt_t) 1)`, Unix time 1 packed as the writer's
   local time, whose year wraps in the 6-bit field: `0x9C420001`, 2034-01-01

@@ -264,8 +264,10 @@ counter name looked up over the whole tree
 (`root/tree/tree/src/TBranchElement.cxx:438`). When a tree holds two split objects
 of one class whose sub-branches have no parent prefix, both objects'
 counted-array members point at the first object's counter. In `alice_ESDs.root`
-ROOT reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6
-and 13. `TreeReader` resolves a counter among siblings instead
+ROOT's `Scan` and `TTreeReaderArray` read 0 elements for `PrimaryVertex.fIndices`,
+whose entries hold 18, 22, 6 and 13; a whole-object read is unaffected, since it
+uses the object's own count. That limit was found only by running ROOT, after the
+claim had stood for weeks on a reading of the source. `TreeReader` resolves a counter among siblings instead
 (`ReadingEntries.md` §4.1 and erratum 6), and the entry's byte span is the
 cross-check that catches the difference.
 

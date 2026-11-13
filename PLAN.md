@@ -586,6 +586,15 @@ reported** (§8 item M10).
    are 37, 45, 13 and 27 bytes: `1 + n × 2` for counts of 18, 22, 6 and 13. ROOT
    reads no indices at all and reports nothing. The bytes are intact; only the
    pointer is wrong. `ReadingEntries.md` §4.1 and erratum 6.
+   *Narrowed 2026-11-13, by running ROOT 6.40.04 rather than reading it.* Only
+   the member-wise read paths lose the data, because `:4649` sets `fNdata`:
+   `Scan`/`Draw`, `TTreeReaderArray` (so RDataFrame) and a MakeClass-style read.
+   `SetBranchAddress` on the whole object streams the member with the count the
+   object has just read, and is right. Measured both on `alice_ESDs.root`
+   (`Scan` and `TTreeReaderArray` give no elements in every entry) and on a
+   minimal reproducer: a `Vertex` with `Double_t *fX; //[fN]`, split as
+   branches `a` and `b` with no trailing dot, `a.fN` 0 and `b.fN` 3. The
+   control, `a.` and `b.`, reads correctly.
 10. **Writing a `std::map` field to an RNTuple aborts — when the map has no
     compiled dictionary.** *Narrowed 2026-09-23 (`PLAN-corpus.md` C17).*
     `Fill()` reaches `R__ASSERT(0)` in `TGenCollectionProxy__VectorNext`, a

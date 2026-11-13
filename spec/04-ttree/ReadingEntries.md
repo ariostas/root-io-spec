@@ -355,6 +355,13 @@ tree holds two split objects of one class whose sub-branches have no parent
 prefix, both objects' members get a pointer to the **first** object's counter, and
 the read path uses it unchanged (`root/tree/tree/src/TBranchElement.cxx:4649`).
 
+That line sets the branch's element count, `fNdata`, which is what a read of the
+member on its own relies on: `TTree::Draw` and `Scan`, `TTreeReaderArray` (and so
+RDataFrame), and a MakeClass-style read with an address on each member branch. A
+read of the whole object, `SetBranchAddress` on the top-level branch, is not
+affected, because it streams the member with the count the object itself has just
+read.
+
 > **Observed.** `alice_ESDs.root` (ROOT 5.16/00) splits an `AliESDVertex` twice, as
 > `SPDVertex` and `PrimaryVertex`. Both objects' sub-branches are named plainly
 > `fNIndices` and `fIndices`, so both `fIndices` branches record the *same*
@@ -362,7 +369,9 @@ the read path uses it unchanged (`root/tree/tree/src/TBranchElement.cxx:4649`).
 > `PrimaryVertex`'s own `fNIndices` holds 18, 22, 6, 13, … and its `fIndices`
 > entries are 37, 45, 13 and 27 bytes, which is `1 + n × 2` for those counts. A
 > reader following the recorded pointer reads no indices at all and gets no
-> warning; ROOT is such a reader. See erratum 6.
+> warning. ROOT 6.40.04 is such a reader on the member-wise paths: `Scan` and
+> `TTreeReaderArray` both give `PrimaryVertex.fIndices` no elements in every
+> entry, while `PrimaryVertex.fNIndices` reads 18, 22, 6 and 13. See erratum 6.
 
 The entry's byte range catches this: for a fixed-width *T* the length is
 `1 + n × sizeof(T)`, so a count that disagrees with the span came from the wrong
@@ -590,7 +599,7 @@ on a file whose baskets are all embedded.
 | 3 | `root/io/doc/TFile/ttree.md:75`: `fMaximum` is "Maximum entries for a TClonesArray or variable array" | Correct, but it is also a read-time bound that ROOT enforces (§6). A reader that treats it as a hint accepts entries ROOT rejects |
 | 4 | — | Nothing anywhere states that the header of §5.3 is shared across a *column*. For `kStreamer`, `kSTL` and `kStreamLoop` an entry of *n* values carries one byte count and one version word between them, and a member-wise column carries one value-class version too. A reader that frames each value desynchronises on the second |
 | 5 | — | Nothing states that a `std::bitset` member can be written as a branch with no bytes in it. Before ROOT 6.08/06 it always was (§3.6), and the branch looks identical to one that holds data |
-| 6 | — | **A suspected ROOT bug that loses data.** `fBranchCount` is set from a name looked up over the whole tree (`root/tree/tree/src/TBranchElement.cxx:438`), so two split objects of one class whose sub-branches carry no parent prefix both point at the *first* object's counter. In `alice_ESDs.root` ROOT therefore reads 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13 (§4.1). The bytes are intact and self-describing; only the pointer is wrong. Resolve the counter among siblings instead |
+| 6 | — | **A suspected ROOT bug that loses data.** `fBranchCount` is set from a name looked up over the whole tree (`root/tree/tree/src/TBranchElement.cxx:438`), so two split objects of one class whose sub-branches carry no parent prefix both point at the *first* object's counter. In `alice_ESDs.root` ROOT's member-wise reads (`Scan`, `TTreeReaderArray`) therefore give 0 elements for `PrimaryVertex.fIndices`, whose entries hold 18, 22, 6 and 13; a read of the whole object is unaffected (§4.1). The bytes are intact and self-describing; only the pointer is wrong. Resolve the counter among siblings instead |
 
 ## 10. Reference files
 
